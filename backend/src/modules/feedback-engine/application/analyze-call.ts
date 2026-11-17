@@ -15,7 +15,7 @@ import { callReviewResponseSchemaFor, CALL_REVIEW_PROMPT_VERSION, CALL_REVIEW_VE
 import { effectiveRuleText } from "../domain/criteria-identity.js"
 import { organizePracticesOfAnalysis } from "./organize-practices.js"
 import type { ArgumentScriptSource } from "../../argument-scripts/domain/argument-script.js"
-import { selectDocumentsForCall, type CandidateDocument } from "../domain/document-selection.js"
+import { exceedsDocumentBudget, selectDocumentsForCall, type CandidateDocument } from "../domain/document-selection.js"
 import { buildProcedureContext, listContextOf, listOpeningsOf, transcriptStatusOf, type ProcedureContext, type SourceDocument, type TranscriptStatus } from "../domain/procedure.js"
 import { CALL_ANALYSIS_LOGIC_VERSION, CALL_ANALYSIS_PROMPT_VERSION, CRITERIA_EXTRACTION_VERSION } from "../domain/versions.js"
 import { CALL_ANALYSIS_CHECKPOINT_VERSION, checkpointOf, type CallAnalysisCheckpoint, type PendingReason, type StageResponse } from "../domain/analysis-recovery.js"
@@ -57,6 +57,9 @@ export type AnalyzeCallDeps = {
    * fontes apresentadas). Ausente ou sem nada vigente = análise sem modo produto (idêntica à de antes).
    */
   loadProductCatalog?: (organizationId: string, at: Date, sourceIds: readonly string[]) => Promise<ProductCatalogSource | null>
+  /** Busca nas bases em escala (camada 4): documentos na ordem do cartão-resumo contra a consulta; null = o vetor não ajuda agora. Só é
+   * chamada quando os documentos não cabem todos no orçamento. Ausente = ordem de sempre. */
+  rankDocumentsByCard?: (organizationId: string, query: string, documents: readonly CandidateDocument[]) => Promise<string[] | null>
   now: () => Date
   /**
    * Trava de SUJEITO (ensaios/avaliações): só estes colaboradores podem ter chamadas analisadas. Checada antes de qualquer leitura
@@ -276,6 +279,16 @@ export function analysisKeysOf(input: { interaction: InteractionForAnalysis; age
   return { proposalKey, analysisKey: sha([CALL_ANALYSIS_LOGIC_VERSION, CALL_REVIEW_PROMPT_VERSION, obligationReviewContractFor(Boolean(products)).promptVersion, proposalKey].join("|")), specialist, interactionView, contract }
 }
 
+/** A ordem pelo cartão só ajuda: qualquer falha = a ordem de sempre (nunca derruba a análise). */
+async function rankDocumentsByCardSafely(rank: NonNullable<AnalyzeCallDeps["rankDocumentsByCard"]>, organizationId: string, query: string, documents: readonly CandidateDocument[]): Promise<string[] | null> {
+  try {
+    return await rank(organizationId, query, documents)
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "feedback_engine_card_ranking_failed", name: (error as Error)?.name }))
+    return null
+  }
+}
+
 export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallRequest): Promise<AnalyzeCallResult> {
   if (deps.allowCollaborator && !deps.allowCollaborator(request.collaboratorId)) throw new CollaboratorNotAllowedError(request.collaboratorId)
   const startedAt = deps.now()
@@ -292,7 +305,8 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
   const scripts = deps.loadArgumentScripts ? await deps.loadArgumentScripts(request.organizationId, { teamId: interaction.teamId, subteamId: interaction.subteamId }, interaction.startedAt) : []
   // `PRODUCT_APPLICABILITY_V1`: o cadastro vigente NA DATA DA CHAMADA (antes da seleção: variantes de produto não competem pela relevância).
   const catalog = deps.loadProductCatalog ? await deps.loadProductCatalog(request.organizationId, interaction.startedAt, [...candidates.map((document) => document.documentId), ...scripts.map((script) => script.scriptId)]) : null
-  const selection = selectDocumentsForCall(candidates, { subject, transcript: interaction.transcript?.content ?? "", productScoped: new Set((catalog?.scopes ?? []).map((scope) => scope.sourceId)) })
+  const semanticOrder = deps.rankDocumentsByCard && exceedsDocumentBudget(candidates) ? await rankDocumentsByCardSafely(deps.rankDocumentsByCard, request.organizationId, `${subject ?? ""}\n${interaction.transcript?.content ?? ""}`, candidates) : null
+  const selection = selectDocumentsForCall(candidates, { subject, transcript: interaction.transcript?.content ?? "", productScoped: new Set((catalog?.scopes ?? []).map((scope) => scope.sourceId)), semanticOrder })
   const context = buildProcedureContext(selection.selected, scripts)
   context.omitted = selection.omitted
   const presentedScripts = context.documents.filter((document) => document.kind === "ARGUMENT_SCRIPT")
@@ -344,6 +358,7 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
       evidenceAvailability: { transcript: transcriptStatus, operationalRecords: "NOT_INTEGRATED" },
       productApplicability: products ? { version: PRODUCT_APPLICABILITY_VERSION, fingerprint: products.fingerprint, analysisPromptVersion: contract.promptVersion, reviewPromptVersion: obligationReviewContractFor(true).promptVersion, nodes: products.nodes.length, criteria: products.criteria.map((criterion) => ({ handle: criterion.handle, versionId: criterion.versionId, version: criterion.version })), scopes: [...products.scopes.entries()].map(([sourceId, scope]) => ({ sourceId, assignmentId: scope.assignmentId, handles: scope.handles })) } : null,
       subjectAnchoredDocumentIds: selection.anchoredDocumentIds,
+      ...(selection.semanticOrdering ? { documentOrdering: "LEXICAL_AND_CARD_VECTOR" } : {}),
       procedureChars: context.renderedChars,
     }
     const snapshot = {

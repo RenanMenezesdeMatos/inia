@@ -53,6 +53,10 @@ export type GridSection = {
   cards: GridCard[]
 }
 
+/**
+ * Forma genérica da disposição, própria do kit (que não conhece zod nem as telas). O contrato com o servidor é o zod de
+ * `schemas/view-layouts/view-layout.schema.ts` (`ViewLayoutPayload = z.infer<…>`), que confere em tempo de compilação ser o mesmo tipo.
+ */
 export type CardLayout = { id: string; hidden: boolean; w: CardWidth; h: number | null }
 export type SectionLayout = { id: string; hidden: boolean; cards: CardLayout[] }
 export type ViewLayout = { version: 1; sections: SectionLayout[] }

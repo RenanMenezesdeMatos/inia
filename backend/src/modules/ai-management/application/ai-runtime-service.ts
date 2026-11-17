@@ -2,7 +2,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { beforeLlmCall, countTechnicalIdsInPrompt, EMPTY_USAGE, hasLlmTelemetryStore, recordLlmCall, type LlmUsage } from "../../../shared/application/llm-telemetry.js"
 import { observedCacheRecord } from "../../../shared/application/model-routing/cache-record.js"
 import { AiBudgetExceededError, AiCallCancelledError, AiProviderError, canFallbackOn, type AiErrorCategory } from "../../../shared/application/model-routing/ai-errors.js"
-import type { AiRuntime, AiUsageEventInput, PolicyExecutionRequest, PolicyExecutionResult, PolicySpeechRequest, PolicySpeechResult, PolicyStreamRequest, ResolvedAiRoute, SpeechCacheIdentity } from "../../../shared/application/model-routing/ai-runtime.js"
+import type { AiRuntime, AiUsageEventInput, PolicyEmbeddingRequest, PolicyEmbeddingResult, PolicyExecutionRequest, PolicyExecutionResult, PolicySpeechRequest, PolicySpeechResult, PolicyStreamRequest, ResolvedAiRoute, SpeechCacheIdentity } from "../../../shared/application/model-routing/ai-runtime.js"
 import { currentAiRequesterPersonId, currentAiWorkflowCorrelation } from "../../../shared/application/model-routing/ai-runtime.js"
 import { currentAiCallLimiterRecord } from "../../../shared/application/model-routing/ai-call-limiter.js"
 import { connectionGateKey, providerCallGate, runThroughProviderGate } from "../../../shared/application/model-routing/provider-call-gate.js"
@@ -17,6 +17,7 @@ import { findAiProvider } from "../domain/ai-provider-catalog.js"
 import { computeCallCost, isZeroPricing, pricingAt, resolveCallCost, type AiCostResult, type ProviderReportedCost } from "../domain/ai-pricing.js"
 import { planRoute, type ModelSnapshot, type PolicySnapshot, type RouteCandidate } from "../domain/ai-routing-policy.js"
 import { speechCacheModelKey } from "../domain/ai-speech.js"
+import { embeddingModelKey, embeddingUsageOf } from "../domain/ai-embedding.js"
 import { formatDecimal, parseDecimal } from "../domain/decimal.js"
 import { createAdapterRegistry, type AdapterRegistry } from "../infrastructure/adapters/adapter-registry.js"
 import { decryptAiSecret } from "./ai-secrets.js"
@@ -442,6 +443,32 @@ export function createAiRuntime(db: Queryable, options: AiRuntimeOptions = {}): 
       })
       const spoken = result.value
       return { pcm16: spoken.pcm16, sampleRate: spoken.sampleRate, voice: spoken.speech.voice, model: speechCacheModelKey(result.candidate.model.providerModelId, spoken.speech), usage: result.usage, resolvedRoute: resolvedRouteOf(request, prepared.policy, result.candidate, result.attempt, result.fallbackReason) }
+    },
+
+    async embeddingModelWithPolicy({ organizationId, useCase }): Promise<string | null> {
+      const snap = await snapshot(organizationId)
+      const policy = snap.policies.get(useCase)
+      const definition = findUseCase(useCase)
+      if (!policy || !definition) return null
+      const primary = planRoute(policy, definition, snap.models, { estimatedInputTokens: null, now: now() }).candidates[0]
+      return primary ? embeddingModelKey(primary.model.providerModelId) : null
+    },
+
+    async embedWithPolicy(request: PolicyEmbeddingRequest): Promise<PolicyEmbeddingResult | null> {
+      const prepared = await prepare({ ...request, estimatedInputTokens: estimateTokens(request.texts.join("\n")) })
+      if (!prepared) return null
+      // Índice de UM modelo: só candidatos desse modelo (outra conexão do mesmo modelo continua valendo como fallback).
+      const candidates = request.modelKey === undefined ? prepared.candidates : prepared.candidates.filter((candidate) => embeddingModelKey(candidate.model.providerModelId) === request.modelKey)
+      if (candidates.length === 0) throw new AiProviderError("ROUTE_UNAVAILABLE", { message: "O modelo de embedding do índice não está mais na política de busca nas bases: os vetores serão gerados de novo com o modelo atual." })
+      const result = await attemptAll(request, { ...prepared, candidates }, async (candidate, connection, timeoutMs) => {
+        const adapter = adapters(findAiProvider(connection.providerKey)!.adapterType)
+        // A elegibilidade já exige o protocolo; esta é a trava de quem chama o adapter.
+        if (!adapter.embed) throw new AiProviderError("ROUTE_UNAVAILABLE", { message: `O modelo "${candidate.model.displayName}" não gera embeddings na INIA.` })
+        const embedded = await adapter.embed(connection, candidate.model.providerModelId, { texts: request.texts, purpose: request.purpose }, timeoutMs)
+        // Gemini não informa tokens no embedding: entrada estimada pelo texto (custo ESTIMATED pela tabela, que conta no orçamento).
+        return { value: embedded, usage: embeddingUsageOf(embedded.usage, request.texts), durationMs: embedded.durationMs, reportedCost: embedded.reportedCost ?? null }
+      })
+      return { vectors: result.value.vectors, modelKey: embeddingModelKey(result.candidate.model.providerModelId), usage: result.usage, resolvedRoute: resolvedRouteOf(request, prepared.policy, result.candidate, result.attempt, result.fallbackReason) }
     },
 
     async assertLegacyCallAllowed({ organizationId, useCase, providerKey }) {

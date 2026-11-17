@@ -29,12 +29,25 @@ export const universeReadinessSchema = z.object({
   enforcedAt: z.string().nullable(),
   enforcedBy: z.string().nullable(),
   people: z.object({ total: z.number(), pending: z.number(), operatorsPending: z.number(), byUniverse: z.record(z.string(), z.number()) }),
+  groupsPending: z.number().default(0),
   pendingPeopleByGroup: z.array(z.object({ teamId: z.string().nullable(), teamName: z.string().nullable(), pending: z.number() })),
   resources: z.array(z.object({ kind: universeResourceKindSchema, label: z.string(), total: z.number(), pending: z.number() })),
   conflicts: z.array(z.object({ from: linkEndSchema, to: linkEndSchema, viaCategory: z.boolean() })),
   impact: z.array(z.string()),
 })
 export type UniverseReadiness = z.infer<typeof universeReadinessSchema>
+
+export const universeUnitSchema = z.object({
+  kind: z.enum(["TEAM", "SUBTEAM"]),
+  id: z.string(),
+  name: z.string(),
+  parentName: z.string().nullable(),
+  operatingUniverse: operatingUniverseSchema.nullable(),
+  operators: z.number(),
+  operatorsPending: z.number(),
+  managedBy: z.object({ sourceName: z.string(), feedName: z.string() }).nullable(),
+})
+export type UniverseUnit = z.infer<typeof universeUnitSchema>
 
 export const classifyPeopleResultSchema = z.object({
   updated: z.number(),

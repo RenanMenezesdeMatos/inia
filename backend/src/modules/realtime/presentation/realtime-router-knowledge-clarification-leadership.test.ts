@@ -110,8 +110,9 @@ function setup(script: (call: ScriptedCall, index: number) => unknown, options: 
       conversationGuardrails: async () => "",
       leadershipContext: async () => leadership(),
       visibleLeadershipCards: async (_user, cards) => cards,
-      processOrchestrators: async () => ORCHESTRATORS,
-      orchestratorById: async (_org, id) => resolvedOrchestrator(id),
+      // Dublê do filtro de universo do SQL: todos os Orquestradores deste teste são B2B.
+      processOrchestrators: async (_org, universes) => (universes && !universes.includes("B2B") ? [] : ORCHESTRATORS),
+      orchestratorById: async (_org, id, _query, universes) => (universes && !universes.includes("B2B") ? null : resolvedOrchestrator(id)),
       knowledgeClarification: clarification.service,
       accessibleKnowledgeDocuments: async (_org, _person, ids) => new Set(ids),
       reportProposals: { prepareOffer: async () => null, pendingForConversation: async () => null, decide: async () => undefined, attach: async () => undefined, forInteractions: async () => new Map() } as never,
@@ -202,6 +203,16 @@ describe("consulta de processo de quem lidera — esclarecimento pelas bases do 
     const first = await ask("Quais documentos preciso para troca de titularidade?")
     const view = clarificationOf(first)!
     setScope({ groups: [GROUP_B], groupsOfStructure: () => ({ kind: "NOT_FOUND", message: "x" }) })
+    const second = await ask("Empresa", { clarification: { clarificationId: view.id, stepId: view.steps[0]!.id, optionIds: [view.steps[0]!.options[0]!.id] } }, conversationOf(first))
+    expect(second.find((item) => item.event === "error")!.data.message).toContain("Este esclarecimento não está mais disponível")
+    expect(clarification.calls).toHaveLength(1)
+  })
+
+  it("escolha no formulário quando quem lidera não alcança mais o universo do Orquestrador: erro explícito, nada respondido (U4-01)", async () => {
+    const { ask, setScope, clarification } = setup((call) => clarify(call))
+    const first = await ask("Quais documentos preciso para troca de titularidade?")
+    const view = clarificationOf(first)!
+    setScope({ groups: [GROUP_A, GROUP_B], groupsOfStructure: () => ({ kind: "NOT_FOUND", message: "x" }), orchestratorUniverses: ["B2C"] })
     const second = await ask("Empresa", { clarification: { clarificationId: view.id, stepId: view.steps[0]!.id, optionIds: [view.steps[0]!.options[0]!.id] } }, conversationOf(first))
     expect(second.find((item) => item.event === "error")!.data.message).toContain("Este esclarecimento não está mais disponível")
     expect(clarification.calls).toHaveLength(1)

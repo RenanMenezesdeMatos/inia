@@ -35,6 +35,7 @@ export const AI_USE_CASE_KEYS = [
   "CHAT",
   "VOICE_REALTIME",
   "SPEECH_SYNTHESIS",
+  "KNOWLEDGE_EMBEDDING",
   "MODEL_TEST",
   "UNCLASSIFIED",
 ] as const
@@ -57,6 +58,9 @@ export type AiUseCaseDefinition = {
   internal: boolean
   /** Síntese de voz: o modelo precisa de uma voz cadastrada e de um provider que leia texto em voz (`ai-speech.ts`). */
   requiresSpeechVoice?: boolean
+  /** Natureza do modelo que atende o Use Case. Ausente = GENERATIVE (todos os de texto); EMBEDDING = só modelos de embedding
+   * de um protocolo que a INIA sabe usar para isso (`ai-embedding.ts`). */
+  modelKind?: "GENERATIVE" | "EMBEDDING"
   /** Propósitos (RoutePurpose) que chegam a este Use Case — auditoria. */
   purposes: readonly string[]
   notes?: string
@@ -82,6 +86,7 @@ export const AI_USE_CASES: readonly AiUseCaseDefinition[] = [
   { key: "CHAT", label: "Chat de texto", description: "Resposta do chat quando não há Orquestrador ativo (streaming).", group: "INTERACTIVE", requiredCapabilities: [], preferredCapabilities: ["STREAMING"], routable: true, internal: false, purposes: ["CHAT_STREAM"] },
   { key: "VOICE_REALTIME", label: "Voz em tempo real", description: "Sessão de voz do avatar (sessão própria do provider no navegador).", group: "INTERACTIVE", requiredCapabilities: ["AUDIO", "STREAMING"], preferredCapabilities: [], routable: false, internal: false, purposes: ["VOICE_SESSION"], notes: "V1: usa a configuração legada por ambiente; o uso aparece no dashboard (sessão iniciada, tokens não informados)." },
   { key: "SPEECH_SYNTHESIS", label: "Voz do recado do avatar", description: "Síntese de voz (TTS) do texto EXATO do recado de um Workflow para o avatar e do \"Ouvir com a INIA\" — nada é reescrito pelo modelo; o áudio fica em cache por entrega.", group: "INTERACTIVE", requiredCapabilities: ["AUDIO"], preferredCapabilities: [], routable: true, internal: false, requiresSpeechVoice: true, purposes: ["SPEECH_SYNTHESIS"], notes: "Sem policy da organização: a voz da conversa (Gemini Live no servidor, conferida pela transcrição) com o TTS do Gemini como reserva (INIA_AVATAR_TTS_MODEL) e a voz da INIA (config/inia-voice.ts). Com policy: o modelo da policy lê o texto exato com a voz e a instrução de tom cadastradas NO MODELO (hoje: OpenAI e compatíveis, /v1/audio/speech em PCM 24 kHz). A conversa por voz continua no Gemini — o recado pode ficar com voz diferente da conversa." },
+  { key: "KNOWLEDGE_EMBEDDING", label: "Busca nas bases (embedding)", description: "Transforma os trechos das bases publicadas, o cartão de cada documento e as perguntas em vetores, para achar os candidatos pelo significado quando há muitas bases. Só encontra candidatos: quem decide o que se aplica continua sendo o modelo de chat ou do motor de feedback.", group: "INTERACTIVE", requiredCapabilities: [], preferredCapabilities: [], routable: true, internal: false, modelKind: "EMBEDDING", purposes: ["KNOWLEDGE_EMBEDDING"], notes: "Sem policy da organização: nenhuma chamada de embedding — a busca usa só o índice de texto (BM25) de sempre. Trocar o modelo gera os vetores de novo (em segundo plano) e, até terminarem, as bases ainda sem vetores do modelo novo entram só pelo índice de texto. Modelos de embedding de OpenAI e servidores compatíveis (/v1/embeddings) e do Gemini." },
   { key: "MODEL_TEST", label: "Teste de modelo (admin)", description: "Requisição mínima disparada pelo botão \"Testar modelo\".", group: "INTERNAL", requiredCapabilities: [], preferredCapabilities: [], routable: false, internal: true, purposes: [] },
   { key: "UNCLASSIFIED", label: "Não classificado", description: "Chamada com propósito sem mapeamento (rota montada fora do roteador). Nunca roteável: segue a configuração legada, mas o uso e o orçamento global continuam valendo.", group: "INTERNAL", requiredCapabilities: [], preferredCapabilities: [], routable: false, internal: true, purposes: [] },
 ]
@@ -145,6 +150,8 @@ export function useCaseForPurpose(purpose: RoutePurpose | string, classification
       return "VOICE_REALTIME"
     case "SPEECH_SYNTHESIS":
       return "SPEECH_SYNTHESIS"
+    case "KNOWLEDGE_EMBEDDING":
+      return "KNOWLEDGE_EMBEDDING"
     case "MODEL_TEST":
       return "MODEL_TEST"
     default:

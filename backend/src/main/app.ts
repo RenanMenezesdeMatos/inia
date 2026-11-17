@@ -25,6 +25,9 @@ import { createOperatorRouter } from "../modules/reporting/presentation/operator
 import { createAuthRouter } from "../modules/auth/presentation/auth-router.js"
 import { createMyProfileRouter, createProfileImageRouter } from "../modules/profile-preferences/presentation/profile-preferences-router.js"
 import { createMyViewLayoutRouter } from "../modules/profile-preferences/presentation/view-layout-router.js"
+import { COMMUNICATION_BODY_LIMIT } from "../modules/communications/domain/communication.js"
+import { createPostgresCommunicationStore } from "../modules/communications/infrastructure/postgres-communication-store.js"
+import { createCommunicationsRouter } from "../modules/communications/presentation/communications-router.js"
 import { createIniaSceneAdminRouter, createIniaSceneRouter } from "../modules/inia-scenes/presentation/inia-scene-router.js"
 import { createRequireAuth } from "../modules/auth/presentation/require-auth.js"
 import { createIniaDeliveriesRouter } from "../modules/conversational-delivery/presentation/inia-deliveries-router.js"
@@ -167,6 +170,8 @@ export type RateLimitSettings = {
   adminCostlyActionsPerAccount: number
   /** Envio de foto/capa do perfil (até 2 imagens de 8 MB em memória cada) por conta, por minuto (AUTH-17). */
   profileWritesPerAccount: number
+  /** Publicação de comunicados da liderança (até 2 MB de HTML com imagens, saneado e com metadados removidos) por conta, por minuto. */
+  communicationPublishesPerAccount: number
   /** Prévias de documento (DOCX → HTML) por conta, por minuto: cada uma descompacta e converte o arquivo (lote 3 da 4ª auditoria). */
   knowledgePreviewsPerAccount: number
   /**
@@ -207,6 +212,7 @@ const DEFAULT_RATE_LIMITS: RateLimitSettings = {
   voiceSessionsPerAccountHalfHour: 60,
   adminCostlyActionsPerAccount: 30,
   profileWritesPerAccount: 20,
+  communicationPublishesPerAccount: 6,
   knowledgePreviewsPerAccount: 30,
   heavyReadsPerAccount: 20,
   dataExplorerMetadataPerAccount: 120,
@@ -270,9 +276,16 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // x-request-id e x-inia-release expostos: a tela de erro mostra a referência e a versão no "Copiar detalhes" (origem cruzada em dev).
   app.use(cors({ origin: env.allowedOrigins, credentials: true, exposedHeaders: ["content-disposition", "x-request-id", "x-inia-release"] }))
   // JSON de 1 MB para a API; o API Push (lotes de registros do cliente) tem o próprio parser de 10 MB no router — o global
-  // não roda ali, senão o limite dele nunca valeria (413 acima de 1 MB).
+  // não roda ali, senão o limite dele nunca valeria (413 acima de 1 MB). A publicação de comunicado (imagens embutidas, teto de 2 MB
+  // depois de saneado) tem parser próprio de ~2,2 MB, só no POST da raiz da rota e no PATCH de um comunicado (edição).
   const jsonBody = express.json({ limit: "1mb" })
-  app.use((request, response, next) => (routePath(request).startsWith("/api/v1/data-ingestion/") ? next() : jsonBody(request, response, next)))
+  const communicationBody = express.json({ limit: COMMUNICATION_BODY_LIMIT })
+  app.use((request, response, next) => {
+    const path = routePath(request)
+    if (path.startsWith("/api/v1/data-ingestion/")) return next()
+    if ((request.method === "POST" && path === "/api/v1/communications") || (request.method === "PATCH" && /^\/api\/v1\/communications\/[0-9a-f-]{36}$/.test(path))) return communicationBody(request, response, next)
+    return jsonBody(request, response, next)
+  })
   app.use(cookieParser())
   // CSRF: escrita com o cookie de sessão só de origem autorizada (ver origin-guard.ts).
   app.use(createOriginGuard({ allowedOrigins: env.allowedOrigins, sessionCookieName: SESSION_COOKIE_NAME }))
@@ -387,6 +400,9 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/profile-images", requireAuth, createProfileImageRouter(database))
   // Disposição personalizada das telas (áreas e cards reposicionáveis), da própria pessoa — migration 192.
   app.use("/api/v1/me/view-layouts", requireAuth, onlyMethods(["PUT", "DELETE"], profileWrites), createMyViewLayoutRouter(database))
+  // Comunicados da liderança (migration 199): publicar exige permissão própria (lida a cada request no módulo); ler é da própria pessoa.
+  const communicationPublishes = limit({ name: "communication-publishes-account", windowMs: 60_000, max: "communicationPublishesPerAccount", key: accountKey, message: "Muitos comunicados publicados em pouco tempo. Aguarde um instante." })
+  app.use("/api/v1/communications", requireAuth, onlyMethods(["POST", "PATCH", "DELETE"], communicationPublishes), createCommunicationsRouter(createPostgresCommunicationStore(database)))
   // Cenário da INIA (fundo atrás do avatar): qualquer pessoa autenticada vê o que vale hoje; só o Administrador geral configura.
   app.use("/api/v1/inia-scenes", requireAuth, createIniaSceneRouter(database))
   app.use("/api/v1/supervision-cases", requireAuth, createCaseRouter(new PgCaseRepository(database), (request) => loadCaseVisibility(database, request.user!), (organizationId, caseId) => loadCaseAgentRecords(database, organizationId, caseId)))

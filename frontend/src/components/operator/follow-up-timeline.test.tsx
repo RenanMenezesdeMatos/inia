@@ -5,6 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import type { Communication, ReceivedCommunication } from "@/schemas/communications/communication.schema"
 import type { DeliveredFeedback } from "@/schemas/feedback-delivery/feedback-delivery.schema"
 import type { OperatorIndicatorHistory } from "@/schemas/operator"
 
@@ -18,6 +19,8 @@ const confirmation = vi.hoisted(() => ({ confirmFeedbackReading: vi.fn(), record
 vi.mock("@/services/feedback-read-confirmations/feedback-read-confirmations-service", () => confirmation)
 const feedPages = vi.hoisted(() => ({ fetchOperatorFeedbackPage: vi.fn() }))
 vi.mock("@/services/operator/operator-feed", () => feedPages)
+const communications = vi.hoisted(() => ({ fetchReceivedCommunications: vi.fn(async () => [] as ReceivedCommunication[]), fetchCommunication: vi.fn(), publishCommunication: vi.fn() }))
+vi.mock("@/services/communications/communication-service", () => communications)
 
 let intersect: (() => void) | null = null
 class IntersectionObserverStub {
@@ -31,7 +34,7 @@ beforeAll(() => {
   installJsdomStubs()
   global.IntersectionObserver = IntersectionObserverStub as unknown as typeof IntersectionObserver
 })
-afterEach(() => { cleanup(); vi.clearAllMocks(); vi.useRealTimers(); intersect = null })
+afterEach(() => { cleanup(); vi.clearAllMocks(); communications.fetchReceivedCommunications.mockResolvedValue([]); vi.useRealTimers(); intersect = null })
 
 const history = (id: string, occurredAt: string, title = `Feedback ${id}`): OperatorIndicatorHistory => ({
   id, title, message: `Resumo ${id}`, timestamp: occurredAt, occurredAt, kind: "monitoria_feedback",
@@ -134,6 +137,52 @@ describe("Timeline do Acompanhamento — mais recente primeiro", () => {
     const target = await screen.findByText("Feedback alvo")
     expect(target.closest("[data-entry-key]")).toHaveAttribute("data-entry-key", "history:alvo")
     expect(feedPages.fetchOperatorFeedbackPage.mock.calls.map((call) => call[0])).toEqual(["cursor-1", "cursor-2"])
+  })
+})
+
+/** Como chega da lista LEVE de recebidos: trecho do texto, sem o conteúdo. */
+const notice = (id: string, publishedAt: string): ReceivedCommunication => ({
+  id, title: `Comunicado ${id}`, excerpt: `Texto ${id}`, hasImages: false, tags: ["Aviso"], audience: "TEAM",
+  author: { personId: "sup", name: "Paula Supervisora" }, recipientCount: null, authoredByViewer: false, publishedAt,
+})
+
+describe("Acompanhamento do colaborador — comunicados da liderança", () => {
+  it("terceira fonte da mesma timeline, pelo instante da publicação", () => {
+    const timeline = buildFollowUpTimeline([history("h", "2026-09-28T10:00:00Z")], [delivered("d", "2026-09-28T08:00:00Z")], [notice("n", "2026-09-28T09:00:00Z")])
+    expect(timeline.map((entry) => entry.key)).toEqual(["history:h", "notice:n", "delivered:d"])
+  })
+
+  it("aparece no feed com o autor e o público, só leitura; o calendário vale para ele", async () => {
+    const now = new Date()
+    const at = (hour: number) => new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, 0).toISOString()
+    service.fetchMyDeliveredFeedback.mockResolvedValue([])
+    communications.fetchReceivedCommunications.mockResolvedValue([notice("hoje", at(2)), notice("antigo", "2025-01-10T12:00:00Z")])
+    renderWithQuery(<OperatorDailyFeedbackFeed indicators={{ current: [], history: [history("mon", at(1), "Feedback mon")] }} />)
+    expect(await screen.findByRole("heading", { name: "Comunicado hoje" })).toBeInTheDocument()
+    expect(screen.getAllByText("Comunicado de Paula Supervisora")).toHaveLength(2)
+    expect(screen.getAllByText("Para a equipe")).toHaveLength(2)
+    expect(screen.getByText("Texto hoje")).toBeInTheDocument()
+    const pick = async (label: string) => { fireEvent.click(screen.getByRole("button", { name: "Filtrar o Acompanhamento por período" })); fireEvent.click(await screen.findByRole("button", { name: label })) }
+    await pick("Hoje")
+    expect(await screen.findByTestId("follow-up-period-bar")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Comunicado hoje" })).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Comunicado antigo" })).toBeNull()
+    const sources = screen.getAllByTestId("follow-up-entry").map((element) => element.getAttribute("data-source"))
+    expect(sources).toEqual(["notice", "history"])
+  })
+  it("a lista traz só o trecho; o conteúdo inteiro é lido pelo id ao abrir (U4-02)", async () => {
+    service.fetchMyDeliveredFeedback.mockResolvedValue([])
+    const received = { ...notice("aviso", "2026-09-28T09:00:00Z"), excerpt: "Começo do aviso…", hasImages: true }
+    const full: Communication = { ...received, contentHtml: "<p>Começo do aviso e <strong>o resto inteiro</strong>.</p>", plainText: "Começo do aviso e o resto inteiro." }
+    communications.fetchReceivedCommunications.mockResolvedValue([received])
+    communications.fetchCommunication.mockResolvedValue(full)
+    renderWithQuery(<OperatorDailyFeedbackFeed indicators={{ current: [], history: [] }} />)
+    expect(await screen.findByText("Começo do aviso…")).toBeInTheDocument()
+    expect(screen.getByText(/com imagem/)).toBeInTheDocument()
+    expect(communications.fetchCommunication).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Ler comunicado completo" }))
+    expect(await screen.findByText("o resto inteiro")).toBeInTheDocument()
+    expect(communications.fetchCommunication).toHaveBeenCalledWith("aviso")
   })
 })
 

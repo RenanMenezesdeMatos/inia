@@ -965,7 +965,7 @@ describe.skipIf(!ENABLED)("Motor de feedback no Workflow — prova Postgres (zer
       vi.unstubAllEnvs()
       control.compliance = null
       await pool.query("delete from response_compliance_checks where source_ref in (select id::text from feedback_engine_messages where workflow_id = $1)", [wf.workflow])
-      await pool.query("delete from prohibited_topics where organization_id = $1 and name = $2", [ORG, TOPIC])
+      await pool.query("delete from prohibited_topics_all where organization_id = $1 and name = $2", [ORG, TOPIC])
     }
   })
 })

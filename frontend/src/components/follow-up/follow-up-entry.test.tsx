@@ -194,7 +194,9 @@ describe("Acompanhamento da estrutura — timeline", () => {
 
   it("rótulo do dia como no colaborador e \"carregar mais\" anexando a próxima página ao chegar ao fim", async () => {
     const today = new Date()
-    const first = Array.from({ length: 8 }, (_, index) => legacyFeedback({ id: `fb-${index}`, title: `Feedback ${index}`, createdAt: new Date(today.getTime() - index * 60_000).toISOString() }))
+    // Perto da meia-noite os 8 minutos para trás cairiam em "Ontem": a base nunca fica antes de 00:10 de hoje.
+    const base = Math.max(today.getTime(), new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 10).getTime())
+    const first = Array.from({ length: 8 }, (_, index) => legacyFeedback({ id: `fb-${index}`, title: `Feedback ${index}`, createdAt: new Date(base - index * 60_000).toISOString() }))
     const older = legacyFeedback({ id: "fb-old", title: "Feedback antigo", createdAt: "2026-01-05T12:00:00.000Z" })
     service.fetchFollowUpFeed.mockImplementation(async (_subject: unknown, cursor: string | null) => (cursor === null ? page(first, "cursor-fb-7") : page([older], null)))
     renderWithQuery(<StructureFollowUpFeed subject={null} description="Feedbacks da sua estrutura" />)
@@ -216,7 +218,9 @@ describe("Acompanhamento da estrutura — calendário filtra as ações", () => 
   const now = new Date()
   const indicator = legacyFeedback({ id: "fb-ind", category: "INDICATOR", title: "TMA acima da meta", origin: { family: "INDICATOR", reason: "INDICATOR", label: "Tempo Médio de Atendimento", iconKey: "timer" }, createdAt: now.toISOString() })
   const monitoring = legacyFeedback({ id: "fb-mon", title: "Contestação de cobrança", origin: { family: "MONITORING", reason: "FLAG", label: "Rechamada", iconKey: "flag" }, createdAt: now.toISOString() })
-  const notice = { id: "n-1", title: "Nova campanha de retenção", contentHtml: "<p>Começa amanhã.</p>", audienceLabel: "Publicado para sua equipe", tags: ["Aviso"], time: "Agora", createdAt: now.toISOString() }
+  // Comunicado da liderança: item do servidor (ramo NOTICE do feed), com o mesmo instante e o mesmo recorte dos demais.
+  const notice: FollowUpItem = { id: "n-1", kind: "NOTICE", category: "NOTICE", title: "Nova campanha de retenção", summary: "Começa amanhã.", detail: null, severity: null, operator: null, caseId: null, createdAt: now.toISOString(), acknowledgedAt: null, feedback: null,
+    notice: { id: "n-1", title: "Nova campanha de retenção", contentHtml: "<p>Começa amanhã.</p><script>alert(1)</script>", plainText: "Começa amanhã.", tags: ["Aviso"], audience: "TEAM", author: { personId: "me", name: "Eu" }, recipientCount: 12, authoredByViewer: true, publishedAt: now.toISOString() } }
   const pickPreset = async (label: string) => {
     fireEvent.click(screen.getByRole("button", { name: "Filtrar o Acompanhamento por período" }))
     fireEvent.click(await screen.findByRole("button", { name: label }))
@@ -224,10 +228,10 @@ describe("Acompanhamento da estrutura — calendário filtra as ações", () => 
 
   it("visão inicial = todo o período; um recorte vai ao servidor, mostra a faixa e mantém os três tipos identificáveis; vazio oferece a volta", async () => {
     service.fetchFollowUpFeed.mockImplementation(async (_s: unknown, _c: unknown, _l: unknown, _a: unknown, period: { since: string; until: string } | null) => {
-      if (period === null || Date.parse(period.until) > now.getTime()) return page([indicator, monitoring])
+      if (period === null || Date.parse(period.until) > now.getTime()) return page([notice, indicator, monitoring])
       return page([])
     })
-    renderWithQuery(<StructureFollowUpFeed subject={null} description="Feedbacks da sua estrutura" notices={[notice]} />)
+    renderWithQuery(<StructureFollowUpFeed subject={null} description="Feedbacks da sua estrutura" />)
     expect(await screen.findByRole("heading", { name: "TMA acima da meta" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Filtrar o Acompanhamento por período" })).toHaveTextContent("Todo o período")
     expect(screen.queryByTestId("follow-up-period-bar")).toBeNull()
@@ -244,6 +248,10 @@ describe("Acompanhamento da estrutura — calendário filtra as ações", () => 
     expect(screen.getByRole("heading", { name: "Nova campanha de retenção" })).toBeInTheDocument()
     const families = Array.from(document.querySelectorAll("[data-slot=feedback-entry-header]")).map((element) => element.getAttribute("data-family"))
     expect(families.sort()).toEqual(["INDICATOR", "MONITORING", "NOTICE"])
+    // Quem publicou vê o público; o conteúdo passa de novo pelo saneador da tela.
+    expect(screen.getByText("Publicado para sua equipe · 12 pessoas")).toBeInTheDocument()
+    expect(screen.getByText("Começa amanhã.")).toBeInTheDocument()
+    expect(document.querySelector("[data-testid=communication-entry] script")).toBeNull()
 
     // Período sem nada: a seção continua montada (faixa + vazio) e o comunicado de hoje não entra.
     await pickPreset("Mês passado")

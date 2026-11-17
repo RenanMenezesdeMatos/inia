@@ -4345,6 +4345,160 @@
       "family": "FAMILIA-REGRA-DE-NEGOCIO"
     },
     {
+      "code": "COMMUNICATION_AUDIENCE_FORBIDDEN",
+      "module": "communications",
+      "statuses": [
+        403
+      ],
+      "messages": [
+        "Você não tem permissão para publicar para toda a empresa."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-ACESSO"
+    },
+    {
+      "code": "COMMUNICATION_CONTENT_EMPTY",
+      "module": "communications",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Digite o conteúdo do comunicado."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-images.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "COMMUNICATION_EDIT_FORBIDDEN",
+      "module": "communications",
+      "statuses": [
+        403
+      ],
+      "messages": [
+        "Você não tem mais permissão para publicar para este público; ainda pode retirar o comunicado."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-ACESSO"
+    },
+    {
+      "code": "COMMUNICATION_FORBIDDEN",
+      "module": "communications",
+      "statuses": [
+        403
+      ],
+      "messages": [
+        "Você não tem permissão para publicar comunicados."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-ACESSO"
+    },
+    {
+      "code": "COMMUNICATION_IMAGE_INVALID",
+      "module": "communications",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Uma das imagens do comunicado não pôde ser lida. Use JPG, PNG ou WebP."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-images.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "COMMUNICATION_IMAGE_TYPE_UNSUPPORTED",
+      "module": "communications",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Formato de imagem não suportado no comunicado. Use JPG, PNG ou WebP."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-images.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "COMMUNICATION_NO_AUDIENCE",
+      "module": "communications",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Não há ninguém na sua equipe para receber o comunicado."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "COMMUNICATION_NOT_FOUND",
+      "module": "communications",
+      "statuses": [
+        404
+      ],
+      "messages": [
+        "Comunicado não encontrado."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-NAO-ENCONTRADO"
+    },
+    {
+      "code": "COMMUNICATION_TEXT_TOO_LONG",
+      "module": "communications",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "O texto deve ter no máximo ${COMMUNICATION_MAX_PLAIN_TEXT.toLocaleString(\"pt-BR\")} caracteres."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-images.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "COMMUNICATION_TOO_LARGE",
+      "module": "communications",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "O comunicado passou de 2 MB. Use imagens menores ou em menor número."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-images.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "COMMUNICATION_TOO_MANY_IMAGES",
+      "module": "communications",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "O comunicado pode ter no máximo ${COMMUNICATION_MAX_IMAGES} imagens."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-images.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
       "code": "COMPETENCY_ACTIVITY_DUPLICATED",
       "module": "interventions",
       "statuses": [],
@@ -9303,6 +9457,20 @@
       "family": "FAMILIA-CONFLITO"
     },
     {
+      "code": "OPERATING_UNIVERSE_EFFECTIVE_FROM_FUTURE",
+      "module": "operating-universe",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "A data de vigência do universo não pode ser futura."
+      ],
+      "refs": [
+        "backend/src/modules/operating-universe/application/universe-units.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
       "code": "OPERATING_UNIVERSE_FORBIDDEN",
       "module": "operating-universe",
       "statuses": [
@@ -11978,6 +12146,22 @@
       ],
       "refs": [
         "backend/src/modules/workflows/application/publish-validation/indicator-diagnosis.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "TEAM",
+      "module": "operating-universe",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "O universo deste ${kind === \"TEAM\" ? \"Grupo\" : \"Subgrupo\"} vem da base ${managed.sourceName} · ${managed.feedName} — altere na origem.",
+        "Você herda o universo deste ${kind === \"TEAM\" ? \"Grupo\" : \"Subgrupo\"}: reclassificá-lo mudaria o seu próprio universo — outra pessoa autorizada precisa fazer isso.",
+        "Com a exigência ativa, ${orphaned} operador(es) deste ${kind === \"TEAM\" ? \"Grupo\" : \"Subgrupo\"} ficariam sem universo."
+      ],
+      "refs": [
+        "backend/src/modules/operating-universe/application/universe-units.ts"
       ],
       "family": "FAMILIA-REGRA-DE-NEGOCIO"
     },

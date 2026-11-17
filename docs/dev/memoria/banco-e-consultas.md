@@ -46,6 +46,14 @@ Documentos relacionados: [workflows.md](workflows.md) (worker e agenda), [experi
   - Acima de dezenas de milhares de pessoas, ponha `p.organization_id = $org` no passo recursivo e meça de novo.
 - 132: `alerts (recipient_id, created_at desc)`, parcial de não lidas e parcial de revisões vivas.
   - **`idx_alerts_open_dedupe` foi removido**: era redundante com `uq_alerts_dedupe_key`, nunca foi árbitro de `on conflict` e tinha `idx_scan = 0`.
+- 203 (auditoria de 16/11/2026, rodada 4; nenhuma das tabelas é visão sobre `_all`):
+  - `human_support_attendances (request_id, started_at, id)` — atendimentos de um pedido (só havia o parcial dos ativos);
+  - `human_support_attendances (organization_id, ended_at) where end_cause = 'ANJO_SILENT'` — ramo do "Anjo sem responder ninguém",
+    que virou `union all` em vez de `OR`;
+  - `supervision_cases (operator_id) where operating_universe is null` — carimbo do legado no trigger `track_person_operating_universe` (197);
+  - removido `human_support_requests_org_created` (191), idêntico a `human_support_requests_created` (182);
+  - leitura de mensagens por atendimento sempre com `m.request_id` (usa o único `(request_id, seq)`); última causa de conexão do Anjo
+    ordenada por `(occurred_at, id)`, a ordem do índice da pessoa.
 - 133: `audit_logs (organization_id, entity_type, entity_id, created_at)` e `audit_logs (actor_id, created_at) where actor_id is not null`.
   - O ator vem na frente, desviando do pedido `(organization_id, actor_id, …)`, porque a mesma busca é a da FK `audit_logs_actor_id_fkey` ao apagar uma pessoa: 50 ms → 0,08 ms com 500 mil linhas.
   - Quem fizer retenção ou particionamento de `audit_logs` deve contar com esses dois índices.

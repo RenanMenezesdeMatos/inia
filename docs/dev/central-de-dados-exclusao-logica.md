@@ -45,6 +45,7 @@ Excluir um objeto de negócio não apaga nada. Ele sai das telas e da lógica, c
 | Fonte de dados | `data_sources` | Pausada, com os conjuntos que saíram junto. **Credenciais e tokens não voltam**: são revogados ao excluir e de novo ao restaurar, porque fonte excluída antes de 15/10/2026 ainda os tinha vivos |
 | Conjunto de dados | `data_feeds` | Pausado, se a fonte estiver viva e ninguém tiver virado a fonte oficial daquele dado. **Tokens próprios são revogados** ao excluir e não voltam |
 | Report | `reports` | Inativo, sem entrega. **Só para quem o criou**, na aba Excluídos da tela de Reports, sem precisar da Consultar dados |
+| Comunicado da liderança | `communications` | Volta a aparecer no Acompanhamento de quem o recebeu, com a última versão (comunicado não tem estado desligado). Só o autor retira; vê e restaura quem publica para a organização inteira. Edições anteriores ficam em `communication_revisions` (migrations 199 e 201) |
 
 Os excluídos antes desta entrega aparecem sem "Excluído por", porque não guardavam quem excluiu.
 

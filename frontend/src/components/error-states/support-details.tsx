@@ -5,6 +5,7 @@ import { Check, Copy } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { ApiError } from "@/lib/api/api-client"
+import { copyText } from "@/lib/clipboard/copy-text"
 import { describeFailure, publicRoute, supportDetails, type Failure } from "@/lib/errors/failure"
 import { isRecorded, onRecorded, reportClientFailure } from "@/lib/errors/report-client-failure"
 import { cn } from "@/lib/utils"
@@ -20,29 +21,6 @@ export function referenceNote(failure: Failure, recorded: boolean): string {
   if (recorded) return "registrada no servidor"
   if (failure.referenceScope === "proxy") return "procurar no registro do servidor de acesso (IIS)"
   return "local — ainda não enviada ao servidor"
-}
-
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text)
-    return true
-  } catch {
-    // Sem permissão de área de transferência (HTTP, navegador antigo): seleção manual por um campo temporário.
-    try {
-      const field = document.createElement("textarea")
-      field.value = text
-      field.setAttribute("readonly", "")
-      field.style.position = "fixed"
-      field.style.opacity = "0"
-      document.body.appendChild(field)
-      field.select()
-      const ok = document.execCommand("copy")
-      field.remove()
-      return ok
-    } catch {
-      return false
-    }
-  }
 }
 
 

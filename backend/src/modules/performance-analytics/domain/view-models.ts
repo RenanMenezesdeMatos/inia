@@ -1,3 +1,4 @@
+import type { CommunicationView } from "../../communications/domain/communication.js"
 import type { FeedbackView } from "../../reliable-feedback/domain/feedback-view.js"
 import type { PrvSupervisorView } from "../../reliable-feedback/domain/prv-closing-views.js"
 import type { FeedbackSupportMaterialView } from "../../feedbacks/application/feedback-support-materials.js"
@@ -504,10 +505,10 @@ export type TeamMembersPage = {
 
 export type FollowUpItem = {
   id: string
-  kind: "FEEDBACK" | "ALERT" | "REPORT"
+  kind: "FEEDBACK" | "ALERT" | "REPORT" | "NOTICE"
   /** INTERVENTION = atualização de uma intervenção (aberta, aprovada, decidida, novo sinal) — o link vai para o caso.
    * REPORT = entrega válida de um report recorrente; REPORT_NOT_FORWARDED = aviso de execução não encaminhada (nunca um report novo). */
-  category: "INDICATOR" | "MONITORING" | "WORKFLOW_OUTPUT" | "WORKFLOW_HUMAN_REVIEW" | "WORKFLOW_ESCALATION" | "INTERVENTION" | "REPORT" | "REPORT_NOT_FORWARDED" | "OTHER"
+  category: "INDICATOR" | "MONITORING" | "WORKFLOW_OUTPUT" | "WORKFLOW_HUMAN_REVIEW" | "WORKFLOW_ESCALATION" | "INTERVENTION" | "REPORT" | "REPORT_NOT_FORWARDED" | "NOTICE" | "OTHER"
   title: string
   /** Metadado do título (ex.: "Atendimento de 29/09/2026") — só feedbacks com cabeçalho; null = sem subtítulo. */
   subtitle?: string | null
@@ -531,6 +532,8 @@ export type FollowUpItem = {
     supervisorView?: PrvSupervisorView | null } | null
   /** Entrega (ou aviso) de report recorrente — só quando kind = REPORT; o item é de quem RECEBEU (escopo dele). */
   report?: FollowUpReportDelivery | null
+  /** Comunicado da liderança (migration 199) — só quando kind = NOTICE: publicado por quem lê ou recebido por ele. */
+  notice?: CommunicationView | null
 }
 
 export type FollowUpReportDelivery = {

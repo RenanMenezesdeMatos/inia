@@ -30,6 +30,7 @@ export const DELETED_ITEM_TYPES = [
   "DATA_SOURCE",
   "DATA_FEED",
   "REPORT",
+  "COMMUNICATION",
 ] as const
 export type DeletedItemType = (typeof DELETED_ITEM_TYPES)[number]
 
@@ -379,6 +380,17 @@ export const DELETED_ITEMS: readonly DeletedItemDefinition[] = [
     restoreSet: "updated_at = now()",
     checks: [],
     notices: ["Volta inativo, sem nova entrega. Para retomar, ative na tela de Reports."],
+  }),
+  // Comunicado da liderança retirado pelo autor (migrations 199/201). Quem vê e restaura: quem publica para a organização inteira.
+  // Não existe estado "desligado" para um comunicado: restaurar o devolve ao Acompanhamento de quem o recebeu (aviso abaixo).
+  owned("communications", {
+    type: "COMMUNICATION",
+    label: "Comunicado",
+    access: { permissions: ["communications.publish_organization"] },
+    nameSql: "t.title",
+    restoreSet: "",
+    checks: [],
+    notices: ["Volta a aparecer no Acompanhamento de quem o recebeu, com o público e o conteúdo da última versão."],
   }),
 ]
 

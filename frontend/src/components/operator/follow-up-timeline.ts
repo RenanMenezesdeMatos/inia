@@ -1,10 +1,12 @@
 import type { OperatorIndicatorHistory } from "@/schemas/operator"
+import type { ReceivedCommunication } from "@/schemas/communications/communication.schema"
 import type { DeliveredFeedback } from "@/schemas/feedback-delivery/feedback-delivery.schema"
 
 /**
- * Timeline do Acompanhamento: as duas fontes do feed (feedbacks publicados e feedbacks de atendimento entregues) numa ÚNICA
- * ordem — MAIS RECENTE PRIMEIRO pelo instante canônico de cada fonte (`occurredAt` = publicação do feedback; `deliveredAt` =
- * entrega), com desempate determinístico por id. As entregas chegam inteiras; os feedbacks publicados chegam por página
+ * Timeline do Acompanhamento: as fontes do feed (feedbacks publicados, feedbacks de atendimento entregues e comunicados da
+ * liderança recebidos) numa ÚNICA ordem — MAIS RECENTE PRIMEIRO pelo instante canônico de cada fonte (`occurredAt` = publicação do
+ * feedback; `deliveredAt` = entrega; `publishedAt` = publicação do comunicado), com desempate determinístico por id. As entregas e os
+ * comunicados (os 200 mais recentes) chegam inteiros; os feedbacks publicados chegam por página
  * (cursor) — `boundFollowUpTimeline` corta a timeline enquanto houver página por vir. O feed revela N por vez da lista JÁ
  * ordenada: página 1 = os mais recentes, "carregar mais" = progressivamente mais antigos.
  * Só o Acompanhamento usa isto — o chat da INIA continua em ordem de conversa.
@@ -12,16 +14,18 @@ import type { DeliveredFeedback } from "@/schemas/feedback-delivery/feedback-del
 export type FollowUpEntry =
   | { key: string; at: number; source: "history"; item: OperatorIndicatorHistory }
   | { key: string; at: number; source: "delivered"; item: DeliveredFeedback }
+  | { key: string; at: number; source: "notice"; item: ReceivedCommunication }
 
 const instant = (value: string | null | undefined) => {
   const at = value ? Date.parse(value) : Number.NaN
   return Number.isNaN(at) ? Number.NEGATIVE_INFINITY : at
 }
 
-export function buildFollowUpTimeline(history: readonly OperatorIndicatorHistory[], delivered: readonly DeliveredFeedback[]): FollowUpEntry[] {
+export function buildFollowUpTimeline(history: readonly OperatorIndicatorHistory[], delivered: readonly DeliveredFeedback[], notices: readonly ReceivedCommunication[] = []): FollowUpEntry[] {
   const entries: FollowUpEntry[] = [
     ...history.map((item) => ({ key: `history:${item.id}`, at: instant(item.occurredAt), source: "history" as const, item })),
     ...delivered.map((item) => ({ key: `delivered:${item.id}`, at: instant(item.deliveredAt), source: "delivered" as const, item })),
+    ...notices.map((item) => ({ key: `notice:${item.id}`, at: instant(item.publishedAt), source: "notice" as const, item })),
   ]
   return entries.sort((a, b) => (b.at !== a.at ? (b.at > a.at ? 1 : -1) : b.key < a.key ? -1 : b.key > a.key ? 1 : 0))
 }

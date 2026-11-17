@@ -628,3 +628,25 @@ piloto (B1 ligada num Subgrupo) falta o roteiro do IIS da especificação (chama
     da 194, antes do código.
 - **Não conferido no navegador**: aba oculta (som e título ao chegar atendimento), "Reconectando…" com a API fora do ar e várias APIs
   atrás do IIS (o script de chamada longa no IIS segue pendente antes do piloto).
+- **FAQ da operação (16/11/2026)**: `/wiki/apoio-com-anjo/faq`, fonte única em `frontend/src/components/wiki/human-support-faq-data.ts`
+  (FAQ + prompt de referência). Toda regra nova ou mudada aqui precisa entrar lá também (ver `wiki.md`).
+- **Auditoria de 16/11/2026 (rodada 4; migration 203, sem commit)**.
+  - **Universo de atuação (HS-01)**: com a exigência ativada na organização (`organizations.operating_universe_enforced_at`), o Anjo
+    só serve o operador do MESMO universo (`people.operating_universe` do operador, lido a cada decisão — sem carimbo no pedido), ou
+    qualquer um se tiver `operating_universes.all` num escopo que cubra o Grupo/Subgrupo do pedido; operador ou Anjo pendente só se
+    encontram por essa permissão. Regra em `domain/universe.ts` (`anjoServesOperatorUniverse`), filtro em
+    `application/universe-gate.ts` (uma leitura da ativação por gate, cache de universos e titulares por lugar), aplicado em
+    `anjoIdsServing` (`eligibility.ts`: `anjosCovering`, `anjosInServiceCount` — disponibilidade, "ninguém em serviço", candidatos e
+    alvo da transferência) e no passo 7 da distribuição. Quem acompanha: `CoordinatorScopes.universe` (regra de pessoas de
+    `personAllowedByUniverse`, sem "Minha estrutura"); `coversRecord` exige o universo do operador (`operatorUniverseOf`) — detalhe e
+    transferência fora do universo = 404 — e `coverageClause` ganhou o 5º parâmetro obrigatório `personColumn`
+    (`operator_person_id` no pedido, `person_id` na tentativa) para filtrar listas, fila e números. Desligada, nada muda.
+    Limitações: atendimento JÁ em andamento quando a organização ativa a exigência (ou o operador troca de universo) segue até
+    terminar; presença/histórico de Anjos no painel (`reachableAnjos`, D11) não filtra pelo universo do Anjo. Teste:
+    `application/universe-gate.test.ts`; FAQ atualizado.
+  - **Tempos por Grupo com versão monotônica (B4)**: "Usar o padrão" não apaga mais a linha — `custom = false` (coluna da 203) e
+    versão + 1; regra em `domain/group-response-times.ts` (`planGroupResponseTimes`). Leituras (`responseTimesForTeam`, passos 4 e 4b)
+    só usam linha `custom`. Antes a versão voltava a 0/1 e uma edição concorrente passava sem 409. Prova ajustada (versão 2 depois do
+    reset).
+  - **Consultas**: mensagens por atendimento filtram também `m.request_id` (índice (request_id, seq)); passo 4c em dois ramos
+    `union all`; passo 3 ordena a última causa de conexão por `(occurred_at, id)` (índice da pessoa). Índices em `banco-e-consultas.md`.

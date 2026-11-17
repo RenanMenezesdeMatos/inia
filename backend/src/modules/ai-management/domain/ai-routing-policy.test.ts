@@ -194,3 +194,25 @@ describe("Voz do recado (SPEECH_SYNTHESIS) roteável", () => {
     expect(planRoute(policy({ modelIds: ["a"] }), extraction, mapOf(model("a")), ctx).candidates).toHaveLength(1)
   })
 })
+
+describe("Busca nas bases (KNOWLEDGE_EMBEDDING) roteável", () => {
+  const embedding = findUseCase("KNOWLEDGE_EMBEDDING")!
+  const embedModel = (id: string, overrides: Partial<ModelSnapshot> = {}) => model(id, { kind: "EMBEDDING", capabilities: {}, ...overrides })
+
+  it("só modelo do tipo Embedding, de um protocolo com embedding (OpenAI/compatível e Gemini)", () => {
+    expect(embedding).toMatchObject({ routable: true, modelKind: "EMBEDDING", requiredCapabilities: [] })
+    const models = mapOf(embedModel("openai"), embedModel("gemini", { connection: { id: "c-g", name: "Gemini", enabled: true, providerKey: "GOOGLE_GENAI", providerActive: true } }), embedModel("anthropic", { connection: { id: "c-a", name: "Claude", enabled: true, providerKey: "ANTHROPIC", providerActive: true } }), model("generativo"))
+    const plan = planRoute(policy({ useCase: "KNOWLEDGE_EMBEDDING", mode: "FALLBACK_CHAIN", modelIds: ["openai", "gemini", "anthropic", "generativo"] }), embedding, models, ctx)
+    expect(plan.candidates.map((candidate) => candidate.model.id)).toEqual(["openai", "gemini"])
+    expect(Object.fromEntries(plan.skipped.map((item) => [item.modelId, item.reason]))).toEqual({
+      anthropic: "o provider não gera embeddings na INIA (hoje: OpenAI e servidores compatíveis, Gemini)",
+      generativo: "modelo do tipo GENERATIVE não gera embeddings (cadastre o modelo como Embedding)",
+    })
+  })
+
+  it("modelo de embedding nunca atende uma função generativa", () => {
+    const plan = planRoute(policy({ modelIds: ["e"] }), extraction, mapOf(embedModel("e")), ctx)
+    expect(plan.candidates).toHaveLength(0)
+    expect(plan.skipped[0]!.reason).toBe("modelo do tipo EMBEDDING não atende requisições generativas")
+  })
+})

@@ -350,22 +350,32 @@ async function resolveOrchestratorForPlacement(
 }
 
 /** Orquestradores do chat/voz ativos da organização com o escopo de cada um — na ORDEM de preferência de `resolveOrchestratorForTeam`. */
-export type InteractiveOrchestratorScope = { id: string; name: string; scopeType: "ALL_TEAMS" | "TEAM"; teamId: string | null }
+export type InteractiveOrchestratorScope = { id: string; name: string; scopeType: "ALL_TEAMS" | "TEAM"; teamId: string | null; /** Universo de atuação do Orquestrador (nulo = pendente). */ operatingUniverse?: string | null }
 
-export async function listInteractiveOrchestratorScopes(db: Database, organizationId: string): Promise<InteractiveOrchestratorScope[]> {
-  const result = await db.query<{ id: string; name: string; scope_type: "ALL_TEAMS" | "TEAM"; team_id: string | null }>(
-    `select o.id, o.name, o.scope_type, o.team_id
+/**
+ * `universes`: universos que quem consulta alcança (null = sem filtro: organização sem a exigência ativa). Com o filtro, Orquestrador de
+ * outro universo ou pendente fica fora — a mesma regra do chat de quem atende (`resolveOrchestratorForSubject`); vazio = nenhum.
+ */
+export async function listInteractiveOrchestratorScopes(db: Database, organizationId: string, universes: readonly string[] | null = null): Promise<InteractiveOrchestratorScope[]> {
+  const result = await db.query<{ id: string; name: string; scope_type: "ALL_TEAMS" | "TEAM"; team_id: string | null; operating_universe: string | null }>(
+    `select o.id, o.name, o.scope_type, o.team_id, o.operating_universe
        from assistant_orchestrators o
       where o.organization_id = $1 and o.active and o.invocation_mode in ('BOTH', 'INTERACTIVE') and o.scope_type in ('ALL_TEAMS', 'TEAM')
+        and ($2::text[] is null or o.operating_universe = any($2::text[]))
       order by (o.scope_type = 'TEAM') desc, o.created_at desc`,
-    [organizationId],
+    [organizationId, universes ? [...universes] : null],
   )
-  return result.rows.map((row) => ({ id: row.id, name: row.name, scopeType: row.scope_type, teamId: row.team_id }))
+  return result.rows.map((row) => ({ id: row.id, name: row.name, scopeType: row.scope_type, teamId: row.team_id, operatingUniverse: row.operating_universe }))
 }
 
-/** Puro: o Orquestrador que `resolveOrchestratorForTeam` escolheria para o Grupo (lista já na ordem de preferência). */
-export function orchestratorForTeam(scopes: readonly InteractiveOrchestratorScope[], teamId: string | null): InteractiveOrchestratorScope | null {
-  return scopes.find((scope) => scope.scopeType === "TEAM" && teamId !== null && scope.teamId === teamId) ?? scopes.find((scope) => scope.scopeType === "ALL_TEAMS") ?? null
+/**
+ * Puro: o Orquestrador que `resolveOrchestratorForTeam` escolheria para o Grupo (lista já na ordem de preferência). `groupUniverses`
+ * (só com a exigência ativa): universos dos operadores do Grupo — o Orquestrador precisa ser de um deles, inclusive o de "Todos os
+ * grupos" usado no lugar (quem alcança todos os universos não cai no Orquestrador de outro universo). Null = sem filtro.
+ */
+export function orchestratorForTeam(scopes: readonly InteractiveOrchestratorScope[], teamId: string | null, groupUniverses: readonly string[] | null = null): InteractiveOrchestratorScope | null {
+  const candidates = groupUniverses === null ? scopes : scopes.filter((scope) => scope.operatingUniverse != null && groupUniverses.includes(scope.operatingUniverse))
+  return candidates.find((scope) => scope.scopeType === "TEAM" && teamId !== null && scope.teamId === teamId) ?? candidates.find((scope) => scope.scopeType === "ALL_TEAMS") ?? null
 }
 
 /**
@@ -385,6 +395,9 @@ export async function resolveOrchestratorById(
   /** Workflow (PEN-076): a versão fixada na etapa; `legacyPin` = etapa publicada antes do versionamento; `workflowScope` = alcance
    * do Workflow, contra o qual a versão fixada é conferida. Ausente = vigente (chat e voz). */
   pin?: OrchestratorVersionPin,
+  /** Universos que quem consulta alcança (null/ausente = sem filtro além do pendente com a exigência). Usado pela consulta de processo
+   * da liderança (INTERACTIVE): Orquestrador de outro universo não responde por id. */
+  universes: readonly string[] | null = null,
 ): Promise<ResolvedOrchestrator | null> {
   const orchestratorRow = await db.query<OrchestratorRow>(
     `select o.organization_id, o.id, o.name, o.scope_type, o.team_id, o.subteam_id, o.orchestrator_agent_id, a.objective, a.description, a.context_prompt, o.output_instructions, o.output_schema, o.structured_output, o.recommend_support_materials
@@ -392,8 +405,9 @@ export async function resolveOrchestratorById(
      join agents a on a.id = o.orchestrator_agent_id
      where o.id = $1 and o.organization_id = $2 and o.active and o.invocation_mode in ('BOTH', $3)
        -- Com a exigência de universo ativa, Orquestrador pendente fica fora das execuções (classifique-o na Administração).
-       and (o.operating_universe is not null or not exists (select 1 from organizations org where org.id = $2 and org.operating_universe_enforced_at is not null))`,
-    [orchestratorId, organizationId, invocationContext],
+       and (o.operating_universe is not null or not exists (select 1 from organizations org where org.id = $2 and org.operating_universe_enforced_at is not null))
+       and ($4::text[] is null or o.operating_universe = any($4::text[]))`,
+    [orchestratorId, organizationId, invocationContext, universes ? [...universes] : null],
   )
   const orchestrator = orchestratorRow.rows[0]
   if (!orchestrator) return null

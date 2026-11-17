@@ -3,6 +3,7 @@ import type { KnowledgeChunk } from "../domain/knowledge-chunking.js"
 import type { CatalogSource } from "../domain/knowledge-catalog.js"
 import { resolveAccessibleKnowledgeMaterials } from "./knowledge-material-access.js"
 import { loadAgentKnowledgeSnapshot } from "./retrieve-knowledge.js"
+import { loadKnowledgeProducts } from "./knowledge-products.js"
 
 /**
  * As bases que o esclarecimento pode mostrar à IA: as AUTORIZADAS aos especialistas do Orquestrador de quem pergunta (a mesma
@@ -30,6 +31,8 @@ export type ReadableKnowledgePorts = {
   snapshot: (agentId: string) => Promise<{ documents: SnapshotDocument[]; chunks: KnowledgeChunk[] }>
   accessible: (organizationId: string, viewerPersonId: string, documentIds: string[]) => Promise<Set<string>>
   glossary: (organizationId: string) => Promise<{ term: string; definition: string }[]>
+  /** Produtos cadastrados das bases (`knowledge-products.ts`). Ausente = bases sem produto na lista. */
+  products?: (organizationId: string, documentIds: string[]) => Promise<Map<string, string>>
 }
 
 export const MAX_GLOSSARY_TERMS = 80
@@ -37,6 +40,15 @@ export const MAX_GLOSSARY_TERMS = 80
 export function postgresReadableKnowledgePorts(db: Database): ReadableKnowledgePorts {
   return {
     snapshot: (agentId) => loadAgentKnowledgeSnapshot(db, agentId),
+    products: async (organizationId, documentIds) => {
+      try {
+        return await loadKnowledgeProducts(db, organizationId, documentIds)
+      } catch (error) {
+        // Produto é apoio: falha = lista sem produto, nunca sem resposta.
+        console.error(JSON.stringify({ event: "clarification_products_load_failed", message: (error as Error).message }))
+        return new Map()
+      }
+    },
     accessible: async (organizationId, viewerPersonId, documentIds) => new Set((await resolveAccessibleKnowledgeMaterials(db, { organizationId, viewer: { personId: viewerPersonId }, materialIds: documentIds })).keys()),
     glossary: async (organizationId) => {
       try {
@@ -66,11 +78,11 @@ export async function loadReadableKnowledge(request: ReadableKnowledgeRequest, p
       merged.set(document.id, { document, chunks: snapshot.chunks.filter((chunk) => chunk.documentId === document.id), agentIds: [agentId] })
     }
   }
-  const accessible = merged.size > 0 ? await ports.accessible(request.organizationId, request.viewerPersonId, [...merged.keys()]) : new Set<string>()
+  const [accessible, products] = merged.size > 0 ? await Promise.all([ports.accessible(request.organizationId, request.viewerPersonId, [...merged.keys()]), ports.products ? ports.products(request.organizationId, [...merged.keys()]) : Promise.resolve(new Map<string, string>())]) : [new Set<string>(), new Map<string, string>()]
   const readable = [...merged.values()]
     .filter((entry) => accessible.has(entry.document.id))
     .sort((left, right) => left.document.title.localeCompare(right.document.title, "pt-BR"))
-    .map((entry): ReadableKnowledgeSource => ({ documentId: entry.document.id, documentTitle: entry.document.title, versionId: entry.document.versionId, documentType: entry.document.documentType ?? null, chunks: entry.chunks, agentIds: entry.agentIds }))
+    .map((entry): ReadableKnowledgeSource => ({ documentId: entry.document.id, documentTitle: entry.document.title, versionId: entry.document.versionId, documentType: entry.document.documentType ?? null, chunks: entry.chunks, agentIds: entry.agentIds, ...(products.has(entry.document.id) ? { products: products.get(entry.document.id)! } : {}) }))
   const glossary = readable.length > 0 ? (await ports.glossary(request.organizationId)).slice(0, MAX_GLOSSARY_TERMS) : []
   return { sources: new Map(readable.map((source) => [source.documentId, source])), excludedByAccess: merged.size - readable.length, glossary }
 }

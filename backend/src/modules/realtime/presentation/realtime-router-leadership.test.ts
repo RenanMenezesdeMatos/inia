@@ -187,7 +187,8 @@ describe("chat da INIA para lideranças", () => {
       { id: "orch-all", name: "INIA Geral", scopeType: "ALL_TEAMS" as const, teamId: null },
     ]
 
-    function processSetup(processArgs: Record<string, unknown>) {
+    function processSetup(processArgs: Record<string, unknown>, scopeExtra: { orchestratorUniverses?: readonly string[] | null } = {}) {
+      const universesAsked: { list: (readonly string[] | null | undefined)[]; byId: (readonly string[] | null | undefined)[] } = { list: [], byId: [] }
       const memory = createMemoryConversationStore()
       const calls: { orchestratorId: string; systemPrompt: string; extraContext: string; options: Record<string, unknown>; history: { role: string; text: string }[]; hooks: OrchestrationConversationHooks }[] = []
       const resolvedById: string[] = []
@@ -212,18 +213,37 @@ describe("chat da INIA para lideranças", () => {
           resolveOrchestrator: async () => (orchestrator as never),
           orchestratedReply: reply,
           conversationGuardrails: async () => "\n\nLIMITES",
-          leadershipContext: async () => ({ ...LEADERSHIP, processScope: PROCESS_SCOPE }),
+          leadershipContext: async () => ({ ...LEADERSHIP, processScope: { ...PROCESS_SCOPE, ...scopeExtra } }),
           visibleLeadershipCards: async (_user, cards) => cards,
-          processOrchestrators: async () => ORCHESTRATORS,
-          orchestratorById: async (_org, id) => {
+          processOrchestrators: async (_org, universes) => {
+            universesAsked.list.push(universes)
+            return ORCHESTRATORS
+          },
+          orchestratorById: async (_org, id, _query, universes) => {
+            universesAsked.byId.push(universes)
             resolvedById.push(id)
             return { ...(orchestrator as never as Record<string, unknown>), orchestratorId: id, orchestratorName: ORCHESTRATORS.find((item) => item.id === id)!.name } as never
           },
         }),
       )
       app.use(errorHandler)
-      return { app, memory, calls, resolvedById }
+      return { app, memory, calls, resolvedById, universesAsked }
     }
+
+    it("universo de atuação: a lista e a resolução por id dos Orquestradores levam os universos de quem lidera (U4-01)", async () => {
+      const { app, resolvedById, universesAsked } = processSetup({ pergunta: "Como orientar a equipe na contestação?", grupo: "B2C · Faturamento" }, { orchestratorUniverses: ["B2B"] })
+      await request(app).post("/api/v1/realtime/messages").send({ conversationId: null, text: "Como orientar o Faturamento na contestação?", clientMessageId: "33333333-aaaa-4aaa-8aaa-000000000011" })
+      expect(resolvedById).toEqual(["orch-fat"])
+      expect(universesAsked.list).toEqual([["B2B"]])
+      expect(universesAsked.byId).toEqual([["B2B"]])
+    })
+
+    it("organização sem a exigência (sem universos na sessão): nada filtrado, como antes", async () => {
+      const { app, universesAsked } = processSetup({ pergunta: "Como orientar a equipe na contestação?", grupo: "B2C · Faturamento" })
+      await request(app).post("/api/v1/realtime/messages").send({ conversationId: null, text: "Como orientar o Faturamento na contestação?", clientMessageId: "33333333-aaaa-4aaa-8aaa-000000000012" })
+      expect(universesAsked.list).toEqual([null])
+      expect(universesAsked.byId).toEqual([null])
+    })
 
     it("texto: o Grupo citado decide o Orquestrador; a pergunta chega com a moldura de liderança e o registro grava quem respondeu", async () => {
       const { app, memory, calls, resolvedById } = processSetup({ pergunta: "Como orientar a equipe na contestação?", grupo: "B2C · Faturamento" })

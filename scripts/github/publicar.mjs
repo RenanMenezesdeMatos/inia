@@ -113,8 +113,10 @@ export function parseExclusions(text) {
 }
 
 /**
- * Lê a lista confidencial local: "conteudo: <regex do git grep -E>" barra o snapshot e a mensagem; "arquivo: <glob>" tira o
+ * Lê a lista confidencial local: "conteudo: <RegExp do JavaScript>" barra o snapshot e a mensagem; "arquivo: <glob>" tira o
  * arquivo do snapshot como uma regra de exclusoes.txt. Linhas vazias e "#" são ignoradas; qualquer outra linha é erro.
+ * A marca é validada e aplicada pelo MESMO motor (contentRegExp) no snapshot e na mensagem — nunca pelo `git grep -E`,
+ * cujo ERE não entende \d, (?i), quantificador preguiçoso nem lookaround e, com eles, não acharia nada em silêncio.
  */
 export function parseConfidentialList(text, label = CONFIDENTIAL_LIST_NAME) {
   const patterns = []
@@ -127,7 +129,7 @@ export function parseConfidentialList(text, label = CONFIDENTIAL_LIST_NAME) {
     const value = match[2].trim()
     if (match[1] === "conteudo") {
       try {
-        new RegExp(value)
+        contentRegExp(value)
       } catch {
         throw new PublishError(`${label}, linha ${index + 1}: expressão inválida`)
       }
@@ -140,6 +142,9 @@ export function parseConfidentialList(text, label = CONFIDENTIAL_LIST_NAME) {
   if (patterns.length === 0) throw new PublishError(`${label} não tem nenhuma linha "conteudo:"`)
   return { patterns, rules }
 }
+
+/** O motor único das marcas de conteúdo: RegExp do JavaScript, com "m" para ^/$ valerem por linha como no git grep. */
+export const contentRegExp = (regex) => new RegExp(regex, "gm")
 
 /** Caminho da lista confidencial: dentro da pasta .git comum (vale para o repositório e para os worktrees temporários). */
 export function confidentialListPath(cwd) {
@@ -229,12 +234,12 @@ export function buildSnapshot(cwd, commit, { rules, exceptions }) {
   return { tree, removed: removed.length, perRule: counts(perRule), perException: counts(perException), files }
 }
 
-/** Arquivos da árvore com tamanho (bytes). */
+/** Arquivos da árvore com tamanho (bytes) e o id do objeto (blob). */
 export function listTree(cwd, tree) {
   return splitNul(git(cwd, ["ls-tree", "-r", "-l", "-z", tree]).stdout).map((entry) => {
     const tab = entry.indexOf("\t")
-    const [, , , size] = entry.slice(0, tab).split(/\s+/)
-    return { path: entry.slice(tab + 1), size: Number(size) || 0 }
+    const [, type, object, size] = entry.slice(0, tab).split(/\s+/)
+    return { path: entry.slice(tab + 1), size: Number(size) || 0, type, object }
   })
 }
 
@@ -347,8 +352,12 @@ export function parseAllowedPatternHits(text) {
 /** Identificador de um trecho casado que não revela o trecho. */
 export const fingerprint = (token) => `sha256:${createHash("sha256").update(token).digest("hex").slice(0, 16)}`
 
+/**
+ * Padrões de chave (KEY_PATTERNS, escritos para o ERE do `git grep -E`) mais as marcas extras da lista confidencial — estas
+ * casadas em JavaScript por findContentPatterns, o mesmo motor da conferência da mensagem.
+ */
 export function findKeyPatterns(cwd, tree, allowed = new Set(), extraPatterns = []) {
-  return [...KEY_PATTERNS, ...extraPatterns].flatMap(({ name, regex }) => {
+  const keyHits = KEY_PATTERNS.flatMap(({ name, regex }) => {
     // -o devolve só o trecho casado ("árvore:caminho\0trecho" por linha); -a inclui arquivos binários.
     const result = git(cwd, ["grep", "-a", "-o", "-z", "-E", "-e", regex, tree], { allowFailure: true })
     if (result.status > 1) throw new PublishError(`git grep falhou: ${result.stderr.trim()}`)
@@ -361,9 +370,69 @@ export function findKeyPatterns(cwd, tree, allowed = new Set(), extraPatterns = 
       hits.add(`${line.slice(tree.length + 1, separator)} ${fingerprint(token)}`)
     }
     // padroes-permitidos.txt libera fixture de chave inventada; nunca libera marca da lista confidencial.
-    const blocked = [...hits].filter((hit) => name === CONFIDENTIAL_LEAK_NAME || !allowed.has(hit))
+    const blocked = [...hits].filter((hit) => !allowed.has(hit))
     return blocked.length > 0 ? [{ name, regex, hits: blocked }] : []
   })
+  // Marca confidencial nunca é liberada por padroes-permitidos.txt.
+  return [...keyHits, ...findContentPatterns(cwd, tree, extraPatterns)]
+}
+
+/** Até quanto conteúdo cada leitura do `git cat-file --batch` traz de uma vez. */
+const BLOB_BATCH_BYTES = 64 * 1024 * 1024
+
+/** Lê o conteúdo de cada blob da árvore (em lotes) e chama `visit(path, buffer)`. Submódulos (commit) não têm conteúdo. */
+export function forEachBlob(cwd, tree, visit) {
+  const blobs = listTree(cwd, tree).filter(({ type }) => type === "blob")
+  for (let start = 0; start < blobs.length; ) {
+    let end = start
+    let bytes = 0
+    while (end < blobs.length && (end === start || bytes + blobs[end].size <= BLOB_BATCH_BYTES)) bytes += blobs[end++].size
+    const batch = blobs.slice(start, end)
+    const result = spawnSync("git", ["cat-file", "--batch"], {
+      cwd,
+      input: `${batch.map(({ object }) => object).join("\n")}\n`,
+      maxBuffer: bytes + batch.length * 128 + 1024,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    })
+    if (result.error || result.status !== 0) throw new PublishError(`git cat-file falhou: ${result.error?.message ?? result.stderr.toString().trim()}`)
+    // Saída: "<id> blob <tamanho>\n<conteúdo>\n" por objeto, na ordem pedida.
+    const output = result.stdout
+    let offset = 0
+    for (const { path, object } of batch) {
+      const headerEnd = output.indexOf(0x0a, offset)
+      const header = output.subarray(offset, headerEnd).toString("utf8").split(" ")
+      if (header[0] !== object || header[1] !== "blob") throw new PublishError(`git cat-file devolveu um objeto inesperado para ${path}`)
+      const size = Number(header[2])
+      visit(path, output.subarray(headerEnd + 1, headerEnd + 1 + size))
+      offset = headerEnd + 1 + size + 1
+    }
+    start = end
+  }
+}
+
+/** Binário pelo mesmo critério do git: um byte NUL nos primeiros 8000 bytes. */
+const isBinary = (buffer) => buffer.subarray(0, 8000).includes(0)
+
+/**
+ * Marcas da lista confidencial no snapshot, casadas em JavaScript (contentRegExp — o mesmo motor de messageLeaks), arquivo a
+ * arquivo. Binário também é lido (o `git grep -a` de antes também lia): como UTF-8 e como latin1, para a marca em ASCII
+ * aparecer byte a byte mesmo no meio de bytes que não são UTF-8. Devolve "<caminho> <impressão do trecho>" por ocorrência.
+ */
+export function findContentPatterns(cwd, tree, patterns) {
+  if (patterns.length === 0) return []
+  const compiled = patterns.map(({ name, regex }) => ({ name, regex, matcher: contentRegExp(regex), hits: new Set() }))
+  forEachBlob(cwd, tree, (path, buffer) => {
+    const texts = isBinary(buffer) ? [buffer.toString("utf8"), buffer.toString("latin1")] : [buffer.toString("utf8")]
+    for (const pattern of compiled) {
+      for (const text of texts) {
+        for (const match of text.matchAll(pattern.matcher)) {
+          // Casamento vazio (ex.: "x*") não é trecho: não identifica nada nem barra o arquivo.
+          if (match[0].length > 0) pattern.hits.add(`${path} ${fingerprint(match[0])}`)
+        }
+      }
+    }
+  })
+  return compiled.flatMap(({ name, regex, hits }) => (hits.size > 0 ? [{ name, regex, hits: [...hits] }] : []))
 }
 
 /** O commit local que uma publicação copiou, lido da mensagem dela ("Cópia do código do commit local <sha>, …"). */
@@ -442,7 +511,9 @@ export function composeMessage({ title = null, commits, skipped = 0, head, chang
 export function messageLeaks(message, secrets, extraPatterns = []) {
   const leaks = new Set()
   for (const { key, value, source } of secrets) if (message.includes(value)) leaks.add(`o valor de ${source ? `${key} (${source})` : key}`)
-  for (const { name, regex } of [...KEY_PATTERNS, ...extraPatterns]) if (new RegExp(regex, "m").test(message)) leaks.add(name)
+  for (const { name, regex } of KEY_PATTERNS) if (new RegExp(regex, "m").test(message)) leaks.add(name)
+  // As marcas da lista confidencial pelo mesmo motor da busca no snapshot (findContentPatterns).
+  for (const { name, regex } of extraPatterns) if (contentRegExp(regex).test(message)) leaks.add(name)
   return [...leaks]
 }
 

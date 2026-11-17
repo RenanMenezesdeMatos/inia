@@ -34,7 +34,7 @@ describe.skipIf(!ENABLED)("Universo de atuação — prova Postgres", () => {
     const subY = (await client.query<{ id: string }>("insert into subteams (organization_id, team_id, name) values ($1, $2, 'Proof Universo Y') returning id", [org, teamX])).rows[0]!.id
     const hash = await hashPassword("Proof@12345")
     const person = async (name: string, level: string, universe: string | null, reportsTo: string | null, withAccount = true) => {
-      const id = (await client.query<{ id: string }>("insert into people (organization_id, name, role, team_id, subteam_id, reports_to_id, operating_universe) values ($1,$2,$3,$4,$5,$6,$7) returning id", [org, name, level, teamX, subY, reportsTo, universe])).rows[0]!.id
+      const id = (await client.query<{ id: string }>("insert into people (organization_id, name, role, team_id, subteam_id, reports_to_id, operating_universe_override) values ($1,$2,$3,$4,$5,$6,$7) returning id", [org, name, level, teamX, subY, reportsTo, universe])).rows[0]!.id
       const email = `${name.toLowerCase().replaceAll(" ", "-")}@proof-universo.inia.local`
       const accountId = withAccount ? (await client.query<{ id: string }>("insert into user_accounts (organization_id, person_id, email, password_hash) values ($1,$2,$3,$4) returning id", [org, id, email, hash])).rows[0]!.id : null
       return { id, accountId: accountId!, email }
@@ -77,33 +77,35 @@ describe.skipIf(!ENABLED)("Universo de atuação — prova Postgres", () => {
     expect([refused.status, refused.body.error.code]).toEqual([409, "OPERATING_UNIVERSE_ACTIVATION_UNCONFIRMED"])
     expect((await asAdmin.put("/api/v1/admin/operating-universe/enforcement").send({ enforce: true, acknowledgedPending: refused.body.error.details.pending })).status).toBe(200)
 
-    // ATIVO — coordenador B2B: só o B2B da estrutura (B2C, B2X e o legado pendente ficam fora).
-    expect(visibleOperators(await loadViewerScope(repository, session(coord, "COORDINATOR"))).map((node) => node.id)).toEqual([opB2B.id])
-    // Gestor com todos os universos (na própria estrutura): os quatro, inclusive o pendente.
+    // ATIVO — liderança vê a PRÓPRIA estrutura em qualquer universo (supervisor/coordenador pode liderar B2B e B2C): os quatro.
+    expect(visibleOperators(await loadViewerScope(repository, session(coord, "COORDINATOR"))).map((node) => node.id).sort()).toEqual([opB2B.id, opB2C.id, opB2X.id, legado.id].sort())
     expect(visibleOperators(await loadViewerScope(repository, session(gestor, "MANAGER"))).map((node) => node.id).sort()).toEqual([opB2B.id, opB2C.id, opB2X.id, legado.id].sort())
-    // Acesso cruzado por ID (ficha): coordenador B2B não abre o B2C; o gestor abre.
+    // Acesso cruzado por ID: quem não lidera nem tem papel não abre a ficha nem os indicadores de ninguém (parâmetro da tela não amplia).
+    const outsider = await person("Proof Universo Coordenador Outro", "COORDINATOR", null, null)
+    const asOutsider = await login(outsider.email)
+    expect((await asOutsider.get(`/api/v1/supervisor/operators/${opB2C.id}`)).status).toBe(403)
+    expect((await asOutsider.get(`/api/v1/analytics/indicators?subjectKind=EMPLOYEE&subjectId=${opB2C.id}`)).status).toBe(403)
     const asCoord = await login(coord.email)
-    expect((await asCoord.get(`/api/v1/supervisor/operators/${opB2C.id}`)).status).toBe(403)
-    expect((await asCoord.get(`/api/v1/supervisor/operators/${opB2X.id}`)).status).toBe(403)
-    expect((await asCoord.get(`/api/v1/supervisor/operators/${opB2B.id}`)).status).not.toBe(403)
-    expect((await (await login(gestor.email)).get(`/api/v1/supervisor/operators/${opB2C.id}`)).status).not.toBe(403)
-    // Indicadores pela API com sujeito de outro universo: negado (o parâmetro da tela não amplia o acesso).
-    expect((await asCoord.get(`/api/v1/analytics/indicators?subjectKind=EMPLOYEE&subjectId=${opB2C.id}`)).status).toBe(403)
+    expect((await asCoord.get(`/api/v1/supervisor/operators/${opB2C.id}`)).status).not.toBe(403)
 
-    // Cadastro novo exige universo (backend), inclusive base de conhecimento e Workflow.
-    const created = await asAdmin.post("/api/v1/admin/users").send({ name: "Proof Universo Sem", role: "ADMIN", email: "sem@proof-universo.inia.local" })
+    // Cadastro novo: OPERADOR precisa de universo (exceção dele ou o do Grupo); o Grupo X ainda não tem. Liderança/fora da hierarquia não precisa.
+    const created = await asAdmin.post("/api/v1/admin/users").send({ name: "Proof Universo Sem", role: "OPERATOR", teamId: teamX, matricula: "PROOF-UNIV-1", email: "sem@proof-universo.inia.local" })
     expect([created.status, created.body.error?.code]).toEqual([422, "OPERATING_UNIVERSE_REQUIRED"])
-    const withUniverse = await asAdmin.post("/api/v1/admin/users").send({ name: "Proof Universo Com", role: "ADMIN", email: "com@proof-universo.inia.local", operatingUniverse: "B2X" })
+    expect((await asAdmin.post("/api/v1/admin/users").send({ name: "Proof Universo Fora", role: "ADMIN", email: "fora@proof-universo.inia.local" })).status).toBe(201)
+    const withUniverse = await asAdmin.post("/api/v1/admin/users").send({ name: "Proof Universo Com", role: "OPERATOR", teamId: teamX, matricula: "PROOF-UNIV-2", email: "com@proof-universo.inia.local", operatingUniverse: "B2X" })
     expect(withUniverse.status).toBe(201)
     expect((await asAdmin.post("/api/v1/admin/knowledge").field("title", "Proof base sem universo").field("documentType", "PROCEDURE").field("content", "Procedimento de teste com texto suficiente.")).body.error.code).toBe("OPERATING_UNIVERSE_REQUIRED")
     // Regularização do legado: o administrador classifica; a primeira classificação preserva os vínculos e o caso legado recebe o universo.
     const legacyCase = (await client.query<{ id: string }>("insert into supervision_cases (organization_id, operator_id, team_id, title, summary, priority, indicator_code, indicator_value, indicator_target) values ($1,$2,$3,'Proof caso legado','x','P2','X','1','2') returning id", [org, legado.id, teamX])).rows[0]!.id
     expect((await client.query("select operating_universe from supervision_cases where id = $1", [legacyCase])).rows[0].operating_universe).toBeNull()
-    const classified = await asAdmin.post("/api/v1/admin/operating-universe/people/classify").send({ personIds: [legado.id], operatingUniverse: "B2B" })
-    expect(classified.body.data.updated).toBe(1)
+    // O Grupo é classificado (como viria na carga de Grupos): o operador sem exceção herda; quem tem exceção continua com a dele.
+    expect((await asAdmin.put(`/api/v1/admin/operating-universe/units/TEAM/${teamX}`).send({ operatingUniverse: "B2B" })).status).toBe(200)
     expect((await client.query("select operating_universe, reports_to_id from people where id = $1", [legado.id])).rows[0]).toEqual({ operating_universe: "B2B", reports_to_id: coord.id })
+    expect((await client.query("select operating_universe from people where id = $1", [opB2C.id])).rows[0].operating_universe).toBe("B2C")
     expect((await client.query("select operating_universe from supervision_cases where id = $1", [legacyCase])).rows[0].operating_universe).toBe("B2B")
-    expect(visibleOperators(await loadViewerScope(repository, session(coord, "COORDINATOR"))).map((node) => node.id).sort()).toEqual([opB2B.id, legado.id].sort())
+    expect((await asAdmin.get(`/api/v1/admin/users/${legado.id}`)).body.data).toMatchObject({ operatingUniverse: "B2B", operatingUniverseOverride: null, operatingUniverseSource: "GROUP" })
+    // Agora o operador novo do Grupo X entra sem exceção.
+    expect((await asAdmin.post("/api/v1/admin/users").send({ name: "Proof Universo Herda", role: "OPERATOR", teamId: teamX, matricula: "PROOF-UNIV-3", email: "herda@proof-universo.inia.local" })).status).toBe(201)
 
     // Indicadores: a linha só conta se o indicador for do universo vigente da pessoa NA competência; trocar de operação não apaga o passado.
     const indicator = async (code: string, universe: string) => (await client.query<{ id: string }>("insert into indicator_definitions (organization_id, code, name, unit, desired_direction, operating_universe) values ($1,$2,$2,'PERCENT','HIGHER',$3) returning id", [org, code, universe])).rows[0]!.id
@@ -114,7 +116,8 @@ describe.skipIf(!ENABLED)("Universo de atuação — prova Postgres", () => {
     }
     const codes = async () => (await repository.loadIndicatorPerformance(org, [opB2B.id], ["2020-01"])).map((row) => row.indicatorCode).sort()
     expect(await codes()).toEqual(["PROOF_UNIV_B2B"])
-    await client.query("update people set operating_universe = 'B2C' where id = $1", [opB2B.id])
+    // Exceção com vigência informada: a troca vale a partir da data, e 2020 continua B2B.
+    await client.query("update people set operating_universe_override = 'B2C', operating_universe_effective_from = '2026-06-01' where id = $1", [opB2B.id])
     expect(await codes()).toEqual(["PROOF_UNIV_B2B"]) // 2020 continua no universo em que aconteceu
 
     // Workflows: a população do Workflow B2C só tem operadores B2C (pendente e outros universos fora).

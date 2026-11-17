@@ -25,6 +25,7 @@ import { loadAgentDocumentsAt, loadAgentProfile, loadDocumentTitles, loadInterac
 import { deliveredViewOf, engineProjectionSource, publishEngineFeedbackToFollowUp, type PublishEngineInput } from "../infrastructure/publish-engine-feedback.js"
 import { loadArgumentScriptsInForce } from "../../argument-scripts/infrastructure/argument-script-loaders.js"
 import { loadProductCatalogAt } from "../../product-catalog/infrastructure/product-catalog-loaders.js"
+import { rankCandidateDocumentsByCard } from "../../knowledge/application/knowledge-recall.js"
 
 /**
  * MONTAGEM do motor de feedback e a FRONTEIRA DE EFEITOS do Workflow (`WorkflowEffectSink.feedbackEngine`). Produção grava na
@@ -53,6 +54,8 @@ export function createEngineDeps(input: { db: Database; model?: EngineModelPort;
     loadPreviousVersion: (organizationId, documentId, version) => loadPreviousPublishedVersion(input.db, organizationId, documentId, version),
     loadArgumentScripts: (organizationId, person, at) => loadArgumentScriptsInForce(input.db, organizationId, person, at),
     loadProductCatalog: (organizationId, at, sourceIds) => loadProductCatalogAt(input.db, organizationId, at, sourceIds),
+    // Busca nas bases em escala (camada 4): só quando as bases não cabem no orçamento; desligada com INIA_KB_SCALE_RETRIEVAL=off.
+    rankDocumentsByCard: rankCandidateDocumentsByCard(input.db),
     now: () => clock.now(),
     ...(input.allowCollaborator ? { allowCollaborator: input.allowCollaborator } : {}),
     organizePractices: input.organizePractices ?? true,

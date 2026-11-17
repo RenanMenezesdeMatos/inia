@@ -14,4 +14,23 @@ describe("sanitizeRichText", () => {
     expect(sanitizeRichText(`<img src="https://example.com/a.png"><img src="${safeImage}">`)).toContain(safeImage)
     expect(sanitizeRichText('<img src="javascript:alert(1)">')).toBe("")
   })
+
+  it("imagem só com a URL de dados inteira em base64, como o servidor (H-FE-1)", () => {
+    const valid = "data:image/png;base64,aGVsbG8="
+    expect(sanitizeRichText(`<img src="${valid}">`)).toBe(`<img src="${valid}" alt="Imagem do comunicado">`)
+    for (const source of [
+      `${valid}" onerror="x`,
+      "data:image/png;base64,aGVs bG8=",
+      "data:image/png;base64,aGVsbG8=)url(https://evil",
+      "data:image/png;base64,aGVsbG8===",
+      "data:image/png;base64,",
+      "DATA:IMAGE/PNG;BASE64,aGVsbG8=",
+      "data:image/gif;base64,R0lGODlh",
+      "data:image/svg+xml;base64,PHN2Zz4=",
+    ]) {
+      const html = sanitizeRichText(`<img src='${source}'>`)
+      expect(html, source).toBe("")
+    }
+  })
 })
+

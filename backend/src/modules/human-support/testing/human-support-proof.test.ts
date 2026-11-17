@@ -647,9 +647,9 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     expect((await systemCodes(lonely.id)).at(-1)).toBe("ENDED_NO_ANJO_IN_SERVICE")
     expect((await sql(`select count(*)::int total from human_support_entry_events where organization_id = $1 and person_id = $2 and kind = 'NO_ANJO_IN_SERVICE'`, [ORG, ids.O21])).rows[0]).toEqual({ total: 1 })
 
-    // Voltar ao padrão: o G1 deixa de ter tempos próprios.
+    // Voltar ao padrão: o G1 deixa de ter tempos próprios — a linha fica e a versão sobe (203: nunca volta a 0).
     const restored = await updateGroupResponseTimes(pool, viewer("COORD"), ids.G1!, { times: null, version: 1 })
-    expect(restored.groups[0]).toMatchObject({ custom: false, version: 0, times: { operatorRequeueMinutes: 30 } })
+    expect(restored.groups[0]).toMatchObject({ custom: false, version: 2, times: { operatorRequeueMinutes: 30 } })
     await updateOrganizationResponseTimes(pool, viewer("ADMIN"), { operatorRequeueMinutes: 15, operatorCloseMinutes: 20, anjoRequeueMinutes: 15, anjoUnresponsive: { pauseAfterMinutes: 20, offlineAfterMinutes: 10 }, version: orgSaved.organization.version })
     await resetOpen()
   }, 60_000)
@@ -1046,6 +1046,10 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     await dispatchOrganization(pool, ORG)
     expect((await attendanceOf(busy.id)).status).toBe("ACTIVE")
     await sql(`update human_support_agent_presence set lease_until = now() - interval '4 minutes' where person_id = $1`, [ids.AS])
+    // O prazo recuado simula o tempo passando; a conexão da área (CONNECTION_RESTORED da renovação acima) recua junto, como seria
+    // na vida real (a renovação vem sempre antes do prazo que ela dá). Sem isso a conexão ficaria DEPOIS do fim da sessão e a
+    // distribuição — que lê a última causa pela ordem do tempo (occurred_at, id) — veria a área conectada.
+    await sql(`update human_support_presence_events set occurred_at = now() - interval '5 minutes' where person_id = $1 and cause = 'CONNECTION_RESTORED' and occurred_at > now() - interval '4 minutes'`, [ids.AS])
     await dispatchOrganization(pool, ORG)
     expect((await sql(`select cause from human_support_presence_events where person_id = $1 and cause in ('CONNECTION_LOST', 'SESSION_ENDED') order by id desc limit 1`, [ids.AS])).rows[0]).toEqual({ cause: "SESSION_ENDED" })
     expect(await attendanceOf(busy.id)).toMatchObject({ end_cause: "ANJO_LOST", lost_cause: "SESSION" })

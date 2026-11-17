@@ -1,25 +1,35 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Bold, Heading2, ImagePlus, Italic, List } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { broadcastImageSchema } from "@/schemas/profile/broadcast.schema"
+import { sanitizeRichText } from "@/lib/security/sanitize-rich-text"
+import { broadcastImageSchema, COMMUNICATION_IMAGE_TYPES } from "@/schemas/communications/communication.schema"
 
 type EditorValue = { html: string; text: string }
 
-export function BroadcastRichTextEditor({ value, onChange }: { value: EditorValue; onChange: (value: EditorValue) => void }) {
+/** `initialHtml` = conteúdo que já existe (edição de um comunicado publicado), carregado uma vez, saneado, ao montar. */
+export function BroadcastRichTextEditor({ value, onChange, initialHtml }: { value: EditorValue; onChange: (value: EditorValue) => void; initialHtml?: string }) {
   const editorRef = useRef<HTMLDivElement>(null)
+  const loadedRef = useRef(false)
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor || loadedRef.current || !initialHtml) return
+    loadedRef.current = true
+    editor.innerHTML = sanitizeRichText(initialHtml)
+    onChange({ html: editor.innerHTML, text: editor.innerText ?? editor.textContent ?? "" })
+  }, [initialHtml, onChange])
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [formats, setFormats] = useState<string[]>([])
   const [imageError, setImageError] = useState("")
 
   function emitValue() {
     const editor = editorRef.current
-    if (editor) onChange({ html: editor.innerHTML, text: editor.innerText })
+    if (editor) onChange({ html: editor.innerHTML, text: editor.innerText ?? editor.textContent ?? "" })
   }
 
   function runCommand(command: "bold" | "italic" | "insertUnorderedList") {
@@ -72,7 +82,7 @@ export function BroadcastRichTextEditor({ value, onChange }: { value: EditorValu
       <ToggleGroup type="single" defaultValue="p" className="bg-card" aria-label="Estilo do parágrafo"><ToggleGroupItem value="p" onMouseDown={(event) => event.preventDefault()} onClick={() => setBlock("p")}>Texto</ToggleGroupItem><ToggleGroupItem value="h2" aria-label="Título interno" onMouseDown={(event) => event.preventDefault()} onClick={() => setBlock("h2")}><Heading2/></ToggleGroupItem></ToggleGroup>
       <Tooltip><TooltipTrigger asChild><label className="flex size-8 cursor-pointer items-center justify-center rounded-md bg-card"><Input type="color" defaultValue="#660099" className="size-5 cursor-pointer border-0 p-0" aria-label="Cor do texto" onChange={(event) => setColor(event.target.value)}/></label></TooltipTrigger><TooltipContent>Cor do texto</TooltipContent></Tooltip>
       <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-sm" className="bg-card" aria-label="Inserir imagem" onClick={() => imageInputRef.current?.click()}><ImagePlus/></Button></TooltipTrigger><TooltipContent>Inserir imagem</TooltipContent></Tooltip>
-      <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) insertImage(file) }}/>
+      <input ref={imageInputRef} type="file" accept={COMMUNICATION_IMAGE_TYPES.join(",")} className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) insertImage(file) }}/>
     </div>
     <div ref={editorRef} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="Conteúdo do comunicado" data-placeholder="Escreva como em um blog..." className="inia-rich-editor min-h-44 bg-card px-4 py-3 text-sm font-light leading-6 outline-none" onInput={emitValue} onPaste={(event) => { event.preventDefault(); document.execCommand("insertText", false, event.clipboardData.getData("text/plain")) }}/>
     <div className="flex justify-between px-3 py-2 text-xs text-muted-foreground"><span className="text-destructive">{imageError}</span><span>{value.text.length}/5000</span></div>

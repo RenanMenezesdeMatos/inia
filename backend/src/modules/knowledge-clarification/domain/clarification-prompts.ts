@@ -12,7 +12,10 @@ import { scenarioOf, type ClarificationCoverage, type ClarificationState, type C
 /** V4 (21/10/2026): uma orientação GERAL não encerra a questão — se o que foi lido diz que a orientação muda conforme algo e as bases
  * trazem a de cada caso, pergunte antes de responder (no QA, "Segunda via" foi respondida com o procedimento geral de uma base, embora
  * outra dissesse que canal e prazo mudam conforme o produto e houvesse uma base por produto). */
-export const KNOWLEDGE_CLARIFICATION_PROMPT_VERSION = "KNOWLEDGE_CLARIFICATION_PROMPTS_V4" as const
+/** V5 (16/11/2026, busca em escala): cada base mostrada traz, como DADO, o produto cadastrado dela ("vale para X, produto da família Y",
+ * Produtos e aplicabilidade) — também nas seções que a redação lê. Sem isso, a pergunta pela família ("linha Órion") com a base do produto
+ * lida virava "não encontrei para a linha Órion". As regras não mudaram. */
+export const KNOWLEDGE_CLARIFICATION_PROMPT_VERSION = "KNOWLEDGE_CLARIFICATION_PROMPTS_V5" as const
 
 export const PLANNER_SYSTEM = [
   "Você é a etapa de ESCLARECIMENTO da INIA, supervisora virtual de operações. Aqui você NÃO responde ao colaborador: decide, só com as bases de conhecimento mostradas, se já é possível responder corretamente à pergunta ou se falta uma informação que muda a resposta.",
@@ -133,7 +136,8 @@ export function renderPlannerInput(input: PlannerInput): string {
 /** Resposta numa sessão de feedback: o cenário foi informado pela pessoa nesta conversa, não observado na gravação. */
 export const SESSION_ANSWER_RULE = "Esta resposta acontece numa conversa sobre um feedback já publicado. O cenário (por exemplo, o produto) foi informado pela pessoa NESTA conversa: apresente-o como o que ela informou (\"como você me disse que era…\"), nunca como algo que a gravação mostrou, e não diga que houve falha ou acerto no atendimento avaliado — oriente para as próximas chamadas."
 
-export type AnswerSection = { ref: string; source: KnowledgeSourceRef; text: string }
+/** `products`: o produto cadastrado da base, já em frase (`describeProducts`); ausente = base sem produto. */
+export type AnswerSection = { ref: string; source: KnowledgeSourceRef; text: string; products?: string | null }
 
 export function renderAnswerInput(input: { state: ClarificationState; sections: readonly AnswerSection[]; conflicts: readonly { description: string; refs: string[] }[]; glossary: readonly { term: string; definition: string }[] }): string {
   const lines = [`Pergunta original do colaborador: ${quote(input.state.originalQuestion)}`, "", "Cenário definido:", renderFacts(input.state)]
@@ -148,7 +152,7 @@ export function renderAnswerInput(input: { state: ClarificationState; sections: 
   for (const section of input.sections) {
     if (section.source.documentId !== currentDocument) {
       currentDocument = section.source.documentId
-      lines.push(`\n### ${section.source.documentTitle}`)
+      lines.push(`\n### ${section.source.documentTitle}${section.products ? ` (${section.products})` : ""}`)
     }
     lines.push(`[${section.ref}] ${section.source.heading ? `Seção ${quote(section.source.heading)}` : `Trecho ${section.source.chunkIndex + 1}`}:\n${section.text}`)
   }

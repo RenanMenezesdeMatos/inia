@@ -47,6 +47,7 @@ import { loadViewerScope } from "../../performance-analytics/application/viewer-
 import type { LeadershipCard } from "../../leadership-analytics/domain/view-models.js"
 import { loadReadableKnowledge, postgresReadableKnowledgePorts } from "../../knowledge/application/knowledge-catalog.js"
 import { resolveAccessibleKnowledgeMaterials } from "../../knowledge/application/knowledge-material-access.js"
+import { knowledgeScaleRetrievalEnabled, sharedKnowledgeRecall } from "../../knowledge/application/knowledge-recall.js"
 import { createKnowledgeClarification, knowledgeClarificationEnabled, type ClarificationOutcome, type ClarificationRequest, type ClarificationStream } from "../../knowledge-clarification/application/knowledge-clarification-service.js"
 import { gatewayClarificationModel } from "../../knowledge-clarification/application/clarification-model.js"
 import { loadClarificationGuardrails, loadSpecialistInstructions } from "../../knowledge-clarification/application/clarification-context.js"
@@ -354,9 +355,9 @@ export function createRealtimeRouter(
     /** Cartões gravados numa conversa que o escopo ATUAL da pessoa ainda alcança (reabrir o histórico). */
     visibleLeadershipCards?: (user: AuthTokenPayload, cards: unknown[]) => Promise<unknown[]>
     /** Orquestradores do chat/voz da organização com o escopo de cada um (consulta de processo por Grupo de quem lidera). */
-    processOrchestrators?: (organizationId: string) => Promise<InteractiveOrchestratorScope[]>
+    processOrchestrators?: (organizationId: string, universes?: readonly string[] | null) => Promise<InteractiveOrchestratorScope[]>
     /** Um Orquestrador do chat/voz pelo id (o do Grupo consultado). */
-    orchestratorById?: (organizationId: string, orchestratorId: string, query: string) => Promise<ResolvedOrchestrator | null>
+    orchestratorById?: (organizationId: string, orchestratorId: string, query: string, universes?: readonly string[] | null) => Promise<ResolvedOrchestrator | null>
     /** Reports recorrentes: propostas oferecidas no chat, contexto de quem pergunta e reports existentes (sem insistir no igual). */
     reportProposals?: ProposalStore
     reportRuntime?: ReportRuntime
@@ -415,8 +416,9 @@ export function createRealtimeRouter(
     if (!enforcing || !flagged) return { blocked: false as const, record }
     return { blocked: true as const, record, text: flaggedTextOf(result), toolCall: responseCheckToolCall(result, "PREVENTIVE"), signals: signalsAfterResponseCheck({ replaced: true, checkOutcome: result.outcome, computed: [] }) }
   }
-  const processOrchestrators = deps.processOrchestrators ?? ((organizationId: string) => listInteractiveOrchestratorScopes(db, organizationId))
-  const orchestratorById = deps.orchestratorById ?? ((organizationId: string, orchestratorId: string, query: string) => resolveOrchestratorById(db, organizationId, orchestratorId, "INTERACTIVE", query))
+  // Consulta de processo da liderança: só Orquestradores do universo de atuação de quem lidera (`ProcessScope.orchestratorUniverses`).
+  const processOrchestrators = deps.processOrchestrators ?? ((organizationId: string, universes: readonly string[] | null = null) => listInteractiveOrchestratorScopes(db, organizationId, universes))
+  const orchestratorById = deps.orchestratorById ?? ((organizationId: string, orchestratorId: string, query: string, universes: readonly string[] | null = null) => resolveOrchestratorById(db, organizationId, orchestratorId, "INTERACTIVE", query, undefined, universes))
   /**
    * Instrução da conversa de quem atende (persona, contexto da tela, tratamento, perfil, contexto de origem, regras de "meus
    * resultados") no PROMPT do Orquestrador — o mesmo texto que ele já recebia —, NUNCA como contexto extra: o contexto extra chega aos
@@ -482,13 +484,13 @@ export function createRealtimeRouter(
       return null
     }
     // Independentes: os Orquestradores dos Grupos e os assuntos proibidos saem juntos do banco.
-    const [orchestrators, guardrails] = await Promise.all([input.leadership.processScope ? processOrchestrators(input.organizationId) : Promise.resolve([]), conversationGuardrails(input.organizationId, null)])
+    const [orchestrators, guardrails] = await Promise.all([input.leadership.processScope ? processOrchestrators(input.organizationId, input.leadership.processScope.orchestratorUniverses ?? null) : Promise.resolve([]), conversationGuardrails(input.organizationId, null)])
     const process = input.leadership.processScope
       ? buildProcessConsultationToolset({
           scope: input.leadership.processScope,
           orchestrators,
           consult: async ({ orchestrator, groupNames, question }) => {
-            const resolved = await orchestratorById(input.organizationId, orchestrator.id, question)
+            const resolved = await orchestratorById(input.organizationId, orchestrator.id, question, input.leadership.processScope?.orchestratorUniverses ?? null)
             if (!resolved) return null
             const scope: ProcessClarificationScope = { kind: "LEADERSHIP_PROCESS", orchestratorId: resolved.orchestratorId, orchestratorName: orchestrator.name, groupNames }
             const clarified = await clarify(resolved, scope, question)
@@ -527,9 +529,10 @@ export function createRealtimeRouter(
     const stored = await latestClarificationOf({ organizationId: input.organizationId, ownerPersonId: input.personId }, input.conversationId)
     const scope = stored?.scope
     if (!stored || !scope || !input.leadership.processScope || !knowledgeClarification) throw unavailable()
-    const reachable = reachableProcessOrchestrators(input.leadership.processScope, await processOrchestrators(input.organizationId))
+    const universes = input.leadership.processScope.orchestratorUniverses ?? null
+    const reachable = reachableProcessOrchestrators(input.leadership.processScope, await processOrchestrators(input.organizationId, universes))
     if (!reachable.some((orchestrator) => orchestrator.id === scope.orchestratorId)) throw unavailable()
-    const resolved = await orchestratorById(input.organizationId, scope.orchestratorId, stored.state.originalQuestion)
+    const resolved = await orchestratorById(input.organizationId, scope.orchestratorId, stored.state.originalQuestion, universes)
     if (!resolved) throw unavailable()
     const outcome = await knowledgeClarification.handle({
       organizationId: input.organizationId,
@@ -670,6 +673,8 @@ export function createRealtimeRouter(
         guardrails: (organizationId, agentIds) => loadClarificationGuardrails(db, organizationId, agentIds),
         specialistInstructions: (organizationId, agentIds) => loadSpecialistInstructions(db, organizationId, agentIds),
         now,
+        // Busca nas bases em escala (ligada por padrão; `INIA_KB_SCALE_RETRIEVAL=off` + reinício volta ao caminho anterior).
+        recall: knowledgeScaleRetrievalEnabled() ? sharedKnowledgeRecall(db) : null,
       })
     : deps.knowledgeClarification
   const accessibleKnowledgeDocuments = deps.accessibleKnowledgeDocuments ?? (async (organizationId: string, personId: string, documentIds: string[]) => new Set((await resolveAccessibleKnowledgeMaterials(db, { organizationId, viewer: { personId }, materialIds: documentIds })).keys()))

@@ -81,12 +81,12 @@ describe.skipIf(!ENABLED)("Produtos e aplicabilidade — prova Postgres (cadastr
     expect((await group.get(`${base}/nodes`)).status).toBe(200)
     expect((await group.post(`${base}/nodes`).send({ kind: "FAMILY", code: `PRF_FAM_${suffix}`, name: "Família de prova" })).status).toBe(403)
 
-    // Árvore: família → produto; produto dentro de produto é recusado.
+    // Árvore: família → produto; produto dentro de produto é recusado. Produto novo sempre nasce com universo de atuação (197).
     const family = (await org.post(`${base}/nodes`).send({ kind: "FAMILY", code: `PRF_FAM_${suffix}`, name: "Produtos de voz (prova)" })).body.data
-    const product = (await org.post(`${base}/nodes`).send({ kind: "PRODUCT", code: `PRF_SIP_${suffix}`, name: "Tronco de voz (prova)", parentId: family.id })).body.data
-    const other = (await org.post(`${base}/nodes`).send({ kind: "PRODUCT", code: `PRF_DDR_${suffix}`, name: "Ramal direto (prova)", parentId: family.id })).body.data
-    expect((await org.post(`${base}/nodes`).send({ kind: "PRODUCT", code: `PRF_X_${suffix}`, name: "Inválido", parentId: product.id })).body.error.code).toBe("PRODUCT_TREE_INVALID")
-    expect((await org.post(`${base}/nodes`).send({ kind: "PRODUCT", code: `PRF_SIP_${suffix}`, name: "Repetido" })).status).toBe(409)
+    const product = (await org.post(`${base}/nodes`).send({ kind: "PRODUCT", code: `PRF_SIP_${suffix}`, name: "Tronco de voz (prova)", parentId: family.id, operatingUniverse: "B2B" })).body.data
+    const other = (await org.post(`${base}/nodes`).send({ kind: "PRODUCT", code: `PRF_DDR_${suffix}`, name: "Ramal direto (prova)", parentId: family.id, operatingUniverse: "B2B" })).body.data
+    expect((await org.post(`${base}/nodes`).send({ kind: "PRODUCT", code: `PRF_X_${suffix}`, name: "Inválido", parentId: product.id, operatingUniverse: "B2B" })).body.error.code).toBe("PRODUCT_TREE_INVALID")
+    expect((await org.post(`${base}/nodes`).send({ kind: "PRODUCT", code: `PRF_SIP_${suffix}`, name: "Repetido", operatingUniverse: "B2B" })).status).toBe(409)
 
     // Critério: rascunho → aprovação exige fonte; nunca retroativo.
     const createdResponse = (await org.post(`${base}/criteria`).send({ title: `Conta iniciada em 7000 (prova ${suffix})`, content: { statement: "Conta iniciada em 7000 identifica o tronco de voz.", targetNodeIds: [product.id], strength: "CONCLUSIVE", conclusiveWhen: "o cliente diz a conta completa do próprio pedido" } }))

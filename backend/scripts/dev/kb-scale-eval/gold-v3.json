@@ -1,0 +1,243 @@
+{
+  "version": 3,
+  "definedAt": "2026-11-16",
+  "note": "Gabarito v3, gravado ANTES de medir. T01–T06: CATEGORIA × PRODUTO — a pergunta usa o nome da FAMÍLIA do catálogo de produtos e a base (fictícia, em taxonomy-fixtures.json) só fala do PRODUTO; a ligação família › produto existe só no cadastro de produtos (product_scope_assignments da base). A01–A03: SIGLAS do Glossário da organização na pergunta (ME, TT), a base escreve por extenso. sections = doc (parte do título) + literal do trecho. T07–T10 (acrescentados antes de medi-los): FAMÍLIA COM NOME DE MARCA, que não diz nada sobre o produto — só o cadastro liga a família à base. T11–T14 (antes de medi-los): QUATRO bases da MESMA ação (suspensão temporária) para quatro produtos de famílias com nome de marca; a pergunta só cita a família — só o cadastro diz qual base vale. O caso que separa a busca com e sem o produto cadastrado.",
+  "questions": [
+    {
+      "id": "T01",
+      "category": "familia-produto",
+      "text": "Como faço pra abrir um reparo de Dados avançados para link ponto a ponto?",
+      "sections": [
+        {
+          "doc": "Reparo de LP de Dados",
+          "chunk": 1,
+          "literal": "aberto no Sigitim"
+        }
+      ]
+    },
+    {
+      "id": "T02",
+      "category": "familia-produto",
+      "text": "O cliente de conectividade rural quer trocar a antena. Como faço?",
+      "sections": [
+        {
+          "doc": "Troca de antena do Rádio Enlace",
+          "chunk": 1,
+          "literal": "visita de alinhamento"
+        }
+      ]
+    },
+    {
+      "id": "T03",
+      "category": "familia-produto",
+      "text": "Qual a multa para cancelar a mobilidade corporativa antes do prazo?",
+      "sections": [
+        {
+          "doc": "Cancelamento da Frota Conectada",
+          "chunk": 1,
+          "literal": "30% das mensalidades restantes"
+        }
+      ]
+    },
+    {
+      "id": "T04",
+      "category": "familia-produto",
+      "text": "Como eu ativo a segurança digital que o cliente contratou?",
+      "sections": [
+        {
+          "doc": "Ativação do Escudo Família",
+          "chunk": 1,
+          "literal": "código de ativação por SMS"
+        }
+      ]
+    },
+    {
+      "id": "T05",
+      "category": "familia-produto",
+      "text": "A empresa quer mudar para onde vão as ligações gratuitas de voz avançada. Como faço?",
+      "sections": [
+        {
+          "doc": "Alteração de destino do 0800",
+          "chunk": 1,
+          "literal": "até 2 dias úteis"
+        }
+      ]
+    },
+    {
+      "id": "T06",
+      "category": "familia-produto",
+      "text": "Como troco o pacote de entretenimento do cliente?",
+      "sections": [
+        {
+          "doc": "Troca de pacote da TV Plus",
+          "chunk": 1,
+          "literal": "vale a partir do próximo ciclo"
+        }
+      ]
+    },
+    {
+      "id": "A01",
+      "category": "sigla-glossario",
+      "text": "A ME da linha FWT depende de quê?",
+      "sections": [
+        {
+          "doc": "Mudança de Endereço — Linha FWT",
+          "chunk": 2,
+          "literal": "cobertura celular adequada"
+        }
+      ]
+    },
+    {
+      "id": "A02",
+      "category": "sigla-glossario",
+      "text": "Na TT comum, o que o novo titular precisa apresentar?",
+      "sections": [
+        {
+          "doc": "Troca de Titularidade — Residencial",
+          "chunk": 3,
+          "literal": "CPF e comprovante de endereço"
+        }
+      ]
+    },
+    {
+      "id": "A03",
+      "category": "sigla-glossario",
+      "text": "Na ME do tronco, os ramais continuam com o mesmo número?",
+      "sections": [
+        {
+          "doc": "Mudança de Endereço — SIP",
+          "chunk": 3,
+          "literal": "a numeração (ramais e DDR) é mantida"
+        }
+      ]
+    },
+    {
+      "id": "T07",
+      "category": "familia-marca",
+      "text": "Como bloqueio um produto da linha Órion do cliente?",
+      "sections": [
+        {
+          "doc": "Bloqueio do Rastreador Veicular",
+          "chunk": 1,
+          "literal": "contrassenha de 6 dígitos"
+        }
+      ]
+    },
+    {
+      "id": "T08",
+      "category": "familia-marca",
+      "text": "O cliente do pacote Vega quer suspender o serviço por um mês. Pode?",
+      "sections": [
+        {
+          "doc": "Suspensão do Backup em Nuvem",
+          "chunk": 1,
+          "literal": "até 60 dias uma vez por ano"
+        }
+      ]
+    },
+    {
+      "id": "T09",
+      "category": "familia-marca",
+      "text": "Como faço upgrade de velocidade no portfólio Andes?",
+      "sections": [
+        {
+          "doc": "Upgrade do Link Satelital",
+          "chunk": 1,
+          "literal": "troca do modem quando passa de 50 Mbps"
+        }
+      ]
+    },
+    {
+      "id": "T10",
+      "category": "familia-marca",
+      "text": "Em quanto tempo sai o reembolso da Proteção Íris?",
+      "sections": [
+        {
+          "doc": "Reembolso do Seguro de Tela",
+          "chunk": 1,
+          "literal": "até 10 dias úteis"
+        }
+      ]
+    },
+    {
+      "id": "T11",
+      "category": "familia-marca-mesma-acao",
+      "text": "Por quanto tempo o cliente do linha Órion pode suspender o serviço?",
+      "sections": [
+        {
+          "doc": "Suspensão temporária do Rastreador Veicular",
+          "chunk": 1,
+          "literal": "até 30 dias por ano"
+        }
+      ],
+      "facts": [
+        {
+          "id": "30 dias",
+          "anyOf": [
+            "30 dias"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T12",
+      "category": "familia-marca-mesma-acao",
+      "text": "Por quanto tempo o cliente do pacote Vega pode suspender o serviço?",
+      "sections": [
+        {
+          "doc": "Suspensão temporária do Backup em Nuvem",
+          "chunk": 1,
+          "literal": "até 60 dias por ano"
+        }
+      ],
+      "facts": [
+        {
+          "id": "60 dias",
+          "anyOf": [
+            "60 dias"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T13",
+      "category": "familia-marca-mesma-acao",
+      "text": "Por quanto tempo o cliente do portfólio Andes pode suspender o serviço?",
+      "sections": [
+        {
+          "doc": "Suspensão temporária do Link Satelital",
+          "chunk": 1,
+          "literal": "até 90 dias por ano"
+        }
+      ],
+      "facts": [
+        {
+          "id": "90 dias",
+          "anyOf": [
+            "90 dias"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T14",
+      "category": "familia-marca-mesma-acao",
+      "text": "Por quanto tempo o cliente do Proteção Íris pode suspender o serviço?",
+      "sections": [
+        {
+          "doc": "Suspensão temporária do Seguro de Tela",
+          "chunk": 1,
+          "literal": "até 15 dias por ano"
+        }
+      ],
+      "facts": [
+        {
+          "id": "15 dias",
+          "anyOf": [
+            "15 dias"
+          ]
+        }
+      ]
+    }
+  ]
+}

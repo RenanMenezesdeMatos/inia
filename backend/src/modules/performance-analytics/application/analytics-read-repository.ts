@@ -5,6 +5,7 @@ import { loadLegacyFeedbackHeadings } from "../../feedbacks/infrastructure/legac
 import { loadFeedbackOrigins } from "../../feedbacks/infrastructure/feedback-origins.js"
 import { loadFeedbackSupportMaterials } from "../../feedbacks/application/feedback-support-materials.js"
 import { encodeFollowUpCursor, followUpCursorAtSql, type FollowUpCursor } from "../../feedbacks/domain/follow-up-cursor.js"
+import type { FollowUpNoticeSource } from "./follow-up-notice-source.js"
 import { PgPendingActionsRepository } from "../../pending-actions/application/pending-actions-repository.js"
 import { quartileSchema, type Quartile } from "../../indicators/domain/employee-performance-schema.js"
 import type { IndicatorDirection } from "../../indicators/domain/evaluate-attainment.js"
@@ -19,6 +20,7 @@ import { localDateOf } from "../../workflows/application/time-window.js"
 import type { OperationalComparison } from "../domain/operational-comparison.js"
 import { buildEmployeeOperationalTrends, buildStructureOperationalSummary, type StructureSummaryObservation } from "./operational-trend.js"
 import { AnalyticsCache, membersFingerprint } from "../infrastructure/analytics-cache.js"
+import { communicationNoticeSource } from "../infrastructure/communication-notice-source.js"
 import { loadAnalyticsVersions, type AnalyticsVersions } from "../infrastructure/analytics-versions.js"
 import type { VisibilityFilter } from "../../access/application/access-repository.js"
 import { visibilityOf } from "../../access/application/access-service.js"
@@ -157,6 +159,11 @@ export type PgAnalyticsReadRepositoryOptions = {
   peopleSource?: "graph" | "sql"
   peopleGraphCache?: OrganizationPeopleGraphCache
   /**
+   * Comunicados da liderança no feed (porta em application/follow-up-notice-source.ts). Padrão: o adaptador da própria área
+   * (infrastructure/communication-notice-source.ts), como os caches acima — o analytics nunca importa o módulo de comunicados.
+   */
+  notices?: FollowUpNoticeSource
+  /**
    * Resumo operacional da estrutura: `read-model` (padrão) = infrastructure/operational-read-model.ts com cache curto;
    * `raw` = o caminho original, consultas por indicador — a referência da prova.
    */
@@ -176,6 +183,7 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
   private readonly operationalSource: "read-model" | "raw"
   private readonly operationalSummaryCache: AnalyticsCache<OperationalStructureSummary | null>
   private readonly officialCache: boolean
+  private readonly notices: FollowUpNoticeSource
   constructor(
     private readonly db: Database,
     options: PgAnalyticsReadRepositoryOptions = {},
@@ -186,6 +194,7 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     this.operationalSource = options.operationalSource ?? "read-model"
     this.operationalSummaryCache = options.operationalSummaryCache ?? operationalSummaryCache
     this.officialCache = options.officialCache ?? true
+    this.notices = options.notices ?? communicationNoticeSource
   }
 
   async loadCacheVersions(organizationId: string): Promise<AnalyticsVersions | null> {
@@ -290,6 +299,8 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
          and (not exists (select 1 from organizations org where org.id = $1 and org.operating_universe_enforced_at is not null)
               or exists (select 1 from person_operating_universe_history h
                           where h.person_id = eip.person_id and h.operating_universe = idef.operating_universe
+                            -- Período de duração zero (vigência retroativa trazida para o início do período aberto, antes da 207) não conta.
+                            and coalesce(h.valid_until, 'infinity') > h.valid_from
                             and h.valid_from < (to_date(eip.reference_period || '-01', 'YYYY-MM-DD') + interval '1 month')
                             and coalesce(h.valid_until, 'infinity') > to_date(eip.reference_period || '-01', 'YYYY-MM-DD')))`,
       [organizationId, personIds, periods],
@@ -471,10 +482,10 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     // histórico da estrutura e sem OFFSET, que crescia com a profundidade da página. O item
     // extra só conta (`hasMore`): o conteúdo é montado para os `limit` exibidos.
     const params: unknown[] = [query.organizationId, query.operatorIds, query.includeViewerAlerts && !query.unacknowledgedOnly, query.viewerId, query.limit, query.unacknowledgedOnly]
-    const before = query.before ? (params.push(query.before.at, query.before.id), { feedback: `and (coalesce(f.published_at, f.created_at), f.id) < ($7::timestamptz, $8::uuid)`, alert: `and (a.created_at, a.id) < ($7::timestamptz, $8::uuid)`, report: `and (r.created_at, r.delivery_id) < ($7::timestamptz, $8::uuid)` }) : { feedback: "", alert: "", report: "" }
+    const before = query.before ? (params.push(query.before.at, query.before.id), { feedback: `and (coalesce(f.published_at, f.created_at), f.id) < ($7::timestamptz, $8::uuid)`, alert: `and (a.created_at, a.id) < ($7::timestamptz, $8::uuid)`, report: `and (r.created_at, r.delivery_id) < ($7::timestamptz, $8::uuid)`, notice: `and (n.published_at, n.id) < ($7::timestamptz, $8::uuid)` }) : { feedback: "", alert: "", report: "", notice: "" }
     // Recorte do calendário sobre o MESMO instante de cada ramo (o que ordena o feed e dá o rótulo do dia na tela).
     const inPeriod = (instant: string) => [query.since ? `and ${instant} >= $${params.push(query.since)}::timestamptz` : "", query.until ? `and ${instant} < $${params.push(query.until)}::timestamptz` : ""].join(" ")
-    const period = { feedback: inPeriod("coalesce(f.published_at, f.created_at)"), alert: inPeriod("a.created_at"), report: inPeriod("r.created_at") }
+    const period = { feedback: inPeriod("coalesce(f.published_at, f.created_at)"), alert: inPeriod("a.created_at"), report: inPeriod("r.created_at"), notice: inPeriod("n.published_at") }
     const result = await this.db.query<Record<string, unknown>>(
       `with feed as (
          select f.id, 'FEEDBACK' kind, coalesce(f.published_at, f.created_at) "createdAt"
@@ -497,14 +508,19 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
          select r.delivery_id, 'REPORT', r.created_at
          from report_delivery_recipients r
          where $3::boolean and r.organization_id = $1 and r.recipient_person_id = $4 ${before.report} ${period.report}
+         union all
+         -- Comunicados da liderança (migration 199): os que QUEM LÊ publicou e os que recebeu (equipe de cima ou organização inteira).
+         select n.id, 'NOTICE', n.published_at
+         from communications n
+         where $3::boolean and n.organization_id = $1 and ${this.notices.visibleToSql("n", "$4")} ${before.notice} ${period.notice}
        ), probe as (
          select id, kind, "createdAt" from feed order by "createdAt" desc, id desc limit $5 + 1
        ), page as (
          select id, kind, "createdAt" from probe order by "createdAt" desc, id desc limit $5
        )
        select page.id::text id, page.kind, page."createdAt", ${followUpCursorAtSql('page."createdAt"')} "cursorAt", (select count(*) from probe) > $5 "hasMore",
-              case when page.kind = 'REPORT' then case when rd.kind = 'DELIVERY' then 'REPORT' else 'REPORT_NOT_FORWARDED' end else coalesce(f.feedback_kind::text, a.alert_type) end category,
-              case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,heading,title}', f.context_snapshot#>>'{reliableFeedback,feedbackView,heading,title}', f.impacted_indicator) when page.kind = 'REPORT' then rp.name else a.title end title,
+              case when page.kind = 'NOTICE' then 'NOTICE' when page.kind = 'REPORT' then case when rd.kind = 'DELIVERY' then 'REPORT' else 'REPORT_NOT_FORWARDED' end else coalesce(f.feedback_kind::text, a.alert_type) end category,
+              case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,heading,title}', f.context_snapshot#>>'{reliableFeedback,feedbackView,heading,title}', f.impacted_indicator) when page.kind = 'REPORT' then rp.name when page.kind = 'NOTICE' then '' else a.title end title,
               case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,heading,subtitle}', f.context_snapshot#>>'{reliableFeedback,feedbackView,heading,subtitle}') when page.kind = 'REPORT' then concat_ws(' · ', rd.structure_label, rd.period_label) end subtitle,
               case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,card}', f.context_snapshot#>>'{reliableFeedback,feedbackView,card}', f.observed_behavior) when page.kind = 'REPORT' then coalesce(rd.analysis_text, '') else a.description end summary,
               f.recommendation detail, a.severity, coalesce(f.operator_id, c.operator_id) "operatorId", p.name "operatorName", coalesce(f.case_id, a.case_id)::text "caseId",
@@ -538,16 +554,18 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     const legacyHeadings = await loadLegacyFeedbackHeadings(this.db, { organizationId: query.organizationId, feedbackIds: rows.filter((row) => row.kind === "FEEDBACK").map((row) => String(row.id)) })
     // Motivo do feedback (o mesmo selo e ícone do cabeçalho do Acompanhamento do colaborador), em uma consulta para a página.
     const origins = await loadFeedbackOrigins(this.db, { organizationId: query.organizationId, feedbackIds: rows.filter((row) => row.kind === "FEEDBACK").map((row) => String(row.id)) })
+    // Comunicados: título, conteúdo saneado, autor e público — só dos itens da página, revalidando que quem lê os enxerga.
+    const notices = await this.notices.loadViews(this.db, query.organizationId, query.viewerId, rows.filter((row) => row.kind === "NOTICE").map((row) => String(row.id)))
     return {
       nextCursor,
       items: rows.map((row, index) => ({
         id: String(row.id),
-        kind: row.kind === "FEEDBACK" ? "FEEDBACK" : row.kind === "REPORT" ? "REPORT" : "ALERT",
+        kind: row.kind === "FEEDBACK" ? "FEEDBACK" : row.kind === "REPORT" ? "REPORT" : row.kind === "NOTICE" ? "NOTICE" : "ALERT",
         category: normalizeCategory(String(row.category)),
-        title: legacyHeadings.get(String(row.id))?.title ?? String(row.title),
+        title: notices.get(String(row.id))?.title ?? legacyHeadings.get(String(row.id))?.title ?? String(row.title),
         // Cabeçalho do feedback (`FEEDBACK_HEADING_V1`): o MESMO título/subtítulo do Acompanhamento do colaborador.
         subtitle: legacyHeadings.has(String(row.id)) ? legacyHeadings.get(String(row.id))!.subtitle : typeof row.subtitle === "string" ? row.subtitle : null,
-        summary: String(row.summary ?? ""),
+        summary: notices.get(String(row.id))?.plainText ?? String(row.summary ?? ""),
         detail: row.detail === null || row.detail === undefined ? null : String(row.detail),
         severity: (row.severity as FollowUpItem["severity"]) ?? null,
         operator: row.operatorId ? { personId: String(row.operatorId), name: String(row.operatorName ?? "") } : null,
@@ -556,6 +574,7 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
         acknowledgedAt: row.acknowledgedAt ? new Date(String(row.acknowledgedAt)).toISOString() : null,
         origin: row.kind === "FEEDBACK" ? (origins.get(String(row.id)) ?? null) : null,
         feedback: row.feedback ? { ...(row.feedback as NonNullable<FollowUpItem["feedback"]>), view: views[index] ?? null, supportMaterials: supportMaterials.get(String(row.id)) ?? [] } : null,
+        ...(row.kind === "NOTICE" ? { notice: notices.get(String(row.id)) ?? null } : {}),
         ...(row.kind === "REPORT" && row.report ? { report: { ...(row.report as NonNullable<FollowUpItem["report"]>), lastCheckedAt: new Date(String((row.report as { lastCheckedAt: string }).lastCheckedAt)).toISOString() } } : {}),
       })),
     }
@@ -571,6 +590,7 @@ function normalizeCategory(value: string): FollowUpItem["category"] {
     case "WORKFLOW_ESCALATION":
     case "REPORT":
     case "REPORT_NOT_FORWARDED":
+    case "NOTICE":
       return value
     default:
       return value.startsWith("INTERVENTION_") ? "INTERVENTION" : "OTHER"

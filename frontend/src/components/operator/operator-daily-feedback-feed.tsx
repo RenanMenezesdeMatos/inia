@@ -12,6 +12,8 @@ import { ReadingEvaluation } from "@/components/feedbacks/confirm-reading/readin
 import { IniaFeed, IniaFeedItem } from "./inia-feed"
 import { DeliveredFeedbackEntry } from "./delivered-feedback-entry"
 import { useMyDeliveredFeedbackQuery } from "@/queries/feedback-delivery/use-delivered-feedback"
+import { useReceivedCommunicationsQuery } from "@/queries/communications/use-communications"
+import { CommunicationEntry } from "@/components/communications/communication-entry"
 import { useOperatorFeedbackHistory } from "@/queries/operator/use-operator-feedback-history"
 import { formatDateTime } from "@/lib/format/date"
 import { boundFollowUpTimeline, buildFollowUpTimeline, followUpDayKey, followUpDayLabel, followUpPeriodBounds, isWithinFollowUpPeriod, type FollowUpEntry, type FollowUpPeriod } from "./follow-up-timeline"
@@ -34,13 +36,16 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
   const [loading, setLoading] = useState(false)
   // Feedback de atendimento (V1.5.6): mais uma FONTE deste mesmo feed — entregas ao próprio colaborador (flag OFF = nenhuma).
   const delivered = useMyDeliveredFeedbackQuery()
+  // Comunicados da liderança (migration 199): outra FONTE do mesmo feed — os recebidos pela pessoa (os mais recentes), em lista
+  // leve; o conteúdo de cada um é lido pelo id quando a pessoa o abre.
+  const notices = useReceivedCommunicationsQuery()
   // Feedbacks publicados por página: a primeira veio no SSR, as seguintes o servidor manda pelo cursor quando o feed chega ao fim
   // do que já tem.
   const { history, hasMoreHistory, loadingMoreHistory, loadMoreError, loadMoreHistory } = useOperatorFeedbackHistory(indicators.history, indicators.historyNextCursor ?? null)
   const loaderRef = useRef<HTMLDivElement>(null)
   // Uma timeline só, MAIS RECENTE PRIMEIRO (feedbacks publicados + entregas de atendimento); o "carregar mais" revela os
   // progressivamente mais antigos da lista já ordenada — e busca a próxima página quando o que chegou acabou.
-  const fullTimeline = boundFollowUpTimeline(buildFollowUpTimeline(history, delivered.data ?? []), hasMoreHistory)
+  const fullTimeline = boundFollowUpTimeline(buildFollowUpTimeline(history, delivered.data ?? [], notices.data ?? []), hasMoreHistory)
   // Calendário do cabeçalho: vazio = visão inicial (tudo). O recorte usa o MESMO instante que ordena e rotula o dia do item; as
   // páginas mais antigas só são buscadas enquanto ainda podem ter itens do período (a timeline vem do mais recente para o mais antigo).
   const [period, setPeriodState] = useState<FollowUpPeriod>({})
@@ -107,6 +112,7 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
   function renderEntry(entry: FollowUpEntry) {
     // Avaliação do colaborador (escolha registrada na ciência + contestação antiga) só onde ela é real: item com fonte (feedback
     // publicado ou atendimento entregue), nunca "Leitura do dia". Sempre visível, mesmo com o item fechado.
+    if (entry.source === "notice") return <CommunicationEntry notice={entry.item}/>
     const source = sourceOfEntry(entry)
     if (entry.source === "delivered") {
       const item = entry.item
@@ -130,6 +136,7 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
 
   return <div ref={rootRef} className="contents"><IniaFeed titleInToggle title="Acompanhamento" description="Feedbacks e monitorias da INIA" period={period} onPeriodChange={setPeriod}>
       {delivered.isPending ? <div className="flex gap-3 py-5" aria-busy="true" aria-label="Carregando feedbacks de atendimento"><Skeleton className="size-9 shrink-0 rounded-full"/><div className="flex-1 space-y-2"><Skeleton className="h-4 w-40"/><Skeleton className="h-4 w-full"/></div></div> : null}
+      {notices.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os comunicados. <button type="button" className="underline" onClick={() => void notices.refetch()}>Tentar novamente</button></p> : null}
       {delivered.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os feedbacks de atendimento. <button type="button" className="underline" onClick={() => void delivered.refetch()}>Tentar novamente</button></p> : null}
       {delivered.isSuccess && timeline.length === 0 && !hasMore ? (bounds ? <FollowUpPeriodEmpty onClear={() => setPeriod({})}/> : <p className="py-8 text-center text-sm text-muted-foreground">Nenhum feedback por enquanto.</p>) : null}
       {timeline.slice(0, visibleCount).map((entry, index, visible) => {
@@ -149,6 +156,7 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
 
 /** Fonte da aplicação de um item do feed (o tipo faz parte da identidade); `null` = item sem aplicação ("Leitura do dia"). */
 function sourceOfEntry(entry: FollowUpEntry): FeedbackSourceRef | null {
+  if (entry.source === "notice") return null
   if (entry.source === "delivered") return { kind: "INTERACTION_FEEDBACK_DELIVERY", id: entry.item.id }
   return entry.item.acknowledgedAt !== undefined ? { kind: "PUBLISHED_FEEDBACK", id: entry.item.id } : null
 }

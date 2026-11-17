@@ -1,7 +1,7 @@
 import { AiProviderError } from "../../../../shared/application/model-routing/ai-errors.js"
 import type { LlmUsage } from "../../../../shared/application/llm-telemetry.js"
 import type { AdapterTurn } from "../../../../shared/application/model-routing/provider-adapter.js"
-import type { AiExecuteRequest, AiExecuteResult, AiProviderAdapter, AiSpeechRequest, AiSpeechResult, AiStreamExecuteResult, AiStreamResult, DiscoveredModel, FetchLike, ResolvedConnection } from "../../application/provider-adapter-port.js"
+import type { AiEmbedRequest, AiEmbedResult, AiExecuteRequest, AiExecuteResult, AiProviderAdapter, AiSpeechRequest, AiSpeechResult, AiStreamExecuteResult, AiStreamResult, DiscoveredModel, FetchLike, ResolvedConnection } from "../../application/provider-adapter-port.js"
 import { joinUrl, rawRequest, rawStreamRequest, readSse, reportedCostFromHeaders, requestJson, requestJsonWithHeaders, safeJsonParse, testByListing } from "./http.js"
 
 /**
@@ -104,6 +104,37 @@ export function speechRequestBody(providerModelId: string, request: AiSpeechRequ
   return { model: providerModelId, input: request.text, voice: request.voice, response_format: "pcm", ...(request.instructions ? { instructions: request.instructions } : {}) }
 }
 
+/** Resposta de `/embeddings` → vetores na ordem dos textos (pelo `index`), todos com a mesma dimensão. */
+export function parseOpenAiEmbeddings(body: { data?: { index?: number; embedding?: unknown }[]; usage?: ChatUsage; model?: string } | null, expected: number): Float32Array[] {
+  const items = Array.isArray(body?.data) ? body!.data : []
+  const vectors: (Float32Array | undefined)[] = new Array(expected)
+  items.forEach((item, position) => {
+    const index = typeof item.index === "number" ? item.index : position
+    if (index >= 0 && index < expected) vectors[index] = toVector(item.embedding)
+  })
+  return checkedVectors(vectors, expected)
+}
+
+/** Vetor numérico finito, ou undefined (nunca um vetor parcial). */
+export function toVector(values: unknown): Float32Array | undefined {
+  if (!Array.isArray(values) || values.length === 0) return undefined
+  const vector = new Float32Array(values.length)
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index]
+    if (typeof value !== "number" || !Number.isFinite(value)) return undefined
+    vector[index] = value
+  }
+  return vector
+}
+
+export function checkedVectors(vectors: readonly (Float32Array | undefined)[], expected: number): Float32Array[] {
+  const complete = vectors.filter((vector): vector is Float32Array => vector !== undefined)
+  if (complete.length !== expected) throw new AiProviderError("PROVIDER_ERROR", { message: `O provedor de IA devolveu ${complete.length} de ${expected} vetores.` })
+  const dimensions = complete[0]?.length ?? 0
+  if (complete.some((vector) => vector.length !== dimensions)) throw new AiProviderError("PROVIDER_ERROR", { message: "O provedor de IA devolveu vetores de tamanhos diferentes." })
+  return complete
+}
+
 function authHeaders(connection: ResolvedConnection): Record<string, string> {
   return { "content-type": "application/json", ...connection.headers, ...(connection.apiKey ? { authorization: `Bearer ${connection.apiKey}` } : {}) }
 }
@@ -159,6 +190,13 @@ export function createOpenAiChatAdapter(fetchImpl: FetchLike = fetch): AiProvide
       if (pcm16.length < 2) throw new AiProviderError("PROVIDER_ERROR", { message: "O provedor de IA não devolveu áudio." })
       // A resposta é binária: o provider não informa tokens nela — uso desconhecido; custo só se o provider o informar no cabeçalho.
       return { pcm16, sampleRate: OPENAI_SPEECH_SAMPLE_RATE, usage: normalizeOpenAiUsage(undefined), model: providerModelId, durationMs: Date.now() - startedAt, reportedCost: reportedCostFromHeaders(response.headers) }
+    },
+    async embed(connection, providerModelId, request: AiEmbedRequest, timeoutMs): Promise<AiEmbedResult> {
+      const startedAt = Date.now()
+      if (request.texts.length === 0) return { vectors: [], usage: normalizeOpenAiUsage(undefined), model: providerModelId, durationMs: 0 }
+      // O gateway (LiteLLM) informa o custo da chamada também em `/embeddings` (cabeçalho), como no chat.
+      const { body, headers } = await requestJsonWithHeaders<{ data?: { index?: number; embedding?: unknown }[]; usage?: ChatUsage; model?: string }>(fetchImpl, connection, joinUrl(connection.baseUrl, "embeddings"), { method: "POST", headers: authHeaders(connection), body: JSON.stringify({ model: providerModelId, input: request.texts, encoding_format: "float" }) }, timeoutMs)
+      return { vectors: parseOpenAiEmbeddings(body, request.texts.length), usage: normalizeOpenAiUsage(body?.usage), model: typeof body?.model === "string" && body.model ? body.model : providerModelId, durationMs: Date.now() - startedAt, reportedCost: reportedCostFromHeaders(headers) }
     },
     async streamExecute(connection, providerModelId, request: AiExecuteRequest, timeoutMs, onText): Promise<AiStreamExecuteResult> {
       const startedAt = Date.now()

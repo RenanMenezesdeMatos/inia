@@ -455,7 +455,7 @@ describe.skipIf(!ENABLED)("Políticas de acompanhamento e intervenções — per
     expect(registry.every((row) => row.flagged_content === null)).toBe(true)
     expect(registry[0]!.reason).toBeNull()
     await pool.query(`delete from response_compliance_checks where source_ref = $1`, [report])
-    await pool.query(`delete from prohibited_topics where organization_id = $1 and name = $2`, [ORG, TOPIC])
+    await pool.query(`delete from prohibited_topics_all where organization_id = $1 and name = $2`, [ORG, TOPIC])
     vi.unstubAllEnvs()
     expect(await count("interventions", ids.operator)).toBe(interventionsBefore)
     const ok = await generateReportNarrative(pool, { organizationId: ORG, reportId: report }, async () => JSON.stringify({ situation: { text: "A colaboradora ficou no pior quartil oficial nos dois últimos fechamentos.", refs: ["F1"] }, analysis: [{ text: "O resultado oficial sustenta abrir o plano; não há diagnóstico de causa.", refs: ["F1", "S1"] }], hypotheses: [{ text: "Pode haver concentração em atendimentos longos.", refs: ["F1"], toConfirm: "Investigar a composição das chamadas." }], leaderGuidance: [{ action: "A1", text: "Aprove o plano e acompanhe o checkpoint." }] }))

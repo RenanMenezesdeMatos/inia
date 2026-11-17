@@ -12,6 +12,7 @@ import { humanSupportStats } from "../modules/human-support/application/runtime-
 import { HUMAN_SUPPORT_LIMITS } from "../modules/human-support/domain/catalogs.js"
 import { processPendingKnowledgeVersions } from "../modules/knowledge/application/knowledge-versions.js"
 import { processKnowledgeOcrJobs } from "../modules/knowledge/application/knowledge-ocr-jobs.js"
+import { processKnowledgeEmbeddingIndex } from "../modules/knowledge/application/knowledge-embedding-jobs.js"
 import { startWorkflowWorker } from "../modules/workflows/application/workflow-worker.js"
 import { runScheduleCheck } from "../modules/workflows/application/schedule-check.js"
 import { createDataHubContext } from "../modules/data-hub/application/data-hub-context.js"
@@ -134,6 +135,8 @@ function startProcessing() {
     { name: "human-support-dispatch", intervalMs: HUMAN_SUPPORT_LIMITS.dispatchIntervalMs, run: () => dispatchAllOrganizations(pool).then(() => undefined), errorLabel: "Falha na distribuição do apoio com Anjo:" },
     // PDFs digitalizados: lê as páginas sem texto (OCR) num documento por vez no conjunto e grava o texto no rascunho. Ver knowledge-ocr-jobs.ts.
     { name: "knowledge-ocr", intervalMs: 15_000, run: () => processKnowledgeOcrJobs(pool), errorLabel: "Falha na leitura de PDF digitalizado:" },
+    // Busca nas bases em escala: vetores das versões publicadas pelo modelo de embedding da policy (sem policy, nenhuma chamada). Ver knowledge-embedding-jobs.ts.
+    { name: "knowledge-embeddings", intervalMs: 30_000, run: () => processKnowledgeEmbeddingIndex(pool).then(() => undefined), errorLabel: "Falha na indexação das bases (embedding):" },
     // Reports recorrentes: agenda (cria a execução do horário vencido, uma por report × horário), fila (execução com posse e
     // até 3 tentativas) e recuperação da análise da IA (sem refazer a entrega; posse por entrega — uma chamada de IA por vez em
     // qualquer processo, inclusive junto com a análise que a execução faz logo depois de gravar). Ver docs/dev/reports-recorrentes.md.

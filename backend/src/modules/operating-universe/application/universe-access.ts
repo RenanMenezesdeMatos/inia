@@ -45,6 +45,9 @@ export type UniversePerson = { id: string; teamId: string | null; subteamId: str
 
 export function personAllowedByUniverse(rule: PersonUniverseRule, person: UniversePerson, inViewerStructure: boolean): boolean {
   if (!rule.enforced) return true
+  // Liderança vê a PRÓPRIA estrutura (quem responde a ela) em qualquer universo: um supervisor pode liderar equipes B2C e B2B
+  // (resposta do usuário, 16/11). O universo limita o que vem dos PAPÉIS de acesso (Grupo/Subgrupo/organização), não a hierarquia.
+  if (inViewerStructure) return true
   const cross = rule.cross
   if (cross.organizationWide || (person.teamId !== null && cross.teamIds.includes(person.teamId)) || (person.subteamId !== null && cross.subteamIds.includes(person.subteamId))) return true
   if (rule.crossInStructure && inViewerStructure) return true

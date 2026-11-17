@@ -4,7 +4,7 @@ import { Suspense, useState } from "react"
 import { Building2 } from "lucide-react"
 
 import { AnalyticsEmptyState, AnalyticsErrorState } from "@/components/analytics/analytics-states"
-import { StructureFollowUpFeed, type LocalNotice } from "@/components/follow-up/structure-follow-up-feed"
+import { StructureFollowUpFeed } from "@/components/follow-up/structure-follow-up-feed"
 import { FollowupWorkspaceShell } from "@/components/operator/followup-workspace-shell"
 import { OperatorFollowupWorkspace } from "@/components/operator/operator-followup-workspace"
 import { OperatorIniaChat } from "@/components/operator/operator-inia-chat"
@@ -24,7 +24,7 @@ import { NO_ACCESS_CAPABILITIES, profileLinksFor, type AccessCapabilities } from
 
 import { WhereToActCard } from "@/components/leadership/where-to-act-card"
 
-import { SupervisorBroadcastDialog, type BroadcastDraft } from "./broadcast/supervisor-broadcast-dialog"
+import { SupervisorBroadcastDialog } from "./broadcast/supervisor-broadcast-dialog"
 // Abas fora da entrada (Indicadores, Equipe, Calendário, Estrutura) chegam sob demanda; o Acompanhamento — aba de entrada, com o
 // avatar — continua importado direto.
 import { IndicatorsView, PersonStructureView, TeamCalendarView, TeamView } from "./profile-tab-views"
@@ -71,7 +71,6 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
   const { state, update } = useAnalyticsUrlState()
   const contextQuery = useAnalyticsContextQuery(null, initialContext)
   const context = contextQuery.data ?? null
-  const [notices, setNotices] = useState<LocalNotice[]>([])
   // Apoio com Anjo: a área do Anjo é uma aba do perfil para quem tem o papel (capability do backend); o número vem do provedor no shell.
   const anjoWorkspace = useAnjoWorkspace()
   const isAnjo = capabilities.canAttendHumanSupport && anjoWorkspace.available
@@ -81,16 +80,14 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
   // digitado nem a posição das conversas. A conexão do Anjo não depende disso (vive no shell).
   const [anjoOpened, setAnjoOpened] = useState(false)
   if (activeTab === "apoio" && !anjoOpened) setAnjoOpened(true)
-  const leadsStructure = context?.capabilities.peopleTabLabel !== null && context?.capabilities.peopleTabLabel !== undefined
 
-  function publishBroadcast(draft: BroadcastDraft) {
-    setNotices((current) => [{ id: `notice-${Date.now()}`, title: draft.title, contentHtml: draft.contentHtml, audienceLabel: draft.audience === "company" ? "Publicado para toda a empresa" : "Publicado para sua equipe", tags: draft.tags, time: "Agora", createdAt: new Date().toISOString() }, ...current])
-  }
+  // Comunicados: o botão só para quem tem a permissão (o servidor confere de novo e calcula o público).
+  const canPublishCommunications = capabilities.canPublishTeamCommunications || capabilities.canPublishOrganizationCommunications
 
   return (
     <div className="min-h-screen overflow-x-clip bg-muted text-foreground">
       <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
-        <ProfileHeader person={ownHeaderPerson(baseProfile, me)} isOwn attached={!contextQuery.isError || Boolean(context)} actions={leadsStructure ? <SupervisorBroadcastDialog onPublish={publishBroadcast} /> : undefined} />
+        <ProfileHeader person={ownHeaderPerson(baseProfile, me)} isOwn attached={!contextQuery.isError || Boolean(context)} actions={canPublishCommunications ? <SupervisorBroadcastDialog canPublishOrganization={capabilities.canPublishOrganizationCommunications} /> : undefined} />
         <main className="min-h-0">
           {contextQuery.isPending && !context ? <TabsSkeleton /> : null}
           {contextQuery.isError && !context ? <div className="mt-3"><AnalyticsErrorState error={contextQuery.error} onRetry={() => void contextQuery.refetch()} /></div> : null}
@@ -117,7 +114,7 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
                   <NoStructureState />
                 ) : (
                   <FollowupWorkspaceShell
-                    feed={<StructureFollowUpFeed subject={null} description="Feedbacks, resultados de workflow e escalonamentos da sua estrutura" notices={notices} employeeHref={(personId) => employeeProfileHref(personId, "followup")} unacknowledgedOnly={state.ackPending} onUnacknowledgedOnlyChange={(value) => update({ ackPending: value })} highlightItemId={state.item} lead={state.ackPending ? null : <WhereToActCard />} />}
+                    feed={<StructureFollowUpFeed subject={null} description="Feedbacks, resultados de workflow e escalonamentos da sua estrutura" employeeHref={(personId) => employeeProfileHref(personId, "followup")} unacknowledgedOnly={state.ackPending} onUnacknowledgedOnlyChange={(value) => update({ ackPending: value })} highlightItemId={state.item} lead={state.ackPending ? null : <WhereToActCard />} />}
                     renderChat={({ onCollapse, hidden }) => <OperatorIniaChat indicators={EMPTY_INDICATORS} operator={profile} context="team" onCollapse={onCollapse} hidden={hidden} />}
                   />
                 )}

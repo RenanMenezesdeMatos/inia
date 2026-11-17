@@ -30,11 +30,13 @@ describe("universo de atuação — domínio", () => {
     const person = (operatingUniverse: string | null, teamId = "X", subteamId = "Y") => ({ id: "p", teamId, subteamId, operatingUniverse })
     const none = { organizationWide: false, teamIds: [], subteamIds: [] }
     const coordB2B = { enforced: true, own: "B2B" as const, cross: none, crossInStructure: false }
-    expect([personAllowedByUniverse(coordB2B, person("B2B"), true), personAllowedByUniverse(coordB2B, person("B2C"), true), personAllowedByUniverse(coordB2B, person(null), true)]).toEqual([true, false, false])
+    // Pelo PAPEL (fora da própria estrutura): só o universo do viewer; pendente fica fora.
+    expect([personAllowedByUniverse(coordB2B, person("B2B"), false), personAllowedByUniverse(coordB2B, person("B2C"), false), personAllowedByUniverse(coordB2B, person(null), false)]).toEqual([true, false, false])
+    // Na PRÓPRIA estrutura (hierarquia): qualquer universo — supervisor pode liderar equipes B2B e B2C.
+    expect([personAllowedByUniverse(coordB2B, person("B2C"), true), personAllowedByUniverse(coordB2B, person(null), true)]).toEqual([true, true])
     const groupX = { ...coordB2B, cross: { ...none, teamIds: ["X"] } }
     expect([personAllowedByUniverse(groupX, person("B2C"), false), personAllowedByUniverse(groupX, person("B2C", "Z", "W"), false)]).toEqual([true, false])
-    const myStructure = { ...coordB2B, crossInStructure: true }
-    expect([personAllowedByUniverse(myStructure, person("B2X"), true), personAllowedByUniverse(myStructure, person("B2X"), false)]).toEqual([true, false])
+
     expect(personAllowedByUniverse({ ...coordB2B, enforced: false }, person("B2C"), false)).toBe(true)
   })
 })

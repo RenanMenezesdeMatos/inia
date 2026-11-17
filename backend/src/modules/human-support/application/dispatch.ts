@@ -10,6 +10,7 @@ import { effectiveCapacity } from "../domain/presence.js"
 import { anjosInServiceCount, enabledWith, loadScopeStates, loadSettings, queueDeadlineFor } from "./eligibility.js"
 import { bumpInboxVersions } from "./inbox-versions.js"
 import { tryOrganizationLock, type Queryable } from "./locks.js"
+import { loadAnjoUniverseGate } from "./universe-gate.js"
 import { endIfNoAnjoInService } from "./no-anjo.js"
 import { humanSupportStats, recordDeadlineLag } from "./runtime-stats.js"
 import { appendSystemMessage, endAttendance, endRequest, recordPresenceEvent, recordRequestEvent } from "./transitions.js"
@@ -33,7 +34,7 @@ import { appendSystemMessage, endAttendance, endRequest, recordPresenceEvent, re
  *     estavam em serviço no escopo nesse instante (`anjos_in_service_at_end`: zero = encerrado sem Anjo logado);
  *  6. Anjo sem o papel em nenhum escopo → Indisponível (ROLE_REVOKED);
  *  7. cada pedido da fila, por ordem de chegada, vai ao Anjo que pode receber (Disponível, conectado, com vaga e SEM pausa ou
- *     indisponibilidade programada) com menos atendimentos e, no empate, ao que recebeu
+ *     indisponibilidade programada; com o universo de atuação ativado, do universo do operador ou com a permissão de todos) com menos atendimentos e, no empate, ao que recebeu
  *     há mais tempo — sem aceite (D2). Um savepoint por pedido: a falha de um vai para o log e não para os outros.
  * Depois do commit, o registro LGPD da leitura da cópia pelo Anjo (falha não desfaz a atribuição).
  */
@@ -188,7 +189,7 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
               (p.lease_until is null or p.lease_until < statement_timestamp() - make_interval(secs => $2::int)) lost,
               coalesce((select e.cause = 'SESSION_ENDED' from human_support_presence_events e
                          where e.organization_id = a.organization_id and e.person_id = a.anjo_person_id and e.cause in ('CONNECTION_LOST', 'SESSION_ENDED', 'CONNECTION_RESTORED')
-                         order by e.id desc limit 1), false) session_ended
+                         order by e.occurred_at desc, e.id desc limit 1), false) session_ended
          from human_support_attendances a
          join human_support_requests r on r.id = a.request_id
          left join human_support_agent_presence p on p.organization_id = a.organization_id and p.person_id = a.anjo_person_id
@@ -230,7 +231,7 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
               (select m.author_kind from human_support_messages m where m.request_id = a.request_id and m.attendance_id = a.id and m.author_kind <> 'SYSTEM' order by m.seq desc limit 1) last_author
          from human_support_attendances a
          join human_support_requests r on r.id = a.request_id
-         left join human_support_group_response_times g on g.organization_id = r.organization_id and g.team_id = r.team_id
+         left join human_support_group_response_times g on g.organization_id = r.organization_id and g.team_id = r.team_id and g.custom
         where a.organization_id = $1 and a.status = 'ACTIVE'
           and a.last_human_message_at < statement_timestamp() - make_interval(mins => least(coalesce(g.operator_requeue_minutes, $2), coalesce(g.anjo_requeue_minutes, $4))::int)
         order by a.request_id`,
@@ -273,7 +274,7 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
   const notReturned = (
     await client.query<{ id: string; operator_person_id: string }>(
       `select r.id, r.operator_person_id from human_support_requests r
-         left join human_support_group_response_times g on g.organization_id = r.organization_id and g.team_id = r.team_id
+         left join human_support_group_response_times g on g.organization_id = r.organization_id and g.team_id = r.team_id and g.custom
         where r.organization_id = $1 and r.status = 'AWAITING_OPERATOR' and r.awaiting_operator_since < statement_timestamp() - make_interval(mins => coalesce(g.operator_close_minutes, $2)::int)
         order by r.id for update of r`,
       [organizationId, orgTimes.operatorCloseMinutes],
@@ -294,11 +295,16 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
   const unresponsive = (
     await client.query<{ person_id: string; status: PresenceStatus; pause_reason: PauseReason | null }>(
       `with owing as (
+         -- Dois ramos disjuntos (em andamento × perdido por falta de resposta), cada um pelo seu índice (open e anjo_silent, 203),
+         -- em vez de um OR que lia todos os atendimentos da organização.
          select a.anjo_person_id person_id, a.last_human_message_at owed_from, a.status, a.ended_at
            from human_support_attendances a
-          where a.organization_id = $1
-            and ((a.status = 'ACTIVE' and coalesce((select m.author_kind from human_support_messages m where m.request_id = a.request_id and m.attendance_id = a.id and m.author_kind <> 'SYSTEM' order by m.seq desc limit 1), 'NONE') <> 'ANJO')
-              or (a.end_cause = 'ANJO_SILENT' and a.ended_at > statement_timestamp() - make_interval(mins => $2::int * 2)))
+          where a.organization_id = $1 and a.status = 'ACTIVE'
+            and coalesce((select m.author_kind from human_support_messages m where m.request_id = a.request_id and m.attendance_id = a.id and m.author_kind <> 'SYSTEM' order by m.seq desc limit 1), 'NONE') <> 'ANJO'
+         union all
+         select a.anjo_person_id, a.last_human_message_at, a.status, a.ended_at
+           from human_support_attendances a
+          where a.organization_id = $1 and a.end_cause = 'ANJO_SILENT' and a.ended_at > statement_timestamp() - make_interval(mins => $2::int * 2)
        ), alive as (
          select o.person_id,
                 greatest((select max(m.occurred_at) from human_support_messages m where m.organization_id = $1 and m.author_kind = 'ANJO' and m.author_person_id = o.person_id),
@@ -399,10 +405,14 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
         )
       ).rows.map((row) => [row.person_id, { status: row.status, connected: row.connected === true, capacity: effectiveCapacity(row.max_concurrent === null ? null : Number(row.max_concurrent), settings.defaultCapacity), lastAssignedAt: row.last_assigned_at?.getTime() ?? null, active: row.active_count, scheduled: row.scheduled === true }]),
     )
+    // Universo de atuação (exigência ativada): só Anjos do universo do operador ou com a permissão de todos cobrindo o lugar.
+    const universeGate = await loadAnjoUniverseGate(client, organizationId)
     for (const request of queue) {
-      const candidates = (coverage.get(`${request.team_id ?? ""}:${request.subteam_id ?? ""}`) ?? [])
+      const place = { teamId: request.team_id, subteamId: request.subteam_id }
+      const covering = (coverage.get(`${request.team_id ?? ""}:${request.subteam_id ?? ""}`) ?? [])
         // Nunca o próprio operador; nem o Anjo de quem a coordenação tirou este pedido (devolução à fila, migration 190).
         .filter((personId) => personId !== request.operator_person_id && personId !== request.avoid_anjo_person_id)
+      const candidates = (await universeGate.allowed(place, request.operator_person_id, covering))
         .flatMap((personId) => {
           const state = presence.get(personId)
           // Quem programou pausa ou indisponibilidade termina os atendimentos que tem e não recebe novos.

@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest"
 import { orchestratorForTeam, type InteractiveOrchestratorScope } from "../../assistant/application/resolve-orchestrator.js"
 import { loadViewerScope } from "../../performance-analytics/application/viewer-scope.js"
 import { InMemoryAnalyticsRepository } from "../../performance-analytics/testing/in-memory-analytics-repository.js"
-import { L, leaderUser, leadershipOrg } from "../testing/leadership-fixture.js"
-import { buildProcessConsultationToolset, parseProcessClarificationScope, PROCESS_CLARIFICATION_NOTE, PROCESS_TOOL, processScopeOf, reachableProcessOrchestrators, structureGroupsOf, type ProcessConsultation, type ProcessScope } from "./process-consultation.js"
+import { L, leaderUser, leadershipOrg, operatorsOf } from "../testing/leadership-fixture.js"
+import { buildProcessConsultationToolset, parseProcessClarificationScope, PROCESS_CLARIFICATION_NOTE, PROCESS_TOOL, processOrchestratorUniverses, processScopeOf, reachableProcessOrchestrators, structureGroupsOf, type ProcessConsultation, type ProcessScope } from "./process-consultation.js"
+import type { PersonUniverseRule } from "../../operating-universe/application/universe-access.js"
 import { resolveStructureReference } from "./references.js"
 
 /**
@@ -135,5 +136,58 @@ describe("Grupos da estrutura de quem lidera", () => {
     expect(processScope.groupsOfStructure("Sônia")).toEqual({ kind: "OK", teamIds: [L.team] })
     // A equipe de outra gerência não está no escopo de Gabriel: mesma resposta de inexistente.
     expect(processScope.groupsOfStructure("Hugo").kind).toBe("NOT_FOUND")
+  })
+})
+
+describe("universo de atuação na consulta de processo (U4-01)", () => {
+  const NO_CROSS = { organizationWide: false, teamIds: [], subteamIds: [] }
+  /** Gabriel (B2B) lidera Sara, cujos operadores passam a atuar no Grupo "B2C · Cobrança" (B2C); os demais são B2B do "Atendimento". */
+  async function scopeWith(rule: PersonUniverseRule | undefined) {
+    const repository = new InMemoryAnalyticsRepository(leadershipOrg())
+    const scope = await loadViewerScope(repository, leaderUser(L.gabriel, "MANAGER"))
+    const sara = new Set(operatorsOf(1))
+    for (const node of scope.nodes.values()) {
+      if (node.role !== "OPERATOR") continue
+      if (sara.has(node.id)) Object.assign(node, { teamId: "team-b2c", teamName: "B2C · Cobrança", operatingUniverse: "B2C" })
+      else node.operatingUniverse = "B2B"
+    }
+    return rule ? { ...scope, universe: rule } : scope
+  }
+
+  it("liderança consulta os universos que LIDERA (própria estrutura), mesmo de outro universo do cadastro — nunca um universo que não alcança", async () => {
+    // Gabriel (B2B) lidera a equipe B2C da Sara: supervisor/gerente pode liderar B2C e B2B (decisão do usuário, 16/11/2026).
+    const scope = await scopeWith({ enforced: true, own: "B2B", cross: NO_CROSS, crossInStructure: false })
+    expect(structureGroupsOf(scope, null).map((group) => [group.name, group.universes])).toEqual([["Atendimento", ["B2B"]], ["B2C · Cobrança", ["B2C"]]])
+    expect(processScopeOf(scope, null).orchestratorUniverses).toEqual(["B2B", "B2C"])
+    // B2X não é liderado nem é do cadastro: o Orquestrador B2X não é alcançável.
+    const orchestrators: InteractiveOrchestratorScope[] = [{ id: "orch-b2x", name: "INIA B2X", scopeType: "ALL_TEAMS", teamId: null, operatingUniverse: "B2X" }]
+    expect(reachableProcessOrchestrators(processScopeOf(scope, null), orchestrators)).toEqual([])
+  })
+
+  it("quem alcança todos os universos vê os dois Grupos, e cada Grupo cai no Orquestrador do SEU universo", async () => {
+    const scope = await scopeWith({ enforced: true, own: "B2B", cross: NO_CROSS, crossInStructure: true })
+    const processScope = processScopeOf(scope, null)
+    expect(processScope.groups.map((group) => [group.name, group.universes])).toEqual([["Atendimento", ["B2B"]], ["B2C · Cobrança", ["B2C"]]])
+    expect(processScope.orchestratorUniverses).toEqual(["B2B", "B2C", "B2X"])
+    const orchestrators: InteractiveOrchestratorScope[] = [
+      { id: "orch-b2c", name: "INIA B2C", scopeType: "ALL_TEAMS", teamId: null, operatingUniverse: "B2C" },
+      { id: "orch-b2b", name: "INIA B2B", scopeType: "ALL_TEAMS", teamId: null, operatingUniverse: "B2B" },
+    ]
+    expect(reachableProcessOrchestrators(processScope, orchestrators).map((item) => item.id).sort()).toEqual(["orch-b2b", "orch-b2c"])
+    const consulted: ProcessConsultation[] = []
+    const toolset = buildProcessConsultationToolset({ scope: processScope, orchestrators, consult: async (consultation) => (consulted.push(consultation), { text: "ok", trace: {} }) })
+    await toolset!.execute(PROCESS_TOOL, { pergunta: "Como funciona a segunda via?", grupo: "Atendimento" })
+    expect(consulted[0]!.orchestrator.id).toBe("orch-b2b")
+  })
+
+  it("sem a exigência: sem filtro; liderança sem universo no cadastro: os universos que lidera", async () => {
+    const off = await scopeWith(undefined)
+    expect(structureGroupsOf(off, null).map((group) => group.name)).toEqual(["Atendimento", "B2C · Cobrança"])
+    expect(structureGroupsOf(off, null)[0]).not.toHaveProperty("universes")
+    expect(processOrchestratorUniverses(off)).toBeNull()
+    expect(processOrchestratorUniverses(await scopeWith({ enforced: false, own: "B2B", cross: NO_CROSS, crossInStructure: false }))).toBeNull()
+    // Liderança não precisa de universo no cadastro: alcança os universos que lidera.
+    expect(processOrchestratorUniverses(await scopeWith({ enforced: true, own: null, cross: NO_CROSS, crossInStructure: false }))).toEqual(["B2B", "B2C"])
+    expect(processOrchestratorUniverses(await scopeWith({ enforced: true, own: "B2C", cross: { organizationWide: false, teamIds: ["x"], subteamIds: [] }, crossInStructure: false }))).toEqual(["B2B", "B2C", "B2X"])
   })
 })

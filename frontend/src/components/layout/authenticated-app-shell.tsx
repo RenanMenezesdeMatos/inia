@@ -112,7 +112,7 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
       ) : null}
 
       {/* Estado do Apoio com Anjo do operador: UMA chamada por navegador (aba líder), lida pelo chat, pelo selo e pela sala. */}
-      <HumanSupportStateProvider enabled={Boolean(user)} profileHref={shell?.profileHref ?? null} onNavigate={navigateTo}>
+      <HumanSupportStateProvider enabled={Boolean(user)} accountId={user?.sub ?? null} profileHref={shell?.profileHref ?? null} onNavigate={navigateTo}>
         <main className="min-h-[calc(100vh-3.5rem)]">
           {children}
         </main>

@@ -137,6 +137,8 @@ export const aiUseCaseSchema = z.object({
   internal: z.boolean().optional().default(false),
   /** Síntese de voz: o modelo precisa de uma voz cadastrada. */
   requiresSpeechVoice: z.boolean().optional().default(false),
+  /** Natureza do modelo que atende (ausente = Generativo; Embedding = busca nas bases). */
+  modelKind: z.enum(["GENERATIVE", "EMBEDDING"]).optional().default("GENERATIVE"),
   notes: z.string().optional(),
 })
 export type AiUseCase = z.infer<typeof aiUseCaseSchema>
@@ -418,10 +420,12 @@ export function supportsCapability(model: Pick<AiModel, "capabilities">, capabil
 }
 
 /** Por que o modelo NÃO pode atender o Use Case — null = compatível (mesma ordem do backend). */
-export function modelIncompatibility(model: AiModel, requiredCapabilities: readonly string[], requiresSpeechVoice = false): string | null {
+export function modelIncompatibility(model: AiModel, requiredCapabilities: readonly string[], requiresSpeechVoice = false, modelKind: "GENERATIVE" | "EMBEDDING" = "GENERATIVE"): string | null {
   if (!model.connectionEnabled) return `Conexão "${model.connectionName}" desabilitada`
   if (!model.enabled) return "Modelo desabilitado"
-  if (!ROUTABLE_MODEL_KINDS.includes(model.kind)) return `Modelo do tipo ${AI_MODEL_KIND_LABELS[model.kind] ?? model.kind} não atende requisições generativas`
+  if (modelKind === "EMBEDDING") {
+    if (model.kind !== "EMBEDDING") return `Modelo do tipo ${AI_MODEL_KIND_LABELS[model.kind] ?? model.kind} não gera embeddings (cadastre o modelo como Embedding)`
+  } else if (!ROUTABLE_MODEL_KINDS.includes(model.kind)) return `Modelo do tipo ${AI_MODEL_KIND_LABELS[model.kind] ?? model.kind} não atende requisições generativas`
   const missing = requiredCapabilities.filter((capability) => !supportsCapability(model, capability))
   if (missing.length > 0) return `Capacidade ausente ou não declarada: ${missing.map((capability) => AI_CAPABILITY_LABELS[capability as AiCapability] ?? capability).join(", ")}`
   if (requiresSpeechVoice && !model.speech) return "Voz não configurada no modelo (Modelos › Configurar)"

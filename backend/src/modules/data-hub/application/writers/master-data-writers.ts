@@ -11,6 +11,7 @@ import { bool, countUpsert, dedupeByKey, emptyApply, reject, str, type ApplyResu
 import { accessDisabledWarnings, credentialNeedsNewCustody, disableAccountsFromSource, enforceSourceCustody, linkByAccountEmail, linkedWarnings, markFirstApplicationCustody, pendingCustodyWarnings, placementBefore, possibleDuplicateWarnings, preRegisteredByMatricula } from "./person-identity.js"
 import { isUniverseEnforced } from "../../../operating-universe/application/universe-access.js"
 import { parseOperatingUniverse } from "../../../operating-universe/domain/operating-universe.js"
+import { personFieldsWrittenBy } from "../../domain/person-field-control.js"
 
 /**
  * Writers de dado mestre. Regras compartilhadas:
@@ -21,7 +22,15 @@ import { parseOperatingUniverse } from "../../../operating-universe/domain/opera
 // ---------------------------------------------------------------------------------------------
 // GROUPS → teams
 // ---------------------------------------------------------------------------------------------
-type PreparedGroup = ValidRecord & { externalCode: string; name: string; operationId: string }
+type PreparedGroup = ValidRecord & { externalCode: string; name: string; operationId: string; operatingUniverse: string | null; operatingUniverseEffectiveFrom: string | null }
+
+/** Universo de Grupo/Subgrupo de uma linha: ausente = mantém; código fora de B2B/B2C/B2X = quarentena (nunca adivinhado). */
+function unitUniverse(record: ValidRecord): { universe: string | null; effectiveFrom: string | null; rejection: Rejection | null } {
+  const raw = str(record.record, "operatingUniverse")
+  const universe = parseOperatingUniverse(raw)
+  if (universe === "INVALID") return { universe: null, effectiveFrom: null, rejection: reject(record, "DATA_INVALID_ENUM", "operatingUniverse", `Universo de atuação "${raw}" não é B2B, B2C nem B2X — mapeie o valor da fonte com "Mapear códigos".`) }
+  return { universe, effectiveFrom: str(record.record, "operatingUniverseEffectiveFrom"), rejection: null }
+}
 
 export const groupsWriter: DomainWriter<PreparedGroup> = {
   contractKey: "GROUPS",
@@ -37,19 +46,28 @@ export const groupsWriter: DomainWriter<PreparedGroup> = {
         rejections.push(reject(record, "DATA_REFERENCE_NOT_FOUND", "operationName", operationName ? `Operação "${operationName}" não existe.` : "A organização não tem nenhuma Operação cadastrada."))
         continue
       }
-      ready.push({ ...record, externalCode: str(record.record, "externalCode")!, name: str(record.record, "name")!, operationId: operation.id })
+      const universe = unitUniverse(record)
+      if (universe.rejection) {
+        rejections.push(universe.rejection)
+        continue
+      }
+      ready.push({ ...record, externalCode: str(record.record, "externalCode")!, name: str(record.record, "name")!, operationId: operation.id, operatingUniverse: universe.universe, operatingUniverseEffectiveFrom: universe.effectiveFrom })
     }
     return { ready, rejections }
   },
   async apply(context, client, batch) {
     if (batch.length === 0) return emptyApply()
     const result = await client.query<{ id: string; external_code: string; inserted: boolean }>(
-      `insert into teams (organization_id, operation_id, name, external_code)
-       select $1, operation_id, name, external_code from unnest($2::uuid[], $3::text[], $4::text[]) as t(operation_id, name, external_code)
-       on conflict (organization_id, external_code) where external_code is not null do update set name = excluded.name, operation_id = excluded.operation_id
+      `insert into teams (organization_id, operation_id, name, external_code, operating_universe, operating_universe_effective_from)
+       select $1, operation_id, name, external_code, operating_universe, effective_from
+         from unnest($2::uuid[], $3::text[], $4::text[], $5::text[], $6::date[]) as t(operation_id, name, external_code, operating_universe, effective_from)
+       on conflict (organization_id, external_code) where external_code is not null do update set name = excluded.name, operation_id = excluded.operation_id,
+         operating_universe = coalesce(excluded.operating_universe, teams.operating_universe),
+         operating_universe_effective_from = case when excluded.operating_universe is not null then excluded.operating_universe_effective_from else teams.operating_universe_effective_from end
        where teams.name is distinct from excluded.name or teams.operation_id is distinct from excluded.operation_id
+          or teams.operating_universe is distinct from coalesce(excluded.operating_universe, teams.operating_universe)
        returning id, external_code, (xmax = 0) inserted`,
-      [context.organizationId, batch.map((row) => row.operationId), batch.map((row) => row.name), batch.map((row) => row.externalCode)],
+      [context.organizationId, batch.map((row) => row.operationId), batch.map((row) => row.name), batch.map((row) => row.externalCode), batch.map((row) => row.operatingUniverse), batch.map((row) => row.operatingUniverseEffectiveFrom)],
     )
     return withLineage("teams", batch, (row) => row.externalCode, result.rows.map((row) => ({ key: row.external_code, id: row.id, inserted: row.inserted })))
   },
@@ -58,7 +76,7 @@ export const groupsWriter: DomainWriter<PreparedGroup> = {
 // ---------------------------------------------------------------------------------------------
 // SUBGROUPS → subteams
 // ---------------------------------------------------------------------------------------------
-type PreparedSubgroup = ValidRecord & { externalCode: string; name: string; teamId: string }
+type PreparedSubgroup = ValidRecord & { externalCode: string; name: string; teamId: string; operatingUniverse: string | null; operatingUniverseEffectiveFrom: string | null }
 
 export const subgroupsWriter: DomainWriter<PreparedSubgroup> = {
   contractKey: "SUBGROUPS",
@@ -74,19 +92,28 @@ export const subgroupsWriter: DomainWriter<PreparedSubgroup> = {
         rejections.push(reject(record, "DATA_GROUP_NOT_FOUND", "groupExternalCode", `Grupo "${groupCode}" não existe na INIA.`))
         continue
       }
-      ready.push({ ...record, externalCode: str(record.record, "externalCode")!, name: str(record.record, "name")!, teamId: team.id })
+      const universe = unitUniverse(record)
+      if (universe.rejection) {
+        rejections.push(universe.rejection)
+        continue
+      }
+      ready.push({ ...record, externalCode: str(record.record, "externalCode")!, name: str(record.record, "name")!, teamId: team.id, operatingUniverse: universe.universe, operatingUniverseEffectiveFrom: universe.effectiveFrom })
     }
     return { ready, rejections }
   },
   async apply(context, client, batch) {
     if (batch.length === 0) return emptyApply()
     const result = await client.query<{ id: string; external_code: string; inserted: boolean }>(
-      `insert into subteams (organization_id, team_id, name, external_code)
-       select $1, team_id, name, external_code from unnest($2::uuid[], $3::text[], $4::text[]) as t(team_id, name, external_code)
-       on conflict (organization_id, external_code) where external_code is not null do update set name = excluded.name, team_id = excluded.team_id
+      `insert into subteams (organization_id, team_id, name, external_code, operating_universe, operating_universe_effective_from)
+       select $1, team_id, name, external_code, operating_universe, effective_from
+         from unnest($2::uuid[], $3::text[], $4::text[], $5::text[], $6::date[]) as t(team_id, name, external_code, operating_universe, effective_from)
+       on conflict (organization_id, external_code) where external_code is not null do update set name = excluded.name, team_id = excluded.team_id,
+         operating_universe = coalesce(excluded.operating_universe, subteams.operating_universe),
+         operating_universe_effective_from = case when excluded.operating_universe is not null then excluded.operating_universe_effective_from else subteams.operating_universe_effective_from end
        where subteams.name is distinct from excluded.name or subteams.team_id is distinct from excluded.team_id
+          or subteams.operating_universe is distinct from coalesce(excluded.operating_universe, subteams.operating_universe)
        returning id, external_code, (xmax = 0) inserted`,
-      [context.organizationId, batch.map((row) => row.teamId), batch.map((row) => row.name), batch.map((row) => row.externalCode)],
+      [context.organizationId, batch.map((row) => row.teamId), batch.map((row) => row.name), batch.map((row) => row.externalCode), batch.map((row) => row.operatingUniverse), batch.map((row) => row.operatingUniverseEffectiveFrom)],
     )
     return withLineage("subteams", batch, (row) => row.externalCode, result.rows.map((row) => ({ key: row.external_code, id: row.id, inserted: row.inserted })))
   },
@@ -109,8 +136,12 @@ type PreparedEmployee = ValidRecord & {
   employmentStatus: { status: EmploymentStatus; rawStatus: string; effectiveFrom: string | null; sourceUpdatedAt: string | null } | null
   /** Capital operacional (catálogo das 27); null = não informada (mantém a atual). */
   operationalCapitalCode: string | null
-  /** Universo de atuação (B2B/B2C/B2X); null = não informado (mantém o atual). */
+  /**
+   * EXCEÇÃO de universo da pessoa (B2B/B2C/B2X). Com a coluna mapeada no feed, null = sem exceção (herda do Grupo/Subgrupo — limpa a
+   * exceção atual); sem a coluna mapeada, o valor é ignorado e a exceção atual fica (ver `employeeUniverseMapped`).
+   */
   operatingUniverse: string | null
+  operatingUniverseEffectiveFrom: string | null
 }
 
 async function resolveStructureRefs(context: WriteContext, records: ValidRecord[]) {
@@ -139,10 +170,14 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
     const { unique, duplicates } = dedupeByKey(records, (record) => String(record.record.externalEmployeeId))
     const refs = await resolveStructureRefs(context, unique)
     const managers = await resolveEmployees(context.ctx.db, context.organizationId, unique.map((record) => str(record.record, "reportsToExternalId")))
-    // Universo de atuação: com a exigência ativa, pessoa NOVA (matrícula que a INIA ainda não conhece) sem universo vai para a quarentena;
-    // quem já existe e chega sem o campo mantém o atual (regulariza-se mapeando o campo ou em Pessoas).
+    // Universo de atuação: com a exigência ativa, OPERADOR que ficaria sem universo resolvido vai para a quarentena — o novo sem exceção
+    // nem Grupo/Subgrupo com universo, e o que já existe quando a carga muda o lugar (Grupo/Subgrupo), o nível ou tira a exceção dele e
+    // o resultado fica sem universo (o cadastro atual dele continua). Operador já pendente cuja linha não muda nada disso segue passando
+    // (regulariza-se classificando o Grupo ou em Pessoas).
     const universeEnforced = await isUniverseEnforced(context.ctx.db, context.organizationId)
-    const known = universeEnforced ? await resolveEmployees(context.ctx.db, context.organizationId, unique.map((record) => str(record.record, "externalEmployeeId"))) : new Map()
+    const universeMapped = employeeUniverseMapped(context)
+    const known = universeEnforced ? await loadKnownPlacement(context.ctx.db, context.organizationId, unique.map((record) => str(record.record, "externalEmployeeId"))) : new Map<string, KnownPlacement>()
+    const unitUniverses = universeEnforced ? await loadUnitUniverses(context.ctx.db, context.organizationId) : null
     const inBatch = new Set(unique.map((record) => str(record.record, "externalEmployeeId")!))
     const ready: PreparedEmployee[] = []
     const rejections: Rejection[] = [...duplicates]
@@ -185,9 +220,22 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
         rejections.push(reject(record, "DATA_INVALID_ENUM", "operatingUniverse", `Universo de atuação "${rawUniverse}" não é B2B, B2C nem B2X — mapeie o valor da fonte com "Mapear códigos".`))
         continue
       }
-      if (universeEnforced && universe === null && !known.has(matricula)) {
-        rejections.push(reject(record, "DATA_OPERATING_UNIVERSE_REQUIRED", "operatingUniverse", "Colaborador novo sem universo de atuação (B2B, B2C ou B2X). A organização exige o universo: mapeie o campo na carga."))
-        continue
+      // Universo resolvido depois da carga = exceção → Subgrupo → Grupo (mesmo cálculo do banco, com o lugar que o upsert vai gravar).
+      // Liderança não precisa de universo (vê a própria estrutura).
+      if (universeEnforced && unitUniverses && str(record.record, "role") === "OPERATOR") {
+        const existing = known.get(matricula)
+        const nextOverride = existing && !universeMapped ? existing.override : universe
+        const nextTeamId = pair.teamId ?? existing?.teamId ?? null
+        const nextSubteamId = pair.teamId !== null ? pair.subteamId : (pair.subteamId ?? existing?.subteamId ?? null)
+        const resolved = nextOverride ?? (nextSubteamId ? unitUniverses.subteams.get(nextSubteamId) : undefined) ?? (nextTeamId ? unitUniverses.teams.get(nextTeamId) : undefined) ?? null
+        if (resolved === null && !existing) {
+          rejections.push(reject(record, "DATA_OPERATING_UNIVERSE_REQUIRED", "operatingUniverse", "Operador novo sem universo de atuação: o Grupo/Subgrupo dele não tem universo na carga de Grupos e a linha não traz exceção. Informe o universo do Grupo."))
+          continue
+        }
+        if (resolved === null && existing && (existing.role !== "OPERATOR" || existing.teamId !== nextTeamId || existing.subteamId !== nextSubteamId || existing.override !== nextOverride)) {
+          rejections.push(reject(record, "DATA_OPERATING_UNIVERSE_REQUIRED", "operatingUniverse", "Operador ficaria sem universo de atuação: o Grupo/Subgrupo de destino não tem universo na carga de Grupos e a linha não traz exceção. O cadastro atual foi mantido — informe o universo do Grupo ou a exceção da pessoa."))
+          continue
+        }
       }
       ready.push({
         ...record,
@@ -204,6 +252,7 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
         employmentStatus: rawStatus && normalizedStatus ? { status: normalizedStatus, rawStatus, effectiveFrom: str(record.record, "statusEffectiveFrom"), sourceUpdatedAt: str(record.record, "sourceUpdatedAt") } : null,
         operationalCapitalCode: capital,
         operatingUniverse: universe,
+        operatingUniverseEffectiveFrom: str(record.record, "operatingUniverseEffectiveFrom"),
       })
     }
     return { ready, rejections }
@@ -224,11 +273,11 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
     // Passo 1: dados do próprio colaborador (grupo/subgrupo/cargo/admissão só sobrescrevem quando informados).
     const upsert = await client.query<{ id: string; matricula: string; inserted: boolean }>(
       `with input as (
-         select * from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::uuid[], $7::uuid[], $8::date[], $9::boolean[], $10::text[], $11::text[])
-           as t(matricula, name, role, job_title, team_id, subteam_id, hired_at, active, operational_capital_code, operating_universe)
+         select * from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::uuid[], $7::uuid[], $8::date[], $9::boolean[], $10::text[], $11::text[], $12::date[])
+           as t(matricula, name, role, job_title, team_id, subteam_id, hired_at, active, operational_capital_code, operating_universe_override, universe_effective_from)
        )
-       insert into people (organization_id, matricula, name, role, job_title, team_id, subteam_id, hired_at, active, operational_capital_code, operating_universe)
-       select $1, matricula, name, role, job_title, team_id, subteam_id, hired_at, coalesce(active, true), operational_capital_code, operating_universe from input
+       insert into people (organization_id, matricula, name, role, job_title, team_id, subteam_id, hired_at, active, operational_capital_code, operating_universe_override, operating_universe_effective_from)
+       select $1, matricula, name, role, job_title, team_id, subteam_id, hired_at, coalesce(active, true), operational_capital_code, case when $13::boolean then operating_universe_override end, universe_effective_from from input
        on conflict (organization_id, matricula) do update set
          name = excluded.name,
          role = excluded.role,
@@ -238,7 +287,9 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
          hired_at = coalesce(excluded.hired_at, people.hired_at),
          active = coalesce((select i.active from input i where i.matricula = excluded.matricula), people.active),
          operational_capital_code = coalesce(excluded.operational_capital_code, people.operational_capital_code),
-         operating_universe = coalesce(excluded.operating_universe, people.operating_universe)
+         -- Coluna do universo mapeada no feed: o valor da linha vale, inclusive vazio (= sem exceção, herda do Grupo); não mapeada: mantém.
+         operating_universe_override = case when $13::boolean then excluded.operating_universe_override else people.operating_universe_override end,
+         operating_universe_effective_from = case when $13::boolean and excluded.operating_universe_override is distinct from people.operating_universe_override then excluded.operating_universe_effective_from else people.operating_universe_effective_from end
        where people.name is distinct from excluded.name
           or people.role is distinct from excluded.role
           or people.job_title is distinct from coalesce(excluded.job_title, people.job_title)
@@ -247,9 +298,9 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
           or people.hired_at is distinct from coalesce(excluded.hired_at, people.hired_at)
           or people.active is distinct from coalesce((select i.active from input i where i.matricula = excluded.matricula), people.active)
           or people.operational_capital_code is distinct from coalesce(excluded.operational_capital_code, people.operational_capital_code)
-          or people.operating_universe is distinct from coalesce(excluded.operating_universe, people.operating_universe)
+          or ($13::boolean and people.operating_universe_override is distinct from excluded.operating_universe_override)
        returning id, matricula, (xmax = 0) inserted`,
-      [org, batch.map((r) => r.matricula), batch.map((r) => r.name), batch.map((r) => r.role), batch.map((r) => r.jobTitle), batch.map((r) => r.teamId), batch.map((r) => r.subteamId), batch.map((r) => r.hiredAt), batch.map((r) => r.active), batch.map((r) => r.operationalCapitalCode), batch.map((r) => r.operatingUniverse)],
+      [org, batch.map((r) => r.matricula), batch.map((r) => r.name), batch.map((r) => r.role), batch.map((r) => r.jobTitle), batch.map((r) => r.teamId), batch.map((r) => r.subteamId), batch.map((r) => r.hiredAt), batch.map((r) => r.active), batch.map((r) => r.operationalCapitalCode), batch.map((r) => r.operatingUniverse), batch.map((r) => r.operatingUniverseEffectiveFrom), employeeUniverseMapped(context)],
     )
     // Passo 1b: credencial. Desligada pela base = conta desabilitada (reativar não devolve a senha nem os tokens antigos — achado
     // AUTH-7); pessoa cadastrada à mão (ligada pelo e-mail ou pré-cadastrada com a matrícula) que a base pôs em outro Grupo/nível
@@ -807,4 +858,31 @@ export function withLineage<T extends ValidRecord>(entityType: string, batch: T[
     result.lineage.push({ entityType, entityId: hit.id, action: hit.inserted ? "INSERTED" : "UPDATED", recordNumber: row.recordNumber, sourceRecordKey: row.sourceRecordKey })
   }
   return result
+}
+
+/** Universos declarados de Grupos e Subgrupos (para a regra de quarentena da pessoa nova). */
+/** O feed de Colaboradores manda na exceção de universo só quando mapeia a coluna (mesma regra do controle de campo da ficha). */
+function employeeUniverseMapped(context: WriteContext): boolean {
+  return personFieldsWrittenBy(context.feed.contractKey, context.feed.mapping).has("operatingUniverse")
+}
+
+type KnownPlacement = { teamId: string | null; subteamId: string | null; role: string; override: string | null }
+
+/** Lugar atual (Grupo, Subgrupo, nível) e exceção de universo das matrículas que a INIA já conhece. */
+async function loadKnownPlacement(db: Pick<Database, "query">, organizationId: string, matriculas: readonly (string | null)[]): Promise<Map<string, KnownPlacement>> {
+  const keys = [...new Set(matriculas.filter((value): value is string => Boolean(value)))]
+  if (keys.length === 0) return new Map()
+  const rows = (await db.query<{ matricula: string; team_id: string | null; subteam_id: string | null; role: string; operating_universe_override: string | null }>(
+    `select matricula, team_id, subteam_id, role, operating_universe_override from people where organization_id = $1 and matricula = any($2::text[])`,
+    [organizationId, keys],
+  )).rows
+  return new Map(rows.map((row) => [row.matricula, { teamId: row.team_id, subteamId: row.subteam_id, role: row.role, override: row.operating_universe_override }]))
+}
+
+async function loadUnitUniverses(db: Pick<Database, "query">, organizationId: string) {
+  const [teams, subteams] = await Promise.all([
+    db.query<{ id: string; operating_universe: string }>(`select id, operating_universe from teams where organization_id = $1 and operating_universe is not null`, [organizationId]),
+    db.query<{ id: string; operating_universe: string }>(`select id, operating_universe from subteams where organization_id = $1 and operating_universe is not null`, [organizationId]),
+  ])
+  return { teams: new Map(teams.rows.map((row) => [row.id, row.operating_universe])), subteams: new Map(subteams.rows.map((row) => [row.id, row.operating_universe])) }
 }

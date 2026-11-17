@@ -103,7 +103,7 @@ async function cleanup() {
   await pool.query(`update agents set current_version_id = null where id = any($1::uuid[])`, [agents])
   await pool.query(`delete from agents where id = any($1::uuid[])`, [agents])
   await pool.query(`delete from audit_logs where organization_id = $1 and entity_type = 'prohibited_topic' and payload->>'name' like $2`, [ORG, `${PREFIX}%`])
-  await pool.query(`delete from prohibited_topics where organization_id = $1 and name like $2`, [ORG, `${PREFIX}%`])
+  await pool.query(`delete from prohibited_topics_all where organization_id = $1 and name like $2`, [ORG, `${PREFIX}%`])
   const emails = Object.values(ACCOUNTS).map((account) => account.email)
   await pool.query(`delete from access_role_assignments where user_account_id in (select id from user_accounts where email = any($1))`, [emails])
   await pool.query(`delete from auth_login_attempts where account_id in (select id from user_accounts where email = any($1))`, [emails])

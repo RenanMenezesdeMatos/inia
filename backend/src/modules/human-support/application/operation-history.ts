@@ -169,7 +169,7 @@ async function loadAttendanceRecords(db: Queryable, organizationId: string, ids:
     await db.query<{ id: string; anjo_person_id: string; request_id: string; started_at: Date; ended_at: Date | null; end_cause: AttendanceEndCause | null; lost_cause: LostCause | null; first_anjo_message_at: Date | null; reason: ClassificationReason | null; pertinence: Pertinence | null; first_of_request: boolean; request_created_at: Date; last_author: "ANJO" | "OPERATOR" | null; stars: number | null }>(
       `select a.id, a.anjo_person_id, a.request_id, a.started_at, a.ended_at, a.end_cause, a.lost_cause, a.first_anjo_message_at, c.reason, c.pertinence, r.created_at request_created_at,
               not exists (select 1 from human_support_attendances p where p.request_id = a.request_id and (p.started_at, p.id) < (a.started_at, a.id)) first_of_request,
-              (select m.author_kind from human_support_messages m where m.attendance_id = a.id and m.author_kind in ('ANJO', 'OPERATOR') order by m.seq desc limit 1) last_author,
+              (select m.author_kind from human_support_messages m where m.request_id = a.request_id and m.attendance_id = a.id and m.author_kind in ('ANJO', 'OPERATOR') order by m.seq desc limit 1) last_author,
               (select e.stars from human_support_evaluations e where e.attendance_id = a.id and e.superseded_at is null order by e.id desc limit 1) stars
          from human_support_attendances a
          join human_support_requests r on r.id = a.request_id
@@ -199,7 +199,7 @@ async function loadRequestRecords(db: Queryable, viewer: Viewer, query: HistoryQ
   const coverage = await coordinatorScopesOf(db, viewer.organizationId, viewer.personId)
   const params: unknown[] = [viewer.organizationId, query.from, query.to]
   const bounds = periodBounds("$1", "$2", "$3")
-  const where = coverageClause(coverage, "r", params, { teamId: query.teamId, subteamId: query.subteamId })
+  const where = coverageClause(coverage, "r", params, { teamId: query.teamId, subteamId: query.subteamId }, "operator_person_id")
   const rows = (
     await db.query<{ status: RequestStatus; end_cause: RequestEndCause | null; had_attendance: boolean; anjos_in_service_at_end: number | null }>(
       `select r.status, r.end_cause, r.anjos_in_service_at_end, exists (select 1 from human_support_attendances a where a.request_id = r.id) had_attendance

@@ -16,7 +16,7 @@ export async function supportAbandonment(db: Queryable, viewer: Viewer, query: A
   const coverage = await coordinatorScopesOf(db, viewer.organizationId, viewer.personId)
   const params: unknown[] = [viewer.organizationId, query.from, query.to]
   const bounds = periodBounds("$1", "$2", "$3")
-  const where = coverageClause(coverage, "r", params, { teamId: query.teamId, subteamId: query.subteamId })
+  const where = coverageClause(coverage, "r", params, { teamId: query.teamId, subteamId: query.subteamId }, "operator_person_id")
   const [requests, attendances] = await Promise.all([
     db.query<{ status: RequestStatus; end_cause: RequestEndCause | null }>(
       `select r.status, r.end_cause from human_support_requests r where r.organization_id = $1 and r.created_at >= ${bounds.start} and r.created_at < ${bounds.end} and ${where}`,
@@ -24,7 +24,7 @@ export async function supportAbandonment(db: Queryable, viewer: Viewer, query: A
     ),
     db.query<{ end_cause: AttendanceEndCause | null; lost_cause: LostCause | null; responded: boolean; last_author: "ANJO" | "OPERATOR" | null }>(
       `select a.end_cause, a.lost_cause, a.first_anjo_message_at is not null responded,
-              (select m.author_kind from human_support_messages m where m.attendance_id = a.id and m.author_kind in ('ANJO', 'OPERATOR') order by m.seq desc limit 1) last_author
+              (select m.author_kind from human_support_messages m where m.request_id = a.request_id and m.attendance_id = a.id and m.author_kind in ('ANJO', 'OPERATOR') order by m.seq desc limit 1) last_author
          from human_support_attendances a join human_support_requests r on r.id = a.request_id
         where a.organization_id = $1 and a.started_at >= ${bounds.start} and a.started_at < ${bounds.end} and ${where}`,
       params,

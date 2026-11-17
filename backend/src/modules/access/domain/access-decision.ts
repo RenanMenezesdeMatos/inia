@@ -100,6 +100,10 @@ export function accessCapabilities(access: AccessContext, catalog: RoleCatalog =
     canExportSubjectData: org("privacy.subject_data.export"),
     // Reports recorrentes para outras pessoas (o público concreto é decidido pelo backend, no escopo da atribuição).
     canDistributeReports: any("reports.distribute"),
+    // Comunicados da liderança: para a própria estrutura (qualquer escopo) ou também para a organização (só escopo de organização,
+    // como o módulo confere). O público concreto é sempre do servidor.
+    canPublishTeamCommunications: any("communications.publish_team") || org("communications.publish_organization"),
+    canPublishOrganizationCommunications: org("communications.publish_organization"),
     // Cenário da INIA: recurso do tenant inteiro (como o QA Lab) — escopo de organização.
     canManageIniaScenes: org("inia_experience.manage"),
     // Monitoria de usabilidade — FORA de `canAccessAdministration` (como as conversas): quem só tem a monitoria vê só ela.

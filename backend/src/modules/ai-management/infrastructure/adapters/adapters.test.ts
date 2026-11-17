@@ -288,3 +288,31 @@ describe("execução em fluxo com ferramentas (chat pela policy)", () => {
     expect(bodies[1]!.generationConfig).toBeUndefined()
   })
 })
+
+describe("Embedding (busca nas bases em escala)", () => {
+  it("OpenAI e compatíveis: /embeddings com os textos, vetores na ordem do `index`, uso informado", async () => {
+    const fake = fakeFetch(() => json({ model: "text-embedding-3-small", data: [{ index: 1, embedding: [0, 1] }, { index: 0, embedding: [1, 0] }], usage: { prompt_tokens: 7, total_tokens: 7 } }))
+    const result = await createOpenAiChatAdapter(fake.fetch).embed!(connection({ baseUrl: "http://127.0.0.1:8787/v1", providerKey: "OPENAI_COMPATIBLE" }), "text-embedding-3-small", { texts: ["a", "b"], purpose: "DOCUMENT" }, 1000)
+    expect(fake.calls[0]!.url).toBe("http://127.0.0.1:8787/v1/embeddings")
+    expect(JSON.parse(String(fake.calls[0]!.init!.body))).toEqual({ model: "text-embedding-3-small", input: ["a", "b"], encoding_format: "float" })
+    expect(result.vectors.map((vector) => [...vector])).toEqual([[1, 0], [0, 1]])
+    expect(result.usage).toMatchObject({ promptTokens: 7, totalTokens: 7 })
+  })
+
+  it("Gemini: batchEmbedContents com a finalidade (documento × pergunta); sem tokens informados = uso desconhecido", async () => {
+    const fake = fakeFetch(() => json({ embeddings: [{ values: [0.5, 0.5, 0] }] }))
+    const google = connection({ providerKey: "GOOGLE_GENAI", adapterType: "GOOGLE_GENAI", baseUrl: "https://generativelanguage.googleapis.com/v1beta" })
+    const result = await createGoogleGenAiAdapter(fake.fetch).embed!(google, "gemini-embedding-001", { texts: ["pergunta"], purpose: "QUERY" }, 1000)
+    expect(fake.calls[0]!.url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents")
+    expect(JSON.parse(String(fake.calls[0]!.init!.body))).toEqual({ requests: [{ model: "models/gemini-embedding-001", content: { parts: [{ text: "pergunta" }] }, taskType: "RETRIEVAL_QUERY" }] })
+    expect(result.vectors).toHaveLength(1)
+    expect(result.usage.promptTokens).toBeNull()
+  })
+
+  it("resposta incompleta ou inconsistente nunca vira vetor inventado", async () => {
+    const run = (body: unknown) => createOpenAiChatAdapter(fakeFetch(() => json(body)).fetch).embed!(connection(), "m", { texts: ["a", "b"], purpose: "DOCUMENT" }, 1000).catch((caught: unknown) => caught)
+    expect(await run({ data: [{ index: 0, embedding: [1, 0] }] })).toBeInstanceOf(AiProviderError)
+    expect(await run({ data: [{ index: 0, embedding: [1, 0] }, { index: 1, embedding: [1, 0, 0] }] })).toBeInstanceOf(AiProviderError)
+    expect(await run({ data: [{ index: 0, embedding: [1, "x"] }, { index: 1, embedding: [1, 0] }] })).toBeInstanceOf(AiProviderError)
+  })
+})

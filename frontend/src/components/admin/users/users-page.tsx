@@ -381,7 +381,10 @@ function UsersTable({ users, onEdit }: { users: UserAccount[]; onEdit: (user: Us
               </TableCell>
               <TableCell>{user.teamName ?? "—"}</TableCell>
               <TableCell>
-                <UniverseBadge universe={user.operatingUniverse} />
+                <div className="flex items-center gap-1.5">
+                  <UniverseBadge universe={user.operatingUniverse} />
+                  {user.operatingUniverseSource === "PERSON" ? <span className="text-xs text-muted-foreground">exceção</span> : null}
+                </div>
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {user.lastLoginAt ? formatShortDateTime(user.lastLoginAt, { withYear: true }) : user.accountId ? "Nunca acessou" : "—"}
@@ -491,7 +494,7 @@ export function UsersPage({
     setEmail(user.email ?? "")
     setRole(user.role)
     setTeamId(user.teamId ?? "")
-    setUniverse(user.operatingUniverse)
+    setUniverse(user.operatingUniverseOverride)
     updateDetailsMutation.reset()
     setTab("form")
   }
@@ -505,7 +508,7 @@ export function UsersPage({
       if (emailEditable && email !== (editingUser.email ?? "")) fields.email = email
       if (!managedBy?.role && role !== editingUser.role) fields.role = role
       if (!managedBy?.teamId && (teamId || null) !== editingUser.teamId) fields.teamId = teamId || null
-      if (!managedBy?.operatingUniverse && universe !== editingUser.operatingUniverse) fields.operatingUniverse = universe
+      if (!managedBy?.operatingUniverse && universe !== editingUser.operatingUniverseOverride) fields.operatingUniverse = universe
       try {
         await updateDetailsMutation.mutateAsync(fields)
       } catch {
@@ -526,9 +529,7 @@ export function UsersPage({
   const matriculaInUse = editingUser === null && createMutation.error instanceof AdminApiError && createMutation.error.code === "PERSON_MATRICULA_IN_USE" ? createMutation.error : null
   const existingPersonId = (matriculaInUse?.details as { personId?: string } | undefined)?.personId ?? null
   const hasEditableField = !editingUser || !managedBy?.name || emailEditable || !managedBy?.role || !managedBy?.teamId || !managedBy?.operatingUniverse
-  // Com a exigência ativa, cadastro novo e regularização exigem o universo (o backend confere de novo).
-  const universeMissing = universeEnforced && universe === null && !managedBy?.operatingUniverse
-  const canSubmit = hasEditableField && !universeMissing && (Boolean(managedBy?.name) || name.trim().length > 1) && (!emailEditable || email.includes("@"))
+  const canSubmit = hasEditableField && (Boolean(managedBy?.name) || name.trim().length > 1) && (!emailEditable || email.includes("@"))
 
   return (
     <Card>
@@ -667,20 +668,23 @@ export function UsersPage({
               )}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="user-universe">Universo de atuação</Label>
+              <Label htmlFor="user-universe">Universo de atuação — exceção</Label>
               <UniverseSelect
                 id="user-universe"
                 value={universe}
                 onChange={setUniverse}
-                allowPending={!universeEnforced}
+                allowPending
+                pendingLabel="Sem exceção — herda do Grupo/Subgrupo"
                 disabled={Boolean(managedBy?.operatingUniverse)}
                 aria-describedby={managedBy?.operatingUniverse ? "user-universe-source" : "user-universe-help"}
               />
               <SourceManagedNotice id="user-universe-source" manager={managedBy?.operatingUniverse ?? null} />
               {managedBy?.operatingUniverse ? null : (
                 <p id="user-universe-help" className="text-xs text-muted-foreground">
-                  Público que a pessoa atende (B2B, B2C ou B2X — universos separados). Decide as bases, produtos e Workflows que valem para ela e
-                  quais dados ela consulta. {universeEnforced ? "Obrigatório." : "Sem universo, a pessoa fica como pendente de classificação."}
+                  O universo (B2B, B2C ou B2X — universos separados) vem do Grupo da pessoa. Escolha aqui só se ela for exceção ao Grupo. Liderança
+                  não precisa de universo: vê a própria estrutura em qualquer universo.
+                  {editingUser ? ` Hoje: ${editingUser.operatingUniverse ?? "pendente"}${editingUser.operatingUniverseSource === "PERSON" ? " (exceção)" : editingUser.operatingUniverseSource === "SUBGROUP" ? " (do Subgrupo)" : editingUser.operatingUniverseSource === "GROUP" ? " (do Grupo)" : ""}.` : ""}
+                  {universeEnforced ? " Operador sem universo no Grupo e sem exceção é recusado." : ""}
                 </p>
               )}
             </div>

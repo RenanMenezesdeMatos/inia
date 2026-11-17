@@ -1,0 +1,103 @@
+{
+  "note": "Bases e catálogo FICTÍCIOS do gabarito v3 (categoria × produto). O texto das bases nunca cita a família — a ligação existe só no cadastro (família › produto).",
+  "bases": [
+    {
+      "id": "tax-lp",
+      "family": "Dados Avançados",
+      "product": "LP de Dados",
+      "title": "Reparo de LP de Dados",
+      "content": "## 1. Abertura do reparo\nO reparo do circuito de LP de Dados é aberto no Sigitim com o designador do circuito e o contato técnico do cliente. Prazo de atendimento: 6 horas.\n\n## 2. Testes antes de abrir\nPeça ao cliente para conferir os equipamentos nas duas pontas do circuito."
+    },
+    {
+      "id": "tax-radio",
+      "family": "Conectividade Rural",
+      "product": "Rádio Enlace",
+      "title": "Troca de antena do Rádio Enlace",
+      "content": "## 1. Troca de antena\nA troca de antena do Rádio Enlace exige uma visita de alinhamento agendada com o cliente; a antena antiga é recolhida na mesma visita.\n\n## 2. Custos\nSem custo quando a antena tiver defeito; troca por pedido do cliente tem taxa de R$ 180,00."
+    },
+    {
+      "id": "tax-frota",
+      "family": "Mobilidade Corporativa",
+      "product": "Frota Conectada",
+      "title": "Cancelamento da Frota Conectada",
+      "content": "## 1. Multa por cancelamento\nO cancelamento da Frota Conectada antes de 24 meses gera multa de 30% das mensalidades restantes do contrato.\n\n## 2. Devolução\nOs rastreadores precisam ser devolvidos em até 15 dias."
+    },
+    {
+      "id": "tax-escudo",
+      "family": "Segurança Digital",
+      "product": "Escudo Família",
+      "title": "Ativação do Escudo Família",
+      "content": "## 1. Ativação\nA ativação do Escudo Família é feita com o código de ativação por SMS enviado para a linha do titular; o código vale por 24 horas.\n\n## 2. Dispositivos\nO plano permite até 5 dispositivos."
+    },
+    {
+      "id": "tax-0800",
+      "family": "Voz Avançada",
+      "product": "0800 Gratuito",
+      "title": "Alteração de destino do 0800",
+      "content": "## 1. Alteração do destino\nA alteração do número de destino do 0800 é feita pelo gestor do contrato e entra em vigor em até 2 dias úteis.\n\n## 2. Horários\nO 0800 pode ter destinos diferentes por horário."
+    },
+    {
+      "id": "tax-tv",
+      "family": "Entretenimento",
+      "product": "TV Plus",
+      "title": "Troca de pacote da TV Plus",
+      "content": "## 1. Troca de pacote\nA troca de pacote da TV Plus vale a partir do próximo ciclo de faturamento; não há cobrança proporcional.\n\n## 2. Canais avulsos\nCanais avulsos podem ser somados a qualquer pacote."
+    },
+    {
+      "id": "tax-orion",
+      "family": "Linha Órion",
+      "product": "Rastreador Veicular",
+      "title": "Bloqueio do Rastreador Veicular",
+      "content": "## 1. Bloqueio remoto\nO bloqueio do Rastreador Veicular é pedido pelo gestor da frota no portal e confirmado por contrassenha de 6 dígitos.\n\n## 2. Desbloqueio\nO desbloqueio exige o boletim de ocorrência quando o motivo foi roubo."
+    },
+    {
+      "id": "tax-vega",
+      "family": "Pacote Vega",
+      "product": "Backup em Nuvem",
+      "title": "Suspensão do Backup em Nuvem",
+      "content": "## 1. Suspensão temporária\nO Backup em Nuvem pode ser suspenso por até 60 dias uma vez por ano, sem cobrança no período.\n\n## 2. Dados guardados\nOs arquivos ficam guardados durante a suspensão."
+    },
+    {
+      "id": "tax-andes",
+      "family": "Portfólio Andes",
+      "product": "Link Satelital",
+      "title": "Upgrade do Link Satelital",
+      "content": "## 1. Aumento de velocidade\nO upgrade do Link Satelital depende de troca do modem quando passa de 50 Mbps; a troca é agendada pela central técnica.\n\n## 2. Prazo\nO upgrade sem troca de modem é feito em até 4 horas."
+    },
+    {
+      "id": "tax-iris",
+      "family": "Proteção Íris",
+      "product": "Seguro de Tela",
+      "title": "Reembolso do Seguro de Tela",
+      "content": "## 1. Reembolso\nO reembolso do Seguro de Tela é pago em até 10 dias úteis depois da aprovação do laudo da assistência.\n\n## 2. Franquia\nA franquia é de 15% do valor do conserto."
+    },
+    {
+      "id": "susp-orion",
+      "family": "Linha Órion",
+      "product": "Rastreador Veicular",
+      "title": "Suspensão temporária do Rastreador Veicular",
+      "content": "## 1. Suspensão temporária\nO Rastreador Veicular pode ser suspenso por até 30 dias por ano, a pedido do titular.\n\n## 2. Taxa\nTaxa de reativação: R$ 9,90."
+    },
+    {
+      "id": "susp-vega",
+      "family": "Pacote Vega",
+      "product": "Backup em Nuvem",
+      "title": "Suspensão temporária do Backup em Nuvem",
+      "content": "## 1. Suspensão temporária\nO Backup em Nuvem pode ser suspenso por até 60 dias por ano, a pedido do titular.\n\n## 2. Taxa\nTaxa de reativação: sem taxa."
+    },
+    {
+      "id": "susp-andes",
+      "family": "Portfólio Andes",
+      "product": "Link Satelital",
+      "title": "Suspensão temporária do Link Satelital",
+      "content": "## 1. Suspensão temporária\nO Link Satelital pode ser suspenso por até 90 dias por ano, a pedido do titular.\n\n## 2. Taxa\nTaxa de reativação: R$ 49,00."
+    },
+    {
+      "id": "susp-iris",
+      "family": "Proteção Íris",
+      "product": "Seguro de Tela",
+      "title": "Suspensão temporária do Seguro de Tela",
+      "content": "## 1. Suspensão temporária\nO Seguro de Tela pode ser suspenso por até 15 dias por ano, a pedido do titular.\n\n## 2. Taxa\nTaxa de reativação: R$ 5,00."
+    }
+  ]
+}

@@ -71,6 +71,11 @@ export const PERMISSIONS = {
   "human_support.attend": "Atender pedidos de apoio",
   "human_support.coordinate": "Acompanhar o apoio com Anjo",
   "human_support.manage": "Configurar o apoio com Anjo",
+  // Comunicados da liderança (migration 199, decisão de 16/11/2026): publicar para a PRÓPRIA estrutura (reports_to, qualquer
+  // profundidade) × publicar também para a organização inteira (só com escopo de organização). O público concreto é sempre
+  // calculado pelo servidor; nenhuma das duas dá acesso a dado de ninguém.
+  "communications.publish_team": "Publicar comunicados para a própria estrutura (todos abaixo de quem publica)",
+  "communications.publish_organization": "Publicar comunicados para a própria estrutura ou para toda a organização",
   // Diagnóstico de erros: catálogo de códigos e ocorrências técnicas (sanitizadas) da organização — só com escopo de organização.
   "support.diagnostics.view": "Consultar o catálogo de erros e as ocorrências registradas (diagnóstico de suporte)",
   // Universo de atuação (B2B, B2C, B2X): sem esta permissão, a conta consulta só o universo do PRÓPRIO cadastro. Com ela, todos os

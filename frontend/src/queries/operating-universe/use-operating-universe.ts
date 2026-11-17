@@ -9,6 +9,8 @@ import {
   classifyPeopleUniverse,
   classifyPendingPeopleOfTeam,
   classifyUniverseResource,
+  classifyUniverseUnit,
+  fetchUniverseUnits,
   fetchUniverseReadiness,
   fetchUniverseResources,
   setKnowledgeUniverse,
@@ -45,6 +47,19 @@ export function useClassifyPendingTeamMutation() {
   return useAdminMutation({
     mutationFn: ({ teamId, operatingUniverse }: { teamId: string | null; operatingUniverse: OperatingUniverse }) => classifyPendingPeopleOfTeam(teamId, operatingUniverse),
     invalidateKey: adminQueryKeys.all,
+  })
+}
+
+export function useUniverseUnitsQuery() {
+  return useQuery({ queryKey: [...universeKey(), "units"], queryFn: fetchUniverseUnits })
+}
+
+export function useClassifyUnitMutation() {
+  return useAdminMutation({
+    mutationFn: ({ kind, id, operatingUniverse, effectiveFrom }: { kind: "TEAM" | "SUBTEAM"; id: string; operatingUniverse: OperatingUniverse | null; effectiveFrom?: string | null }) =>
+      classifyUniverseUnit(kind, id, operatingUniverse, effectiveFrom),
+    invalidateKey: adminQueryKeys.all,
+    successMessage: "Universo do Grupo salvo — os operadores dele foram atualizados.",
   })
 }
 

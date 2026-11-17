@@ -1,37 +1,31 @@
 "use client"
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Clock3, MessageSquareText } from "lucide-react"
 
 import { AnalyticsEmptyState, AnalyticsErrorState } from "@/components/analytics/analytics-states"
+import { CommunicationEntry } from "@/components/communications/communication-entry"
 import { FollowUpEntry } from "@/components/follow-up/follow-up-entry"
-import { FeedbackCard, FeedbackEntryHeader } from "@/components/feedbacks/feedback-entry-header"
-import { followUpDayKey, followUpDayLabel, followUpPeriodBounds, isWithinFollowUpPeriod, type FollowUpPeriod } from "@/components/operator/follow-up-timeline"
+import { followUpDayKey, followUpDayLabel, followUpPeriodBounds, type FollowUpPeriod } from "@/components/operator/follow-up-timeline"
 import { FollowUpPeriodEmpty } from "@/components/operator/follow-up-period"
-import { IniaFeed, IniaFeedItem } from "@/components/operator/inia-feed"
-import { Badge } from "@/components/ui/badge"
+import { IniaFeed } from "@/components/operator/inia-feed"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { SubjectRef } from "@/lib/analytics/subject-params"
-import { sanitizeRichText } from "@/lib/security/sanitize-rich-text"
 import { useFollowUpFeedQuery } from "@/queries/analytics/use-analytics-queries"
-
-/** Comunicado publicado pelo gestor nesta sessão (só local — o envio ainda não é persistido). */
-export type LocalNotice = { id: string; title: string; contentHtml: string; audienceLabel: string; tags: string[]; time: string; /** Instante da publicação (ISO) — o que o calendário filtra. */ createdAt: string }
 
 const PAGE_SIZE = 8
 
 /**
  * Surface Acompanhamento da estrutura sobre objetos JÁ persistidos: feedbacks publicados dos colaboradores + outputs/revisões/
- * escalonamentos endereçados ao gestor. Os mesmos objetos da Surface do operador, filtrados pelo sujeito — sem armazenamento
+ * escalonamentos endereçados ao gestor + comunicados da liderança que ele publicou ou recebeu (ramo NOTICE, migration 199). Os mesmos objetos da Surface do operador, filtrados pelo sujeito — sem armazenamento
  * paralelo — e a MESMA apresentação: uma timeline só (mais recente primeiro, rótulo do dia), cada item no cartão com o
  * cabeçalho de tipo + motivo + título, conteúdo lido no próprio cartão e "carregar mais" ao chegar ao fim.
  */
 export type StructureFollowUpFeedProps = {
   subject: SubjectRef | null
   description: string
-  notices?: LocalNotice[]
   employeeHref?: (personId: string) => string
   /** Filtro "só aguardando ciência do colaborador" (deep link `ack=pending` vindo da Equipe). */
   unacknowledgedOnly?: boolean
@@ -42,7 +36,7 @@ export type StructureFollowUpFeedProps = {
   lead?: React.ReactNode
 }
 
-export function StructureFollowUpFeed({ subject, description, notices: allNotices = [], employeeHref, unacknowledgedOnly = false, onUnacknowledgedOnlyChange, highlightItemId = null, lead = null }: StructureFollowUpFeedProps) {
+export function StructureFollowUpFeed({ subject, description, employeeHref, unacknowledgedOnly = false, onUnacknowledgedOnlyChange, highlightItemId = null, lead = null }: StructureFollowUpFeedProps) {
   // Calendário do cabeçalho: vazio = visão inicial (tudo). O recorte vai ao servidor no MESMO instante que rotula o dia do item.
   const [period, setPeriod] = useState<FollowUpPeriod>({})
   const bounds = followUpPeriodBounds(period)
@@ -51,7 +45,6 @@ export function StructureFollowUpFeed({ subject, description, notices: allNotice
     return range ? { since: new Date(range.since).toISOString(), until: new Date(range.until).toISOString() } : null
   }, [period])
   const query = useFollowUpFeedQuery(subject, PAGE_SIZE, unacknowledgedOnly, serverPeriod)
-  const notices = allNotices.filter((notice) => isWithinFollowUpPeriod(Date.parse(notice.createdAt), bounds))
   const clearPeriod = () => setPeriod({})
   const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = query
   const items = query.data?.pages.flatMap((page) => page.items) ?? []
@@ -84,39 +77,15 @@ export function StructureFollowUpFeed({ subject, description, notices: allNotice
 
       {/* "Onde atuar hoje" não é uma ação datada: com recorte ativo, o feed mostra só o que é do período. */}
       {bounds ? null : lead}
-      {notices.length > 0 ? <DayLabel>Hoje</DayLabel> : null}
-      {notices.map((notice, index) => (
-        <Fragment key={notice.id}>
-          {index ? <Separator /> : null}
-          <IniaFeedItem timestamp={notice.time} meta={<span className="truncate font-normal">{notice.audienceLabel}</span>}>
-            <FeedbackCard
-              header={
-                <FeedbackEntryHeader
-                  origin={{ family: "NOTICE", label: null, iconKey: null }}
-                  title={notice.title}
-                  badges={notice.tags.map((tag) => (
-                    <Badge variant="secondary" className="border-0" key={tag}>
-                      {tag}
-                    </Badge>
-                  ))}
-                />
-              }
-            >
-              <div className="inia-rich-content text-sm leading-6 text-muted-foreground" dangerouslySetInnerHTML={{ __html: sanitizeRichText(notice.contentHtml) }} />
-            </FeedbackCard>
-          </IniaFeedItem>
-        </Fragment>
-      ))}
-
       {query.isPending ? <FeedSkeleton /> : null}
       {query.isError ? (
         <div className="py-4">
           <AnalyticsErrorState error={query.error} onRetry={() => void query.refetch()} />
         </div>
       ) : null}
-      {query.isSuccess && items.length === 0 && notices.length === 0 && bounds ? (
+      {query.isSuccess && items.length === 0 && bounds ? (
         <FollowUpPeriodEmpty onClear={clearPeriod} />
-      ) : query.isSuccess && items.length === 0 && notices.length === 0 ? (
+      ) : query.isSuccess && items.length === 0 ? (
         <div className="py-6">
           <AnalyticsEmptyState icon={MessageSquareText} title="Nenhum acompanhamento encontrado" description={emptyDescription} />
         </div>
@@ -124,12 +93,11 @@ export function StructureFollowUpFeed({ subject, description, notices: allNotice
       {items.map((item, index) => {
         const at = instantOf(item.createdAt)
         const label = followUpDayLabel(at)
-        // Comunicados desta sessão são de agora: o primeiro item de hoje não repete o rótulo "Hoje".
-        const newDay = index > 0 ? dayOf(at) !== dayOf(instantOf(items[index - 1]!.createdAt)) : !(notices.length > 0 && label === "Hoje")
+        const newDay = index === 0 || dayOf(at) !== dayOf(instantOf(items[index - 1]!.createdAt))
         return (
           <div key={item.id} data-testid="follow-up-entry" data-kind={item.kind}>
             {newDay ? <DayLabel>{label}</DayLabel> : <Separator />}
-            <FollowUpEntry item={item} showRecipient={showRecipient} employeeHref={employeeHref} highlighted={highlightItemId === item.id} />
+            {item.kind === "NOTICE" && item.notice ? <CommunicationEntry notice={item.notice} /> : <FollowUpEntry item={item} showRecipient={showRecipient} employeeHref={employeeHref} highlighted={highlightItemId === item.id} />}
           </div>
         )
       })}

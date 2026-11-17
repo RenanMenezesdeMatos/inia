@@ -70,6 +70,15 @@ describe("cabeçalho de custo do gateway compatível com OpenAI/LiteLLM", () => 
     expect(spoken.reportedCost).toEqual({ amount: "0.000015", currency: "USD" })
   })
 
+  it("embeddings (/embeddings, busca nas bases): custo informado no cabeçalho volta com os vetores", async () => {
+    fake.setResponseCost("0.0000021")
+    const result = await adapter.embed!(connection, "fake-embed", { texts: ["primeira frase", "segunda frase"], purpose: "DOCUMENT" }, 5_000)
+    expect(result.vectors).toHaveLength(2)
+    expect(result.reportedCost).toEqual({ amount: "0.0000021", currency: "USD" })
+    fake.setResponseCost(null)
+    expect((await adapter.embed!(connection, "fake-embed", { texts: ["sem custo"], purpose: "QUERY" }, 5_000)).reportedCost).toBeNull()
+  })
+
   it("cabeçalho ausente, vazio, negativo ou não numérico: reportedCost null em todos os caminhos — nunca erro", async () => {
     for (const raw of [null, "", "  ", "-0.5", "abc", "None", "NaN"]) {
       fake.setResponseCost(raw)

@@ -1,6 +1,7 @@
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { TransactionSource } from "../../../shared/infrastructure/database/transaction.js"
 import { ANJO_UNRESPONSIVE_LIMITS, type AnjoUnresponsive, type ResponseTimes } from "../domain/catalogs.js"
+import { planGroupResponseTimes } from "../domain/group-response-times.js"
 import { responseTimesProblem } from "../domain/request-lifecycle.js"
 import { recordHumanSupportAudit } from "./audit.js"
 import { coordinatorScopesOf, type CoordinatorScopes } from "./coverage.js"
@@ -16,14 +17,14 @@ import type { Viewer } from "./request-service.js"
  *    inteira (Administrador geral ou Coordenador de Anjos com escopo de organização) muda.
  *  - DE UM GRUPO (`human_support_group_response_times`): o Coordenador de Anjos muda os do PRÓPRIO Grupo (escopo de Grupo); quem
  *    acompanha a organização muda os de qualquer Grupo. Coordenador só de Subgrupo vê os tempos do Grupo dele, sem mudar. Subgrupo
- *    segue o Grupo. "Usar o padrão" apaga os tempos próprios.
+ *    segue o Grupo. "Usar o padrão" marca a linha do Grupo `custom = false` (migration 203) — nunca a apaga, para a versão só crescer.
  * O pedido usa o Grupo congelado nele. Versão otimista (a do padrão é a da configuração; a do Grupo, a da linha — 0 = sem tempos
- * próprios), histórico em `human_support_setting_events` e auditoria. A distribuição seguinte já usa os tempos novos.
+ * próprios; regra em `domain/group-response-times.ts`), histórico em `human_support_setting_events` e auditoria. A distribuição seguinte já usa os tempos novos.
  */
 export type ResponseTimesGroup = { teamId: string; teamName: string; custom: boolean; times: ResponseTimes; version: number; canEdit: boolean }
 export type ResponseTimesPanel = { organization: { times: ResponseTimes; anjoUnresponsive: AnjoUnresponsive; version: number; canEdit: boolean }; groups: ResponseTimesGroup[] }
 
-type GroupRow = { team_id: string; operator_requeue_minutes: number; operator_close_minutes: number; anjo_requeue_minutes: number; version: number }
+type GroupRow = { team_id: string; operator_requeue_minutes: number; operator_close_minutes: number; anjo_requeue_minutes: number; version: number; custom: boolean }
 const timesOf = (row: Pick<GroupRow, "operator_requeue_minutes" | "operator_close_minutes" | "anjo_requeue_minutes">): ResponseTimes => ({ operatorRequeueMinutes: Number(row.operator_requeue_minutes), operatorCloseMinutes: Number(row.operator_close_minutes), anjoRequeueMinutes: Number(row.anjo_requeue_minutes) })
 
 /** Grupos que quem lê vê e os que pode mudar. */
@@ -48,7 +49,8 @@ export async function getResponseTimesPanel(db: Queryable, viewer: Viewer): Prom
     organization: { times: settings.responseTimes, anjoUnresponsive: settings.anjoUnresponsive, version: settings.version, canEdit: coverage.organizationWide },
     groups: groups.map((group) => {
       const row = own.get(group.id)
-      return { teamId: group.id, teamName: group.name, custom: Boolean(row), times: row ? timesOf(row) : settings.responseTimes, version: row ? Number(row.version) : 0, canEdit: group.canEdit }
+      const custom = row?.custom === true
+      return { teamId: group.id, teamName: group.name, custom, times: custom ? timesOf(row!) : settings.responseTimes, version: row ? Number(row.version) : 0, canEdit: group.canEdit }
     }),
   }
 }
@@ -119,23 +121,23 @@ export async function updateGroupResponseTimes(db: TransactionSource & Queryable
   await withOrganizationLock(db, viewer.organizationId, async (client) => {
     const current = (await client.query<GroupRow>(`select * from human_support_group_response_times where organization_id = $1 and team_id = $2 for update`, [viewer.organizationId, teamId])).rows[0]
     const orgTimes = (await loadSettings(client, viewer.organizationId)).responseTimes
-    if ((current ? Number(current.version) : 0) !== input.version) throw conflict({ custom: Boolean(current), times: current ? timesOf(current) : orgTimes, version: current ? Number(current.version) : 0 })
-    if (!input.times) {
-      if (!current) return
-      await client.query(`delete from human_support_group_response_times where organization_id = $1 and team_id = $2`, [viewer.organizationId, teamId])
-      await recordChanges(client, viewer, { teamId }, changesOf(timesOf(current), orgTimes), { useDefault: true })
+    const plan = planGroupResponseTimes(current ? { custom: current.custom, version: Number(current.version), times: timesOf(current) } : null, input, orgTimes)
+    if (plan.kind === "CONFLICT") throw conflict(plan.current)
+    if (plan.kind === "NONE") return
+    if (plan.kind === "USE_DEFAULT") {
+      // A linha fica (versão monotônica): só deixa de valer.
+      await client.query(`update human_support_group_response_times set custom = false, version = $3, updated_by_person_id = $4, updated_at = statement_timestamp() where organization_id = $1 and team_id = $2`, [viewer.organizationId, teamId, plan.nextVersion, viewer.personId])
+      await recordChanges(client, viewer, { teamId }, changesOf(plan.from, orgTimes), { useDefault: true })
       return
     }
-    const changes = changesOf(current ? timesOf(current) : orgTimes, input.times)
-    if (current && changes.length === 0) return
     await client.query(
-      `insert into human_support_group_response_times (organization_id, team_id, operator_requeue_minutes, operator_close_minutes, anjo_requeue_minutes, version, updated_by_person_id, updated_at)
-       values ($1, $2, $3, $4, $5, 1, $6, statement_timestamp())
+      `insert into human_support_group_response_times (organization_id, team_id, operator_requeue_minutes, operator_close_minutes, anjo_requeue_minutes, custom, version, updated_by_person_id, updated_at)
+       values ($1, $2, $3, $4, $5, true, $6, $7, statement_timestamp())
        on conflict (organization_id, team_id) do update set operator_requeue_minutes = excluded.operator_requeue_minutes, operator_close_minutes = excluded.operator_close_minutes,
-         anjo_requeue_minutes = excluded.anjo_requeue_minutes, version = human_support_group_response_times.version + 1, updated_by_person_id = excluded.updated_by_person_id, updated_at = excluded.updated_at`,
-      [viewer.organizationId, teamId, input.times.operatorRequeueMinutes, input.times.operatorCloseMinutes, input.times.anjoRequeueMinutes, viewer.personId],
+         anjo_requeue_minutes = excluded.anjo_requeue_minutes, custom = true, version = excluded.version, updated_by_person_id = excluded.updated_by_person_id, updated_at = excluded.updated_at`,
+      [viewer.organizationId, teamId, plan.times.operatorRequeueMinutes, plan.times.operatorCloseMinutes, plan.times.anjoRequeueMinutes, plan.nextVersion, viewer.personId],
     )
-    await recordChanges(client, viewer, { teamId }, changes, { custom: true })
+    await recordChanges(client, viewer, { teamId }, changesOf(plan.from, plan.times), { custom: true })
   })
   await dispatchAfterCommand(db, viewer.organizationId)
   return getResponseTimesPanel(db, viewer)

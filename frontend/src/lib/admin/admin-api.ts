@@ -30,6 +30,14 @@ export async function adminGet<T>(path: string): Promise<T> {
   return payload.data
 }
 
+/** Como `adminGet`, mas devolve também o `meta` da resposta (ex.: lista cortada no limite do servidor). */
+export async function adminGetWithMeta<T>(path: string): Promise<{ data: T; meta: unknown }> {
+  const response = await fetch(`${API_URL}${path}`, { credentials: "include", cache: "no-store" })
+  if (!response.ok) throw await parseError(response)
+  const payload = (await response.json()) as { data: T; meta?: unknown }
+  return { data: payload.data, meta: payload.meta ?? null }
+}
+
 // Nome do arquivo vindo do Content-Disposition: prefere o `filename*` (UTF-8, com acentos) e
 // cai para o `filename` simples.
 function filenameFromDisposition(header: string | null): string | null {

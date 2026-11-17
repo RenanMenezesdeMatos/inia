@@ -159,7 +159,7 @@ describe.skipIf(!ENABLED)("Base de boas práticas — prova Postgres", () => {
     const registry = (await db.query<{ control: string; outcome: string; action: string; flagged_content: string | null; reason: string | null; source_ref: string }>(`select control, outcome, action, flagged_content, reason, source_ref from response_compliance_checks where surface = 'BEST_PRACTICE' and source_ref = $1 order by created_at`, [resumeSynthetic.id])).rows
     expect(registry.map((row) => [row.outcome, row.action])).toEqual([["CHECK_FAILED", "BLOCKED"], ["VIOLATION", "BLOCKED"], ["VIOLATION", "DELIVERED"]])
     expect(registry.every((row) => row.flagged_content === null && row.control === "PREVENTIVE")).toBe(true)
-    await db.query(`delete from prohibited_topics where organization_id = $1 and name = 'Prova Prática · Regra'`, [ORG])
+    await db.query(`delete from prohibited_topics_all where organization_id = $1 and name = 'Prova Prática · Regra'`, [ORG])
     vi.unstubAllEnvs()
     expect((await asGeral.get(`/api/v1/best-practices/patterns/${resumeSynthetic.id}`)).body.data).toMatchObject({ available: false, unavailabilityReasons: [expect.stringMatching(/sintético/)] })
     const preview = (await asGeral.get(`/api/v1/best-practices/preview?datasetId=${datasetId}&operatorRef=SINT-OP-02&indicatorId=${tma}`)).body.data

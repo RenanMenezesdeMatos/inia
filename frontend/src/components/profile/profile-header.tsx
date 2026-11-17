@@ -108,12 +108,18 @@ export function ProfileHeader({ person, isOwn, actions, variant = "profile", att
             {identityLine.length > 0 ? <p className="mt-1 break-words text-xs text-muted-foreground">{identityLine.join(" · ")}</p> : null}
           </div>
           {/* Na prévia do mobile os selos saem: a prévia não pode empurrar o formulário para fora da tela. */}
-          <div className={preview ? "hidden sm:block" : undefined}><ProfileSeals /></div>
+          {SHOW_PROFILE_SEALS ? <div className={preview ? "hidden sm:block" : undefined}><ProfileSeals /></div> : null}
         </div>
       </div>
     </header>
   )
 }
+
+/**
+ * Selos (medalhas) do perfil escondidos até existirem de verdade: hoje a lista abaixo é fixa (dados de demonstração),
+ * não vem de nenhum cálculo do colaborador. Ligar só quando os selos forem implementados com dados reais.
+ */
+const SHOW_PROFILE_SEALS = false
 
 function ProfileSeals() {
   const [expanded, setExpanded] = useState(true)

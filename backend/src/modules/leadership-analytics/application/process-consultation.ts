@@ -1,7 +1,8 @@
 import { z } from "zod"
 import { orchestratorForTeam, type InteractiveOrchestratorScope } from "../../assistant/application/resolve-orchestrator.js"
 import type { FunctionDeclaration } from "../../assistant/infrastructure/gemini-function-calling-client.js"
-import type { ViewerScope } from "../../performance-analytics/application/viewer-scope.js"
+import { universeAllowsPerson, type ViewerScope } from "../../performance-analytics/application/viewer-scope.js"
+import { OPERATING_UNIVERSES } from "../../operating-universe/domain/operating-universe.js"
 import { matchesAllTokens, normalizeForMatch } from "../domain/analytic-rules.js"
 import type { LeadershipToolResult } from "./leadership-toolset.js"
 import { resolveStructureReference, type ResolvedStructure } from "./references.js"
@@ -17,13 +18,24 @@ import { resolveStructureReference, type ResolvedStructure } from "./references.
  */
 export const PROCESS_TOOL = "leadership_process"
 
-/** Um Grupo com operadores na estrutura de quem lidera. */
-export type StructureGroup = { teamId: string; name: string }
+/**
+ * Um Grupo com operadores na estrutura de quem lidera. `universes` (só com a exigência de universo ativa): universos dos operadores
+ * do Grupo que quem lidera alcança — o Orquestrador do Grupo precisa ser de um deles (`orchestratorForTeam`).
+ */
+export type StructureGroup = { teamId: string; name: string; universes?: string[] }
 
 export type GroupResolution = { kind: "OK"; teamIds: string[] } | { kind: "AMBIGUOUS"; candidates: string[] } | { kind: "NOT_FOUND"; message: string }
 
 /** O que a sessão de liderança sabe para a consulta de processo: os Grupos da estrutura e como achar os de uma estrutura citada. */
-export type ProcessScope = { groups: StructureGroup[]; groupsOfStructure: (name: string) => GroupResolution }
+export type ProcessScope = {
+  groups: StructureGroup[]
+  groupsOfStructure: (name: string) => GroupResolution
+  /**
+   * Universos de atuação dos Orquestradores que a consulta pode usar (lista e resolução por id), da abrangência de quem lidera: o
+   * universo do cadastro, ou todos com `operating_universes.all`. Null/ausente = sem filtro (organização sem a exigência ativa).
+   */
+  orchestratorUniverses?: readonly string[] | null
+}
 
 export type ProcessConsultation = { orchestrator: InteractiveOrchestratorScope; groupNames: string[]; question: string }
 
@@ -62,12 +74,40 @@ export type ProcessToolset = {
   execute: (name: string, args: Record<string, unknown>) => Promise<LeadershipToolResult>
 }
 
-/** Grupos dos operadores da estrutura que a pessoa lidera (ou, só com acesso ampliado, de todos os operadores visíveis). */
+/**
+ * Grupos dos operadores da estrutura que a pessoa lidera (ou, só com acesso ampliado, de todos os operadores visíveis). Só operadores
+ * que o universo de atuação de quem lidera alcança contam (`universeAllowsPerson`): um Grupo só de outro universo não aparece.
+ */
 export function structureGroupsOf(scope: ViewerScope, own: ResolvedStructure | null): StructureGroup[] {
-  const members = own ? own.resolved.members : [...scope.nodes.values()].filter((node) => node.role === "OPERATOR")
-  const byId = new Map<string, string>()
-  for (const member of members) if (member.teamId) byId.set(member.teamId, member.teamName ?? member.teamId)
-  return [...byId].map(([teamId, name]) => ({ teamId, name })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+  const members = own ? own.resolved.members : [...scope.nodes.values()].filter((node) => node.role === "OPERATOR" && universeAllowsPerson(scope, node))
+  const enforced = scope.universe?.enforced === true
+  const byId = new Map<string, { name: string; universes: Set<string> }>()
+  for (const member of members) {
+    if (!member.teamId) continue
+    const entry = byId.get(member.teamId) ?? { name: member.teamName ?? member.teamId, universes: new Set<string>() }
+    if (member.operatingUniverse) entry.universes.add(member.operatingUniverse)
+    byId.set(member.teamId, entry)
+  }
+  return [...byId]
+    .map(([teamId, entry]) => ({ teamId, name: entry.name, ...(enforced ? { universes: [...entry.universes].sort() } : {}) }))
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+}
+
+/**
+ * Universos dos Orquestradores que quem lidera pode consultar — o MESMO critério de recurso do chat (`loadUniverseAccess`), lido da
+ * sessão já carregada: sem a exigência, null (sem filtro); com ela, todos com a permissão em algum escopo, senão o do cadastro (pendente
+ * = nenhum).
+ */
+export function processOrchestratorUniverses(scope: ViewerScope): readonly string[] | null {
+  const rule = scope.universe
+  if (!rule?.enforced) return null
+  // `operating_universes.all` em algum escopo (Grupo, Subgrupo, organização ou "Minha estrutura") = `canAnywhere` de `loadUniverseAccess`.
+  const allAnywhere = rule.cross.organizationWide || rule.cross.teamIds.length > 0 || rule.cross.subteamIds.length > 0 || rule.crossInStructure
+  if (allAnywhere) return [...OPERATING_UNIVERSES]
+  // Quem lidera equipes de outro universo (supervisor com B2C e B2B — decisão do usuário, 16/11) consulta também os Orquestradores dos
+  // universos dos operadores da PRÓPRIA estrutura; universo que ela não lidera nem tem pelo cadastro continua fora.
+  const led = [...scope.nodes.values()].filter((node) => node.role === "OPERATOR" && node.active && scope.structureIds?.has(node.id) && node.operatingUniverse).map((node) => node.operatingUniverse!)
+  return [...new Set([...(rule.own ? [rule.own] : []), ...led])].sort()
 }
 
 export function processScopeOf(scope: ViewerScope, own: ResolvedStructure | null): ProcessScope {
@@ -78,6 +118,7 @@ export function processScopeOf(scope: ViewerScope, own: ResolvedStructure | null
       if (outcome.kind !== "OK") return outcome
       return { kind: "OK", teamIds: [...new Set(outcome.value.resolved.members.flatMap((member) => (member.teamId ? [member.teamId] : [])))] }
     },
+    orchestratorUniverses: processOrchestratorUniverses(scope),
   }
 }
 
@@ -90,7 +131,8 @@ export const MAX_PROCESS_CONSULTATIONS_PER_TURN = 2
  */
 export function buildProcessConsultationToolset(input: { scope: ProcessScope; orchestrators: InteractiveOrchestratorScope[]; consult: (consultation: ProcessConsultation) => Promise<ProcessConsultationAnswer> }): ProcessToolset | null {
   const { groups } = input.scope
-  const orchestratorOf = (teamId: string | null) => orchestratorForTeam(input.orchestrators, teamId)
+  const universesOf = new Map(groups.map((group) => [group.teamId, group.universes ?? null]))
+  const orchestratorOf = (teamId: string | null) => orchestratorForTeam(input.orchestrators, teamId, teamId === null ? null : (universesOf.get(teamId) ?? null))
   const fallback = orchestratorOf(null)
   const reachable = groups.length > 0 ? groups.filter((group) => orchestratorOf(group.teamId) !== null) : []
   if (reachable.length === 0 && !fallback) return null
@@ -177,7 +219,7 @@ export function buildProcessConsultationToolset(input: { scope: ProcessScope; or
  * sem Orquestrador próprio, o de "Todos os grupos"); estrutura sem Grupos = o de "Todos os grupos".
  */
 export function reachableProcessOrchestrators(scope: ProcessScope, orchestrators: InteractiveOrchestratorScope[]): InteractiveOrchestratorScope[] {
-  return distinctOrchestrators(scope.groups.length > 0 ? scope.groups.map((group) => orchestratorForTeam(orchestrators, group.teamId)) : [orchestratorForTeam(orchestrators, null)])
+  return distinctOrchestrators(scope.groups.length > 0 ? scope.groups.map((group) => orchestratorForTeam(orchestrators, group.teamId, group.universes ?? null)) : [orchestratorForTeam(orchestrators, null)])
 }
 
 /** Duas listas de ferramentas diretas como uma só (a primeira que conhece o nome executa). */

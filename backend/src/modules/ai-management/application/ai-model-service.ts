@@ -325,6 +325,13 @@ export async function testModel(context: AiAdminContext, actor: Actor, id: strin
       const seconds = (spoken.pcm16.length / 2 / spoken.sampleRate).toFixed(1)
       return { status: "OK", latencyMs: Date.now() - startedAt, message: "O modelo devolveu áudio.", outputPreview: `Áudio de ${seconds} s (${spoken.sampleRate} Hz) com a voz "${model.speech.voice}".`, usage: { inputTokens: spoken.usage.promptTokens, outputTokens: spoken.usage.outputTokens, totalTokens: spoken.usage.totalTokens }, cost: { status: cost.status, amount: cost.status === "UNKNOWN" ? null : cost.amount, currency: cost.currency }, testedAt: testedAt.toISOString() }
     }
+    // Modelo de EMBEDDING (busca nas bases): o teste gera o vetor de uma frase curta — pedir texto a um modelo de embedding falharia.
+    if (model.kind === "EMBEDDING" && adapter.embed) {
+      const embedded = await adapter.embed(connection, model.providerModelId, { texts: ["Teste da busca nas bases da INIA."], purpose: "QUERY" }, model.timeoutMs ?? connection.timeoutMs)
+      const cost = resolveCallCost(embedded.usage, pricing, embedded.reportedCost)
+      await insertUsageEvent(context.db, { ...base, usage: embedded.usage, durationMs: embedded.durationMs, status: "SUCCESS", errorCategory: null, ...usageCostColumns(cost) })
+      return { status: "OK", latencyMs: Date.now() - startedAt, message: "O modelo devolveu o vetor.", outputPreview: `Vetor de ${embedded.vectors[0]?.length ?? 0} posições.`, usage: { inputTokens: embedded.usage.promptTokens, outputTokens: embedded.usage.outputTokens, totalTokens: embedded.usage.totalTokens }, cost: { status: cost.status, amount: cost.status === "UNKNOWN" ? null : cost.amount, currency: cost.currency }, testedAt: testedAt.toISOString() }
+    }
     const result = await adapter.execute(connection, model.providerModelId, { systemPrompt: "Você é um teste de conectividade. Responda apenas com a palavra OK.", contents: [{ role: "user", text: "Teste" }], tools: [], structuredOutput: false, maxOutputTokens: 16 }, model.timeoutMs ?? connection.timeoutMs)
     const cost = resolveCallCost(result.usage, pricing, result.reportedCost)
     await insertUsageEvent(context.db, { ...base, usage: result.usage, durationMs: result.durationMs, status: "SUCCESS", errorCategory: null, ...usageCostColumns(cost) })

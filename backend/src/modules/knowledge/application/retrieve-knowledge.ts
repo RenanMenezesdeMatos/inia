@@ -452,7 +452,7 @@ export function ambiguousProcessesOf(anchors: ReturnType<typeof documentAnchors>
 }
 
 /** Siglas ativas do Glossário geral da organização (termo curto em maiúsculas). Falha = sem expansão, nunca sem resposta. */
-async function loadGlossaryAcronyms(db: Database, organizationId: string): Promise<GlossaryAcronym[]> {
+export async function loadGlossaryAcronyms(db: Database, organizationId: string): Promise<GlossaryAcronym[]> {
   try {
     const result = await db.query<{ term: string; definition: string }>(`select term, definition from glossary_terms where organization_id = $1 and active`, [organizationId])
     return result.rows.flatMap((row) => (/^[A-Z][A-Z0-9]{1,5}$/.test(row.term.trim()) ? [{ acronym: row.term.trim(), definition: row.definition.trim() }] : []))

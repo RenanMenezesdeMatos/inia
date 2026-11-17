@@ -7,6 +7,7 @@ import { canReceiveAssignment, effectiveCapacity, inService, type AnjoSituation 
 import { estimateWait, queueDeadline, referencePopulation, type QueueDeadline, type QueueSample } from "../domain/queue-history.js"
 import type { Availability } from "../domain/views.js"
 import type { Queryable } from "./locks.js"
+import { loadAnjoUniverseGate } from "./universe-gate.js"
 
 /**
  * LUGAR DA PESSOA, LIGA/DESLIGA, ANJOS EM SERVIÇO E DISPONIBILIDADE (design_draft.md seções 5, 6 e 9). Lê só `people`, `teams`,
@@ -54,10 +55,10 @@ export async function loadSettings(db: Queryable, organizationId: string): Promi
     : { enabled: false, defaultCapacity: HUMAN_SUPPORT_LIMITS.defaultCapacity, version: 0, responseTimes: { ...RESPONSE_TIMES_DEFAULTS }, anjoUnresponsive: { ...ANJO_UNRESPONSIVE_DEFAULTS } }
 }
 
-/** Os tempos de resposta que valem para um pedido do Grupo `teamId` (migration 194): os do Grupo, senão o padrão da organização. */
+/** Os tempos de resposta que valem para um pedido do Grupo `teamId` (migration 194): os do Grupo (`custom`, 203), senão o padrão da organização. */
 export async function responseTimesForTeam(db: Queryable, organizationId: string, teamId: string | null): Promise<ResponseTimes> {
   const own = teamId
-    ? (await db.query<{ operator_requeue_minutes: number; operator_close_minutes: number; anjo_requeue_minutes: number }>(`select operator_requeue_minutes, operator_close_minutes, anjo_requeue_minutes from human_support_group_response_times where organization_id = $1 and team_id = $2`, [organizationId, teamId])).rows[0]
+    ? (await db.query<{ operator_requeue_minutes: number; operator_close_minutes: number; anjo_requeue_minutes: number }>(`select operator_requeue_minutes, operator_close_minutes, anjo_requeue_minutes from human_support_group_response_times where organization_id = $1 and team_id = $2 and custom`, [organizationId, teamId])).rows[0]
     : undefined
   return own ? { operatorRequeueMinutes: Number(own.operator_requeue_minutes), operatorCloseMinutes: Number(own.operator_close_minutes), anjoRequeueMinutes: Number(own.anjo_requeue_minutes) } : (await loadSettings(db, organizationId)).responseTimes
 }
@@ -92,14 +93,22 @@ export async function enabledForPlace(db: Queryable, organizationId: string, pla
   return enabledWith(settings, states, place)
 }
 
+/** Quem tem o papel de Anjo cobrindo o lugar, fora o operador, filtrado pelo universo do operador (exigência ativada). */
+export async function anjoIdsServing(db: Queryable, organizationId: string, place: { teamId: string | null; subteamId: string | null }, operatorPersonId: string): Promise<string[]> {
+  const ids = (await personIdsWithPermissionCovering(db, organizationId, "human_support.attend", place)).filter((id) => id !== operatorPersonId)
+  if (ids.length === 0) return []
+  return (await loadAnjoUniverseGate(db, organizationId)).allowed(place, operatorPersonId, ids)
+}
+
 export type AnjoCandidate = AnjoSituation & { personId: string; pauseReason: PauseReason | null; lastAssignedAt: Date | null }
 
 /**
- * Os Anjos cujo papel cobre o lugar (organização, o Grupo ou o Subgrupo), com a presença de agora. Sem linha de presença =
- * Indisponível e sem conexão. `excludePersonId` = o operador (nunca atende a si mesmo).
+ * Os Anjos cujo papel cobre o lugar (organização, o Grupo ou o Subgrupo) e que podem atender o UNIVERSO do operador (com a exigência
+ * ativada; `universe-gate.ts`), com a presença de agora. Sem linha de presença = Indisponível e sem conexão. O operador nunca atende a
+ * si mesmo.
  */
-export async function anjosCovering(db: Queryable, organizationId: string, place: { teamId: string | null; subteamId: string | null }, excludePersonId: string | null, defaultCapacity: number): Promise<AnjoCandidate[]> {
-  const ids = (await personIdsWithPermissionCovering(db, organizationId, "human_support.attend", place)).filter((id) => id !== excludePersonId)
+export async function anjosCovering(db: Queryable, organizationId: string, place: { teamId: string | null; subteamId: string | null }, operatorPersonId: string, defaultCapacity: number): Promise<AnjoCandidate[]> {
+  const ids = await anjoIdsServing(db, organizationId, place, operatorPersonId)
   if (ids.length === 0) return []
   const result = await db.query<{ person_id: string; status: PresenceStatus | null; pause_reason: PauseReason | null; max_concurrent: number | null; connected: boolean | null; last_assigned_at: Date | null; active_count: number; scheduled: boolean | null }>(
     `select ids.person_id, p.status, p.pause_reason, p.max_concurrent, p.lease_until > statement_timestamp() connected, p.last_assigned_at, p.scheduled_status is not null scheduled,
@@ -180,11 +189,11 @@ export async function anyEnabledScope(db: Queryable, organizationId: string, sco
 
 /**
  * Quantos Anjos estão EM SERVIÇO agora no escopo do pedido (estado ≠ Indisponível, fora da pausa "Desconexão" — 195 —, área aberta, papel cobrindo o Grupo/Subgrupo, fora
- * o próprio operador). Gravado quando o pedido sai da fila sem atendimento (`anjos_in_service_at_end`, migration 191): zero = encerrado
+ * o próprio operador, do universo do operador quando a exigência está ativada). Gravado quando o pedido sai da fila sem atendimento (`anjos_in_service_at_end`, migration 191): zero = encerrado
  * sem Anjo logado, indicador da operação sem atribuição individual.
  */
 export async function anjosInServiceCount(db: Queryable, organizationId: string, place: { teamId: string | null; subteamId: string | null }, operatorPersonId: string): Promise<number> {
-  const covering = (await personIdsWithPermissionCovering(db, organizationId, "human_support.attend", place)).filter((personId) => personId !== operatorPersonId)
+  const covering = await anjoIdsServing(db, organizationId, place, operatorPersonId)
   if (covering.length === 0) return 0
   return Number((await db.query<{ total: number }>(`select count(*)::int total from human_support_agent_presence where organization_id = $1 and person_id = any($2::uuid[]) and status <> 'OFFLINE' and pause_reason is distinct from 'DISCONNECTION' and lease_until > statement_timestamp()`, [organizationId, covering])).rows[0]!.total)
 }

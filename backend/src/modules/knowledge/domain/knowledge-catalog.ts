@@ -6,9 +6,11 @@ import type { KnowledgeChunk } from "./knowledge-chunking.js"
  * título da base, os títulos de seção na ordem em que aparecem, o começo de um trecho sem título) e lê uma seção pelo id quando a
  * IA pede. Quem decide o que é pertinente é a IA (`knowledge-clarification`).
  */
-export const KNOWLEDGE_CATALOG_VERSION = "KNOWLEDGE_CATALOG_V1" as const
+/** V2 (16/11/2026): cada base traz o produto cadastrado ("Família › Produto", Produtos e aplicabilidade) ao lado do título — dado do
+ * administrador, para a IA saber que a família que a pessoa citou é a da base. */
+export const KNOWLEDGE_CATALOG_VERSION = "KNOWLEDGE_CATALOG_V2" as const
 
-export type CatalogSource = { documentId: string; documentTitle: string; versionId: string; documentType: string | null; chunks: readonly KnowledgeChunk[] }
+export type CatalogSource = { documentId: string; documentTitle: string; versionId: string; documentType: string | null; chunks: readonly KnowledgeChunk[]; /** Produtos cadastrados da base ("Família › Produto; …"); ausente = sem produto. */ products?: string | null }
 
 /** Uma entrada do sumário: a seção (pela primeira parte dela) ou, num documento sem títulos, um trecho com o começo do texto. */
 export type CatalogSection = { documentId: string; documentTitle: string; versionId: string; heading: string; chunkIndex: number; preview: string | null; pages?: { from: number; to: number } | undefined }
@@ -82,3 +84,17 @@ export function sectionOf(source: CatalogSource, chunkIndex: number, maxChars = 
   const withPages = parts.flatMap((chunk) => (chunk.pages ? [chunk.pages] : []))
   return { heading: anchor.heading, text: parts.map((chunk) => chunk.text).join("\n\n").slice(0, maxChars), chunkIndexes: parts.map((chunk) => chunk.index), ...(withPages.length > 0 ? { pages: { from: Math.min(...withPages.map((pages) => pages.from)), to: Math.max(...withPages.map((pages) => pages.to)) } } : {}) }
 }
+
+/** Início da seção de cada trecho (partes seguidas com o mesmo título formam uma seção; trecho sem título é a própria seção). */
+export function sectionStartsOf(source: Pick<CatalogSource, "chunks">): Map<number, number> {
+  const starts = new Map<number, number>()
+  let start = -1
+  let heading: string | null = null
+  for (const chunk of [...source.chunks].sort((left, right) => left.index - right.index)) {
+    if (!chunk.heading || chunk.heading !== heading) start = chunk.index
+    heading = chunk.heading || null
+    starts.set(chunk.index, start)
+  }
+  return starts
+}
+

@@ -7,7 +7,7 @@ import { TRANSFER_NOT_ELIGIBLE_TEXT, transferDecision, type TransferTarget } fro
 import type { RequestDetail } from "../domain/views.js"
 import { recordHumanSupportAudit } from "./audit.js"
 import { requestDetail } from "./coordination-service.js"
-import { coordinatorScopesOf, coversRecord } from "./coverage.js"
+import { coordinatorScopesOf, coversRecord, operatorUniverseOf } from "./coverage.js"
 import { dispatchAfterCommand } from "./dispatch.js"
 import { anjosCovering, loadSettings, queueDeadlineFor } from "./eligibility.js"
 import { bumpInboxVersions } from "./inbox-versions.js"
@@ -46,7 +46,7 @@ const notFound = () => new DomainError("Pedido de apoio não encontrado.", "HUMA
 async function loadReachableRequest(db: Queryable, viewer: Viewer, requestId: string) {
   const coverage = await coordinatorScopesOf(db, viewer.organizationId, viewer.personId)
   const request = await loadRequest(db, viewer.organizationId, requestId)
-  if (!request || !coversRecord(coverage, { teamId: request.team_id, subteamId: request.subteam_id })) throw notFound()
+  if (!request || !coversRecord(coverage, { teamId: request.team_id, subteamId: request.subteam_id, operatorUniverse: await operatorUniverseOf(db, viewer.organizationId, coverage, request.operator_person_id) })) throw notFound()
   return request
 }
 

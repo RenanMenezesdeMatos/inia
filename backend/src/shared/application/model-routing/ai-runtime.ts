@@ -178,6 +178,13 @@ export type PolicySpeechResult = { pcm16: Buffer; sampleRate: number; voice: str
 /** Voz e identidades de áudio que o cache aceita (mesma forma do caminho legado: voz da INIA + `acceptedRecadoModels`). */
 export type SpeechCacheIdentity = { voice: string; models: readonly string[] }
 
+/**
+ * Embedding pela policy da organização (Use Case KNOWLEDGE_EMBEDDING). `modelKey` (opcional) prende a chamada a UM modelo: vetores de
+ * modelos diferentes não se comparam, então a pergunta usa exatamente o modelo do índice — candidato de outro modelo nunca é tentado.
+ */
+export type PolicyEmbeddingRequest = { organizationId: string; useCase: AiUseCaseKey; classification: LlmRequestClassification; correlationId: string; texts: readonly string[]; purpose: "DOCUMENT" | "QUERY"; modelKey?: string | undefined }
+export type PolicyEmbeddingResult = { vectors: Float32Array[]; modelKey: string; usage: LlmUsage; resolvedRoute: ResolvedAiRoute }
+
 export interface AiRuntime {
   /** null = a organização não tem policy ACTIVE para o Use Case → o gateway segue pelo legado. */
   executeWithPolicy(request: PolicyExecutionRequest): Promise<PolicyExecutionResult | null>
@@ -191,6 +198,10 @@ export interface AiRuntime {
   speechIdentityWithPolicy?(input: { organizationId: string; useCase: AiUseCaseKey }): Promise<SpeechCacheIdentity | null>
   /** null = sem policy (legado). Com policy, lê o texto pela conexão/modelo/voz dela — fallback e uso como em `executeWithPolicy`. */
   synthesizeSpeechWithPolicy?(request: PolicySpeechRequest): Promise<PolicySpeechResult | null>
+  /** Modelo de embedding que a policy ACTIVE usa agora (identidade do índice), ou null (sem policy ou sem candidato elegível). */
+  embeddingModelWithPolicy?(input: { organizationId: string; useCase: AiUseCaseKey }): Promise<string | null>
+  /** null = sem policy. Com policy, gera os vetores pela conexão/modelo dela (uso e orçamento como em `executeWithPolicy`). */
+  embedWithPolicy?(request: PolicyEmbeddingRequest): Promise<PolicyEmbeddingResult | null>
 }
 
 let runtime: AiRuntime | null = null

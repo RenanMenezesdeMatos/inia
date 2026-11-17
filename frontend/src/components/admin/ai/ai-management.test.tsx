@@ -281,7 +281,7 @@ describe("IA / Modelos — Modelos", () => {
 
 describe("IA / Modelos — Roteamento", () => {
   const ROUTING: UseCaseRouting = {
-    useCase: { key: "AGENT_RESPONSE", label: "Resposta do Agent", description: "Síntese final do Agent.", group: "RESPONSE", requiredCapabilities: ["STRUCTURED_OUTPUT"], preferredCapabilities: [], routable: true, internal: false, requiresSpeechVoice: false },
+    useCase: { key: "AGENT_RESPONSE", label: "Resposta do Agent", description: "Síntese final do Agent.", group: "RESPONSE", requiredCapabilities: ["STRUCTURED_OUTPUT"], preferredCapabilities: [], routable: true, internal: false, requiresSpeechVoice: false, modelKind: "GENERATIVE" },
     active: null,
     draft: {
       id: "p-draft",

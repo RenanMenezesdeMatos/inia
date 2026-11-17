@@ -1,12 +1,13 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { escapeLike } from "../../../shared/presentation/list-query.js"
 import { canManageScope, getManageableScopes, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
 import { loadPersonFieldControl } from "../../data-hub/application/person-field-control.js"
 import { OPERATING_UNIVERSES, type OperatingUniverse } from "../domain/operating-universe.js"
 import { isUniverseEnforced } from "./universe-access.js"
 import { existingUniverseConflicts } from "./universe-links.js"
-import { linkedResources, resourceConflictError, resourceLinkConflicts, UNIVERSE_RESOURCE_KINDS, UNIVERSE_RESOURCES, type UniverseResourceKind } from "./resource-universe.js"
+import { crossUniverseLinks, resourceConflictError, resourceLinkConflicts, UNIVERSE_RESOURCE_KINDS, UNIVERSE_RESOURCES, type UniverseResourceKind } from "./resource-universe.js"
 
 /**
  * REGULARIZAÇÃO E ATIVAÇÃO — o fluxo administrativo do universo de atuação:
@@ -27,16 +28,18 @@ export async function loadReadiness(db: Database, organizationId: string) {
       return { kind, label: def.label, total: Number(row.total), pending: Number(row.pending) }
     }),
   )
-  const people = (await db.query<{ total: string; pending: string; operators_pending: string }>(
-    `select count(*)::text total, count(*) filter (where operating_universe is null)::text pending,
-            count(*) filter (where operating_universe is null and role = 'OPERATOR')::text operators_pending
+  const people = (await db.query<{ total: string; pending: string; operators_pending: string; groups_pending: string }>(
+    // Só OPERADOR precisa de universo (o dele ou o do Grupo); liderança vê a própria estrutura em qualquer universo.
+    `select count(*)::text total, count(*) filter (where operating_universe is null and role = 'OPERATOR')::text pending,
+            count(*) filter (where operating_universe is null and role = 'OPERATOR')::text operators_pending,
+            count(distinct team_id) filter (where operating_universe is null and role = 'OPERATOR' and team_id is not null)::text groups_pending
        from people where organization_id = $1 and active`,
     [organizationId],
   )).rows[0]!
   const byUniverse = (await db.query<{ operating_universe: string | null; count: string }>(`select operating_universe, count(*)::text from people where organization_id = $1 and active group by 1`, [organizationId])).rows
   const pendingByGroup = (await db.query<{ team_id: string | null; team_name: string | null; count: string }>(
     `select p.team_id, t.name team_name, count(*)::text from people p left join teams t on t.id = p.team_id
-      where p.organization_id = $1 and p.active and p.operating_universe is null group by 1, 2 order by count(*) desc, t.name limit 50`,
+      where p.organization_id = $1 and p.active and p.role = 'OPERATOR' and p.operating_universe is null group by 1, 2 order by count(*) desc, t.name limit 50`,
     [organizationId],
   )).rows
   const conflicts = await allConflicts(db, organizationId)
@@ -53,14 +56,14 @@ export async function loadReadiness(db: Database, organizationId: string) {
     resources: counts,
     conflicts,
     /** O que fica indisponível na operação se ativar agora — texto explicativo derivado das contagens. */
-    impact: impactOf(Number(people.pending), Number(people.operators_pending), counts, conflicts.length),
+    groupsPending: Number(people.groups_pending),
+    impact: impactOf(Number(people.groups_pending), Number(people.operators_pending), counts, conflicts.length),
   }
 }
 
-function impactOf(peoplePending: number, operatorsPending: number, counts: readonly { label: string; pending: number }[], conflicts: number): string[] {
+function impactOf(groupsPending: number, operatorsPending: number, counts: readonly { label: string; pending: number }[], conflicts: number): string[] {
   const lines: string[] = []
-  if (operatorsPending > 0) lines.push(`${operatorsPending} operador(es) sem universo ficariam sem bases, produtos e Workflows segmentados até serem classificados (a INIA avisa que o cadastro está pendente).`)
-  if (peoplePending > operatorsPending) lines.push(`${peoplePending - operatorsPending} liderança(s) sem universo veriam apenas quem a permissão de todos os universos alcança.`)
+  if (operatorsPending > 0) lines.push(`${operatorsPending} operador(es) sem universo (${groupsPending} Grupo(s) sem universo declarado) ficariam sem bases, produtos e Workflows segmentados até o Grupo ser classificado (a INIA avisa que o cadastro está pendente).`)
   for (const count of counts) if (count.pending > 0) lines.push(`${count.pending} ${count.label.toLowerCase()}(s) sem universo sairiam das consultas e execuções operacionais (continuam na Administração para classificar).`)
   if (conflicts > 0) lines.push(`${conflicts} vínculo(s) entre universos diferentes precisam ser desfeitos ou reclassificados.`)
   if (lines.length === 0) lines.push("Nada pendente: ativar não deixa ninguém nem nenhum recurso fora da operação.")
@@ -74,20 +77,8 @@ export async function allConflicts(db: Database, organizationId: string) {
     to: { kind: "PRODUCT" as const, id: conflict.productId, name: conflict.productName, operatingUniverse: conflict.productUniverse },
     viaCategory: conflict.viaCategoryId !== null,
   }))
-  const others: { from: { kind: UniverseResourceKind; id: string; name: string; operatingUniverse: string | null }; to: { kind: string; id: string; name: string; operatingUniverse: string | null }; viaCategory: boolean }[] = []
-  // Do lado "quem usa": agentes, orquestradores e Workflows classificados (cada vínculo aparece uma vez).
-  for (const kind of ["AGENT", "ORCHESTRATOR", "WORKFLOW"] as const) {
-    const def = UNIVERSE_RESOURCES[kind]
-    const items = (await db.query<{ id: string; name: string; operating_universe: string }>(`select id, ${def.name} name, operating_universe from ${def.read} where organization_id = $1 and operating_universe is not null`, [organizationId])).rows
-    for (const item of items) {
-      for (const linked of await linkedResources(db, organizationId, kind, item.id)) {
-        if (linked.operatingUniverse === null || linked.operatingUniverse === item.operating_universe) continue
-        if (kind === "AGENT" && (linked.kind === "ORCHESTRATOR" || linked.kind === "WORKFLOW")) continue
-        if (kind === "ORCHESTRATOR" && linked.kind === "WORKFLOW") continue
-        others.push({ from: { kind, id: item.id, name: item.name, operatingUniverse: item.operating_universe }, to: linked, viaCategory: false })
-      }
-    }
-  }
+  // Do lado "quem usa": agentes, orquestradores e Workflows classificados (cada vínculo aparece uma vez) — uma consulta, sem N+1.
+  const others = (await crossUniverseLinks(db, organizationId)).map((link) => ({ from: link.from, to: link.to, viaCategory: false }))
   return [...productLinks, ...others]
 }
 
@@ -95,25 +86,58 @@ async function scopesFor(db: Database, actor: Actor, kind: UniverseResourceKind)
   return getManageableScopes(db, actor, UNIVERSE_RESOURCES[kind].permission)
 }
 
-/** Lista de um tipo para classificar (só com a permissão do tipo; recursos com Grupo/Subgrupo, só os do escopo). */
+/** Teto da lista de classificação (a tela refina por situação e busca para chegar ao resto). */
+export const RESOURCE_LIST_LIMIT = 500
+
+/**
+ * Lista de um tipo para classificar (só com a permissão do tipo; recursos com Grupo/Subgrupo, só os do escopo). O ESCOPO é aplicado no
+ * SQL, antes do teto — senão os 500 primeiros da organização podiam ser todos de fora do escopo e a lista vinha vazia ou incompleta sem
+ * aviso. `truncated` diz à tela que há mais itens do que o teto (refinar pela busca ou pela situação). A busca escapa `%`, `_` e `\`.
+ */
 export async function listResources(db: Database, actor: Actor, kind: UniverseResourceKind, filter: { status?: "PENDING" | "CLASSIFIED" | "ALL"; search?: string }) {
   const def = UNIVERSE_RESOURCES[kind]
   const scopes = await scopesFor(db, actor, kind)
   if (!scopes.unrestricted && !scopes.allTeams && scopes.teamIds.size === 0 && scopes.subteamIds.size === 0) throw new DomainError("Você não administra este tipo de recurso.", "FORBIDDEN", 403)
+  const restricted = !scopes.unrestricted && !scopes.allTeams
+  // Catálogo da organização com escopo só de Grupo/Subgrupo: nada a classificar aqui (a escrita exige a organização inteira).
+  if (restricted && def.organizationWide) return { items: [], truncated: false, limit: RESOURCE_LIST_LIMIT }
   const params: unknown[] = [actor.organizationId]
   const where = [`r.organization_id = $1`]
   if (def.where) where.push(def.where.replace(/\b(kind|deleted_at)\b/g, "r.$1"))
   if (filter.status === "PENDING") where.push(`r.operating_universe is null`)
   if (filter.status === "CLASSIFIED") where.push(`r.operating_universe is not null`)
   if (filter.search) {
-    params.push(`%${filter.search}%`)
+    params.push(`%${escapeLike(filter.search)}%`)
     where.push(`r.${def.name} ilike $${params.length}`)
   }
+  if (restricted) {
+    params.push([...scopes.teamIds], [...scopes.subteamIds])
+    where.push(scopeSql(kind, `$${params.length - 1}`, `$${params.length}`))
+  }
+  params.push(RESOURCE_LIST_LIMIT + 1)
   const rows = (await db.query<{ id: string; name: string; operating_universe: string | null } & ScopeColumns>(
-    `select r.id, r.${def.name} name, r.operating_universe, ${scopeSelect(kind)} from ${def.read} r where ${where.join(" and ")} order by r.operating_universe nulls first, r.${def.name} limit 500`,
+    `select r.id, r.${def.name} name, r.operating_universe, ${scopeSelect(kind)} from ${def.read} r where ${where.join(" and ")} order by r.operating_universe nulls first, r.${def.name}, r.id limit $${params.length}`,
     params,
   )).rows
-  return rows.filter((row) => canTouch(scopes, kind, row)).map((row) => ({ kind, id: row.id, name: row.name, operatingUniverse: row.operating_universe }))
+  const truncated = rows.length > RESOURCE_LIST_LIMIT
+  // `canTouch` continua como conferência final (a mesma regra da classificação), agora sobre linhas já do escopo.
+  const items = rows.slice(0, RESOURCE_LIST_LIMIT).filter((row) => canTouch(scopes, kind, row)).map((row) => ({ kind, id: row.id, name: row.name, operatingUniverse: row.operating_universe }))
+  return { items, truncated, limit: RESOURCE_LIST_LIMIT }
+}
+
+/**
+ * SQL equivalente a `canTouch` para quem administra só Grupos/Subgrupos (`teams`/`subteams` = uuid[]): recurso de Grupo ou Subgrupo do
+ * escopo; base de conhecimento com ao menos um alcance e TODOS eles no escopo; "Todos os grupos" nunca.
+ */
+function scopeSql(kind: UniverseResourceKind, teams: string, subteams: string): string {
+  const reach = (alias: string) =>
+    `coalesce((${alias}.scope_type = 'TEAM' and ${alias}.team_id = any(${teams}::uuid[])) or (${alias}.scope_type = 'SUBTEAM' and ${alias}.subteam_id = any(${subteams}::uuid[])), false)`
+  if (kind === "KNOWLEDGE_DOCUMENT") {
+    return `(exists (select 1 from knowledge_document_org_scopes os where os.knowledge_document_id = r.id)
+      and not exists (select 1 from knowledge_document_org_scopes os where os.knowledge_document_id = r.id and not ${reach("os")}))`
+  }
+  if (kind === "WORKFLOW" || kind === "AGENT" || kind === "ORCHESTRATOR" || kind === "ARGUMENT_SCRIPT") return reach("r")
+  return "false"
 }
 
 type ScopeColumns = { scope_type: string | null; team_id: string | null; subteam_id: string | null; scopes: { scopeType: string; teamId: string | null; subteamId: string | null }[] | null }
@@ -147,15 +171,27 @@ export async function classifyResource(db: Database, actor: Actor, kind: Univers
   if (universe === null && (await isUniverseEnforced(db, actor.organizationId))) throw new DomainError("Com a exigência ativa, todo recurso precisa de universo (B2B, B2C ou B2X).", "OPERATING_UNIVERSE_REQUIRED", 422)
   if (row.operating_universe === universe) return { kind, id, operatingUniverse: universe, changed: false }
   if (kind === "WORKFLOW" && row.operating_universe !== null) throw new DomainError("Para mudar o universo de um Workflow já classificado, edite a Abrangência no editor e publique (muda quem entra nas próximas execuções).", "OPERATING_UNIVERSE_WORKFLOW_USE_EDITOR", 409)
+  const notFound = () => new DomainError(`${def.label} não encontrado.`, "OPERATING_UNIVERSE_RESOURCE_NOT_FOUND", 404)
   return inTransaction(db, async (client) => {
-    await client.query(`select 1 from ${def.write} where id = $1 for update`, [id])
+    // Trava a linha DESTA organização (nunca só pelo id) e relê o universo sob a trava: entre a leitura acima e aqui o recurso pode ter
+    // sido excluído (logicamente) ou classificado por outra pessoa — a regra do Workflow vale sobre o valor travado.
+    const locked = (await client.query<{ operating_universe: string | null }>(
+      `select r.operating_universe from ${def.write} r where r.id = $1 and r.organization_id = $2${def.where ? ` and ${def.where.replace(/\b(kind|deleted_at)\b/g, "r.$1")}` : ""} for update`,
+      [id, actor.organizationId],
+    )).rows[0]
+    if (!locked) throw notFound()
+    if (locked.operating_universe === universe) return { kind, id, operatingUniverse: universe, changed: false }
+    if (kind === "WORKFLOW" && locked.operating_universe !== null) throw new DomainError("Para mudar o universo de um Workflow já classificado, edite a Abrangência no editor e publique (muda quem entra nas próximas execuções).", "OPERATING_UNIVERSE_WORKFLOW_USE_EDITOR", 409)
     const conflicts = await resourceLinkConflicts(client, actor.organizationId, kind, id, universe)
     if (conflicts.length > 0) throw resourceConflictError(kind, conflicts)
-    if (kind === "WORKFLOW") await client.query(`update workflows set operating_universe = $3, draft_operating_universe = $3 where id = $1 and organization_id = $2`, [id, actor.organizationId, universe])
-    else await client.query(`update ${def.write} set operating_universe = $3 where id = $1 and organization_id = $2`, [id, actor.organizationId, universe])
+    const updated = kind === "WORKFLOW"
+      ? await client.query(`update workflows set operating_universe = $3, draft_operating_universe = $3 where id = $1 and organization_id = $2`, [id, actor.organizationId, universe])
+      : await client.query(`update ${def.write} set operating_universe = $3 where id = $1 and organization_id = $2`, [id, actor.organizationId, universe])
+    // Nada gravado (excluído no meio do caminho) = nada auditado.
+    if ((updated.rowCount ?? 0) === 0) throw notFound()
     await client.query(
       `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'OPERATING_UNIVERSE_CLASSIFIED', $3, $4, $5::jsonb)`,
-      [actor.organizationId, actor.personId, kind.toLowerCase(), id, JSON.stringify({ kind, from: row.operating_universe, to: universe, actorAccountId: actor.sub })],
+      [actor.organizationId, actor.personId, kind.toLowerCase(), id, JSON.stringify({ kind, from: locked.operating_universe, to: universe, actorAccountId: actor.sub })],
     )
     return { kind, id, operatingUniverse: universe, changed: true }
   })
@@ -168,7 +204,7 @@ export async function classifyResource(db: Database, actor: Actor, kind: Univers
 export async function classifyPeople(db: Database, actor: Actor, personIds: readonly string[], universe: OperatingUniverse) {
   const scopes = await getManageableScopes(db, actor, "people.manage")
   const rows = (await db.query<{ id: string; team_id: string | null; subteam_id: string | null; operating_universe: string | null }>(
-    `select id, team_id, subteam_id, operating_universe from people where organization_id = $1 and id = any($2::uuid[])`,
+    `select id, team_id, subteam_id, operating_universe_override operating_universe from people where organization_id = $1 and id = any($2::uuid[])`,
     [actor.organizationId, [...new Set(personIds)]],
   )).rows
   const reachable = rows.filter((row) => row.id !== actor.personId && (scopes.unrestricted || scopes.allTeams || (row.subteam_id !== null && scopes.subteamIds.has(row.subteam_id)) || (row.team_id !== null && scopes.teamIds.has(row.team_id))))
@@ -177,7 +213,7 @@ export async function classifyPeople(db: Database, actor: Actor, personIds: read
   const writable = reachable.filter((row) => !control.get(row.id)?.operatingUniverse && row.operating_universe !== universe).map((row) => row.id)
   if (writable.length > 0) {
     await inTransaction(db, async (client) => {
-      await client.query(`update people set operating_universe = $3 where organization_id = $1 and id = any($2::uuid[])`, [actor.organizationId, writable, universe])
+      await client.query(`update people set operating_universe_override = $3 where organization_id = $1 and id = any($2::uuid[])`, [actor.organizationId, writable, universe])
       await client.query(
         `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload)
          select $1, $2, 'PERSON_OPERATING_UNIVERSE_CHANGED', 'people', p.id, jsonb_build_object('to', $3::text, 'source', 'BULK_REGULARIZATION', 'actorAccountId', $4::text) from unnest($5::uuid[]) p(id)`,

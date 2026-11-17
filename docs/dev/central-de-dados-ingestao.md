@@ -326,3 +326,14 @@ Por fonte relevante: política, última carga, dia de referência e estado (fres
 - Enum de códigos de indicador em qualquer camada.
 - Reinterpretar histórico ao mudar a semântica de um indicador (o catálogo bloqueia a mudança;
   crie um indicador novo).
+
+## Universo de atuação (B2B, B2C, B2X) — 16/11/2026
+
+`GROUPS.operatingUniverse` (+ `operatingUniverseEffectiveFrom`) declara o universo do Grupo; `SUBGROUPS` aceita os mesmos campos só
+quando o Subgrupo difere do Grupo-pai; em `EMPLOYEES`, `operatingUniverse` é a EXCEÇÃO da pessoa (+ `operatingUniverseEffectiveFrom`).
+O operador herda exceção → Subgrupo → Grupo (migration 204). Valor fora de B2B/B2C/B2X = quarentena (`DATA_INVALID_ENUM`, traduzir em
+"Mapear códigos"). Em `EMPLOYEES`, com a coluna `operatingUniverse` MAPEADA no feed, vazio = sem exceção (limpa a exceção atual e a
+pessoa herda do Grupo/Subgrupo); coluna NÃO mapeada = mantém a exceção atual (17/11, auditoria run-4 UB-01). Com a exigência ativa,
+`DATA_OPERATING_UNIVERSE_REQUIRED` para operador novo sem universo resolvido E para operador que já existe quando a linha muda o
+Grupo/Subgrupo, o nível (ex.: supervisor → operador) ou tira a exceção e o resultado fica sem universo — o cadastro atual dele fica
+(UB-02); operador já pendente em que nada disso muda continua passando. Detalhe em `docs/dev/memoria/universo-de-atuacao.md`.

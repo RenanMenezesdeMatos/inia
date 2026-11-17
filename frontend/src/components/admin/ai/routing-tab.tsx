@@ -217,14 +217,14 @@ function sameDraft(left: DraftState, right: DraftState): boolean {
 }
 
 /** Problemas detectáveis antes de salvar (o backend é a autoridade na ativação). */
-function localIssues(draft: DraftState, models: AiModel[], required: readonly string[], requiresSpeechVoice: boolean): string[] {
+function localIssues(draft: DraftState, models: AiModel[], required: readonly string[], requiresSpeechVoice: boolean, modelKind: "GENERATIVE" | "EMBEDDING"): string[] {
   const issues: string[] = []
   if (draft.modelIds.length === 0) issues.push("Selecione ao menos um modelo.")
   if (draft.modelIds.length > AI_ROUTING_MAX_MODELS[draft.mode]) issues.push(`${AI_ROUTING_MODE_LABELS[draft.mode]} aceita no máximo ${AI_ROUTING_MAX_MODELS[draft.mode]} modelo(s).`)
   if (draft.mode === "AUTO" && !draft.strategy) issues.push("Escolha a estratégia do modo automático.")
   for (const id of draft.modelIds) {
     const model = models.find((item) => item.id === id)
-    const reason = model ? modelIncompatibility(model, required, requiresSpeechVoice) : "modelo removido"
+    const reason = model ? modelIncompatibility(model, required, requiresSpeechVoice, modelKind) : "modelo removido"
     if (reason) issues.push(`${model?.displayName ?? id}: ${reason}.`)
   }
   const maxCost = normalizeDecimalInput(draft.maxCost)
@@ -250,7 +250,7 @@ export function RoutingEditor({ item, canWrite }: { item: UseCaseRouting; canWri
   const dirty = !sameDraft(draft, saved)
   // Sem rascunho, a configuração mostrada vem da política ativa: salvar cria o rascunho a partir dela.
   const canSaveDraft = dirty || (!item.draft && draft.modelIds.length > 0)
-  const issues = localIssues(draft, models, required, item.useCase.requiresSpeechVoice)
+  const issues = localIssues(draft, models, required, item.useCase.requiresSpeechVoice, item.useCase.modelKind)
   const max = AI_ROUTING_MAX_MODELS[draft.mode]
   const selectedModels = draft.modelIds.map((id) => ({ id, model: models.find((model) => model.id === id) ?? null }))
   const available = models.filter((model) => !draft.modelIds.includes(model.id))
@@ -337,7 +337,7 @@ export function RoutingEditor({ item, canWrite }: { item: UseCaseRouting; canWri
         ) : (
           <ol className="space-y-2" aria-label="Modelos da política">
             {selectedModels.map(({ id, model }, index) => {
-              const reason = model ? modelIncompatibility(model, required, item.useCase.requiresSpeechVoice) : "Modelo removido"
+              const reason = model ? modelIncompatibility(model, required, item.useCase.requiresSpeechVoice, item.useCase.modelKind) : "Modelo removido"
               return (
                 <li key={id} className={cn("flex items-start gap-2 rounded-lg border p-2", reason && "border-destructive/40")}>
                   <span className="mt-1 w-5 text-xs text-muted-foreground tabular-nums">{index + 1}.</span>
@@ -375,7 +375,7 @@ export function RoutingEditor({ item, canWrite }: { item: UseCaseRouting; canWri
             ) : (
               <ul className="space-y-1.5" aria-label="Modelos disponíveis">
                 {available.map((model) => {
-                  const reason = modelIncompatibility(model, required, item.useCase.requiresSpeechVoice)
+                  const reason = modelIncompatibility(model, required, item.useCase.requiresSpeechVoice, item.useCase.modelKind)
                   const full = draft.modelIds.length >= max
                   return (
                     <li key={model.id} className={cn("flex items-center gap-2 rounded-lg border px-2 py-1.5", reason && "opacity-70")} data-testid={`available-model-${model.id}`}>

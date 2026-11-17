@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { createPostgresAccessRepository, loadAccessContexts } from "../../access/infrastructure/postgres-access-repository.js"
+import { loadPersonUniverseRule } from "../../operating-universe/application/universe-access.js"
 import { ReportRunReads } from "./report-run-reads.js"
 
 const ORG = "00000000-0000-4000-8000-00000000abc1"
 const person = (id: string, role: string, reportsToId: string | null, teamId: string | null) => ({ id, name: id, role, reportsToId, teamId, teamName: teamId, subteamId: null, subteamName: null, avatarUrl: null, jobTitle: null, operationalCapitalCode: null, active: true })
 const PEOPLE = [person("p-sup", "SUPERVISOR", null, "g1"), person("p-op1", "OPERATOR", "p-sup", "g1"), person("p-op2", "OPERATOR", "p-sup", "g1"), person("p-op3", "OPERATOR", null, "g2"), person("p-adm", "ADMIN", null, null)]
+const UNIVERSES: Record<string, string | null> = { "p-sup": "B2B", "p-adm": null, "p-op1": "B2C", "p-op2": "B2C", "p-op3": "B2B" }
 const ACCOUNTS = [{ id: "acc-sup", person_id: "p-sup", active: true }, { id: "acc-adm", person_id: "p-adm", active: true }, { id: "acc-off", person_id: "p-op3", active: false }]
 const ASSIGNMENTS = [{ id: "as1", user_account_id: "acc-adm", role_code: "ADMINISTRADOR", scope_type: "GROUP", team_id: "g1", subteam_id: null, subteam_team_id: null, team_name: "G1", subteam_name: null, source: "MANUAL", granted_at: new Date("2026-01-01"), granted_by_name: null, revoked_at: null }]
 const PERFORMANCE = ["2026-07", "2026-08", "2026-09"].flatMap((period) => ["p-op1", "p-op2", "p-op3"].map((personId) => ({ personId, indicatorCode: "TMA", referencePeriod: period, value: 400, targetValue: 420, achievementPercent: 105, weightPercent: null, quartile: "Q1", numerator: null, denominator: null, source: "TEST" })))
@@ -21,6 +23,9 @@ function fakeDatabase(options: { failPerformance?: boolean } = {}) {
     if (sql.includes("from people p left join teams t")) return log.push("people"), { rows: PEOPLE }
     if (sql.includes("from user_accounts ua join people p on p.id = ua.person_id")) return log.push("accounts"), { rows: ACCOUNTS.filter((account) => account.active && ids(1).includes(account.id)) }
     if (sql.includes("from access_role_assignments a")) return log.push("assignments"), { rows: ASSIGNMENTS.filter((row) => ids(1).includes(row.user_account_id)) }
+    if (sql.includes("from organizations o left join people p")) return log.push("universes"), { rows: ids(1).length ? ids(1).map((id) => ({ enforced: true, person_id: id, operating_universe: UNIVERSES[id] ?? null })) : [{ enforced: true, person_id: null, operating_universe: null }] }
+    if (sql.includes("operating_universe_enforced_at is not null enforced from organizations")) return log.push("enforced"), { rows: [{ enforced: true }] }
+    if (sql.includes("select operating_universe from people where id = $1")) return log.push("universe"), { rows: [{ operating_universe: UNIVERSES[params[0] as string] ?? null }] }
     if (sql.includes("from indicator_definitions where organization_id = $1 and active")) return log.push("definitions"), { rows: [{ id: "d1", code: "TMA", name: "TMA", unit: "SECONDS", direction: "LOWER", capabilities: {} }] }
     if (sql.includes("from employee_indicator_performance eip")) {
       log.push("performance")
@@ -90,7 +95,7 @@ describe("leituras de uma execução de report", () => {
 
     log.length = 0
     const reads = await ReportRunReads.forAccounts(db, ORG, accountIds)
-    expect(log).toEqual(["accounts", "assignments"])
+    expect(log).toEqual(["accounts", "assignments", "universes"])
     log.length = 0
     expect(await reads.loadAccessVisibility(ORG, "acc-adm", "indicators.view")).toEqual({ organizationWide: false, teamIds: ["g1"], subteamIds: [] })
     expect(await reads.loadAccessVisibility(ORG, "acc-sup", "indicators.view")).toEqual({ organizationWide: false, teamIds: [], subteamIds: [] })
@@ -101,6 +106,16 @@ describe("leituras de uma execução de report", () => {
     }
     await reads.loadPeopleInVisibility(ORG, { organizationWide: false, teamIds: ["g1"], subteamIds: [] })
     expect(log.filter((entry) => entry === "versions")).toHaveLength(1)
+    // Regra de universo de atuação de cada conta do lote: a mesma de `loadPersonUniverseRule`, sem ir ao banco por conta.
+    log.length = 0
+    const universeRules = [await reads.loadUniverseRule(ORG, "acc-sup", "p-sup"), await reads.loadUniverseRule(ORG, "acc-adm", "p-adm")]
+    expect(log).toEqual([])
+    expect(universeRules).toEqual([await loadPersonUniverseRule(db, { organizationId: ORG, sub: "acc-sup", personId: "p-sup" }), await loadPersonUniverseRule(db, { organizationId: ORG, sub: "acc-adm", personId: "p-adm" })])
+    expect(universeRules[0]).toMatchObject({ enforced: true, own: "B2B" })
+    // Conta fora do lote (ou inativa): lê como sempre.
+    log.length = 0
+    await reads.loadUniverseRule(ORG, "acc-off", "p-op3")
+    expect(log.sort()).toEqual(["accounts", "enforced", "universe"])
     // Outra permissão não foi carregada no lote: lê como sempre.
     log.length = 0
     await reads.loadAccessVisibility(ORG, "acc-adm", "calendar.manage")

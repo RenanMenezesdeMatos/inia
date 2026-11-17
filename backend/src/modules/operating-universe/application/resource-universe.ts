@@ -17,7 +17,13 @@ export type UniverseResourceKind = (typeof UNIVERSE_RESOURCE_KINDS)[number]
 
 type ResourceDefinition = {
   label: string
-  /** Visão/tabela de leitura e de escrita — sempre a visão dos não excluídos (escrita pela visão só alcança o que não foi excluído). */
+  /**
+   * Leitura e escrita da CLASSIFICAÇÃO — sempre a visão dos não excluídos (migrations 175/177). É a regra do projeto: `<nome>_all` só
+   * para carga, upsert (índice parcial), `alter table`, `references`, a própria exclusão lógica e leitura de histórico pelo id; mudar um
+   * campo de um objeto VIVO passa pela visão (auto-atualizável), que de propósito não alcança o excluído — item excluído não se
+   * classifica (volta por Consultar dados › Itens excluídos). A tabela real dos Workflows, além disso, só é citada onde a guarda de exclusão lógica permite.
+   * Toda escrita filtra `organization_id`.
+   */
   read: string
   write: string
   name: string
@@ -82,6 +88,57 @@ const NEIGHBORS: Record<UniverseResourceKind, string> = {
   ARGUMENT_SCRIPT: `select null::text kind, null::uuid id, null::text name, null::text operating_universe where false and $1::uuid is not null and $2::uuid is not null`,
 }
 
+export type CrossUniverseLink = {
+  from: { kind: "AGENT" | "ORCHESTRATOR" | "WORKFLOW"; id: string; name: string; operatingUniverse: OperatingUniverse }
+  to: { kind: UniverseResourceKind; id: string; name: string; operatingUniverse: OperatingUniverse }
+}
+
+/**
+ * TODOS os vínculos atuais entre universos diferentes, do lado de "quem usa" (agente → base/domínio; Orquestrador → agente/domínio;
+ * Workflow → agente/Orquestrador/indicador), numa consulta só para a organização inteira — a mesma relação de `NEIGHBORS`, sem uma
+ * consulta por recurso (a prontidão fazia N+1 com `jsonb_path_exists` de cada grafo contra cada agente/Orquestrador/indicador). Os ids
+ * citados nos grafos são extraídos UMA vez por documento (`$.**.agentId` etc.) e cruzados por igualdade. Cada vínculo aparece uma vez.
+ */
+export async function crossUniverseLinks(db: Queryable, organizationId: string): Promise<CrossUniverseLink[]> {
+  const rows = (await db.query<{ from_kind: CrossUniverseLink["from"]["kind"]; from_id: string; from_name: string; from_universe: string; to_kind: UniverseResourceKind; to_id: string; to_name: string; to_universe: string }>(
+    `with graphs as ${WORKFLOW_GRAPHS},
+     cited as (
+       select distinct g.id graph_owner_id, 'AGENT' kind, v #>> '{}' ref from graphs g, jsonb_path_query(g.doc, 'lax $.**.agentId[*]') v
+       union select distinct g.id, 'ORCHESTRATOR', v #>> '{}' from graphs g, jsonb_path_query(g.doc, 'lax $.**.orchestratorId[*]') v
+       union select distinct g.id, 'INDICATOR', v #>> '{}' from graphs g, jsonb_path_query(g.doc, 'lax $.**.indicatorCode[*]') v
+     ),
+     links as (
+       select 'AGENT' from_kind, a.id from_id, a.name from_name, a.operating_universe from_universe, 'KNOWLEDGE_DOCUMENT' to_kind, kd.id to_id, kd.title to_name, kd.operating_universe to_universe
+         from agents a join agent_knowledge_documents akd on akd.agent_id = a.id join knowledge_documents kd on kd.id = akd.knowledge_document_id and kd.deleted_at is null
+        where a.organization_id = $1
+       union select 'AGENT', a.id, a.name, a.operating_universe, 'BUSINESS_DOMAIN', d.id, d.name, d.operating_universe
+         from agents a join business_domains d on d.id = a.business_domain_id where a.organization_id = $1
+       union select 'ORCHESTRATOR', o.id, o.name, o.operating_universe, 'AGENT', a.id, a.name, a.operating_universe
+         from assistant_orchestrators o join assistant_orchestrator_specialists s on s.orchestrator_id = o.id join agents a on a.id = s.agent_id and a.organization_id = $1
+        where o.organization_id = $1
+       union select 'ORCHESTRATOR', o.id, o.name, o.operating_universe, 'AGENT', a.id, a.name, a.operating_universe
+         from assistant_orchestrators o join agents a on a.id = o.orchestrator_agent_id where o.organization_id = $1
+       union select 'ORCHESTRATOR', o.id, o.name, o.operating_universe, 'BUSINESS_DOMAIN', d.id, d.name, d.operating_universe
+         from assistant_orchestrators o join assistant_orchestrator_domains od on od.orchestrator_id = o.id join business_domains d on d.id = od.business_domain_id
+        where o.organization_id = $1
+       union select 'WORKFLOW', w.id, w.name, w.operating_universe, 'AGENT', a.id, a.name, a.operating_universe
+         from cited c join workflows w on w.id = c.graph_owner_id join agents a on a.organization_id = $1 and a.id::text = c.ref where c.kind = 'AGENT'
+       union select 'WORKFLOW', w.id, w.name, w.operating_universe, 'ORCHESTRATOR', o.id, o.name, o.operating_universe
+         from cited c join workflows w on w.id = c.graph_owner_id join assistant_orchestrators o on o.organization_id = $1 and o.id::text = c.ref where c.kind = 'ORCHESTRATOR'
+       union select 'WORKFLOW', w.id, w.name, w.operating_universe, 'INDICATOR', i.id, i.name, i.operating_universe
+         from cited c join workflows w on w.id = c.graph_owner_id join indicator_definitions i on i.organization_id = $1 and i.code = c.ref where c.kind = 'INDICATOR'
+     )
+     select * from links
+      where from_universe is not null and to_universe is not null and from_universe <> to_universe
+      order by case from_kind when 'AGENT' then 0 when 'ORCHESTRATOR' then 1 else 2 end, from_name, from_id, to_kind, to_name, to_id`,
+    [organizationId],
+  )).rows
+  return rows.map((row) => ({
+    from: { kind: row.from_kind, id: row.from_id, name: row.from_name, operatingUniverse: row.from_universe as OperatingUniverse },
+    to: { kind: row.to_kind, id: row.to_id, name: row.to_name, operatingUniverse: row.to_universe as OperatingUniverse },
+  }))
+}
+
 export async function linkedResources(db: Queryable, organizationId: string, kind: UniverseResourceKind, id: string): Promise<LinkedResource[]> {
   const rows = (await db.query<{ kind: UniverseResourceKind; id: string; name: string; operating_universe: string | null }>(NEIGHBORS[kind], [organizationId, id])).rows
   return rows.map((row) => ({ kind: row.kind, id: row.id, name: row.name, operatingUniverse: asUniverse(row.operating_universe) }))
@@ -117,14 +174,14 @@ export function resourceConflictError(kind: UniverseResourceKind, conflicts: rea
 /** Depois de gravar vínculos (dentro da transação de quem salva): se algum atravessa universos, recusa — e a transação desfaz. */
 export async function assertResourceLinksCompatible(db: Queryable, organizationId: string, kind: UniverseResourceKind, id: string): Promise<void> {
   const def = UNIVERSE_RESOURCES[kind]
-  const universe = asUniverse((await db.query<{ operating_universe: string | null }>(`select operating_universe from ${def.write} where id = $1 and organization_id = $2`, [id, organizationId])).rows[0]?.operating_universe)
+  const universe = asUniverse((await db.query<{ operating_universe: string | null }>(`select operating_universe from ${def.read} where id = $1 and organization_id = $2`, [id, organizationId])).rows[0]?.operating_universe)
   const conflicts = await resourceLinkConflicts(db, organizationId, kind, id, universe)
   if (conflicts.length > 0) throw resourceConflictError(kind, conflicts)
 }
 
 export async function resourceUniverse(db: Queryable, organizationId: string, kind: UniverseResourceKind, id: string): Promise<OperatingUniverse | null> {
   const def = UNIVERSE_RESOURCES[kind]
-  return asUniverse((await db.query<{ operating_universe: string | null }>(`select operating_universe from ${def.write} where id = $1 and organization_id = $2`, [id, organizationId])).rows[0]?.operating_universe)
+  return asUniverse((await db.query<{ operating_universe: string | null }>(`select operating_universe from ${def.read} where id = $1 and organization_id = $2`, [id, organizationId])).rows[0]?.operating_universe)
 }
 
 /**

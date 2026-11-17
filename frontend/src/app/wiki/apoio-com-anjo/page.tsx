@@ -135,6 +135,7 @@ export default function HumanSupportWikiPage() {
         </ul>
         <SeeAlso
           links={[
+            { href: "/wiki/apoio-com-anjo/faq", label: "FAQ da operação dos Anjos", hint: "todas as regras em perguntas e respostas" },
             { href: "/wiki/acompanhamento", label: "Acompanhamento e Ciência" },
             { href: "/wiki/introducao/papeis", label: "Papéis e o que cada um vê" },
           ]}

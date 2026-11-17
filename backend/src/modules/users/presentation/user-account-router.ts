@@ -55,6 +55,8 @@ const SELECT_USERS = `
     p.current_employment_status "employmentStatus",
     p.operational_capital_code "operationalCapitalCode",
     p.operating_universe "operatingUniverse",
+    p.operating_universe_override "operatingUniverseOverride",
+    case when p.operating_universe_override is not null then 'PERSON' when (select st.operating_universe from subteams st where st.id = p.subteam_id) is not null then 'SUBGROUP' when t.operating_universe is not null then 'GROUP' end "operatingUniverseSource",
     ua.id "accountId", ua.email, ua.last_login_at "lastLoginAt"
   from people p
   left join teams t on t.id = p.team_id
@@ -68,7 +70,7 @@ const createUserSchema = z.object({
   teamId: z.string().uuid().optional(),
   /** Matrícula exatamente como a base do cliente vai mandar: quando a carga chegar, ela ATUALIZA esta pessoa (nunca cria outra). */
   matricula: z.string().trim().max(64).optional().transform((value) => value || undefined),
-  /** Universo de atuação (B2B/B2C/B2X). Obrigatório depois que a organização ativa a exigência (checado no servidor). */
+  /** EXCEÇÃO de universo (B2B/B2C/B2X): o normal é herdar do Grupo. Operador novo precisa de universo (próprio ou do Grupo) com a exigência ativa. */
   operatingUniverse: optionalOperatingUniverseSchema,
   email: z.string().trim().email(),
   /**
@@ -88,7 +90,7 @@ const updateUserSchema = z.object({
   active: z.boolean().optional(),
   /** Capital operacional (jurisdição de feriados) — só códigos do catálogo das 27; null limpa. */
   operationalCapitalCode: z.string().refine((value) => isBrazilianCapitalCode(value), "Capital operacional fora do catálogo das 27 capitais.").nullable().optional(),
-  /** Universo de atuação; null volta a "pendente" (só antes da ativação da exigência). */
+  /** EXCEÇÃO de universo da pessoa; null = sem exceção (herda do Subgrupo/Grupo). */
   operatingUniverse: operatingUniverseSchema.nullable().optional(),
 })
 
@@ -273,12 +275,13 @@ export function createUserAccountRouter(db: Database) {
   router.get("/:id", async (request, response) => {
     const organizationId = sessionUser(request).organizationId
     const result = await db.query<{
-      id: string; name: string; role: string; jobTitle: string | null; matricula: string | null; hiredAt: string | null; active: boolean; employmentStatus: string | null; operationalCapitalCode: string | null; operatingUniverse: string | null
+      id: string; name: string; role: string; jobTitle: string | null; matricula: string | null; hiredAt: string | null; active: boolean; employmentStatus: string | null; operationalCapitalCode: string | null; operatingUniverse: string | null; operatingUniverseOverride: string | null; operatingUniverseSource: string | null
       team_id: string | null; team_name: string | null; subteam_id: string | null; subteam_name: string | null; manager_id: string | null; manager_name: string | null
       accountId: string | null; email: string | null; lastLoginAt: Date | null
     }>(
       `select p.id, p.name, p.role, p.job_title "jobTitle", p.matricula, to_char(p.hired_at, 'YYYY-MM-DD') "hiredAt", p.active,
               p.current_employment_status "employmentStatus", p.operational_capital_code "operationalCapitalCode", p.operating_universe "operatingUniverse",
+              p.operating_universe_override "operatingUniverseOverride", case when p.operating_universe_override is not null then 'PERSON' when (select st.operating_universe from subteams st where st.id = p.subteam_id) is not null then 'SUBGROUP' when t.operating_universe is not null then 'GROUP' end "operatingUniverseSource",
               t.id team_id, t.name team_name, st.id subteam_id, st.name subteam_name, m.id manager_id, m.name manager_name,
               account.id "accountId", account.email, account.last_login_at "lastLoginAt"
          from people p
@@ -335,12 +338,16 @@ export function createUserAccountRouter(db: Database) {
       }
     }
     // A partir da ativação da exigência, toda pessoa nova nasce com universo (fora da hierarquia também: a INIA precisa saber o público).
-    await assertUniverseRequiredFor(db, organizationId, input.operatingUniverse, "da pessoa")
+    // Operador precisa de universo (a exceção dele ou o do Grupo) com a exigência ativa; liderança e "fora da hierarquia" não.
+    if (input.role === "OPERATOR" && !input.operatingUniverse) {
+      const inherited = input.teamId ? (await db.query<{ operating_universe: string | null }>(`select operating_universe from teams where id = $1 and organization_id = $2`, [input.teamId, organizationId])).rows[0]?.operating_universe ?? null : null
+      if (!inherited) await assertUniverseRequiredFor(db, organizationId, null, "do operador (o Grupo escolhido não tem universo)")
+    }
     const temporaryPassword = generateTemporaryPassword()
     try {
       const { personId, account, expiresAt } = await inTransaction(db, async (client) => {
         const person = await client.query<{ id: string }>(
-          `insert into people(organization_id, team_id, name, role, matricula, operating_universe) values ($1,$2,$3,$4,$5,$6) returning id`,
+          `insert into people(organization_id, team_id, name, role, matricula, operating_universe_override) values ($1,$2,$3,$4,$5,$6) returning id`,
           [organizationId, input.teamId ?? null, input.name, input.role, input.matricula ?? null, input.operatingUniverse],
         )
         const personId = person.rows[0]!.id
@@ -384,7 +391,7 @@ export function createUserAccountRouter(db: Database) {
     const control = (await loadPersonFieldControl(db, organizationId, [personId])).get(personId) ?? emptyPersonFieldControl()
     if (editedFieldsOf(input, teamIdSent).some((field) => control[field])) {
       const current = await db.query<CurrentPerson>(
-        `select person.name, person.role, person.team_id, person.active, person.operational_capital_code, person.operating_universe, account.email
+        `select person.name, person.role, person.team_id, person.active, person.operational_capital_code, person.operating_universe_override operating_universe, account.email
            from people person left join user_accounts account on account.person_id = person.id
           where person.id = $1 and person.organization_id = $2`,
         [personId, organizationId],
@@ -402,8 +409,24 @@ export function createUserAccountRouter(db: Database) {
     if (changesAccess && personId === sessionUser(request).personId) {
       throw new DomainError("Você não pode alterar o seu próprio nível, Grupo, universo, e-mail ou situação — outra pessoa autorizada precisa fazer isso.", "PEOPLE_SELF_CHANGE_FORBIDDEN", 403)
     }
-    // Depois da ativação, ninguém volta uma pessoa para "pendente" (regularizar é escolher B2B, B2C ou B2X).
-    if (input.operatingUniverse === null) await assertUniverseRequiredFor(db, organizationId, null, "da pessoa")
+    // Depois da ativação, ninguém deixa um operador "pendente" (regularizar é escolher B2B, B2C ou B2X): tirar a exceção, mudar de Grupo
+    // ou passar a pessoa para operador só passa se o universo resolvido depois da mudança (exceção → Subgrupo → Grupo, o mesmo cálculo
+    // do banco, com o Subgrupo saindo junto quando o Grupo muda) existir. Operador já pendente em que nada disso muda segue editável.
+    if (input.operatingUniverse === null || input.role !== undefined || teamIdSent) {
+      const row = (await db.query<{ role: string; team_id: string | null; operating_universe_override: string | null; next_universe: string | null }>(
+        `select role, team_id, operating_universe_override,
+                resolve_person_operating_universe(
+                  case when $3::boolean then $4::text else operating_universe_override end,
+                  case when $5::boolean then $6::uuid else team_id end,
+                  case when $5::boolean and $6::uuid is distinct from team_id then null else subteam_id end) next_universe
+           from people where id = $1 and organization_id = $2`,
+        [personId, organizationId, input.operatingUniverse !== undefined, input.operatingUniverse ?? null, teamIdSent, input.teamId ?? null],
+      )).rows[0]
+      if (row && (input.role ?? row.role) === "OPERATOR" && !row.next_universe) {
+        const changes = (input.role !== undefined && input.role !== row.role) || (teamIdSent && (input.teamId ?? null) !== row.team_id) || (input.operatingUniverse !== undefined && (input.operatingUniverse ?? null) !== row.operating_universe_override)
+        if (changes) await assertUniverseRequiredFor(db, organizationId, null, "do operador (o Grupo/Subgrupo dele não tem universo e ele não tem exceção)")
+      }
+    }
     const scopes = await scopesOf(request)
     if (input.role !== undefined) {
       const current = await db.query<{ role: string }>(`select role from people where id = $1 and organization_id = $2`, [personId, organizationId])
@@ -423,7 +446,7 @@ export function createUserAccountRouter(db: Database) {
         throw new DomainError("Esta pessoa é o último Administrador geral ativo — conceda o papel a outra pessoa antes de desativá-la.", "ACCESS_LAST_TENANT_ADMIN", 409)
       }
     }
-    const universeBefore = input.operatingUniverse === undefined ? undefined : (await db.query<{ operating_universe: string | null }>(`select operating_universe from people where id = $1 and organization_id = $2`, [personId, organizationId])).rows[0]?.operating_universe ?? null
+    const universeBefore = input.operatingUniverse === undefined ? undefined : (await db.query<{ operating_universe_override: string | null }>(`select operating_universe_override from people where id = $1 and organization_id = $2`, [personId, organizationId])).rows[0]?.operating_universe_override ?? null
     try {
       const person = await db.query(
         `update people set
@@ -435,7 +458,7 @@ export function createUserAccountRouter(db: Database) {
            subteam_id = case when $3::boolean and $4::uuid is distinct from team_id then null else subteam_id end,
            active = coalesce($5, active),
            operational_capital_code = case when $8::boolean then $9 else operational_capital_code end,
-           operating_universe = case when $10::boolean then $11 else operating_universe end
+           operating_universe_override = case when $10::boolean then $11 else operating_universe_override end
          where id = $6 and organization_id = $7
          returning id, name, role, active, team_id "teamId", operational_capital_code "operationalCapitalCode", operating_universe "operatingUniverse"`,
         [input.name ?? null, input.role ?? null, teamIdSent, input.teamId ?? null, input.active ?? null, request.params.id, organizationId, input.operationalCapitalCode !== undefined, input.operationalCapitalCode ?? null, input.operatingUniverse !== undefined, input.operatingUniverse ?? null],
@@ -445,7 +468,7 @@ export function createUserAccountRouter(db: Database) {
         // A vigência (person_operating_universe_history) é gravada pelo banco; aqui fica quem mudou.
         await db.query(
           `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'PERSON_OPERATING_UNIVERSE_CHANGED', 'people', $3, $4::jsonb)`,
-          [organizationId, sessionUser(request).personId, personId, JSON.stringify({ from: universeBefore, to: input.operatingUniverse ?? null, source: "PEOPLE_REGISTRY", actorAccountId: sessionUser(request).sub })],
+          [organizationId, sessionUser(request).personId, personId, JSON.stringify({ overrideFrom: universeBefore, overrideTo: input.operatingUniverse ?? null, source: "PEOPLE_REGISTRY", actorAccountId: sessionUser(request).sub })],
         )
       }
       if (input.active !== undefined || input.email !== undefined) {

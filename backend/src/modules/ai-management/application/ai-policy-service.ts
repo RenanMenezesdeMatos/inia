@@ -31,7 +31,7 @@ export const policyDraftSchema = z.object({
 export type PolicyModelView = { modelId: string; displayName: string | null; providerModelId: string | null; connectionName: string | null; providerKey: string | null; enabled: boolean; available: boolean }
 export type PolicyView = { id: string; status: string; mode: string; strategy: string | null; fallbackOn: string[]; maxEstimatedCostPerRequest: string | null; costCurrency: string | null; models: PolicyModelView[]; issues: PolicyIssue[]; valid: boolean; version: number; updatedAt: string; activatedAt: string | null }
 export type LegacyRouteView = { providerKey: string; model: string; tier: string; mode: string; reason: string } | null
-export type UseCaseRoutingView = { useCase: Pick<AiUseCaseDefinition, "key" | "label" | "description" | "group" | "requiredCapabilities" | "preferredCapabilities" | "routable" | "requiresSpeechVoice" | "notes">; active: PolicyView | null; draft: PolicyView | null; effective: "POLICY" | "LEGACY"; legacy: LegacyRouteView }
+export type UseCaseRoutingView = { useCase: Pick<AiUseCaseDefinition, "key" | "label" | "description" | "group" | "requiredCapabilities" | "preferredCapabilities" | "routable" | "requiresSpeechVoice" | "modelKind" | "notes">; active: PolicyView | null; draft: PolicyView | null; effective: "POLICY" | "LEGACY"; legacy: LegacyRouteView }
 
 type PolicyRowExtra = { version: number; updated_at: Date; activated_at: Date | null }
 
@@ -39,6 +39,7 @@ type PolicyRowExtra = { version: number; updated_at: Date; activated_at: Date | 
 export function legacyRouteFor(useCase: AiUseCaseDefinition): LegacyRouteView {
   const purpose = useCase.purposes[0]?.split(" ")[0]
   if (useCase.key === "CHAT" || useCase.key === "VOICE_REALTIME") return { providerKey: "GOOGLE_GENAI", model: useCase.key === "CHAT" ? "gemini-3.1-flash-lite" : "gemini-2.5-flash-native-audio-latest", tier: "—", mode: "fixo no cliente legado", reason: "cliente legado dedicado" }
+  if (useCase.key === "KNOWLEDGE_EMBEDDING") return { providerKey: "—", model: "nenhum", tier: "—", mode: "sem embedding", reason: "sem policy, a busca nas bases usa só o índice de texto (BM25) — nenhuma chamada de embedding" }
   if (useCase.key === "SPEECH_SYNTHESIS") return { providerKey: "GOOGLE_GENAI", model: `${INIA_LIVE_MODEL.replace(/^models\//, "")} / ${env.INIA_AVATAR_TTS_MODEL}`, tier: "—", mode: "fixo por ambiente", reason: `voz da conversa (Gemini Live) conferida pela transcrição, com o TTS do Gemini como reserva — voz "${iniaVoiceName()}"` }
   // O motor de feedback não passa pela política de tiers: sem policy, a análise sai sempre pelo modelo fixo do motor
   // (feedback-engine/infrastructure/gateway-engine-model.ts › ENGINE_MODEL).
@@ -96,8 +97,8 @@ export async function listRouting(context: AiAdminContext, organizationId: strin
   return AI_USE_CASES.filter((useCase) => !useCase.internal).map((useCase) => {
     const active = policies.find((policy) => policy.useCase === useCase.key && policy.status === "ACTIVE")
     const draft = policies.find((policy) => policy.useCase === useCase.key && policy.status === "DRAFT")
-    const { key, label, description, group, requiredCapabilities, preferredCapabilities, routable, requiresSpeechVoice, notes } = useCase
-    return { useCase: { key, label, description, group, requiredCapabilities, preferredCapabilities, routable, ...(requiresSpeechVoice ? { requiresSpeechVoice } : {}), ...(notes ? { notes } : {}) }, active: active ? toView(active, models) : null, draft: draft ? toView(draft, models) : null, effective: active ? "POLICY" : "LEGACY", legacy: legacyRouteFor(useCase) }
+    const { key, label, description, group, requiredCapabilities, preferredCapabilities, routable, requiresSpeechVoice, modelKind, notes } = useCase
+    return { useCase: { key, label, description, group, requiredCapabilities, preferredCapabilities, routable, ...(requiresSpeechVoice ? { requiresSpeechVoice } : {}), ...(modelKind ? { modelKind } : {}), ...(notes ? { notes } : {}) }, active: active ? toView(active, models) : null, draft: draft ? toView(draft, models) : null, effective: active ? "POLICY" : "LEGACY", legacy: legacyRouteFor(useCase) }
   })
 }
 

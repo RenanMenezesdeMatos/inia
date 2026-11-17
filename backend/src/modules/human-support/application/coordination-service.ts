@@ -10,7 +10,7 @@ import { operationalStatusOf } from "../domain/anjo-now.js"
 import { effectiveCapacity, unresponsiveView } from "../domain/presence.js"
 import { nearestRank } from "../domain/queue-history.js"
 import type { AnjoActivity, AnjoNowItem, AnjoScopeView, AnjosNow, QueueNow, QueueWaitingItem, PresenceTimeline, RequestDetail, RequestListItem, SharedContext, UnavailableAttempt } from "../domain/views.js"
-import { assertPanelPeriod, coordinatorScopesOf, coverageClause, coversRecord, decodeListCursor, encodeListCursor, periodBounds, reachesAnjo, type CoordinatorScopes } from "./coverage.js"
+import { assertPanelPeriod, coordinatorScopesOf, coverageClause, coversRecord, decodeListCursor, encodeListCursor, operatorUniverseOf, periodBounds, reachesAnjo, type CoordinatorScopes } from "./coverage.js"
 import { loadSettings } from "./eligibility.js"
 import type { Queryable } from "./locks.js"
 import { loadMessageViews } from "./request-views.js"
@@ -111,7 +111,7 @@ export async function listRequests(db: Queryable, viewer: Viewer, query: ListQue
   const coverage = await coordinatorScopesOf(db, viewer.organizationId, viewer.personId)
   const params: unknown[] = [viewer.organizationId, query.from, query.to]
   const bounds = periodBounds("$1", "$2", "$3")
-  const where = [`r.organization_id = $1`, `r.created_at >= ${bounds.start}`, `r.created_at < ${bounds.end}`, coverageClause(coverage, "r", params, query)]
+  const where = [`r.organization_id = $1`, `r.created_at >= ${bounds.start}`, `r.created_at < ${bounds.end}`, coverageClause(coverage, "r", params, query, "operator_person_id")]
   if (query.status) where.push(`r.status = $${params.push(query.status)}`)
   if (query.origin) where.push(`r.origin = $${params.push(query.origin)}`)
   const search = query.search?.trim()
@@ -142,7 +142,7 @@ export async function listRequests(db: Queryable, viewer: Viewer, query: ListQue
 export async function requestDetail(db: Queryable, viewer: Viewer, requestId: string): Promise<RequestDetail> {
   const coverage = await coordinatorScopesOf(db, viewer.organizationId, viewer.personId)
   const row = (await db.query<ListRow & { shared_context: SharedContext }>(`${LIST_SELECT.replace("select r.id,", "select r.shared_context, r.id,")} where r.organization_id = $1 and r.id = $2`, [viewer.organizationId, requestId])).rows[0]
-  if (!row || !coversRecord(coverage, { teamId: row.team_id, subteamId: row.subteam_id })) throw notFound()
+  if (!row || !coversRecord(coverage, { teamId: row.team_id, subteamId: row.subteam_id, operatorUniverse: await operatorUniverseOf(db, viewer.organizationId, coverage, row.operator_person_id) })) throw notFound()
   const [item] = await toListItems(db, viewer.organizationId, [row])
   const messages = []
   for (let after = 0, more = true; more && messages.length < 2_000; ) {
@@ -170,7 +170,7 @@ export async function listUnavailableAttempts(db: Queryable, viewer: Viewer, que
   const coverage = await coordinatorScopesOf(db, viewer.organizationId, viewer.personId)
   const params: unknown[] = [viewer.organizationId, query.from, query.to]
   const bounds = periodBounds("$1", "$2", "$3")
-  const where = [`e.organization_id = $1`, `e.kind = 'NO_ANJO_IN_SERVICE'`, `e.occurred_at >= ${bounds.start}`, `e.occurred_at < ${bounds.end}`, coverageClause(coverage, "e", params, query)]
+  const where = [`e.organization_id = $1`, `e.kind = 'NO_ANJO_IN_SERVICE'`, `e.occurred_at >= ${bounds.start}`, `e.occurred_at < ${bounds.end}`, coverageClause(coverage, "e", params, query, "person_id")]
   const cursor = decodeListCursor(query.cursor)
   if (cursor) where.push(`(e.occurred_at, e.id::text) < ($${params.push(cursor.at)}::timestamptz, $${params.push(cursor.id)})`)
   const limit = pageSize(query.limit)
@@ -226,7 +226,7 @@ export async function anjosNow(db: Queryable, viewer: Viewer, filter: PanelScope
 export async function queueWaiting(db: Queryable, viewer: Viewer, filter: PanelScopeFilter): Promise<QueueWaitingItem[]> {
   const coverage = await coordinatorScopesOf(db, viewer.organizationId, viewer.personId)
   const params: unknown[] = [viewer.organizationId]
-  const where = coverageClause(coverage, "r", params, filter)
+  const where = coverageClause(coverage, "r", params, filter, "operator_person_id")
   const rows = (
     await db.query<{ id: string; protocol: string; operator_person_id: string; origin: RequestOrigin; queued_at: Date; team_name: string | null; subteam_name: string | null; requeued: boolean }>(
       `select r.id, r.protocol, r.operator_person_id, r.origin, r.queued_at, t.name team_name, st.name subteam_name,
@@ -255,7 +255,7 @@ export async function queueWaiting(db: Queryable, viewer: Viewer, filter: PanelS
 
 async function queueNow(db: Queryable, viewer: Viewer, coverage: CoordinatorScopes, filter: PanelScopeFilter): Promise<QueueNow> {
   const params: unknown[] = [viewer.organizationId]
-  const where = coverageClause(coverage, "r", params, filter)
+  const where = coverageClause(coverage, "r", params, filter, "operator_person_id")
   const row = (
     await db.query<{ waiting: number; oldest_waiting: Date | null; awaiting: number; oldest_awaiting: Date | null; awaiting_operator: number }>(
       `select (select count(*)::int from human_support_requests r where r.organization_id = $1 and r.status = 'WAITING' and ${where}) waiting,

@@ -73,6 +73,10 @@ export type AiSpeechRequest = { text: string; voice: string; instructions: strin
 /** PCM16 mono little-endian, sem cabeçalho (o mesmo formato que o avatar já toca). Uso não informado = null em cada campo. */
 export type AiSpeechResult = { pcm16: Buffer; sampleRate: number; usage: LlmUsage; model: string; durationMs: number; reportedCost?: ProviderReportedCost | null }
 
+/** Embedding: um vetor por texto, na mesma ordem. `purpose` só é usado por quem distingue documento × pergunta (Gemini). */
+export type AiEmbedRequest = { texts: readonly string[]; purpose: "DOCUMENT" | "QUERY" }
+export type AiEmbedResult = { vectors: Float32Array[]; usage: LlmUsage; model: string; durationMs: number; reportedCost?: ProviderReportedCost | null }
+
 export interface AiProviderAdapter {
   readonly adapterType: AiAdapterType
   testConnection(connection: ResolvedConnection): Promise<ConnectionTestResult>
@@ -86,6 +90,9 @@ export interface AiProviderAdapter {
   stream?(connection: ResolvedConnection, providerModelId: string, request: Omit<AiExecuteRequest, "tools" | "structuredOutput">, timeoutMs: number, onChunk: (text: string) => void): Promise<AiStreamResult>
   /** Opcional: só os protocolos de `SPEECH_SYNTHESIS_ADAPTERS` (ai-speech.ts) leem texto em voz. Lança AiProviderError; nunca repete. */
   synthesizeSpeech?(connection: ResolvedConnection, providerModelId: string, request: AiSpeechRequest, timeoutMs: number): Promise<AiSpeechResult>
+  /** Opcional: só os protocolos de `EMBEDDING_ADAPTERS` (ai-embedding.ts). Lança AiProviderError (inclusive resposta com número de
+   * vetores ou dimensão inconsistente — nunca um vetor inventado); nunca repete. */
+  embed?(connection: ResolvedConnection, providerModelId: string, request: AiEmbedRequest, timeoutMs: number): Promise<AiEmbedResult>
 }
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>

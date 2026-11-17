@@ -15,7 +15,7 @@ export async function supportDailyCounts(db: Queryable, viewer: Viewer, query: P
   const coverage = await coordinatorScopesOf(db, viewer.organizationId, viewer.personId)
   const filter = { teamId: query.teamId ?? null, subteamId: query.subteamId ?? null }
   const requestParams: unknown[] = [viewer.organizationId, query.from, query.to]
-  const requestClause = coverageClause(coverage, "r", requestParams, filter)
+  const requestClause = coverageClause(coverage, "r", requestParams, filter, "operator_person_id")
   const bounds = periodBounds("$1", "$2", "$3")
   const tz = "analytics_org_timezone($1)"
   const [requests, classifications] = await Promise.all([
@@ -28,7 +28,7 @@ export async function supportDailyCounts(db: Queryable, viewer: Viewer, query: P
     ),
     (() => {
       const params: unknown[] = [viewer.organizationId, query.from, query.to]
-      const clause = coverageClause(coverage, "r", params, filter)
+      const clause = coverageClause(coverage, "r", params, filter, "operator_person_id")
       return db.query<SupportDayRow>(
         `select to_char((a.started_at at time zone ${tz})::date, 'YYYY-MM-DD') as day, 'CLASSIFICATION' kind, c.reason key, count(*)::int total
            from human_support_attendances a

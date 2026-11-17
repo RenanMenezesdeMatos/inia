@@ -78,6 +78,9 @@ export const accessCapabilitiesSchema = z.object({
   // Reports recorrentes: quem lidera/tem acesso de consulta (para si) ou tem o papel Report (distribuir). O recorte é do backend.
   canUseReports: capability,
   canDistributeReports: capability,
+  // Comunicados da liderança: para a própria estrutura / também para toda a organização (o público é sempre calculado no servidor).
+  canPublishTeamCommunications: capability,
+  canPublishOrganizationCommunications: capability,
   // Base de boas práticas: o público do Diagnóstico lê; quem administra a configuração também lê e revisa (o escopo é do backend).
   canViewBestPractices: capability,
   canManageBestPractices: capability,

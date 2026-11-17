@@ -1624,7 +1624,7 @@ já diz a regra; a família do status diz como investigar.
 
 **Recuperação:** Restabelecer a dependência; repetir a ação. **Escalar para:** Infraestrutura da VM (servidor, IIS, PostgreSQL). Sem solução em 30 min: equipe de desenvolvimento da INIA com a referência, o horário UTC e as linhas do log.
 
-## Códigos dos módulos (891)
+## Códigos dos módulos (904)
 
 ### Módulo `access`
 
@@ -2252,6 +2252,22 @@ já diz a regra; a família do status diz como investigar.
 | `CHECKPOINT_REJECTION_REASON_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Informe o motivo da rejeição. | `backend/src/modules/checkpoint-registry/application/checkpoint-registry-service.ts` |
 | `CHECKPOINT_SCOPE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escopo incompleto. | `backend/src/modules/checkpoint-registry/application/checkpoint-registry-service.ts` |
 
+### Módulo `communications`
+
+| Código | Status | Família | Mensagem | Onde |
+| --- | --- | --- | --- | --- |
+| `COMMUNICATION_AUDIENCE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem permissão para publicar para toda a empresa. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_CONTENT_EMPTY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Digite o conteúdo do comunicado. | `backend/src/modules/communications/application/communication-images.ts` |
+| `COMMUNICATION_EDIT_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem mais permissão para publicar para este público; ainda pode retirar o comunicado. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem permissão para publicar comunicados. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_IMAGE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Uma das imagens do comunicado não pôde ser lida. Use JPG, PNG ou WebP. | `backend/src/modules/communications/application/communication-images.ts` |
+| `COMMUNICATION_IMAGE_TYPE_UNSUPPORTED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Formato de imagem não suportado no comunicado. Use JPG, PNG ou WebP. | `backend/src/modules/communications/application/communication-images.ts` |
+| `COMMUNICATION_NO_AUDIENCE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Não há ninguém na sua equipe para receber o comunicado. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Comunicado não encontrado. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_TEXT_TOO_LONG` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O texto deve ter no máximo ${COMMUNICATION_MAX_PLAIN_TEXT.toLocaleString("pt-BR")} caracteres. | `backend/src/modules/communications/application/communication-images.ts` |
+| `COMMUNICATION_TOO_LARGE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O comunicado passou de 2 MB. Use imagens menores ou em menor número. | `backend/src/modules/communications/application/communication-images.ts` |
+| `COMMUNICATION_TOO_MANY_IMAGES` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O comunicado pode ter no máximo ${COMMUNICATION_MAX_IMAGES} imagens. | `backend/src/modules/communications/application/communication-images.ts` |
+
 ### Módulo `feedback-application`
 
 | Código | Status | Família | Mensagem | Onde |
@@ -2656,12 +2672,14 @@ já diz a regra; a família do status diz como investigar.
 | Código | Status | Família | Mensagem | Onde |
 | --- | --- | --- | --- | --- |
 | `OPERATING_UNIVERSE_ACTIVATION_UNCONFIRMED` | 409 | FAMILIA-CONFLITO | Ainda há ${pending} pendência(s) de universo. Confirme a ativação informando esse número, ou classifique antes. | `backend/src/modules/operating-universe/application/universe-administration.ts` |
+| `OPERATING_UNIVERSE_EFFECTIVE_FROM_FUTURE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A data de vigência do universo não pode ser futura. | `backend/src/modules/operating-universe/application/universe-units.ts` |
 | `OPERATING_UNIVERSE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem acesso a este universo de atuação. | `backend/src/modules/operating-universe/application/universe-access.ts`<br>`backend/src/modules/operating-universe/domain/operating-universe.ts` |
 | `OPERATING_UNIVERSE_LINK_CONFLICT` | 409 | FAMILIA-CONFLITO | A área escolhida é do universo ${domainUniverse}; o argumentário é ${universe}. Universos não se misturam. | `backend/src/modules/argument-scripts/application/argument-script-service.ts`<br>`backend/src/modules/operating-universe/application/resource-universe.ts`<br>`backend/src/modules/operating-universe/application/universe-links.ts` |
 | `OPERATING_UNIVERSE_PRODUCT_INCOMPATIBLE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Estes produtos são de outro universo de atuação e não podem ser ligados a um recurso ${OPERATING_UNIVERSE_LABELS[universe!]}: ${direct.map((product) =>  | `backend/src/modules/operating-universe/application/universe-links.ts` |
 | `OPERATING_UNIVERSE_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escolha o universo de atuação (B2B, B2C ou B2X) do Workflow antes de publicar. | `backend/src/modules/operating-universe/application/resource-universe.ts`<br>`backend/src/modules/operating-universe/application/universe-administration.ts`<br>`backend/src/modules/operating-universe/domain/operating-universe.ts`<br>`backend/src/modules/product-catalog/application/product-catalog-service.ts` |
 | `OPERATING_UNIVERSE_RESOURCE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | ${def.label} não encontrado. | `backend/src/modules/operating-universe/application/universe-administration.ts` |
 | `OPERATING_UNIVERSE_WORKFLOW_USE_EDITOR` | 409 | FAMILIA-CONFLITO | Para mudar o universo de um Workflow já classificado, edite a Abrangência no editor e publique (muda quem entra nas próximas execuções). | `backend/src/modules/operating-universe/application/universe-administration.ts` |
+| `TEAM` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O universo deste ${kind === "TEAM" ? "Grupo" : "Subgrupo"} vem da base ${managed.sourceName} · ${managed.feedName} — altere na origem. | `backend/src/modules/operating-universe/application/universe-units.ts` |
 
 ### Módulo `product-catalog`
 

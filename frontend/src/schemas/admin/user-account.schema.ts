@@ -57,6 +57,9 @@ export const personManagedBySchema = z.object({
 export type PersonManagedBy = z.infer<typeof personManagedBySchema>
 export type PersonSourceField = keyof PersonManagedBy
 
+/** De onde vem o universo da pessoa: exceção própria, Subgrupo ou Grupo (null = pendente). */
+const universeSourceSchema = z.enum(["PERSON", "SUBGROUP", "GROUP"]).nullable().default(null)
+
 export const userAccountSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -67,8 +70,11 @@ export const userAccountSchema = z.object({
   employmentStatus: employmentStatusReadSchema.optional(),
   /** Capital operacional (jurisdição de feriados) — código do catálogo das 27 ou null. */
   operationalCapitalCode: z.string().nullable().optional(),
-  /** Universo de atuação do cadastro (B2B/B2C/B2X); null = pendente de classificação. */
+  /** Universo de atuação RESOLVIDO (exceção da pessoa → Subgrupo → Grupo); null = pendente. */
   operatingUniverse: operatingUniverseSchema.nullable().default(null),
+  /** Exceção da própria pessoa (o normal é herdar do Grupo). */
+  operatingUniverseOverride: operatingUniverseSchema.nullable().default(null),
+  operatingUniverseSource: universeSourceSchema,
   teamId: z.string().nullable(),
   teamName: z.string().nullable(),
   accountId: z.string().nullable(),
@@ -91,6 +97,8 @@ export const userDetailSchema = z.object({
   active: z.boolean(),
   operationalCapitalCode: z.string().nullable(),
   operatingUniverse: operatingUniverseSchema.nullable().default(null),
+  operatingUniverseOverride: operatingUniverseSchema.nullable().default(null),
+  operatingUniverseSource: universeSourceSchema,
   team: namedSchema.nullable(),
   subteam: namedSchema.nullable(),
   manager: namedSchema.nullable(),

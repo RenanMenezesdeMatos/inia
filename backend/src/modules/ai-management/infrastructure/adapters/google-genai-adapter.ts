@@ -2,10 +2,11 @@ import { AiProviderError } from "../../../../shared/application/model-routing/ai
 import { usageFromGeminiPayload, type LlmUsage } from "../../../../shared/application/llm-telemetry.js"
 import type { AdapterTurn } from "../../../../shared/application/model-routing/provider-adapter.js"
 import type { ModelCapabilities } from "../../domain/ai-capabilities.js"
-import type { AiExecuteRequest, AiExecuteResult, AiProviderAdapter, AiStreamExecuteResult, AiStreamResult, DiscoveredModel, FetchLike, ResolvedConnection } from "../../application/provider-adapter-port.js"
+import type { AiEmbedRequest, AiEmbedResult, AiExecuteRequest, AiExecuteResult, AiProviderAdapter, AiStreamExecuteResult, AiStreamResult, DiscoveredModel, FetchLike, ResolvedConnection } from "../../application/provider-adapter-port.js"
 
 type AiStreamExecuteCall = Extract<AiExecuteResult, { kind: "functionCalls" }>["calls"][number]
 import { joinUrl, rawStreamRequest, readSse, requestJson, testByListing } from "./http.js"
+import { checkedVectors, toVector } from "./openai-chat-adapter.js"
 
 /**
  * Protocolo Google Gemini (generateContent) com a credencial DA CONEXÃO. O caminho legado
@@ -44,6 +45,18 @@ function capabilitiesOf(model: GeminiModel): ModelCapabilities {
   return capabilities
 }
 
+/** Corpo de `batchEmbedContents`: um pedido por texto, com a finalidade (documento × pergunta) que o Gemini usa para otimizar. */
+export function geminiEmbedBody(providerModelId: string, request: AiEmbedRequest): Record<string, unknown> {
+  const model = `models/${providerModelId.replace(/^models\//, "")}`
+  const taskType = request.purpose === "QUERY" ? "RETRIEVAL_QUERY" : "RETRIEVAL_DOCUMENT"
+  return { requests: request.texts.map((text) => ({ model, content: { parts: [{ text }] }, taskType })) }
+}
+
+export function parseGeminiEmbeddings(body: { embeddings?: { values?: unknown }[] } | null, expected: number): Float32Array[] {
+  const items = Array.isArray(body?.embeddings) ? body!.embeddings : []
+  return checkedVectors(items.slice(0, expected).map((item) => toVector(item.values)), expected)
+}
+
 export function createGoogleGenAiAdapter(fetchImpl: FetchLike = fetch): AiProviderAdapter {
   const listModels = async (connection: ResolvedConnection): Promise<DiscoveredModel[]> => {
     const models: GeminiModel[] = []
@@ -80,6 +93,14 @@ export function createGoogleGenAiAdapter(fetchImpl: FetchLike = fetch): AiProvid
     adapterType: "GOOGLE_GENAI",
     testConnection: (connection) => testByListing(async () => (await listModels(connection)).length),
     listModels,
+    async embed(connection, providerModelId, request: AiEmbedRequest, timeoutMs): Promise<AiEmbedResult> {
+      const startedAt = Date.now()
+      const empty: LlmUsage = { promptTokens: null, outputTokens: null, totalTokens: null, cachedInputTokens: null, reasoningTokens: null }
+      if (request.texts.length === 0) return { vectors: [], usage: empty, model: providerModelId, durationMs: 0 }
+      const payload = await requestJson<{ embeddings?: { values?: unknown }[] }>(fetchImpl, connection, joinUrl(connection.baseUrl, `models/${encodeURIComponent(providerModelId.replace(/^models\//, ""))}:batchEmbedContents`), { method: "POST", headers: headers(connection), body: JSON.stringify(geminiEmbedBody(providerModelId, request)) }, timeoutMs)
+      // O Gemini não informa tokens no embedding: uso desconhecido (custo UNKNOWN), nunca inventado.
+      return { vectors: parseGeminiEmbeddings(payload, request.texts.length), usage: empty, model: providerModelId, durationMs: Date.now() - startedAt }
+    },
     async execute(connection, providerModelId, request, timeoutMs): Promise<AiExecuteResult> {
       const startedAt = Date.now()
       const payload = await requestJson<GeminiResponse>(fetchImpl, connection, joinUrl(connection.baseUrl, `models/${encodeURIComponent(providerModelId)}:generateContent`), { method: "POST", headers: headers(connection), body: body(request) }, timeoutMs)

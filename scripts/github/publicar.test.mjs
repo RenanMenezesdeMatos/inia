@@ -231,6 +231,46 @@ describe("snapshot num repositório descartável", () => {
     assert.throws(() => parseConfidentialList("qualquer coisa\n"))
   })
 
+  test("lista confidencial local: sintaxe só do JavaScript (\\d, lookahead, preguiçoso) casa no snapshot igual à mensagem", () => {
+    // Com o `git grep -E` de antes, "\d" não é dígito no ERE e estas marcas não achariam nada, em silêncio.
+    const lista = parseConfidentialList("conteudo: CONF-\\d{4}\nconteudo: SIGILO(?=-ALFA)\nconteudo: <x>.*?</x>\n")
+    assert.deepEqual(messageLeaks("ver CONF-1234", [], lista.patterns), ["material confidencial da lista local"])
+    const proprio = mkdtempSync(join(tmpdir(), "inia-publicar-confidencial-js-"))
+    try {
+      mkdirSync(join(proprio, "src"), { recursive: true })
+      writeFileSync(join(proprio, "src/texto.ts"), "export const ref = 'CONF-1234'\n")
+      writeFileSync(join(proprio, "src/lookahead.md"), "SIGILO-ALFA\n")
+      writeFileSync(join(proprio, "src/preguicoso.html"), "<x>a</x><x>b</x>\n")
+      writeFileSync(join(proprio, "src/limpo.ts"), "export const ref = 'CONF-12'\nSIGILO-BETA\n")
+      // Binário (byte NUL) com a marca no meio: continua sendo lido, como no `git grep -a` de antes.
+      writeFileSync(join(proprio, "src/arquivo.bin"), Buffer.concat([Buffer.from([0, 0xff, 0xfe]), Buffer.from("CONF-9876"), Buffer.from([0])]))
+      const identity = { GIT_AUTHOR_NAME: "Teste", GIT_AUTHOR_EMAIL: "teste@example.com", GIT_COMMITTER_NAME: "Teste", GIT_COMMITTER_EMAIL: "teste@example.com" }
+      git(proprio, ["init", "--quiet", "--initial-branch=main"])
+      git(proprio, ["add", "-A"])
+      git(proprio, ["commit", "--quiet", "-m", "inicial"], { env: identity })
+      const snapshot = buildSnapshot(proprio, "HEAD", { rules: ["nada/**"], exceptions: [] })
+      const hits = findKeyPatterns(proprio, snapshot.tree, new Set(), lista.patterns)
+        .filter((item) => item.name === "material confidencial da lista local")
+        .flatMap((item) => item.hits)
+        .sort()
+      assert.deepEqual(
+        hits,
+        [
+          `src/arquivo.bin ${fingerprint("CONF-9876")}`,
+          `src/lookahead.md ${fingerprint("SIGILO")}`,
+          `src/preguicoso.html ${fingerprint("<x>a</x>")}`,
+          `src/preguicoso.html ${fingerprint("<x>b</x>")}`,
+          `src/texto.ts ${fingerprint("CONF-1234")}`,
+        ].sort(),
+      )
+      assert.ok(!JSON.stringify(hits).includes("CONF-1234"))
+    } finally {
+      rmSync(proprio, { recursive: true, force: true })
+    }
+    // Sintaxe que o JavaScript não aceita é recusada ao ler a lista (antes de qualquer conferência).
+    assert.throws(() => parseConfidentialList("conteudo: (?i)marca\n"))
+  })
+
   test("encontra os .env locais, inclusive em subpastas, e ignora os de exemplo e node_modules", () => {
     mkdirSync(join(repo, "backend"), { recursive: true })
     mkdirSync(join(repo, "node_modules/pacote"), { recursive: true })

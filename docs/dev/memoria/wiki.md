@@ -22,3 +22,13 @@
 - A nota URA é a flag numérica `nota_ura` (uma chamada, Sim/Não) ou o indicador "Nota da Pesquisa na URA" (agregado, Sim/Não/Sem dados). A escala vem de quem envia o dado.
 
 **Prints:** `frontend/public/wiki-capturas/workflows/`, com o manifesto `demo-shots.json` e as marcações calculadas pela tela. Regerar: `docs/dev/wiki-capturas/README.md`. Mudou um formulário do editor: regere, porque nenhum teste compara a imagem com a tela. Verificação: `demo-player.test.tsx` cobre navegação, reinício, desfechos, teclado, âncoras e ausência de chamadas de rede.
+
+### FAQ da operação dos Anjos (16/11/2026, pedido do responsável)
+
+`/wiki/apoio-com-anjo/faq` (logo depois de "Apoio com Anjo" no sitemap): todas as regras do Apoio com Anjo em perguntas e respostas e um
+"Prompt de referência" para copiar num assistente de IA. Perguntas, respostas e prompt vêm de UMA fonte —
+`frontend/src/components/wiki/human-support-faq-data.ts` (`HUMAN_SUPPORT_FAQ`, `buildHumanSupportPrompt`) —, então mudar uma regra é
+mudar um lugar só; o teste `human-support-faq.test.tsx` garante que o prompt traz todas as perguntas na ordem da página e confere os
+padrões citados (15/20/15, Desconexão 20/10, capacidade 2, fila 10–25/20, queda de rede não é abandono). O botão "Copiar prompt"
+(`components/wiki/copyable-prompt.tsx`) usa `lib/clipboard/copy-text.ts` (o mesmo da tela de erro). Mudou uma regra do Apoio
+(`docs/dev/memoria/apoio-com-anjo.md`)? Atualize a FAQ junto.

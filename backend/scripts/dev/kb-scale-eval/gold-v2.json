@@ -1,0 +1,502 @@
+{
+  "version": 2,
+  "definedAt": "2026-11-16",
+  "note": "Gabarito NOVO da busca em escala, escrito ANTES de medir qualquer variante: 30 trechos sorteados (semente 20261116) das bases de inia_chatbench; ficaram de fora os trechos sem pergunta objetiva e as bases com nome de cliente no título. Perguntas em linguagem de quem atende, de propósito com outras palavras que as da base (paráfrase) e algumas com o termo exato. sections = doc (parte do título) + literal que precisa existir no trecho; o trecho certo é achado pelo literal. facts (16/11, antes da rodada paga do chat): pontos obrigatórios da resposta, cada um com variantes sem acento e minúsculas; toda resposta também é lida à mão.",
+  "questions": [
+    {
+      "id": "H01",
+      "category": "parafrase",
+      "text": "O cliente quer cancelar porque a internet vive caindo. Posso segurar o cancelamento até a visita técnica acontecer?",
+      "sections": [
+        {
+          "doc": "Reparo de Banda Larga",
+          "chunk": 55,
+          "literal": "Não condicionar cancelamento à visita"
+        }
+      ],
+      "facts": [
+        {
+          "id": "nao condicionar / sem condicionar",
+          "anyOf": [
+            "nao condicionar",
+            "sem condicionar",
+            "nao pode condicionar",
+            "nao deve condicionar",
+            "respeitar a decisao",
+            "respeite a decisao",
+            "respeitar a recusa",
+            "nao impedir"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H02",
+      "category": "termo-exato",
+      "text": "Quanto tempo o modem da fibra precisa ficar desligado da tomada no teste?",
+      "sections": [
+        {
+          "doc": "diagnóstico de conexão de fibra",
+          "chunk": 4,
+          "literal": "30 segundos"
+        }
+      ],
+      "facts": [
+        {
+          "id": "30 segundos",
+          "anyOf": [
+            "30 segundos"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H03",
+      "category": "parafrase",
+      "text": "Em quanto tempo a empresa consegue ver o extrato das ligações feitas pelo tronco?",
+      "sections": [
+        {
+          "doc": "Segunda via — SIP",
+          "chunk": 1,
+          "literal": "em até 48 horas"
+        }
+      ],
+      "facts": [
+        {
+          "id": "48 horas / 48h",
+          "anyOf": [
+            "48 horas",
+            "48h"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H04",
+      "category": "produto-nomeado",
+      "text": "Quem reenvia a conta do cliente de IP Dedicado e em quanto tempo?",
+      "sections": [
+        {
+          "doc": "faturamento corporativo",
+          "chunk": 1,
+          "literal": "gerente de contas em até 3 dias úteis"
+        }
+      ],
+      "facts": [
+        {
+          "id": "gerente de contas",
+          "anyOf": [
+            "gerente de contas"
+          ]
+        },
+        {
+          "id": "3 dias uteis",
+          "anyOf": [
+            "3 dias uteis"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H05",
+      "category": "parafrase",
+      "text": "O cliente vai mudar de cidade levando o telefone fixo. Ele fica com o mesmo número?",
+      "sections": [
+        {
+          "doc": "Mudança de Endereço — Linha Básica",
+          "chunk": 3,
+          "literal": "o número NÃO pode ser mantido"
+        }
+      ],
+      "facts": [
+        {
+          "id": "nao pode ser mantido / nao e mantido",
+          "anyOf": [
+            "nao pode ser mantido",
+            "nao e mantido",
+            "outro numero",
+            "novo numero",
+            "nao mantem"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H06",
+      "category": "parafrase",
+      "text": "Quando a empresa passa a linha para outro dono, quem paga as contas que ficaram atrasadas?",
+      "sections": [
+        {
+          "doc": "Troca de Titularidade — Empresa",
+          "chunk": 10,
+          "literal": "Débitos anteriores à data da troca"
+        }
+      ],
+      "facts": [
+        {
+          "id": "titular atual",
+          "anyOf": [
+            "titular atual"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H07",
+      "category": "termo-exato",
+      "text": "Qual é a mensalidade do plano de 730 mega da Pindorama?",
+      "sections": [
+        {
+          "doc": "Pindorama Fibra",
+          "chunk": 1,
+          "literal": "R$ 139,99"
+        }
+      ],
+      "facts": [
+        {
+          "id": "139,99",
+          "anyOf": [
+            "139,99"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H08",
+      "category": "parafrase",
+      "text": "Telefone fixo mudo, sem sinal para discar: qual o prazo do conserto e o tamanho da janela da visita?",
+      "sections": [
+        {
+          "doc": "Reparo — Linha analógica",
+          "chunk": 1,
+          "literal": "janela de 4 horas"
+        }
+      ],
+      "facts": [
+        {
+          "id": "48 horas / 48h",
+          "anyOf": [
+            "48 horas",
+            "48h"
+          ]
+        },
+        {
+          "id": "4 horas / 4h",
+          "anyOf": [
+            "4 horas",
+            "4h"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H09",
+      "category": "parafrase",
+      "text": "O cliente vai se mudar para um lugar onde a gente não tem internet. Ele paga multa para sair?",
+      "sections": [
+        {
+          "doc": "Mudança de Endereço — Banda Larga",
+          "chunk": 5,
+          "literal": "sem multa de fidelidade"
+        }
+      ],
+      "facts": [
+        {
+          "id": "sem multa",
+          "anyOf": [
+            "sem multa"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H10",
+      "category": "parafrase",
+      "text": "A empresa ligou para saber como está a migração dos números do tronco. Posso abrir outro pedido?",
+      "sections": [
+        {
+          "doc": "Portabilidade de Tronco SIP",
+          "chunk": 20,
+          "literal": "Não abrir um segundo pedido"
+        }
+      ],
+      "facts": [
+        {
+          "id": "segundo pedido / outro pedido",
+          "anyOf": [
+            "segundo pedido",
+            "outro pedido",
+            "novo pedido"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H11",
+      "category": "parafrase",
+      "text": "Depois que os ramais migraram de operadora, o que a empresa precisa conferir?",
+      "sections": [
+        {
+          "doc": "Portabilidade de DDR",
+          "chunk": 17,
+          "literal": "testar chamadas para os ramais"
+        }
+      ],
+      "facts": [
+        {
+          "id": "testar chamadas / teste de chamadas",
+          "anyOf": [
+            "testar chamadas",
+            "teste de chamadas",
+            "testar as chamadas",
+            "testar se os ramais",
+            "ramais"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H12",
+      "category": "parafrase",
+      "text": "O que eu não posso fazer quando o cliente traz o número fixo para a fibra?",
+      "sections": [
+        {
+          "doc": "Portabilidade com Fibra",
+          "chunk": 24,
+          "literal": "Pedir código de confirmação ou de verificação"
+        }
+      ],
+      "facts": [
+        {
+          "id": "codigo de confirmacao / codigo de verificacao",
+          "anyOf": [
+            "codigo de confirmacao",
+            "codigo de verificacao",
+            "internet e portada",
+            "internet nao e portada",
+            "cancelamento da internet"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H13",
+      "category": "parafrase",
+      "text": "Que mensagem o cliente recebe depois que o chip é trocado?",
+      "sections": [
+        {
+          "doc": "Troca de CHIP",
+          "chunk": 15,
+          "literal": "Sua troca de chip foi concluída"
+        }
+      ],
+      "facts": [
+        {
+          "id": "protocolo",
+          "anyOf": [
+            "protocolo"
+          ]
+        },
+        {
+          "id": "nao reconhece / nao reconhecer",
+          "anyOf": [
+            "nao reconhece",
+            "nao reconhecer"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H14",
+      "category": "parafrase",
+      "text": "Quais sinais indicam golpe num pedido de chip novo?",
+      "sections": [
+        {
+          "doc": "Troca de CHIP",
+          "chunk": 14,
+          "literal": "Múltiplas trocas, linhas ou lojas em curto período"
+        }
+      ],
+      "facts": [
+        {
+          "id": "multiplas trocas / varias trocas",
+          "anyOf": [
+            "multiplas trocas",
+            "varias trocas",
+            "curto periodo",
+            "alteracao recente",
+            "localidade incompativel"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H15",
+      "category": "parafrase",
+      "text": "Quem tem internet e TV recebe duas contas separadas?",
+      "sections": [
+        {
+          "doc": "Segunda via — Banda Larga",
+          "chunk": 1,
+          "literal": "as duas vêm na mesma fatura"
+        }
+      ],
+      "facts": [
+        {
+          "id": "mesma fatura / mesma conta",
+          "anyOf": [
+            "mesma fatura",
+            "mesma conta",
+            "uma unica fatura",
+            "fatura unica"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H16",
+      "category": "parafrase",
+      "text": "A luzinha do aparelho da fibra está vermelha. O que isso quer dizer?",
+      "sections": [
+        {
+          "doc": "diagnóstico de conexão de fibra",
+          "chunk": 3,
+          "literal": "Luz de sinal da fibra apagada ou vermelha"
+        }
+      ],
+      "facts": [
+        {
+          "id": "fibra",
+          "anyOf": [
+            "fibra"
+          ]
+        },
+        {
+          "id": "passo 5 / problema na fibra",
+          "anyOf": [
+            "passo 5",
+            "problema na fibra"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H17",
+      "category": "parafrase",
+      "text": "A conta da linha analógica vence hoje e o cliente quer pagar na hora. O que eu ofereço?",
+      "sections": [
+        {
+          "doc": "Segunda via — Fixa Básica",
+          "chunk": 1,
+          "literal": "código de barras por SMS"
+        }
+      ],
+      "facts": [
+        {
+          "id": "codigo de barras",
+          "anyOf": [
+            "codigo de barras"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H18",
+      "category": "parafrase",
+      "text": "Celular sem internet: preciso mexer em alguma configuração do aparelho?",
+      "sections": [
+        {
+          "doc": "Reparo — Linha Móvel",
+          "chunk": 1,
+          "literal": "Reconfigure o APN"
+        }
+      ],
+      "facts": [
+        {
+          "id": "apn",
+          "anyOf": [
+            "apn"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H19",
+      "category": "parafrase",
+      "text": "Para abrir chamado de defeito no tronco da empresa, que dados eu preciso pegar?",
+      "sections": [
+        {
+          "doc": "Reparo — Voz Avançada",
+          "chunk": 1,
+          "literal": "CNPJ e o nome do contato técnico"
+        }
+      ],
+      "facts": [
+        {
+          "id": "cnpj",
+          "anyOf": [
+            "cnpj"
+          ]
+        },
+        {
+          "id": "contato tecnico",
+          "anyOf": [
+            "contato tecnico"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H20",
+      "category": "parafrase",
+      "text": "O procedimento de mudança de endereço da linha fixa serve também para a internet?",
+      "sections": [
+        {
+          "doc": "Mudança de Endereço — Linha Básica",
+          "chunk": 2,
+          "literal": "Não se aplica a banda larga"
+        }
+      ],
+      "facts": [
+        {
+          "id": "nao se aplica / procedimento proprio",
+          "anyOf": [
+            "nao se aplica",
+            "procedimento proprio",
+            "procedimentos proprios"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H21",
+      "category": "parafrase",
+      "text": "Depois de orientar o cliente a baixar a conta pelo aplicativo, o que eu anoto no protocolo?",
+      "sections": [
+        {
+          "doc": "Procedimento Operacional Segunda Via de Conta",
+          "chunk": 2,
+          "literal": "Confirmação de acesso ou motivo da não conclusão"
+        }
+      ],
+      "facts": [
+        {
+          "id": "canal digital / canal indicado",
+          "anyOf": [
+            "canal digital",
+            "canal indicado"
+          ]
+        },
+        {
+          "id": "confirmacao de acesso / conseguiu visualizar",
+          "anyOf": [
+            "confirmacao de acesso",
+            "conseguiu visualizar",
+            "conseguiu baixar",
+            "motivo da nao conclusao"
+          ]
+        }
+      ]
+    }
+  ]
+}

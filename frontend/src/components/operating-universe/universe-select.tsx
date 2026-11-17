@@ -16,6 +16,7 @@ export function UniverseSelect({
   allowPending = false,
   disabled,
   allowed,
+  pendingLabel = "Pendente (classificar depois)",
   "aria-describedby": describedBy,
 }: {
   id?: string
@@ -24,6 +25,8 @@ export function UniverseSelect({
   allowPending?: boolean
   disabled?: boolean
   allowed?: readonly OperatingUniverse[]
+  /** Texto da opção "sem universo" (ex.: "Sem exceção — herda do Grupo"). */
+  pendingLabel?: string
   "aria-describedby"?: string
 }) {
   const options = OPERATING_UNIVERSES.filter((universe) => !allowed || allowed.includes(universe))
@@ -38,7 +41,7 @@ export function UniverseSelect({
             {universe} — {OPERATING_UNIVERSE_DESCRIPTIONS[universe]}
           </SelectItem>
         ))}
-        {allowPending ? <SelectItem value={PENDING}>Pendente (classificar depois)</SelectItem> : null}
+        {allowPending ? <SelectItem value={PENDING}>{pendingLabel}</SelectItem> : null}
       </SelectContent>
     </Select>
   )

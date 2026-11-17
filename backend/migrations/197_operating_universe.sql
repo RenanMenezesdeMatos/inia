@@ -2,7 +2,7 @@
 -- Esta migration só ACRESCENTA colunas anuláveis: nenhum registro existente muda, nenhum vínculo é tocado e nada é preenchido por
 -- adivinhação (nome de Grupo, de operação ou de produto não é evidência). Nulo = "pendente de classificação".
 -- Etapa 2 (backend): a organização ativa a exigência (organizations.operating_universe_enforced_at) pela tela; daí em diante cadastro
--- novo exige universo e as consultas operacionais filtram. Etapa 3 (banco): migrations/pending/198_operating_universe_required.sql,
+-- novo exige universo e as consultas operacionais filtram. Etapa 3 (banco): migrations/pending/208_operating_universe_required.sql,
 -- aplicada só quando a contagem de pendentes for zero — torna a coluna obrigatória no banco.
 
 alter table organizations

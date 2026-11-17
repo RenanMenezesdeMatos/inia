@@ -1,6 +1,7 @@
 import { chunkKnowledgeDocument } from "../../knowledge/domain/knowledge-chunking.js"
 import { rankChunks } from "../../knowledge/domain/lexical-retrieval.js"
 import { selectPrimaryProcessDocument } from "../../knowledge/domain/primary-process.js"
+import { reciprocalRankFusion } from "../../knowledge/domain/rank-fusion.js"
 import type { RulePerspective, SourceDocument } from "./procedure.js"
 
 /**
@@ -18,7 +19,17 @@ export type CandidateDocument = { documentId: string; title: string; version: nu
  * relevância léxica — a palavra que aparece na conversa não escolhe o produto. Todos recebem a maior relevância do grupo e ficam juntos
  * na ordem neutra (título); o que o orçamento cortar fica registrado, e a identificação continua vendo o catálogo inteiro.
  */
-export function selectDocumentsForCall(documents: readonly CandidateDocument[], input: { subject: string | null; transcript: string; budgetChars?: number; productScoped?: ReadonlySet<string> }): { selected: SourceDocument[]; omitted: { documentId: string; title: string; reason: "BUDGET" }[]; anchoredDocumentIds: string[] } {
+/** Os documentos não cabem todos no orçamento: só então a ordem por relevância decide algo (e só então vale pedir a ordem pelo cartão). */
+export function exceedsDocumentBudget(documents: readonly Pick<CandidateDocument, "content">[], budgetChars = DOCUMENT_BUDGET_CHARS): boolean {
+  return documents.reduce((sum, document) => sum + document.content.length, 0) > budgetChars
+}
+
+/**
+ * Busca nas bases em escala (camada 4): `semanticOrder` = os documentos na ordem do cartão-resumo (vetor) contra o assunto e a conversa.
+ * Quando vem, a relevância deixa de ser só lexical: as duas ordens são juntadas pela posição (RRF) — achar QUAL procedimento — e o
+ * documento escolhido continua entrando INTEIRO. O ancorado pelo assunto continua primeiro e as variantes de produto continuam juntas.
+ */
+export function selectDocumentsForCall(documents: readonly CandidateDocument[], input: { subject: string | null; transcript: string; budgetChars?: number; productScoped?: ReadonlySet<string>; semanticOrder?: readonly string[] | null }): { selected: SourceDocument[]; omitted: { documentId: string; title: string; reason: "BUDGET" }[]; anchoredDocumentIds: string[]; semanticOrdering: boolean } {
   const budget = input.budgetChars ?? DOCUMENT_BUDGET_CHARS
   const primary = selectPrimaryProcessDocument(documents.map((document) => ({ documentId: document.documentId, documentTitle: document.title })), input.subject)
   const anchored = new Set(primary.candidates.map((candidate) => candidate.documentId))
@@ -31,6 +42,13 @@ export function selectDocumentsForCall(documents: readonly CandidateDocument[], 
     if (count >= 3) continue
     seen.set(chunk.documentId, count + 1)
     relevance.set(chunk.documentId, (relevance.get(chunk.documentId) ?? 0) + chunk.score)
+  }
+  const semanticOrdering = Boolean(input.semanticOrder && input.semanticOrder.length > 0)
+  if (semanticOrdering) {
+    const lexicalOrder = [...documents].filter((document) => (relevance.get(document.documentId) ?? 0) > 0).sort((a, b) => (relevance.get(b.documentId) ?? 0) - (relevance.get(a.documentId) ?? 0) || a.title.localeCompare(b.title, "pt-BR"))
+    const fused = reciprocalRankFusion({ lexical: lexicalOrder.map((document) => ({ key: document.documentId })), semantic: input.semanticOrder!.map((documentId) => ({ key: documentId })) })
+    relevance.clear()
+    for (const entry of fused) relevance.set(entry.key, entry.score)
   }
   const scoped = documents.filter((document) => input.productScoped?.has(document.documentId))
   if (scoped.length > 1) {
@@ -51,5 +69,5 @@ export function selectDocumentsForCall(documents: readonly CandidateDocument[], 
     used += document.content.length
     selected.push({ ...document, selection: anchored.has(document.documentId) ? "SUBJECT_ANCHOR" : total <= budget ? "INCLUDED_ALL" : "RELEVANCE", relevance: relevance.get(document.documentId) ?? 0 })
   }
-  return { selected, omitted, anchoredDocumentIds: [...anchored] }
+  return { selected, omitted, anchoredDocumentIds: [...anchored], semanticOrdering }
 }

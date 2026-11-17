@@ -48,6 +48,7 @@ const ALERT_FAMILY: Record<FollowUpItem["category"], FeedbackEntryFamily> = {
   INTERVENTION: "INTERVENTION",
   REPORT: "REPORT",
   REPORT_NOT_FORWARDED: "REPORT_NOT_FORWARDED",
+  NOTICE: "NOTICE",
   OTHER: "OTHER",
 }
 

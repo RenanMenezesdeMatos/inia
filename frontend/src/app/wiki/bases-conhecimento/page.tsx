@@ -8,7 +8,7 @@ import { DOCUMENT_TYPE_LABELS, KNOWLEDGE_SITUATION_LABELS, KNOWLEDGE_STATUS_FILT
 
 export const metadata: Metadata = {
   title: "Bases de Conhecimento",
-  description: "O que é uma base, como criar (campos reais), versão em uso, rascunho e atualização, histórico comparável, vínculo com Agents, retrieval por trechos (lexical/BM25 — sem embeddings), orçamento, evidência de base, Conformidade de processo e o catálogo auditado.",
+  description: "O que é uma base, como criar (campos reais), versão em uso, rascunho e atualização, histórico comparável, vínculo com Agents, retrieval por trechos (BM25 e, com a política de embedding, busca em escala por significado), orçamento, evidência de base, Conformidade de processo e o catálogo auditado.",
 }
 
 const TOC: WikiTocEntry[] = [
@@ -22,7 +22,7 @@ const TOC: WikiTocEntry[] = [
   { id: "vinculo", label: "Vínculo com Agents" },
   { id: "retrieval", label: "Retrieval: como a IA usa a base" },
   { id: "orcamento", label: "Orçamento de conhecimento" },
-  { id: "embeddings", label: "Sem embeddings (hoje)" },
+  { id: "embeddings", label: "Busca em escala (embeddings)" },
   { id: "evidencia", label: "Evidência de base" },
   { id: "material-apoio", label: "Material de apoio no feedback" },
   { id: "produtos", label: "Produtos e aplicabilidade" },
@@ -45,6 +45,7 @@ export default function KnowledgeBasesPage() {
           <CapabilityBadge label="Texto colado ou PDF/DOCX/TXT/JSON" />
           <CapabilityBadge label="Trechos por seção" />
           <CapabilityBadge label="Retrieval lexical (BM25)" />
+          <CapabilityBadge label="Busca em escala (embedding)" />
           <CapabilityBadge label="Só bases publicadas no runtime" />
           <CapabilityBadge label="Conformidade de processo" />
           <CapabilityBadge label="Embeddings semânticos" tone="missing" />
@@ -236,11 +237,36 @@ export default function KnowledgeBasesPage() {
         </details>
       </WikiSection>
 
-      <WikiSection id="embeddings" title="Sem embeddings (hoje)" eyebrow="Dizer claramente">
-        <WarningCallout kind="tip" title="O retrieval é lexical, não semântico">
-          Não há embeddings nem busca vetorial. Sinônimos sem radical em comum podem não casar. A interface do retrieval (trechos → trechos ranqueados
-          sob orçamento) é o ponto de substituição para uma evolução semântica — a arquitetura está preparada para essa troca sem mudar Agents,
-          Workflows ou telas.
+      <WikiSection id="embeddings" title="Busca em escala (embeddings)" eyebrow="Muitas bases sem perder o trecho certo">
+        <p>
+          Com centenas ou milhares de bases, a INIA não consegue mostrar todas à IA nem ler todas. A busca em escala tem quatro etapas, e cada uma reduz o
+          que a seguinte vê:
+        </p>
+        <ol className="list-decimal space-y-1.5 pl-5">
+          <li>
+            <strong className="font-medium text-foreground">Escopo exato, sem IA:</strong> só as bases vinculadas aos Agents envolvidos, no alcance do Grupo,
+            que a pessoa pode ler e com a versão em uso publicada.
+          </li>
+          <li>
+            <strong className="font-medium text-foreground">Candidatos:</strong> a união do índice de texto (termos exatos, códigos, números) com a busca por
+            significado (sinônimos e paráfrases), cerca de 60 seções. O produto cadastrado da base (Produtos e aplicabilidade) entra na busca: quem pergunta
+            pela família (&ldquo;reparo de Dados Avançados&rdquo;) chega à base que só fala do produto (&ldquo;LP de Dados&rdquo;). A IA também vê o produto
+            cadastrado ao lado do título de cada base. O objetivo é não perder o trecho necessário.
+          </li>
+          <li>
+            <strong className="font-medium text-foreground">A IA decide:</strong> no chat, as seções candidatas chegam lidas à primeira decisão, e quando a
+            lista de bases não cabe inteira, as bases com candidatos vêm primeiro. A IA continua decidindo o que se aplica (negação, exceção, regra
+            conflitante) e pode ler outras seções.
+          </li>
+          <li>
+            <strong className="font-medium text-foreground">Motor de feedback:</strong> quando as bases do especialista não cabem no orçamento, o cartão de
+            cada documento (título e sumário) ajuda a achar qual procedimento se aplica, e o procedimento entra inteiro, nunca um recorte.
+          </li>
+        </ol>
+        <WarningCallout kind="tip" title="O modelo de embedding é escolhido em IA / Modelos">
+          A busca por significado usa o modelo da função “Busca nas bases (embedding)” (Administração › IA / Modelos › Roteamento). Sem política, nenhuma
+          chamada é feita e a busca usa só o índice de texto. Os vetores são gerados em segundo plano a cada versão publicada, e só o que mudou é gerado de
+          novo. Uma falha do modelo nunca impede a resposta: a pergunta segue pelo índice de texto.
         </WarningCallout>
       </WikiSection>
 
@@ -502,7 +528,8 @@ export default function KnowledgeBasesPage() {
 
       <WikiSection id="limitacoes" title="Limitações e próxima evolução" eyebrow="Transparência">
         <ul className="list-inside list-disc space-y-1">
-          <li>Retrieval é lexical (BM25 sobre trechos), não semântico: sinônimos sem radical em comum podem não casar. Embeddings ficam como evolução — a interface não muda.</li>
+          <li>A busca por significado depende da política de embedding em IA / Modelos. Sem ela, o retrieval é só lexical (BM25 sobre trechos): sinônimos sem radical em comum podem não casar.</li>
+          <li>A busca dos especialistas acionados pelo Orquestrador (quando o esclarecimento passa a vez) continua só lexical.</li>
           <li>Conformidade de processo exige transcrição (gatilho por Flag de canal).</li>
         </ul>
         <SeeAlso

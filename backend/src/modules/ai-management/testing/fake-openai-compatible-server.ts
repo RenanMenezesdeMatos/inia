@@ -28,13 +28,29 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
  *
  * Voz (`POST /v1/audio/speech`): devolve `FAKE_SPEECH_PCM` (1 s de PCM16 mono 24 kHz, padrão fixo) como o `response_format:
  * "pcm"` da OpenAI; `fake-down` → 503.
+ *
+ * Embedding (`POST /v1/embeddings`): um vetor por texto de `input`, pela função `embed` das opções (a prova escolhe o "significado") ou,
+ * sem ela, um vetor determinístico de 32 posições pelas palavras do texto; uso = 1 token por palavra. `fake-down` → 503,
+ * `fake-bad-request` → 400.
  */
 export const FAKE_SPEECH_PCM = Buffer.from(Array.from({ length: 48_000 }, (_, index) => (index * 7) % 256))
 export const FAKE_MODELS = ["fake-ok", "fake-json", "fake-rate-limited", "fake-down", "fake-unauthorized", "fake-bad-request", "fake-no-usage", "fake-slow"] as const
 
 export type FakeServerStats = { served: number; rateLimited: number; inFlight: number; peakInFlight: number }
 export type FakeServer = { url: string; port: number; requests: { path: string; model: string | null; body: Record<string, unknown> }[]; stats: FakeServerStats; setResponseCost: (value: string | null) => void; close: () => Promise<void> }
-export type FakeServerOptions = { apiKey?: string | null; port?: number; host?: string; latencyMs?: number; capacity?: { maxConcurrent: number; retryAfterSeconds?: number }; respond?: (body: Record<string, unknown>) => string | null; responseCost?: string | null }
+export type FakeServerOptions = { apiKey?: string | null; port?: number; host?: string; latencyMs?: number; capacity?: { maxConcurrent: number; retryAfterSeconds?: number }; respond?: (body: Record<string, unknown>) => string | null; responseCost?: string | null; embed?: (text: string, model: string | null) => number[] }
+
+/** Vetor determinístico pelas palavras (sem significado nenhum): só para o servidor responder quando a prova não escolhe o `embed`. */
+export function fakeWordVector(text: string, dimensions = 32): number[] {
+  const vector: number[] = Array.from({ length: dimensions }, () => 0)
+  for (const word of text.toLowerCase().split(/\s+/).filter(Boolean)) {
+    let hash = 0
+    for (const char of word) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+    vector[hash % dimensions]! += 1
+  }
+  if (Math.max(...vector) === 0) vector[0] = 1
+  return vector
+}
 
 export const FAKE_RESPONSE_COST_HEADER = "x-litellm-response-cost"
 
@@ -71,6 +87,13 @@ export async function startFakeOpenAiServer(options: FakeServerOptions = {}): Pr
       response.writeHead(200, { "content-type": "audio/pcm", ...costHeaders() })
       response.end(FAKE_SPEECH_PCM)
       return
+    }
+    if (request.method === "POST" && path.endsWith("/embeddings")) {
+      if (model === "fake-down") return send(response, 503, { error: { message: "Service unavailable" } })
+      if (model === "fake-bad-request") return send(response, 400, { error: { message: "Invalid input" } })
+      const inputs = Array.isArray(body.input) ? body.input.map(String) : [String(body.input ?? "")]
+      const tokens = inputs.reduce((sum, text) => sum + text.split(/\s+/).filter(Boolean).length, 0)
+      return send(response, 200, { object: "list", model, data: inputs.map((text, index) => ({ object: "embedding", index, embedding: options.embed ? options.embed(text, model) : fakeWordVector(text) })), usage: { prompt_tokens: tokens, total_tokens: tokens } }, costHeaders())
     }
     if (request.method !== "POST" || !path.endsWith("/chat/completions")) return send(response, 404, { error: { message: "not found" } })
     const usage = { prompt_tokens: 1200, completion_tokens: 300, total_tokens: 1500, prompt_tokens_details: { cached_tokens: 200 }, completion_tokens_details: { reasoning_tokens: 50 } }

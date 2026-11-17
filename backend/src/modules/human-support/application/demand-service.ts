@@ -16,7 +16,7 @@ export async function supportDemand(db: Queryable, viewer: Viewer, query: Demand
   const coverage = await coordinatorScopesOf(db, viewer.organizationId, viewer.personId)
   const params: unknown[] = [viewer.organizationId, query.from, query.to]
   const bounds = periodBounds("$1", "$2", "$3")
-  const where = coverageClause(coverage, "r", params, { teamId: query.teamId, subteamId: query.subteamId })
+  const where = coverageClause(coverage, "r", params, { teamId: query.teamId, subteamId: query.subteamId }, "operator_person_id")
   const [rows, days] = await Promise.all([
     db.query<{ status: RequestStatus; end_cause: RequestEndCause | null; anjos_in_service_at_end: number | null; operator_person_id: string; team_id: string | null; team_name: string | null; subteam_id: string | null; subteam_name: string | null; hour: number; day: string; wait_seconds: number | null; productivity: Productivity; had_attendance: boolean }>(
       `select r.status, r.end_cause, r.anjos_in_service_at_end, r.operator_person_id, r.team_id, t.name team_name, r.subteam_id, st.name subteam_name,

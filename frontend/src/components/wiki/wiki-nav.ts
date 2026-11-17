@@ -94,6 +94,7 @@ export const WIKI_SECTIONS: WikiSection[] = [
       { href: "/wiki/pendencias", title: "Pendências e Revisão humana", shortTitle: "Pendências", description: "O que exige uma decisão sua: aprovar, reprovar ou escalar uma revisão — e por que ler não é decidir." },
       { href: "/wiki/notificacoes", title: "Notificações (sino)", shortTitle: "Notificações", description: "Revisão aguardando decisão, novo acompanhamento e escalonamento — algo novo aconteceu." },
       { href: "/wiki/apoio-com-anjo", title: "Apoio com Anjo", description: "Quando a INIA não resolve: descurtida com motivo, pedido de ajuda a uma pessoa da equipe de apoio, fila, sala de apoio, área do Anjo e painel." },
+      { href: "/wiki/apoio-com-anjo/faq", title: "FAQ da operação dos Anjos", shortTitle: "FAQ dos Anjos", description: "Perguntas e respostas sobre todas as regras do Apoio com Anjo — quando se aplicam, o que é cada coisa e como é contado — e um prompt de referência para copiar." },
     ],
   },
   {

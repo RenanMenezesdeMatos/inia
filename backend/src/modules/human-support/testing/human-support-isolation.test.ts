@@ -48,6 +48,8 @@ describe("isolamento do Apoio com Anjo (servidor)", () => {
       // Migration 191: a sessão que mantinha a área do Anjo já tinha terminado? (separa sessão encerrada de queda de rede)
       /^\.\.\/\.\.\/auth\/application\/session-ended\.js$/,
       /^\.\.\/\.\.\/profile-preferences\/application\/person-presentation-loader\.js$/,
+      // Universo de atuação (auditoria HS-01): ativação, universo da pessoa e a regra de pessoas — leitura única do módulo dono.
+      /^\.\.\/\.\.\/operating-universe\/(application\/universe-access|domain\/operating-universe)\.js$/,
       /^\.\.\/\.\.\/data-lifecycle\/application\/(personal-data-access-log|subject-data-export)\.js$/,
       /^\.\.\/\.\.\/\.\.\/(shared|infrastructure|config)\//,
     ]

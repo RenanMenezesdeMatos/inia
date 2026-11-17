@@ -103,8 +103,8 @@ levantamento, 10/11). Regra geral: o elemento repetido mora no kit (`components/
   recorte, uma faixa abaixo do cabeçalho diz "Mostrando ações de …" (no celular "Ações de …") com "Ver todo o período"; período sem
   nada mantém a seção montada e mostra o `EmptyState` "Nenhuma ação neste período" com a mesma volta. O dia é o de quem lê e o
   instante é o MESMO que ordena e rotula o dia de cada item (feedback = publicação; aviso/report = criação; entrega = `deliveredAt`;
-  comunicado = publicação local). Estrutura: `since`/`until` ([início, fim) em ISO) vão a `GET /analytics/follow-ups` e entram nos
-  três ramos do feed antes do keyset; colaborador: filtro na timeline, buscando páginas antigas só enquanto podem ter itens do
+  comunicado = `published_at` do servidor). Estrutura: `since`/`until` ([início, fim) em ISO) vão a `GET /analytics/follow-ups` e entram
+  em todos os ramos do feed (inclusive o NOTICE dos comunicados) antes do keyset; colaborador: filtro na timeline, buscando páginas antigas só enquanto podem ter itens do
   período. "Onde atuar hoje" some com recorte ativo (não é ação datada); "Ler feedback" de item fora do recorte volta a tudo.
 - **Tabela** — `components/ui/table.tsx`: moldura `TABLE_FRAME` (agora também nas 5 que não tinham: Diagnóstico ×2, Materiais,
   Processos, membros do indicador) e **cabeçalho roxo da marca com texto branco em seminegrito** (token `topbar`, o roxo da barra

@@ -49,6 +49,7 @@ const USE_CASES: { name: string; requires: string; what: string }[] = [
   { name: "Chat de texto", requires: "(streaming, se houver)", what: "Resposta do chat quando não há Orquestrador ativo." },
   { name: "Voz em tempo real", requires: "Áudio + streaming", what: "Sessão de voz do avatar — não configurável nesta versão (usa a configuração do ambiente)." },
   { name: "Voz do recado do avatar", requires: "Áudio + voz no modelo", what: "Lê o texto exato do recado e do “Ouvir com a INIA”. Sem política, a voz da conversa de sempre; com política, o modelo escolhido com a voz e o tom cadastrados nele (hoje: OpenAI e servidores compatíveis)." },
+  { name: "Busca nas bases (embedding)", requires: "Modelo do tipo Embedding", what: "Transforma os trechos das bases publicadas e as perguntas em vetores para achar os candidatos pelo significado quando há muitas bases. Só encontra candidatos: quem decide o que se aplica continua sendo o modelo do chat ou do motor de feedback. Sem política, nenhuma chamada — a busca usa só o índice de texto." },
 ]
 
 export default function AiModelsPage() {
@@ -151,6 +152,12 @@ export default function AiModelsPage() {
           Voz do recado: cadastre o modelo de voz do provider (ex.: gpt-4o-mini-tts), declare a capacidade Áudio e, em Configurar, informe a Voz
           (ex.: marin) e, se quiser, uma Instrução de tom. Trocar a voz, o tom ou a política gera o áudio de novo — o recado nunca toca a voz
           antiga como se fosse a nova.
+        </p>
+        <p>
+          Busca nas bases: cadastre o modelo de embedding com o tipo <strong className="font-medium text-foreground">Embedding</strong> (ex.:
+          text-embedding-3-small num servidor compatível com OpenAI, ou um modelo de embedding do Gemini) e ative a política da função. Em segundo plano, a INIA
+          gera os vetores das versões publicadas — só o que mudou desde a última versão é gerado de novo. Trocar o modelo gera tudo de novo; até terminar, as
+          bases ainda sem vetores do modelo novo entram só pelo índice de texto. &ldquo;Testar modelo&rdquo; num modelo de embedding gera o vetor de uma frase curta.
         </p>
       </WikiSection>
 
@@ -306,6 +313,7 @@ export default function AiModelsPage() {
         <ul className="list-disc space-y-1.5 pl-5">
           <li>A conversa por voz ainda usa a configuração do ambiente (o uso aparece como sessão iniciada, sem tokens). Com política na voz do recado, o recado pode soar com uma voz diferente da conversa.</li>
           <li>Voz do recado pela OpenAI: o custo fica como desconhecido (a resposta de áudio não informa tokens) e o texto vai até 4.096 caracteres por síntese.</li>
+          <li>Busca nas bases pelo Gemini: o custo do embedding fica como desconhecido (o Gemini não informa tokens no embedding).</li>
           <li>OpenAI e servidores compatíveis recebem o formato da resposta como orientação (sem imposição estrita); a INIA confere cada resposta antes de usá-la.</li>
           <li>Anthropic: sem streaming e com saída estruturada por instrução.</li>
           <li>OpenAI, xAI e servidores compatíveis não informam capacidades — o administrador declara.</li>

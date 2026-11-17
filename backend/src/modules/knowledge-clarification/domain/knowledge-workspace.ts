@@ -43,6 +43,19 @@ export type WorkspaceView = {
   readable: { bases: Map<string, string>; sections: Map<string, KnowledgeSourceRef> }
 }
 
+/**
+ * O produto cadastrado da base (Produtos e aplicabilidade), em frase: "vale para Rastreador Veicular, produto da família Linha Órion". A
+ * IA precisa saber que a família que a pessoa citou CONTÉM o produto da base — "Linha Órion › Rastreador Veicular" sozinho foi lido como
+ * outra coisa ("não encontrei para a linha Órion", avaliação de 16/11/2026).
+ */
+export function describeProducts(products: string): string {
+  const items = products.split("; ").map((item) => {
+    const [family, product] = item.split(" › ")
+    return product ? `${product}, produto da família ${family}` : `família ${family}`
+  })
+  return `vale para ${items.join("; ")} (cadastro de produtos)`
+}
+
 export class KnowledgeWorkspace {
   private readonly listed: CatalogSource[]
   private readonly byId: Map<string, CatalogSource>
@@ -154,7 +167,7 @@ export class KnowledgeWorkspace {
       evidence.set(ref, { documentId: source.documentId, documentTitle: source.documentTitle, versionId: source.versionId, heading: source.documentTitle, chunkIndex: first?.chunkIndex ?? 0 })
       if (!this.opened.has(source.documentId)) readable.bases.set(ref, source.documentId)
       const sample = sections.slice(0, this.budget.sampleSectionsPerBase)
-      const header = `[${ref}] ${source.documentTitle} (${[source.documentType, `${sections.length} ${sections.length === 1 ? "seção" : "seções"}`].filter(Boolean).join(" · ")})`
+      const header = `[${ref}] ${source.documentTitle} (${[source.documentType, `${sections.length} ${sections.length === 1 ? "seção" : "seções"}`, source.products ? describeProducts(source.products) : null].filter(Boolean).join(" · ")})`
       catalog.push(`${header}. Começo do sumário: ${sample.map((section) => `[${present(section)}] ${label(section)}`).join(" · ")}${sections.length > sample.length ? " · … (abra a base para ver todas as seções)" : ""}`)
     }
     const omitted = this.byId.size - this.listed.length
@@ -166,7 +179,7 @@ export class KnowledgeWorkspace {
       lines.push("BASES ABERTAS (sumário completo, na ordem do documento — títulos, sem o texto):")
       for (const source of opened) {
         const sections = sectionsOf(source)
-        lines.push(`### ${source.documentTitle} [${this.baseRefs.get(source.documentId)}]`)
+        lines.push(`### ${source.documentTitle} [${this.baseRefs.get(source.documentId)}]${source.products ? ` (${describeProducts(source.products)})` : ""}`)
         for (const section of sections.slice(0, this.budget.maxOutlinePerBase)) lines.push(`[${present(section)}] ${label(section)}${this.readSections.has(keyOf(section)) ? " — texto abaixo" : ""}`)
         if (sections.length > this.budget.maxOutlinePerBase) lines.push(`(+${sections.length - this.budget.maxOutlinePerBase} seções além do limite)`)
       }
@@ -178,7 +191,8 @@ export class KnowledgeWorkspace {
       for (const { source, text } of [...this.readSections.values()].sort((left, right) => this.order(left.source) - this.order(right.source))) {
         if (source.documentId !== currentDocument) {
           currentDocument = source.documentId
-          lines.push(`### ${source.documentTitle}`)
+          const products = this.byId.get(source.documentId)?.products
+          lines.push(`### ${source.documentTitle}${products ? ` (${describeProducts(products)})` : ""}`)
         }
         const ref = this.sectionRefs.get(keyOf(source)) ?? this.refOfSection({ ...source, preview: null })
         evidence.set(ref, source)

@@ -4,6 +4,10 @@ import { AiCallCancelledError, AiProviderError } from "../../../shared/applicati
 import { currentAiAbortSignal } from "../../../shared/application/model-routing/ai-runtime.js"
 import { currentChatTurnTrace } from "../../../shared/application/observability/chat-turn-trace.js"
 import type { ReadableKnowledge, ReadableKnowledgeRequest } from "../../knowledge/application/knowledge-catalog.js"
+import type { KnowledgeRecall, KnowledgeRecallTrace } from "../../knowledge/application/knowledge-recall.js"
+import type { RecalledChunk } from "../../knowledge/domain/hybrid-recall.js"
+import type { CatalogSource } from "../../knowledge/domain/knowledge-catalog.js"
+import { planSectionPrefill } from "../../knowledge/domain/section-prefill.js"
 import { createAnswerStream } from "../domain/answer-stream.js"
 import { CONVERGENCE_ISSUES, validateAnswerOutput, validatePlannerOutput, type AnswerValidation, type PlannerIssue, type PlannerValidation, type PlannerValidationContext, type PresentedEvidence, type RejectedOption, type ValidatedPlan } from "../domain/clarification-contract.js"
 import { ANSWER_SYSTEM, renderAnswerInput, renderCorrection, renderPlannerInput, renderPlannerSystem, SESSION_ANSWER_RULE, type AnswerSection, type PlannerInput } from "../domain/clarification-prompts.js"
@@ -23,7 +27,7 @@ import {
   type ClarificationStep,
   type QuestionFact,
 } from "../domain/clarification-state.js"
-import { DEFAULT_NAVIGATION_BUDGET, KnowledgeWorkspace, type NavigationBudget } from "../domain/knowledge-workspace.js"
+import { DEFAULT_NAVIGATION_BUDGET, KnowledgeWorkspace, describeProducts, type NavigationBudget } from "../domain/knowledge-workspace.js"
 import type { ClarificationModel } from "./clarification-model.js"
 
 /**
@@ -52,6 +56,12 @@ export type KnowledgeClarificationDeps = {
   now?: () => Date
   newId?: () => string
   budget?: NavigationBudget
+  /**
+   * Busca nas bases em escala (`knowledge-recall.ts`): candidatos BM25 ∪ vetor sobre as bases do escopo. Com ela, a lista de bases que a IA
+   * vê passa a começar pelas que têm candidatos quando não caberia inteira (acima de `maxListedBases` a lista era cortada por título), e
+   * numa pergunta nova as seções candidatas já chegam lidas à primeira decisão. Ausente (ou `INIA_KB_SCALE_RETRIEVAL=off`) = como antes.
+   */
+  recall?: Pick<KnowledgeRecall, "startQuery" | "recall"> | null
 }
 
 export type ClarificationRequest = {
@@ -107,6 +117,8 @@ export type ClarificationTrace = {
   /** Cada chamada à IA nesta mensagem, em ordem: etapa, correção e o que decidiu (ex.: `PLANNER READ +1B +4K`, `ANSWER OK`). Sem
    * conteúdo — mostra quantas rodadas a pergunta custou. */
   calls?: string[]
+  /** Busca em escala: modo (BM25 ∪ vetor ou só BM25), candidatos, cobertura do índice, tempos e seções entregues já lidas (sem texto). */
+  recall?: KnowledgeRecallTrace & { prefilled: number; reordered: boolean; failed?: string }
 }
 
 /**
@@ -120,7 +132,7 @@ export type ClarificationOutcome =
 export const CLARIFICATION_UNAVAILABLE_MESSAGE = "Não consegui continuar o esclarecimento agora. Sua escolha ficou registrada — envie de novo em instantes."
 
 type Conversation = Omit<PlannerInput, "stepsRemaining" | "readsRemaining" | "recentTurns" | "details">
-type Navigation = { workspace: KnowledgeWorkspace; knowledge: ReadableKnowledge }
+type Navigation = { workspace: KnowledgeWorkspace; knowledge: ReadableKnowledge; recalled: RecalledChunk[] }
 
 export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
   const now = deps.now ?? (() => new Date())
@@ -152,11 +164,40 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
     return { version: KNOWLEDGE_CLARIFICATION_VERSION, mode, decision: null, navigation: null, rejectedOptions: [], plannerAttempts: 0, answerAttempts: 0, issues: [] }
   }
 
-  async function loadNavigation(request: ClarificationRequest, agentIds: string[], record: ClarificationTrace): Promise<Navigation> {
+  /** `question`: o que a busca em escala procura (a pergunta; numa continuação, a pergunta original com a mensagem nova). */
+  async function loadNavigation(request: ClarificationRequest, agentIds: string[], record: ClarificationTrace, question: string): Promise<Navigation> {
+    // O vetor da pergunta começa junto com a leitura das bases: o chat não espera um pelo outro.
+    const query = deps.recall ? deps.recall.startQuery(request.organizationId, question) : null
     const knowledge = await deps.knowledge({ organizationId: request.organizationId, viewerPersonId: request.personId, agentIds })
-    const workspace = new KnowledgeWorkspace([...knowledge.sources.values()], budget)
+    let sources = [...knowledge.sources.values()]
+    let recalled: RecalledChunk[] = []
+    if (deps.recall && sources.length > 0) {
+      try {
+        const result = await deps.recall.recall({ organizationId: request.organizationId, question, sources, query })
+        recalled = result.recalled
+        // Só reordena quando a lista seria cortada: abaixo do limite ela fica igual em todas as mensagens (favorece o cache do provedor).
+        const reordered = sources.length > budget.maxListedBases
+        if (reordered) sources = candidatesFirst(sources, result.documentOrder)
+        record.recall = { ...result.trace, prefilled: 0, reordered }
+      } catch (error) {
+        rethrowIfCancelled(error)
+        logFailure("recall", error)
+        record.recall = { version: "HYBRID_RECALL_V2", mode: "LEXICAL", modelKey: null, candidates: 0, scopeChunks: 0, indexedChunks: 0, embeddingMs: null, searchMs: 0, prefilled: 0, reordered: false, failed: (error as Error)?.name ?? "Error" }
+      }
+    }
+    const workspace = new KnowledgeWorkspace(sources, budget)
     record.navigation = { ...workspace.trace(), readRounds: 0, excludedByAccess: knowledge.excludedByAccess }
-    return { workspace, knowledge }
+    return { workspace, knowledge, recalled }
+  }
+
+  /** Camada 3: as seções candidatas chegam lidas à primeira decisão da pergunta nova; a IA decide sobre elas e pode ler outras. */
+  function prefillCandidates(navigation: Navigation, record: ClarificationTrace): void {
+    if (navigation.recalled.length === 0 || !record.recall) return
+    const planned = planSectionPrefill(navigation.recalled, navigation.knowledge.sources)
+    navigation.workspace.read(planned)
+    record.recall.prefilled = planned.length
+    currentChatTurnTrace()?.note("recallMs", record.recall.searchMs)
+    currentChatTurnTrace()?.note("recallPrefilled", planned.length)
   }
 
   /** Pergunta NOVA (ou uma continuação da anterior pela conversa): qualquer falha = PASS, a orquestração de sempre responde. */
@@ -165,7 +206,7 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
     if (agentIds.length === 0) return { kind: "PASS", reason: "NO_AGENTS", trace: record }
     let navigation: Navigation
     try {
-      navigation = await loadNavigation(request, agentIds, record)
+      navigation = await loadNavigation(request, agentIds, record, text)
     } catch (error) {
       rethrowIfCancelled(error)
       logFailure("knowledge", error)
@@ -174,6 +215,7 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
     if (navigation.knowledge.sources.size === 0) return { kind: "PASS", reason: "NO_KNOWLEDGE", trace: record }
     // Continuação ("e se for…?"): a pergunta anterior e o cenário dela vão como contexto; as bases que a sustentaram começam abertas.
     if (followUpOf) navigation.workspace.open([...new Set([...followUpOf.sources, ...followUpOf.steps.flatMap((step) => step.options.flatMap((option) => option.evidence))].map((source) => source.documentId))])
+    prefillCandidates(navigation, record)
     const validation = await navigate(request, record, navigation, { originalQuestion: text, state: null, previous: followUpOf, pending: null }, { previousSteps: [], knownDimensions: [], pending: null, stepsRemaining: MAX_CLARIFICATION_STEPS, allowNotApplicable: true })
     if (!validation || !validation.ok) return { kind: "PASS", reason: "PLANNER_FAILED", trace: record }
     if (validation.plan.decision === "NOT_APPLICABLE") return { kind: "PASS", reason: "NOT_APPLICABLE", trace: record }
@@ -198,7 +240,7 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
     const previousSteps: ClarificationStep[] = pendingStep ? [...answered, pendingStep] : answered
     let navigation: Navigation
     try {
-      navigation = await loadNavigation(request, agentIds, record)
+      navigation = await loadNavigation(request, agentIds, record, [state.originalQuestion, message ?? ""].filter((part) => part.trim()).join("\n"))
     } catch (error) {
       rethrowIfCancelled(error)
       logFailure("knowledge", error)
@@ -329,7 +371,8 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
       if (sections.some((section) => section.ref === ref)) return
       const text = workspace.textOf(source)
       if (!text || chars + text.length > 24_000) return
-      sections.push({ ref, source, text })
+      const products = workspace.source(source.documentId)?.products
+      sections.push({ ref, source, text, ...(products ? { products: describeProducts(products) } : {}) })
       chars += text.length
     }
     for (const { ref, source } of result.answerEvidence) add(ref, source)
@@ -453,6 +496,13 @@ function plannerCallLabel(validation: PlannerValidation, correction: boolean): s
 function noteCall(record: ClarificationTrace, label: string): void {
   record.calls = [...(record.calls ?? []), label]
   currentChatTurnTrace()?.note("clarificationCalls", record.calls.join(" > "))
+}
+
+/** Bases com candidatos primeiro (na ordem dos candidatos), depois as demais na ordem de sempre (título). */
+export function candidatesFirst<T extends CatalogSource>(sources: readonly T[], documentOrder: readonly string[]): T[] {
+  const position = new Map(documentOrder.map((documentId, index) => [documentId, index]))
+  const withCandidates = sources.filter((source) => position.has(source.documentId)).sort((left, right) => position.get(left.documentId)! - position.get(right.documentId)!)
+  return [...withCandidates, ...sources.filter((source) => !position.has(source.documentId))]
 }
 
 function logFailure(stage: string, error: unknown): void {

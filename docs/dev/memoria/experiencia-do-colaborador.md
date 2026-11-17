@@ -115,3 +115,59 @@ rolagem "página primeiro" e as colunas fixas (`followup-workspace-shell docked`
 conversas?" e de "INIA está pronta para ajudar.", o indicador de atividade da voz, Meu turno e Treino. Teste: "o avatar começa compacto e
 só amplia a pedido…" em `operator-inia-chat.test.tsx`.
 
+
+### Comunicados da liderança — persistidos e entregues (migration 199, 16/11/2026, commit c30b77d0, não enviado ao GitHub)
+
+Antes o comunicado do botão "Falar com o time" (perfil de quem lidera) era só `useState`: sumia ao recarregar e nunca chegava a ninguém.
+Agora é registro do servidor, só leitura (sem ciência — decisão do usuário) e aparece no Acompanhamento de quem publicou e de quem recebeu.
+
+- **Quem publica (decisão do usuário, 16/11)**: cargo nunca dá o direito. `communications.publish_team` (papel `COMUNICADOS_DA_EQUIPE`,
+  qualquer escopo) = só para a própria estrutura; `communications.publish_organization` (papel `COMUNICADOS_DA_EMPRESA`, só escopo de
+  organização; o Administrador geral também tem) = própria estrutura OU toda a organização. Só o Administrador geral delega os dois.
+  A tela recebe `canPublishTeamCommunications`/`canPublishOrganizationCommunications` pelas capacidades da sessão (botão e opção
+  "Toda a empresa"); o módulo confere de novo a cada publicação (`COMMUNICATION_FORBIDDEN` / `COMMUNICATION_AUDIENCE_FORBIDDEN`, 403).
+- **Público sempre do servidor**: TEAM = toda a estrutura abaixo de quem publica (`reports_to`, qualquer profundidade, pessoas ativas),
+  gravada em `communication_recipients` na hora (quem entra depois não recebe o que já saiu; ninguém abaixo = 422
+  `COMMUNICATION_NO_AUDIENCE`); ORGANIZATION = sem linhas de destinatário, vale para todas as pessoas da organização. Corpo é
+  `.strict()`: campo de destinatário vindo do navegador = 400. **Universo de atuação (B2B/B2C/B2X)** — o usuário quer que a permissão de
+  organização também possa escolher um universo; o módulo do universo está na worktree `universo-atuacao` (migration 197), fora do
+  tronco: quando chegar, entra como público novo (`audience`) nesta tabela, com o filtro por `people.operating_universe`.
+- **Conteúdo**: `communications/domain/communication-content.ts` desmonta o HTML do editor e MONTA OUTRO só com a lista fechada do
+  saneador da tela (sem atributos, salvo cor `#rrggbb`/`rgb()` no `span` e `img` `data:image/(png|jpeg|webp|gif);base64`); `script`,
+  `style`, `svg`, `iframe`… saem com o conteúdo; texto reescapado; marcas balanceadas. Imagens: tipo pelos bytes, `stripImageMetadata`
+  e reencode (`communication-images.ts`). Texto puro derivado no servidor (o do navegador não é enviado). Limites: 2 MB de HTML com as
+  imagens (decisão: "imagens, com teto menor"), 6 imagens, 5.000 caracteres; no editor, 1,4 MB por imagem. A rota tem parser JSON
+  próprio de ~2,2 MB (`app.ts`, só `POST /api/v1/communications`) e teto de 6 publicações por conta por minuto
+  (`communicationPublishesPerAccount`). A exibição passa de novo por `sanitizeRichText`.
+- **Auditoria**: `audit_logs` `COMMUNICATION_PUBLISHED` (público, número de destinatários, categorias, conta) — nunca título nem texto.
+- **Editar e retirar (migration 201, 16/11/2026)** — só o AUTOR, pelo menu "⋯" do cartão dele (`communication-entry.tsx`):
+  - Editar (`PATCH /api/v1/communications/:id`): título, conteúdo e categorias, saneados de novo; o público NÃO muda (fixado na
+    publicação; corpo `.strict()` recusa `audience`). Exige ainda ter o direito de publicar para aquele público (perdeu o papel = 403
+    `COMMUNICATION_EDIT_FORBIDDEN`). A versão anterior vai para `communication_revisions` (título, HTML, texto, categorias, quando e
+    quem substituiu), com a linha travada (`for update`); `edited_at`/`edited_by` no comunicado; quem recebeu vê "· editado".
+  - Retirar (`DELETE /api/v1/communications/:id`, confirmação no `AlertDialog`): exclusão LÓGICA (`deleted_at` +
+    `deleted_by_person_id`, coluna renomeada de `deleted_by` na 201 para o padrão do catálogo), sempre permitida ao autor. Some do
+    Acompanhamento de todos; o registro e as versões ficam.
+  - Rastreio (pedido do usuário: "preciso ter o tracking disso"): `audit_logs` `COMMUNICATION_PUBLISHED` → `COMMUNICATION_EDITED`
+    (o que mudou, sem o texto) → `COMMUNICATION_RETIRED`; o retirado aparece em **Consultar dados › Itens excluídos** (tipo
+    `COMMUNICATION`, `data-explorer/domain/deleted-items.ts`) com quem retirou e quando, para quem tem `communications.publish_organization`
+    com a Consultar dados. Restaurar o devolve ao Acompanhamento de quem recebeu (não há estado "desligado" para comunicado — exceção
+    à regra "restaurar nunca liga", avisada na tela de restauração).
+  - Outra pessoa (mesmo acima na estrutura), outra organização ou já retirado = 404.
+- **Leitura**: fragmento único `communicationVisibleToSql` (`communications/infrastructure/postgres-communication-store.ts`): autor,
+  destinatário gravado ou público ORGANIZATION. Estrutura: ramo `NOTICE` do `loadFollowUpFeed` (mesmo keyset, mesmo `since`/`until`,
+  só na própria estrutura — `$3`, como avisos e reports — e fora de "Só aguardando ciência"); conteúdo montado depois do LIMIT por
+  `loadCommunicationViews`; item com `kind`/`category` `NOTICE` e `notice` (autor, público, `recipientCount` só para quem publicou).
+  Colaborador: `GET /api/v1/communications/received` (os 200 mais recentes recebidos, LEVES desde a auditoria de 17/11/2026: `excerpt` de até
+  280 caracteres e `hasImages`, sem o HTML — cada um podia ter 2 MB; o corpo vem por `GET /api/v1/communications/:id`, com a mesma
+  visibilidade, só quando a pessoa abre "Ler comunicado completo"; GIF recusado; comunicado só com imagem aceito) = terceira fonte da
+  timeline (`follow-up-timeline.ts`, `source: "notice"`, instante = `publishedAt`), filtrada pelo calendário como as outras. Peça única
+  de exibição: `components/communications/communication-entry.tsx` (família `NOTICE` do `FeedbackEntryHeader`, "Comunicado de ‹autor›",
+  "Publicado para sua equipe · N pessoas" / "Para a equipe" / "Para toda a empresa"). Publicar invalida `["analytics","follow-ups"]`.
+- **Sino**: comunicado NÃO avisa no sino (não pedido); fica para decisão.
+- Testes: `communication-content.test.ts`, `communications-router.test.ts` (inclui editar/retirar), `communication-entry.test.tsx`, `follow-up-entry.test.tsx` (calendário com NOTICE),
+  `follow-up-timeline.test.tsx` (fonte nova), `communication.schema.test.ts`. Prova:
+  `INIA_DB_PROOF=1 NODE_ENV=test npx vitest run communications-proof` (login real, publicar, recarregar, feed do líder, recebidos de
+  cada colaborador, outra equipe/organização, recorte e keyset, editar com versão guardada, retirar, auditoria e Itens excluídos com
+  restauração). Migrations 199 e 201 aplicadas em `inia` e `inia_test`. Validado na tela em 16/11 (publicar, editar, "editado" na
+  colaboradora, retirar); os dois comunicados "[TESTE QA]" ficaram retirados no `inia` (aparecem em Itens excluídos).

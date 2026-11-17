@@ -17,9 +17,9 @@ export type FunnelResponse = { period: { from: string; to: string }; cutoffs: { 
 const placementOf = (coverage: CoordinatorScopes): FunnelPlacement => (coverage.organizationWide ? { kind: "ORGANIZATION" } : { kind: "UNITS", teamIds: coverage.teamIds, subteamIds: coverage.subteamIds })
 
 async function supportCounts(db: Queryable, organizationId: string, coverage: CoordinatorScopes, query: PanelQuery): Promise<SupportCounts> {
-  const scoped = (alias: string) => {
+  const scoped = (alias: "e" | "r") => {
     const params: unknown[] = [organizationId, query.from, query.to]
-    const clause = coverageClause(coverage, alias, params, query)
+    const clause = coverageClause(coverage, alias, params, query, alias === "e" ? "person_id" : "operator_person_id")
     return { params, clause, ...periodBounds("$1", "$2", "$3") }
   }
   const entries = scoped("e")

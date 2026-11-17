@@ -1,5 +1,6 @@
 import { DEFAULT_FALLBACK_ON, FALLBACK_ELIGIBLE_CATEGORIES } from "../../../shared/application/model-routing/ai-errors.js"
 import type { AiUseCaseDefinition } from "../../../shared/application/model-routing/ai-use-cases.js"
+import { EMBEDDING_ADAPTERS } from "./ai-embedding.js"
 import { missingCapabilities, QUALITY_TIER_RANK, ROUTABLE_MODEL_KINDS, supportsCapability, type AiModelKind, type AiQualityTier, type ModelCapabilities } from "./ai-capabilities.js"
 import { blendedPrice, estimateInputCost, isZeroPricing, type AiPricingVersion } from "./ai-pricing.js"
 import { findAiProvider } from "./ai-provider-catalog.js"
@@ -76,7 +77,11 @@ export function ineligibilityReason(model: ModelSnapshot | undefined, useCase: A
   if (!model.connection.providerActive) return "provider indisponível neste ambiente"
   if (!model.connection.enabled) return `conexão "${model.connection.name}" desabilitada`
   if (!model.enabled) return "modelo desabilitado"
-  if (!ROUTABLE_MODEL_KINDS.includes(model.kind)) return `modelo do tipo ${model.kind} não atende requisições generativas`
+  if (useCase.modelKind === "EMBEDDING") {
+    if (model.kind !== "EMBEDDING") return `modelo do tipo ${model.kind} não gera embeddings (cadastre o modelo como Embedding)`
+    const adapterType = findAiProvider(model.connection.providerKey)?.adapterType
+    if (!adapterType || !EMBEDDING_ADAPTERS.includes(adapterType)) return "o provider não gera embeddings na INIA (hoje: OpenAI e servidores compatíveis, Gemini)"
+  } else if (!ROUTABLE_MODEL_KINDS.includes(model.kind)) return `modelo do tipo ${model.kind} não atende requisições generativas`
   const missing = missingCapabilities(model.capabilities, useCase.requiredCapabilities)
   if (missing.length > 0) return `capacidade ausente ou não declarada: ${missing.join(", ")}`
   if (useCase.requiresSpeechVoice) {

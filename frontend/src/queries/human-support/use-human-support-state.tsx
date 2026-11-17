@@ -62,13 +62,14 @@ const HumanSupportContext = createContext<HumanSupportState>(DEFAULT_STATE)
 const CHANNEL = "inia-human-support-operator"
 const LOCK = "inia-human-support-operator"
 type ChannelMessage =
-  | { type: "state"; operator: OperatorView | null; reconnecting: boolean }
+  /** `accountId` = a conta da aba líder: o canal é do navegador inteiro, e outra conta (troca de login em outra aba) nunca entra. */
+  | { type: "state"; accountId: string; operator: OperatorView | null; reconnecting: boolean }
   | { type: "refresh" }
   /** Esta aba está (ou não) sendo vista; `hello` = aba nova, as outras respondem com a delas. */
   | { type: "presence"; tabId: string; seen: boolean; hello?: boolean }
   | { type: "bye"; tabId: string }
   /** A sala de uma aba mostrou as mensagens do pedido até `seq`. */
-  | { type: "read"; requestId: string; seq: number }
+  | { type: "read"; accountId: string; requestId: string; seq: number }
 
 /** Aviso na tela (um por vez: o novo substitui o anterior). */
 export const ANJO_MESSAGE_TOAST_ID = "human-support-anjo-message"
@@ -95,9 +96,14 @@ type ProviderProps = {
   profileHref?: string | null
   /** Navegação do aplicativo (o roteador do shell). */
   onNavigate?: (href: string) => void
+  /** Conta da sessão (`sub` de /auth/me): estado e leitura vindos de outra aba só valem se forem da MESMA conta. */
+  accountId?: string | null
 }
 
-export function HumanSupportStateProvider({ children, enabled = true, profileHref = null, onNavigate }: ProviderProps) {
+/** A mensagem do canal é desta conta? Sem conta conhecida aqui, nada de outra aba é aceito. */
+export const channelMessageForAccount = (message: { accountId?: unknown }, accountId: string | null) => accountId !== null && message.accountId === accountId
+
+export function HumanSupportStateProvider({ children, enabled = true, profileHref = null, onNavigate, accountId = null }: ProviderProps) {
   const [operator, setOperator] = useState<OperatorView | null>(null)
   const [reconnecting, setReconnecting] = useState(false)
   const [localRead, setLocalRead] = useState<Record<string, number>>({})
@@ -129,6 +135,7 @@ export function HumanSupportStateProvider({ children, enabled = true, profileHre
     if (!tabIdRef.current) tabIdRef.current = newTabId()
     const tabId = tabIdRef.current
     const otherTabsSeen = otherTabsSeenRef.current
+    const account = accountId ?? ""
     const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(CHANNEL)
     channelRef.current = channel
     const postPresence = (hello = false) => channel?.postMessage({ type: "presence", tabId, seen: pageIsSeen(), ...(hello ? { hello: true } : {}) } satisfies ChannelMessage)
@@ -142,11 +149,11 @@ export function HumanSupportStateProvider({ children, enabled = true, profileHre
           const open = state.operator?.openRequest
           const received = open ? open.messages.reduce((max, message) => Math.max(max, message.seq), 0) : 0
           if (open && received > 0) acknowledgeOnce(open.id, { deliveredSeq: received })
-          channel?.postMessage({ type: "state", operator: state.operator, reconnecting: false } satisfies ChannelMessage)
+          channel?.postMessage({ type: "state", accountId: account, operator: state.operator, reconnecting: false } satisfies ChannelMessage)
         },
         onReconnecting: (value) => {
           setReconnecting(value)
-          if (value) channel?.postMessage({ type: "state", operator: null, reconnecting: true } satisfies ChannelMessage)
+          if (value) channel?.postMessage({ type: "state", accountId: account, operator: null, reconnecting: true } satisfies ChannelMessage)
         },
       })
     }
@@ -162,8 +169,9 @@ export function HumanSupportStateProvider({ children, enabled = true, profileHre
           if (message.seen) stopTabTitleBlink()
           if (message.hello && !known) postPresence()
         } else if (message.type === "bye") otherTabsSeen.delete(message.tabId)
-        else if (message.type === "read") noteRead(message.requestId, message.seq)
-        else if (!pollerRef.current) {
+        else if (message.type === "read") {
+          if (channelMessageForAccount(message, accountId)) noteRead(message.requestId, message.seq)
+        } else if (message.type === "state" && !pollerRef.current && channelMessageForAccount(message, accountId)) {
           if (message.operator) setOperator(message.operator)
           setReconnecting(message.reconnecting)
         }
@@ -218,7 +226,7 @@ export function HumanSupportStateProvider({ children, enabled = true, profileHre
       channel?.close()
       channelRef.current = null
     }
-  }, [enabled, noteRead])
+  }, [enabled, noteRead, accountId])
 
   const requestOpenRoom = useCallback(() => {
     toast.dismiss(ANJO_MESSAGE_TOAST_ID)
@@ -271,8 +279,8 @@ export function HumanSupportStateProvider({ children, enabled = true, profileHre
   }, [])
   const markRoomRead = useCallback((requestId: string, seq: number) => {
     noteRead(requestId, seq)
-    channelRef.current?.postMessage({ type: "read", requestId, seq } satisfies ChannelMessage)
-  }, [noteRead])
+    if (accountId) channelRef.current?.postMessage({ type: "read", accountId, requestId, seq } satisfies ChannelMessage)
+  }, [noteRead, accountId])
   const registerChat = useCallback(() => {
     chatsRef.current += 1
     let done = false

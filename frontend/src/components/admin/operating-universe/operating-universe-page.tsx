@@ -23,7 +23,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader, StatusChip } from "@/components/ui/surface"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
-  useClassifyPendingTeamMutation,
+  useClassifyUnitMutation,
+  useUniverseUnitsQuery,
   useClassifyResourceMutation,
   useUniverseEnforcementMutation,
   useUniverseReadinessQuery,
@@ -62,7 +63,7 @@ export function OperatingUniversePage() {
       {readiness.data ? (
         <>
           <EnforcementCard readiness={readiness.data} />
-          <PendingPeopleCard readiness={readiness.data} />
+          <UnitsCard />
           <ResourcesCard readiness={readiness.data} />
           <ConflictsCard readiness={readiness.data} />
         </>
@@ -131,64 +132,83 @@ function EnforcementCard({ readiness }: { readiness: UniverseReadiness }) {
   )
 }
 
-function PendingPeopleCard({ readiness }: { readiness: UniverseReadiness }) {
-  const mutation = useClassifyPendingTeamMutation()
-  const [choice, setChoice] = useState<Record<string, OperatingUniverse | null>>({})
-  const [result, setResult] = useState<string | null>(null)
+function UnitsCard() {
+  const units = useUniverseUnitsQuery()
+  const mutation = useClassifyUnitMutation()
+  const [showAll, setShowAll] = useState(false)
+  const [effectiveFrom, setEffectiveFrom] = useState("")
+  const rows = (units.data ?? []).filter((unit) => showAll || (unit.kind === "TEAM" && unit.operatingUniverse === null && unit.operators > 0) || unit.operatorsPending > 0)
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Users className="size-5" aria-hidden /> Colaboradores pendentes ({readiness.people.pending})
+          <Users className="size-5" aria-hidden /> Grupos e Subgrupos
         </CardTitle>
         <CardDescription>
-          Classifique por Grupo: a escolha vale para as pessoas ATIVAS ainda sem universo naquele Grupo, dentro do seu escopo. Quem vem da base com o campo
-          mapeado é corrigido na origem (Central de Dados › Colaboradores, campo “Universo de atuação”); a pessoa também pode ser regularizada em Usuários e acessos.
+          O universo do operador vem do Grupo (ou do Subgrupo, quando ele difere do Grupo-pai); a exceção de uma pessoa fica na ficha dela. O normal é a
+          carga de Grupos da Central de Dados trazer a coluna “Universo de atuação” — aqui você classifica o que ainda não veio. Liderança não precisa de universo.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {readiness.pendingPeopleByGroup.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum colaborador pendente.</p> : null}
-        {readiness.pendingPeopleByGroup.length > 0 ? (
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="universe-unit-effective">Vigente desde (opcional)</Label>
+            <input
+              id="universe-unit-effective"
+              type="date"
+              value={effectiveFrom}
+              onChange={(event) => setEffectiveFrom(event.target.value)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              aria-describedby="universe-unit-effective-help"
+            />
+          </div>
+          <p id="universe-unit-effective-help" className="max-w-md text-xs text-muted-foreground">
+            Só importa numa troca de universo: os indicadores do período anterior ficam no universo antigo. Vazio = a partir de agora.
+          </p>
+          <Button size="sm" variant="outline" onClick={() => setShowAll((value) => !value)}>
+            {showAll ? "Só pendentes" : "Mostrar todos"}
+          </Button>
+        </div>
+        {mutation.isError ? <p className="text-sm text-destructive">{(mutation.error as Error).message}</p> : null}
+        {units.isLoading ? <Skeleton className="h-24 w-full" /> : null}
+        {units.isError ? <p className="text-sm text-destructive">{(units.error as Error).message}</p> : null}
+        {units.data && rows.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum Grupo pendente.</p> : null}
+        {rows.length > 0 ? (
           <div className={TABLE_FRAME}>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Grupo</TableHead>
-                  <TableHead>Pendentes</TableHead>
+                  <TableHead>Grupo / Subgrupo</TableHead>
+                  <TableHead>Operadores</TableHead>
                   <TableHead className="w-48">Universo</TableHead>
-                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {readiness.pendingPeopleByGroup.map((group) => {
-                  const key = group.teamId ?? "none"
-                  return (
-                    <TableRow key={key}>
-                      <TableCell>{group.teamName ?? "Sem Grupo"}</TableCell>
-                      <TableCell>{group.pending}</TableCell>
-                      <TableCell>
-                        <UniverseSelect value={choice[key] ?? null} onChange={(value) => setChoice((current) => ({ ...current, [key]: value }))} />
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          size="sm"
-                          disabled={!choice[key] || mutation.isPending}
-                          onClick={async () => {
-                            const outcome = await mutation.mutateAsync({ teamId: group.teamId, operatingUniverse: choice[key]! })
-                            setResult(`${outcome.updated} pessoa(s) classificada(s)${outcome.managedBySource.length ? `; ${outcome.managedBySource.length} vêm da base e precisam ser corrigidas na origem` : ""}${outcome.outOfScope ? `; ${outcome.outOfScope} fora do seu escopo` : ""}.`)
-                          }}
-                        >
-                          Classificar
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
+                {rows.map((unit) => (
+                  <TableRow key={`${unit.kind}-${unit.id}`}>
+                    <TableCell>
+                      <p className="font-medium">{unit.kind === "TEAM" ? unit.name : `${unit.parentName} › ${unit.name}`}</p>
+                      {unit.managedBy ? <p className="text-xs text-muted-foreground">Vem da base {unit.managedBy.sourceName} · {unit.managedBy.feedName} — altere na origem</p> : null}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {unit.operators}
+                      {unit.operatorsPending > 0 ? <span className="text-amber-700 dark:text-amber-300"> · {unit.operatorsPending} sem universo</span> : null}
+                    </TableCell>
+                    <TableCell>
+                      <UniverseSelect
+                        value={unit.operatingUniverse}
+                        allowPending
+                        pendingLabel={unit.kind === "TEAM" ? "Sem universo" : "Herda do Grupo"}
+                        disabled={mutation.isPending || unit.managedBy !== null}
+                        onChange={(value) => mutation.mutate({ kind: unit.kind, id: unit.id, operatingUniverse: value, effectiveFrom: effectiveFrom || null })}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </div>
         ) : null}
-        {result ? <p role="status" className="text-sm text-muted-foreground">{result}</p> : null}
       </CardContent>
     </Card>
   )
@@ -233,8 +253,9 @@ function ResourcesCard({ readiness }: { readiness: UniverseReadiness }) {
         {mutation.isError ? <p className="text-sm text-destructive">{(mutation.error as Error).message}</p> : null}
         {resources.isLoading ? <Skeleton className="h-24 w-full" /> : null}
         {resources.isError ? <p className="text-sm text-destructive">{(resources.error as Error).message}</p> : null}
-        {resources.data && resources.data.length === 0 ? <p className="text-sm text-muted-foreground">Nada a classificar neste tipo.</p> : null}
-        {resources.data && resources.data.length > 0 ? (
+        {resources.data && resources.data.items.length === 0 ? <p className="text-sm text-muted-foreground">Nada a classificar neste tipo.</p> : null}
+        {resources.data?.truncated ? <p className="text-sm text-muted-foreground">Mostrando só os primeiros {resources.data.limit ?? resources.data.items.length} itens deste tipo: os que você classificar saem da lista de pendentes e abrem espaço para os próximos.</p> : null}
+        {resources.data && resources.data.items.length > 0 ? (
           <div className={TABLE_FRAME}>
             <Table>
               <TableHeader>
@@ -245,7 +266,7 @@ function ResourcesCard({ readiness }: { readiness: UniverseReadiness }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {resources.data.map((resource) => (
+                {resources.data.items.map((resource) => (
                   <TableRow key={resource.id}>
                     <TableCell className="font-medium">{resource.name}</TableCell>
                     <TableCell>

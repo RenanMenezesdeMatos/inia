@@ -82,6 +82,8 @@ async function cleanup() {
     await inOrg("audit_logs")
     await inOrg("access_role_assignments")
     await inOrg("user_accounts")
+    // Histórico do universo de atuação (migration 197, quando aplicada no banco de teste) segura a pessoa pela chave estrangeira.
+    if ((await pool.query(`select to_regclass('person_operating_universe_history') is not null present`)).rows[0]?.present) await inOrg("person_operating_universe_history")
     await inOrg("people")
     await inOrg("teams")
     await inOrg("operations")
@@ -143,7 +145,8 @@ const newDocument = async () => {
 
 /** Cada tipo: como nasce, a rota real que o exclui e o que prova que voltou desligado. */
 type Case = { table: string; view: string | null; make: () => Promise<string>; remove: (id: string) => string; off: string }
-const CASES: Record<Exclude<DeletedItemType, "REPORT" | "WORKFLOW_VARIABLE" | "INDICATOR_RULE">, Case> = {
+// COMMUNICATION: coberto em communications-proof (retirar pela rota do autor, listar e restaurar aqui).
+const CASES: Record<Exclude<DeletedItemType, "REPORT" | "WORKFLOW_VARIABLE" | "INDICATOR_RULE" | "COMMUNICATION">, Case> = {
   WORKFLOW: { table: "workflows_all", view: "workflows", make: newWorkflow, remove: (id) => `/api/v1/admin/workflows/${id}`, off: "not active" },
   AGENT: { table: "agents_all", view: "agents", make: () => newAgent(), remove: (id) => `/api/v1/admin/agents/${id}`, off: "not active" },
   ORCHESTRATOR: { table: "assistant_orchestrators_all", view: "assistant_orchestrators", make: async () => one(`insert into assistant_orchestrators (organization_id, name, orchestrator_agent_id, scope_type, active, policy_kind) values ($1, $2, $3, 'ALL_TEAMS', true, 'OPEN')`, [ORG, unique("Orquestrador "), await newAgent()]), remove: (id) => `/api/v1/admin/assistant-orchestrators/${id}`, off: "not active" },

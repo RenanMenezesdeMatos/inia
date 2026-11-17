@@ -59,7 +59,8 @@ export const EMPLOYEES_CONTRACT: DataContract = {
     { key: "statusEffectiveFrom", label: "Situação vigente desde", type: "DATE", required: false, description: "Quando a situação passou a valer, SE a fonte informar. Ausente = conhecida a partir desta carga (nunca retroage por suposição).", example: "2026-09-09" },
     { key: "sourceUpdatedAt", label: "Atualizado na fonte em", type: "DATETIME", required: false, description: "Quando a fonte diz que o registro mudou (freshness), se confiável.", example: "2026-09-15T08:00:00-03:00" },
     { key: "operationalCapitalCode", label: "Capital operacional", type: "STRING", required: false, maxLength: 40, description: OPERATIONAL_CAPITAL_HELP, example: "FORTALEZA" },
-    { key: "operatingUniverse", label: "Universo de atuação", type: "ENUM", required: false, enumValues: OPERATING_UNIVERSES, description: "Público que o colaborador atende: B2B, B2C ou B2X (B2X é um universo próprio). Códigos diferentes da fonte se traduzem em \"Mapear códigos\". Ausente = mantém o atual; depois que a organização ativa a exigência, pessoa NOVA sem universo vai para a quarentena.", example: "B2C" },
+    { key: "operatingUniverse", label: "Universo de atuação", type: "ENUM", required: false, enumValues: OPERATING_UNIVERSES, description: "EXCEÇÃO: só quando o colaborador atende um universo diferente do Grupo/Subgrupo dele (o universo normal vem da carga de Grupos). Vazio = herda do Grupo. Ausente na carga = mantém o atual. Com o filtro ativo, pessoa NOVA sem universo (nem próprio nem do Grupo) vai para a quarentena.", example: "B2B" },
+    { key: "operatingUniverseEffectiveFrom", label: "Universo vigente desde", type: "DATE", required: false, description: "Quando a exceção passou a valer, se a fonte informar. Ausente = a partir desta carga.", example: "2026-11-01" },
   ],
   naturalKey: ["externalEmployeeId"],
   dependencies: ["GROUPS", "SUBGROUPS"],
@@ -68,8 +69,8 @@ export const EMPLOYEES_CONTRACT: DataContract = {
   businessTimeField: null,
   displayNormalizers: { currentStatus: employmentStatusDisplay, operationalCapitalCode: capitalDisplay },
   examples: [
-    { externalEmployeeId: "OP-10234", name: "Mariana Alves", role: "OPERATOR", jobTitle: "Analista de Atendimento I", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: "B2C_RETENCAO/PREMIUM", reportsToExternalId: "SUP-0042", hiredAt: "2024-03-11", active: true, email: null, currentStatus: "EM PRODUÇÃO", statusEffectiveFrom: null, sourceUpdatedAt: null, operationalCapitalCode: "FORTALEZA", operatingUniverse: "B2C" },
-    { externalEmployeeId: "SUP-0042", name: "Carlos Menezes", role: "SUPERVISOR", jobTitle: "Supervisor de Atendimento", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: null, reportsToExternalId: "GER-0007", hiredAt: "2021-08-02", active: true, email: null, currentStatus: "FERIAS", statusEffectiveFrom: "2026-09-09", sourceUpdatedAt: "2026-09-15T08:00:00-03:00", operationalCapitalCode: "RECIFE", operatingUniverse: "B2C" },
+    { externalEmployeeId: "OP-10234", name: "Mariana Alves", role: "OPERATOR", jobTitle: "Analista de Atendimento I", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: "B2C_RETENCAO/PREMIUM", reportsToExternalId: "SUP-0042", hiredAt: "2024-03-11", active: true, email: null, currentStatus: "EM PRODUÇÃO", statusEffectiveFrom: null, sourceUpdatedAt: null, operationalCapitalCode: "FORTALEZA", operatingUniverse: null, operatingUniverseEffectiveFrom: null },
+    { externalEmployeeId: "SUP-0042", name: "Carlos Menezes", role: "SUPERVISOR", jobTitle: "Supervisor de Atendimento", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: null, reportsToExternalId: "GER-0007", hiredAt: "2021-08-02", active: true, email: null, currentStatus: "FERIAS", statusEffectiveFrom: "2026-09-09", sourceUpdatedAt: "2026-09-15T08:00:00-03:00", operationalCapitalCode: "RECIFE", operatingUniverse: null, operatingUniverseEffectiveFrom: null },
   ],
 }
 
@@ -105,13 +106,15 @@ export const GROUPS_CONTRACT: DataContract = {
     { key: "externalCode", label: "Código externo", type: "STRING", required: true, identity: true, maxLength: 64, description: "Código estável do Grupo.", example: "B2C_RETENCAO" },
     { key: "name", label: "Nome", type: "STRING", required: true, maxLength: 120, description: "Nome de exibição do Grupo.", example: "B2C · Retenção" },
     { key: "operationName", label: "Operação", type: "STRING", required: false, maxLength: 120, description: "Nome da Operação (fuso/calendário). Ausente = operação padrão da organização.", example: "Atendimento B2C" },
+    { key: "operatingUniverse", label: "Universo de atuação", type: "ENUM", required: false, enumValues: OPERATING_UNIVERSES, description: "Público que o Grupo atende: B2B, B2C ou B2X (universos separados). Os operadores do Grupo herdam este universo. Ausente = mantém o atual; para ativar o filtro por universo, todo Grupo com operadores precisa dele. Códigos diferentes da fonte se traduzem em \"Mapear códigos\".", example: "B2C" },
+    { key: "operatingUniverseEffectiveFrom", label: "Universo vigente desde", type: "DATE", required: false, description: "Quando o Grupo passou a atender esse universo, se a fonte informar. Só importa numa troca: os indicadores do período anterior ficam no universo antigo. Ausente = a partir desta carga.", example: "2026-11-01" },
   ],
   naturalKey: ["externalCode"],
   dependencies: [],
   writeSemantics: "UPSERT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: null,
-  examples: [{ externalCode: "B2C_RETENCAO", name: "B2C · Retenção", operationName: "Atendimento B2C" }],
+  examples: [{ externalCode: "B2C_RETENCAO", name: "B2C · Retenção", operationName: "Atendimento B2C", operatingUniverse: "B2C", operatingUniverseEffectiveFrom: null }],
 }
 
 export const SUBGROUPS_CONTRACT: DataContract = {
@@ -125,13 +128,15 @@ export const SUBGROUPS_CONTRACT: DataContract = {
     { key: "externalCode", label: "Código externo", type: "STRING", required: true, identity: true, maxLength: 128, description: "Código estável do Subgrupo (único na organização).", example: "B2C_RETENCAO/PREMIUM" },
     { key: "groupExternalCode", label: "Código do Grupo", type: "STRING", required: true, maxLength: 64, description: "Grupo pai (precisa existir).", example: "B2C_RETENCAO" },
     { key: "name", label: "Nome", type: "STRING", required: true, maxLength: 120, description: "Nome de exibição.", example: "Premium" },
+    { key: "operatingUniverse", label: "Universo de atuação", type: "ENUM", required: false, enumValues: OPERATING_UNIVERSES, description: "Só quando o Subgrupo atende um universo DIFERENTE do Grupo-pai (raro). Vazio = herda do Grupo.", example: "B2X" },
+    { key: "operatingUniverseEffectiveFrom", label: "Universo vigente desde", type: "DATE", required: false, description: "Quando o Subgrupo passou a atender esse universo, se a fonte informar. Ausente = a partir desta carga.", example: "2026-11-01" },
   ],
   naturalKey: ["externalCode"],
   dependencies: ["GROUPS"],
   writeSemantics: "UPSERT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: null,
-  examples: [{ externalCode: "B2C_RETENCAO/PREMIUM", groupExternalCode: "B2C_RETENCAO", name: "Premium" }],
+  examples: [{ externalCode: "B2C_RETENCAO/PREMIUM", groupExternalCode: "B2C_RETENCAO", name: "Premium", operatingUniverse: null, operatingUniverseEffectiveFrom: null }],
 }
 
 export const WORK_SCHEDULES_CONTRACT: DataContract = {
