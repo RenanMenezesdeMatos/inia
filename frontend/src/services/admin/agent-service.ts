@@ -1,3 +1,4 @@
+import type { UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
 import type { InvestigationCapability } from "@/schemas/admin/investigation.schema"
 import type { AgentSpecialty, SpecialtyKind } from "@/schemas/admin/orchestrator-policy"
 import { z } from "zod"
@@ -40,6 +41,8 @@ export type AgentListParams = ListParams &
     active?: boolean
     knowledgeDocumentId?: string
     createdAt: DateRangeFilter
+    /** Universo de atuação; PENDING = sem classificação. */
+    operatingUniverse?: UniverseFilterValue
   }
 
 export async function fetchAgentsPage(params: AgentListParams): Promise<PageResult<Agent>> {

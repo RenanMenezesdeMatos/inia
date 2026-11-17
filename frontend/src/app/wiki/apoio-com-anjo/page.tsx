@@ -110,7 +110,7 @@ export default function HumanSupportWikiPage() {
       </WikiSection>
 
       <WikiSection id="configuracao" title="Liga/desliga e papéis" eyebrow="Administrador geral">
-        <FieldRow label="Liga/desliga" value="Chave geral e estado de cada Grupo e Subgrupo (Herdar, Ligado, Desligado). Tudo nasce desligado. Desligar cancela a fila daquele escopo; atendimentos em andamento continuam." />
+        <FieldRow label="Liga/desliga" value="Chave geral da organização (aba Configuração) e, na aba Escopos, a opção de cada Grupo e Subgrupo: Habilitar neste escopo, Desabilitar neste escopo ou, no Subgrupo, Herdar do escopo superior (no Grupo, Sem configuração própria = desabilitado; a chave geral libera, mas não habilita ninguém). A tela mostra a opção salva, o resultado em vigor, de onde ele vem e o que falta para o Anjo funcionar, e prevê o resultado antes de salvar. Tudo nasce desligado. Desabilitar cancela a fila daquele escopo; atendimentos em andamento continuam." />
         <FieldRow label="Papéis" value="Anjo (atende os operadores do escopo da atribuição) e Coordenador de Anjos (acompanha o painel do escopo). Só o Administrador geral concede. Ter o papel de Anjo nunca dá acesso amplo às conversas: o Anjo lê só os pedidos que atendeu." />
         <FieldRow label="Capacidade" value="Atendimentos ao mesmo tempo por Anjo, de 1 a 5 (padrão 2). Reduzir não corta atendimentos em andamento." />
       </WikiSection>

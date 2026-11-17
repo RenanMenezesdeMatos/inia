@@ -1,5 +1,6 @@
 "use client"
 
+import { UniverseBadge } from "@/components/operating-universe/universe-badge"
 import Link from "next/link"
 import { useState } from "react"
 import { Bot, CalendarClock, Layers, Pencil, Plus, Trash2, Waypoints } from "lucide-react"
@@ -34,7 +35,7 @@ import type { OperatingUniverse } from "@/schemas/operating-universe/operating-u
 import { formatDateOnly } from "@/components/admin/knowledge/knowledge-meta"
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
 import { EntityCard, EntityCardIcon, EntityCardTag } from "@/components/admin/shared/list/entity-card"
-import { ListBooleanFilter, ListSearchInput, ListToolbar } from "@/components/admin/shared/list/list-filters"
+import { ListBooleanFilter, ListSearchInput, ListToolbar, ListUniverseFilter } from "@/components/admin/shared/list/list-filters"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
 import {
@@ -279,7 +280,12 @@ function BusinessDomainCard({ domain, onEdit }: { domain: BusinessDomain; onEdit
     <EntityCard
       muted={!domain.active}
       icon={<EntityCardIcon icon={Layers} className="bg-indigo-100 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300" />}
-      kicker={<span className="font-mono text-xs text-muted-foreground">{domain.code}</span>}
+      kicker={
+        <>
+          <span className="font-mono text-xs text-muted-foreground">{domain.code}</span>
+          <UniverseBadge universe={domain.operatingUniverse} />
+        </>
+      }
       title={domain.name}
       onOpen={() => onEdit(domain)}
       actions={
@@ -333,9 +339,12 @@ function BusinessDomainsTable({ domains, onEdit }: { domains: BusinessDomain[]; 
                 {domain.description ? <p className="max-w-md whitespace-normal text-xs text-muted-foreground">{domain.description}</p> : null}
               </TableCell>
               <TableCell>
-                <Badge variant="outline" className="font-mono">
-                  {domain.code}
-                </Badge>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge variant="outline" className="font-mono">
+                    {domain.code}
+                  </Badge>
+                  <UniverseBadge universe={domain.operatingUniverse} />
+                </div>
               </TableCell>
               <TableCell className="text-sm">{domain.agentCount}</TableCell>
               <TableCell className="text-sm">{domain.orchestratorCount}</TableCell>
@@ -421,6 +430,7 @@ export function BusinessDomainsPage() {
                 onClearFilters={list.resetFilters}
               >
                 <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Todos" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
+                <ListUniverseFilter value={list.filters.operatingUniverse} onChange={(value) => list.setFilter("operatingUniverse", value)} />
               </ListToolbar>
 
               <AdminListView

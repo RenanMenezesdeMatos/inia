@@ -10,7 +10,8 @@ import type { Queryable, SuccessViewer } from "./success-query.js"
  *  - tempo de resposta e motivos de procura: `assistant_conversations.view` (Conversas com a INIA);
  *  - avaliação das respostas no chat e Apoio com Anjo: `human_support.coordinate` (painel do apoio; decisão D7);
  *  - feedbacks e contestações: `feedback_contestations.review` (Contestações de feedback);
- *  - conformidade das respostas: `configuration.manage` com escopo de ORGANIZAÇÃO (registro da Governança).
+ *  - conformidade das respostas: `configuration.manage` com escopo de ORGANIZAÇÃO (registro da Governança);
+ *  - alinhamentos operacionais: `operational_alignments.manage` (tela de Alinhamentos operacionais), com o alcance dela.
  */
 export const SECTION_PERMISSIONS = {
   responseTime: { permission: "assistant_conversations.view", organizationWide: false },
@@ -19,6 +20,7 @@ export const SECTION_PERMISSIONS = {
   support: { permission: "human_support.coordinate", organizationWide: false },
   feedback: { permission: "feedback_contestations.review", organizationWide: false },
   compliance: { permission: "configuration.manage", organizationWide: true },
+  alignments: { permission: "operational_alignments.manage", organizationWide: false },
 } as const satisfies Record<string, { permission: Permission; organizationWide: boolean }>
 export type SuccessSection = keyof typeof SECTION_PERMISSIONS
 export const SUCCESS_SECTIONS = Object.keys(SECTION_PERMISSIONS) as SuccessSection[]

@@ -5,6 +5,8 @@ import { useIndicatorsWithRulesQuery } from "@/queries/admin/use-indicator-rule-
 import type { IndicatorWithRules } from "@/schemas/admin/indicator-rule.schema"
 import type { HistoricalAggregation, OperationalAggregationKind } from "@/schemas/admin/workflow-graph.schema"
 import { defaultAggregationFor, MEASUREMENT_AGGREGATION_OPTION_LABELS } from "@/schemas/admin/workflow-graph.schema"
+import { fitsUniverse, type UniverseChoice } from "@/lib/operating-universe/hierarchy"
+import { useWorkflowUniverse } from "./workflow-universe-context"
 
 /**
  * Seletor ÚNICO de indicador do editor de Workflows — descobre o catálogo dinamicamente
@@ -23,9 +25,10 @@ export function indicatorMeetsRequirement(indicator: Pick<IndicatorWithRules, "d
   return true
 }
 
-export function describeIndicatorMismatch(indicator: IndicatorWithRules | undefined, requirement: IndicatorRequirement): string | null {
+export function describeIndicatorMismatch(indicator: IndicatorWithRules | undefined, requirement: IndicatorRequirement, universe?: UniverseChoice): string | null {
   if (!indicator) return "não existe mais no catálogo"
   if (!indicator.active) return "desativado"
+  if (!fitsUniverse(indicator.operatingUniverse, universe)) return `de outro universo (${indicator.operatingUniverse})`
   if (!indicatorMeetsRequirement(indicator, requirement)) return requirement === "OPERATIONAL" ? "sem medição operacional" : "sem fechamento oficial"
   return null
 }
@@ -57,9 +60,11 @@ export function IndicatorSelect({
   ariaLabel?: string
 }) {
   const { list, byCode } = useIndicatorCatalog()
-  const selectable = list.filter((indicator) => indicator.active && indicatorMeetsRequirement(indicator, requirement))
+  // Só indicadores do universo do Workflow (pendente cabe em qualquer um); o já escolhido de outro universo fica marcado.
+  const universe = useWorkflowUniverse()
+  const selectable = list.filter((indicator) => indicator.active && indicatorMeetsRequirement(indicator, requirement) && fitsUniverse(indicator.operatingUniverse, universe))
   const current = value ? byCode.get(value) : undefined
-  const mismatch = value ? describeIndicatorMismatch(current, requirement) : null
+  const mismatch = value ? describeIndicatorMismatch(current, requirement, universe) : null
   const showCurrentAsLegacy = Boolean(value) && mismatch !== null
   return (
     <div className="space-y-1">

@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { operatingUniverseSchema } from "@/schemas/operating-universe/operating-universe.schema"
 
 export const calculationPeriodSchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"])
 export type CalculationPeriod = z.infer<typeof calculationPeriodSchema>
@@ -38,6 +39,8 @@ export const indicatorWithRulesSchema = z.object({
   unit: z.string(),
   desiredDirection: z.string(),
   active: z.boolean(),
+  /** Universo de atuação (nulo = pendente). Opcional: os seletores encadeiam por ele (lib/operating-universe/hierarchy.ts). */
+  operatingUniverse: operatingUniverseSchema.nullable().optional().catch(null),
   // Camada operacional (migration 052): como as medições diárias se agregam e se o indicador
   // tem medição diária. Opcionais pra tolerar backend anterior à migration.
   operationalAggregation: z.enum(["WEIGHTED_AVERAGE", "RATE", "AVERAGE", "SUM", "LATEST"]).optional().default("AVERAGE"),

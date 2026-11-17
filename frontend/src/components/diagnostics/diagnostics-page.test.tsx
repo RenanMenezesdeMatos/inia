@@ -335,3 +335,43 @@ describe("DiagnosticsPage — investigação de indicador", () => {
     expect(within(transcript).getByText(/Não cumprido: 35. Prazo da análise/)).toBeInTheDocument()
   })
 })
+
+// Hierarquia Grupo → Subgrupo → pessoa nos filtros (17/11/2026): escolher um nível só oferece o que cabe nele e trocar limpa o de baixo.
+describe("Diagnóstico — filtros encadeados Grupo → Subgrupo → pessoa", () => {
+  beforeEach(() => {
+    service.fetchMemoryFilterOptions.mockResolvedValue({
+      teams: [{ id: "t-b2b", name: "B2B · Grandes Contas" }, { id: "t-b2c", name: "B2C · Digital" }],
+      subteams: [{ id: "s-corp", name: "Corporate", teamId: "t-b2b" }, { id: "s-chat", name: "Chat", teamId: "t-b2c" }],
+      subjects: [], documents: [],
+      people: [
+        { id: "p-ana", name: "Ana B2B", teamId: "t-b2b", subteamId: "s-corp" },
+        { id: "p-bia", name: "Bia B2C", teamId: "t-b2c", subteamId: "s-chat" },
+      ],
+    })
+  })
+  const optionsOf = async (name: string) => {
+    fireEvent.click(screen.getByRole("combobox", { name }))
+    const options = (await screen.findAllByRole("option")).map((option) => option.textContent)
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" })
+    return options
+  }
+  const choose = async (name: string, option: string) => {
+    fireEvent.click(screen.getByRole("combobox", { name }))
+    fireEvent.click(await screen.findByRole("option", { name: option }))
+  }
+
+  it("Grupo escolhido restringe Subgrupos e pessoas; trocar o Grupo limpa Subgrupo e pessoa", async () => {
+    renderWithQuery(<DiagnosticsPage />)
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Subgrupo" })).toBeEnabled())
+    await waitFor(async () => expect(await optionsOf("Pessoa")).toEqual(["Todas as pessoas", "Ana B2B", "Bia B2C"]))
+    await choose("Grupo", "B2B · Grandes Contas")
+    expect(await optionsOf("Subgrupo")).toEqual(["Todos os subgrupos", "Corporate"])
+    expect(await optionsOf("Pessoa")).toEqual(["Todas as pessoas", "Ana B2B"])
+    await choose("Subgrupo", "Corporate")
+    await choose("Pessoa", "Ana B2B")
+    await choose("Grupo", "B2C · Digital")
+    expect(screen.getByRole("combobox", { name: "Subgrupo" })).toHaveTextContent("Todos os subgrupos")
+    expect(screen.getByRole("combobox", { name: "Pessoa" })).toHaveTextContent("Todas as pessoas")
+    expect(await optionsOf("Pessoa")).toEqual(["Todas as pessoas", "Bia B2C"])
+  })
+})

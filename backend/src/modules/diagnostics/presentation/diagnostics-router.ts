@@ -99,11 +99,12 @@ export function createDiagnosticsRouter(db: Database, deps: { repository?: Analy
     const people = visiblePeople(scope)
     const [teams, subteams, subjects, documents] = await Promise.all([
       db.query<{ id: string; name: string }>(`select distinct t.id, t.name from call_assessments a join teams t on t.id = a.team_id where a.organization_id = $1 and a.person_id = any($2::uuid[]) order by t.name`, [scope.organizationId, people]),
-      db.query<{ id: string; name: string }>(`select distinct s.id, s.name from call_assessments a join subteams s on s.id = a.subteam_id where a.organization_id = $1 and a.person_id = any($2::uuid[]) order by s.name`, [scope.organizationId, people]),
+      db.query<{ id: string; name: string; teamId: string }>(`select distinct s.id, s.name, s.team_id "teamId" from call_assessments a join subteams s on s.id = a.subteam_id where a.organization_id = $1 and a.person_id = any($2::uuid[]) order by s.name`, [scope.organizationId, people]),
       db.query<{ value: string }>(`select distinct coalesce(subject_canonical, subject_raw) value from call_assessments where organization_id = $1 and person_id = any($2::uuid[]) and coalesce(subject_canonical, subject_raw) is not null order by 1`, [scope.organizationId, people]),
       db.query<{ id: string; title: string }>(`select distinct d.id, d.title from call_criterion_assessments c join knowledge_documents d on d.id = c.document_id where c.organization_id = $1 and c.person_id = any($2::uuid[]) order by d.title`, [scope.organizationId, people]),
     ])
-    const personOptions = [...scope.nodes.values()].filter((node) => node.role === "OPERATOR").map((node) => ({ id: node.id, name: node.name })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+    const personOptions = [...scope.nodes.values()].filter((node) => node.role === "OPERATOR").map((node) => ({ id: node.id, name: node.name, teamId: node.teamId, subteamId: node.subteamId })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+    // `teamId` no Subgrupo e `teamId`/`subteamId` na pessoa: a tela encadeia Grupo → Subgrupo → pessoa (só UX; o escopo é este acima).
     response.json({ data: { teams: teams.rows, subteams: subteams.rows, subjects: subjects.rows.map((row) => row.value), documents: documents.rows, people: personOptions } })
   })
   router.get("/memory/processes", async (request, response) => {

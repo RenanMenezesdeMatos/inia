@@ -146,7 +146,8 @@ const newDocument = async () => {
 /** Cada tipo: como nasce, a rota real que o exclui e o que prova que voltou desligado. */
 type Case = { table: string; view: string | null; make: () => Promise<string>; remove: (id: string) => string; off: string }
 // COMMUNICATION: coberto em communications-proof (retirar pela rota do autor, listar e restaurar aqui).
-const CASES: Record<Exclude<DeletedItemType, "REPORT" | "WORKFLOW_VARIABLE" | "INDICATOR_RULE" | "COMMUNICATION">, Case> = {
+// OPERATIONAL_ALIGNMENT: coberto em operational-alignments-proof (excluir pela rota, listar e restaurar aqui, rastro de auditoria).
+const CASES: Record<Exclude<DeletedItemType, "REPORT" | "WORKFLOW_VARIABLE" | "INDICATOR_RULE" | "COMMUNICATION" | "OPERATIONAL_ALIGNMENT">, Case> = {
   WORKFLOW: { table: "workflows_all", view: "workflows", make: newWorkflow, remove: (id) => `/api/v1/admin/workflows/${id}`, off: "not active" },
   AGENT: { table: "agents_all", view: "agents", make: () => newAgent(), remove: (id) => `/api/v1/admin/agents/${id}`, off: "not active" },
   ORCHESTRATOR: { table: "assistant_orchestrators_all", view: "assistant_orchestrators", make: async () => one(`insert into assistant_orchestrators (organization_id, name, orchestrator_agent_id, scope_type, active, policy_kind) values ($1, $2, $3, 'ALL_TEAMS', true, 'OPEN')`, [ORG, unique("Orquestrador "), await newAgent()]), remove: (id) => `/api/v1/admin/assistant-orchestrators/${id}`, off: "not active" },

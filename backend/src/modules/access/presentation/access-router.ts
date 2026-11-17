@@ -5,7 +5,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
 import { systemClock, type Clock } from "../../../shared/domain/clock.js"
 import type { AccessRepository } from "../application/access-repository.js"
-import { assignRole, assignRoleToLeaders, getAccount, listAccounts, listRoles, revokeRole, scopeOptions, type AccessDeps } from "../application/access-service.js"
+import { assignRole, getAccount, listAccounts, listRoles, revokeRole, scopeOptions, type AccessDeps } from "../application/access-service.js"
 import type { AccountAccessRepository } from "../application/account-access-repository.js"
 import { disableAccess, enableAccess, issueTemporaryPassword, listIdentifiedUsers, type AccountAccessDeps } from "../application/account-access-service.js"
 import { ACCOUNT_ACCESS_STATUSES } from "../domain/account-access-status.js"
@@ -62,10 +62,6 @@ export function createAccessRouter(database: Database, deps?: { repository?: Acc
   router.post("/accounts/:accountId/roles", async (request, response) => {
     const body = assignSchema.parse(request.body)
     response.status(201).json({ data: await assignRole(resolved, actorOf(request), { accountId: idParam.parse(request.params.accountId), roleCode: body.roleCode, scope: body.scope }) })
-  })
-  router.post("/roles/:roleCode/grant-to-leaders", async (request, response) => {
-    const roleCode = z.string().regex(/^[A-Z][A-Z0-9_]{1,59}$/).parse(request.params.roleCode)
-    response.json({ data: await assignRoleToLeaders(resolved, actorOf(request), { roleCode }) })
   })
   router.delete("/accounts/:accountId/roles/:assignmentId", async (request, response) => {
     const body = revokeSchema.parse(request.body ?? {})

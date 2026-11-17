@@ -76,6 +76,10 @@ export const PERMISSIONS = {
   // calculado pelo servidor; nenhuma das duas dá acesso a dado de ninguém.
   "communications.publish_team": "Publicar comunicados para a própria estrutura (todos abaixo de quem publica)",
   "communications.publish_organization": "Publicar comunicados para a própria estrutura ou para toda a organização",
+  // Moderação (17/11/2026): retirar (exclusão lógica, com motivo e auditoria) a publicação de QUALQUER pessoa da organização — sem
+  // editar o texto de ninguém. Só no escopo de organização; vem com o Administrador geral.
+  "communications.moderate": "Retirar publicações de qualquer pessoa da organização (moderação, com motivo registrado)",
+  "operational_alignments.manage": "Cadastrar, publicar e encerrar alinhamentos operacionais (orientações temporárias de processo) para o público do escopo",
   // Diagnóstico de erros: catálogo de códigos e ocorrências técnicas (sanitizadas) da organização — só com escopo de organização.
   "support.diagnostics.view": "Consultar o catálogo de erros e as ocorrências registradas (diagnóstico de suporte)",
   // Universo de atuação (B2B, B2C, B2X): sem esta permissão, a conta consulta só o universo do PRÓPRIO cadastro. Com ela, todos os

@@ -17,10 +17,10 @@ export type Bucket = z.infer<typeof bucketSchema>
 const periodSchema = z.object({ from: z.string(), to: z.string(), days: z.number(), granularity: z.enum(["DAY", "WEEK"]), buckets: z.array(bucketSchema) })
 export type SuccessPeriod = z.infer<typeof periodSchema>
 
-export const SUCCESS_SECTIONS = ["responseTime", "routes", "replies", "support", "feedback", "compliance"] as const
+export const SUCCESS_SECTIONS = ["responseTime", "routes", "replies", "support", "feedback", "compliance", "alignments"] as const
 export type SuccessSection = (typeof SUCCESS_SECTIONS)[number]
 export const successContextSchema = z.object({
-  sections: z.object({ responseTime: z.boolean(), routes: z.boolean(), replies: z.boolean(), support: z.boolean(), feedback: z.boolean(), compliance: z.boolean() }),
+  sections: z.object({ responseTime: z.boolean(), routes: z.boolean(), replies: z.boolean(), support: z.boolean(), feedback: z.boolean(), compliance: z.boolean(), alignments: z.boolean().default(false) }),
   teams: z.array(z.object({ id: z.string(), name: z.string() })),
   subteams: z.array(z.object({ id: z.string(), name: z.string(), teamId: z.string().nullable() })),
 })
@@ -112,3 +112,21 @@ export type ComplianceData = z.infer<typeof complianceSchema>
 
 /** Filtros da tela: os MESMOS em todos os blocos. */
 export type SuccessFilter = { from: string; to: string; teamId: string | null; subteamId: string | null }
+
+/** 7. Alinhamentos operacionais (permissão e alcance da tela de Alinhamentos). */
+const rankedSchema = z.object({ key: z.string(), label: z.string(), count: z.number(), share: z.number().nullable() })
+export const alignmentsSchema = z.object({
+  period: periodSchema,
+  inPeriod: z.number(),
+  createdInPeriod: z.number(),
+  activeNow: z.number(),
+  oldestActive: z.object({ reference: z.string(), title: z.string(), audience: z.string(), startsOn: z.string(), endsOn: z.string(), daysActive: z.number() }).nullable(),
+  byArea: z.array(rankedSchema),
+  byAuthorArea: z.array(rankedSchema),
+  byReason: z.array(rankedSchema),
+  byRequestReason: z.array(rankedSchema),
+  topProcesses: z.array(rankedSchema),
+  withoutReason: z.number(),
+  withoutRequestReason: z.number(),
+})
+export type AlignmentsData = z.infer<typeof alignmentsSchema>

@@ -131,7 +131,7 @@ async function specialistSnapshot(db: Database, organizationId: string, agentId:
   }
 }
 
-async function buildResolvedOrchestrator(db: Database, orchestrator: OrchestratorRow, query: string | undefined, invocationContext: OrchestratorInvocationContext, pin: OrchestratorVersionPin | null = null): Promise<ResolvedOrchestrator> {
+async function buildResolvedOrchestrator(db: Database, orchestrator: OrchestratorRow, query: string | undefined, invocationContext: OrchestratorInvocationContext, pin: OrchestratorVersionPin | null = null, alignmentSubjectPersonId: string | null = null): Promise<ResolvedOrchestrator> {
   const version = await loadOrchestratorVersion(db, orchestrator.id, pin)
   const pinned = pin !== null && version !== null
   // A versão fixada leva o alcance e os especialistas DELA para a execução, então precisa servir ao Grupo do Workflow, pela mesma
@@ -215,7 +215,8 @@ async function buildResolvedOrchestrator(db: Database, orchestrator: Orchestrato
         description: orchestratorAgentSnapshot?.config.description ?? orchestrator.description,
         context_prompt: orchestratorAgentSnapshot?.config.contextPrompt ?? orchestrator.context_prompt,
       },
-      { query, collaboratorConversation: invocationContext === "INTERACTIVE" },
+      // Alinhamentos operacionais do público de quem conversa (só quando a pessoa é conhecida — a coordenação por Grupo não tem pessoa).
+      { query, collaboratorConversation: invocationContext === "INTERACTIVE", alignmentSubjectPersonId },
     ),
   )
 
@@ -306,7 +307,7 @@ export async function resolveOrchestratorForSubject(
   ])
   // Universo do colaborador vem do cadastro (backend): com a exigência ativa, só o Orquestrador do mesmo universo; pendente = nenhum.
   const universes = universeParam(await loadSubjectUniverseAccess(db, organizationId, subjectId))
-  return resolveOrchestratorForPlacement(db, organizationId, { teamId: person.rows[0]?.team_id ?? null, subteamId: person.rows[0]?.subteam_id ?? null, universes }, invocationContext, query)
+  return resolveOrchestratorForPlacement(db, organizationId, { teamId: person.rows[0]?.team_id ?? null, subteamId: person.rows[0]?.subteam_id ?? null, universes }, invocationContext, query, subjectId)
 }
 
 /**
@@ -332,6 +333,7 @@ async function resolveOrchestratorForPlacement(
   placement: { teamId: string | null; subteamId: string | null; universes?: readonly string[] | null },
   invocationContext: OrchestratorInvocationContext,
   query?: string,
+  alignmentSubjectPersonId: string | null = null,
 ): Promise<ResolvedOrchestrator | null> {
   const orchestratorRow = await db.query<OrchestratorRow>(
     `select o.organization_id, o.id, o.name, o.scope_type, o.team_id, o.subteam_id, o.orchestrator_agent_id, a.objective, a.description, a.context_prompt, o.output_instructions, o.output_schema, o.structured_output, o.recommend_support_materials
@@ -346,7 +348,7 @@ async function resolveOrchestratorForPlacement(
   )
   const orchestrator = orchestratorRow.rows[0]
   if (!orchestrator) return null
-  return buildResolvedOrchestrator(db, orchestrator, query, invocationContext)
+  return buildResolvedOrchestrator(db, orchestrator, query, invocationContext, null, alignmentSubjectPersonId)
 }
 
 /** Orquestradores do chat/voz ativos da organização com o escopo de cada um — na ORDEM de preferência de `resolveOrchestratorForTeam`. */

@@ -1,3 +1,4 @@
+import type { UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
 import { z } from "zod"
 
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
@@ -10,7 +11,8 @@ export async function fetchBusinessDomains(options: { includeInactive?: boolean 
   return z.array(businessDomainSchema).parse(await adminGet(`/api/v1/admin/business-domains${options.includeInactive ? "?includeInactive=true" : ""}`))
 }
 
-export type BusinessDomainListParams = ListParams & { active?: boolean }
+/** `operatingUniverse`: universo de atuação; PENDING = sem classificação. */
+export type BusinessDomainListParams = ListParams & { active?: boolean; operatingUniverse?: UniverseFilterValue }
 
 export async function fetchBusinessDomainsPage(params: BusinessDomainListParams): Promise<PageResult<BusinessDomain>> {
   return pageResultSchema(businessDomainSchema).parse(await adminGet(`/api/v1/admin/business-domains${toQueryString({ ...params, includeInactive: params.active === undefined ? true : undefined })}`))

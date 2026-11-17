@@ -218,6 +218,19 @@ describe("V1.7.1d — plano de cobertura da base no especialista", () => {
     await runSpecialistTool(fakeDb(faturamento), ORG, "a-1", "Avalie.", "op-1", undefined, TRANSCRIPT)
     expect(promptOptions).toHaveBeenLastCalledWith(expect.objectContaining({ coverage: null, markProcessRoles: false }))
   })
+
+  it("avaliação de processo aplica os alinhamentos pela data do atendimento (run-5 A1); sem avaliação de processo, pela data de agora", async () => {
+    const startedAt = new Date("2026-10-15T13:00:00Z")
+    const db = fakeDb(faturamento)
+    const base = db.query.bind(db)
+    const withInteraction = { query: async (sql: string, params?: unknown[]) => (sql.includes("select started_at from interactions") ? { rows: [{ started_at: startedAt }], rowCount: 1 } : base(sql, params)) } as unknown as Database
+    generateWithTools.mockResolvedValue({ kind: "text", text: JSON.stringify({ ...structured, processAssessment: { processes: [], applicability: [] } }) })
+    await runSpecialistTool(withInteraction, ORG, "a-1", "Avalie.", "op-1", undefined, TRANSCRIPT, { outputContract: "PROCESS_ASSESSMENT", investigation: { interactionId: "int-9" } })
+    expect(promptOptions).toHaveBeenLastCalledWith(expect.objectContaining({ alignmentReferenceDate: startedAt }))
+    generateWithTools.mockResolvedValue({ kind: "text", text: JSON.stringify(structured) })
+    await runSpecialistTool(withInteraction, ORG, "a-1", "Avalie.", "op-1", undefined, TRANSCRIPT, { investigation: { interactionId: "int-9" } })
+    expect(promptOptions.mock.lastCall![0]).not.toHaveProperty("alignmentReferenceDate")
+  })
 })
 
 describe("conversa: a busca na base considera também a última pergunta da pessoa (ASKER_QUESTION_RETRIEVAL_V1)", () => {

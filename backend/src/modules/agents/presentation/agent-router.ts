@@ -34,6 +34,7 @@ import {
 } from "../application/agent-versions.js"
 import { assessAgentDeletion, deleteAgentIfUnused } from "../application/agent-deletion.js"
 import { computePublishImpact } from "../application/agent-publish-impact.js"
+import { applyUniverseListFilter, universeListParam } from "../../operating-universe/application/universe-list-filter.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
@@ -187,12 +188,13 @@ const listAgentsSchema = orgScopeFilterSchema.extend({
   knowledgeDocumentId: z.string().uuid().optional(),
   createdFrom: dateParam,
   createdTo: dateParam,
+  operatingUniverse: universeListParam,
 })
 
 const AGENT_SELECT = `
   select
     a.id, a.name, a.agent_type "agentType", a.objective, a.description, a.context_prompt "contextPrompt",
-    a.active, a.created_at "createdAt", a.specialty,
+    a.active, a.created_at "createdAt", a.specialty, a.operating_universe "operatingUniverse",
     a.specialty_kind "specialtyKind", a.domain, a.capability, a.consolidated_input "consolidatedInput",
     a.business_domain_id "businessDomainId", ${agentBusinessDomainJson("bd")} "businessDomain",
     a.recommend_support_materials "recommendSupportMaterials",
@@ -521,6 +523,7 @@ export function createAgentRouter(db: Database) {
       .equals("q.active", input.active)
       .orgScope("q", input)
       .dateRange('q."createdAt"', input.createdFrom, input.createdTo)
+    applyUniverseListFilter(filter, 'q."operatingUniverse"', input.operatingUniverse)
     if (input.knowledgeDocumentId) {
       filter.add(`exists (select 1 from agent_knowledge_documents akd where akd.agent_id = q.id and akd.knowledge_document_id = ${filter.param(input.knowledgeDocumentId)}::uuid)`)
     }

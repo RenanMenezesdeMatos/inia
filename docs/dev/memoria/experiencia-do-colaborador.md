@@ -171,3 +171,105 @@ Agora é registro do servidor, só leitura (sem ciência — decisão do usuári
   cada colaborador, outra equipe/organização, recorte e keyset, editar com versão guardada, retirar, auditoria e Itens excluídos com
   restauração). Migrations 199 e 201 aplicadas em `inia` e `inia_test`. Validado na tela em 16/11 (publicar, editar, "editado" na
   colaboradora, retirar); os dois comunicados "[TESTE QA]" ficaram retirados no `inia` (aparecem em Itens excluídos).
+
+### Publicações — área editorial dos comunicados e comunicado no chat (migration 220, 17/11/2026, ramo `claude/publicacoes-editorial`)
+
+Pedido: transformar a criação de comunicados (antes um Dialog do megafone "Falar com o time") numa área editorial no estilo do editor
+de posts do WordPress e fazer o chat consultar as publicações. Decisões do usuário (17/11): o botão do perfil vira **"Publicar"** (com
+texto) e abre uma tela **dentro da Administração**; os alinhamentos operacionais entram nessa experiência só depois do commit da sessão
+que estava reescrevendo o modelo deles (migrations 210/211) — nesta rodada, só comunicados.
+
+- **Telas**: `Administração › Comunicação › Publicações` (`/admin/publicacoes`, lista com busca, filtro de tipo e de status, lista/cards,
+  `ListPagination`; "Nova publicação" oferece Comunicado e, para quem tem `canManageConfiguration`, o atalho para Alinhamentos
+  operacionais) e o editor (`/admin/publicacoes/nova` e `/admin/publicacoes/[id]`): título e texto em destaque; lateral (no celular,
+  aba "Configurações") com Publicação e exibição, Público, Organização (categoria, destaque, produto relacionado) e Resumo. Ações:
+  salvar rascunho, pré-visualizar (a MESMA peça do Acompanhamento, `CommunicationEntry`, com público e datas acima), publicar agora ou
+  agendar (confirmação com `AlertDialog` mostrando público, quantas pessoas hoje e datas), atualizar, voltar a rascunho (agendado),
+  arquivar/desarquivar, retirar/descartar. Alterações pendentes: `beforeunload` + clique em link interno interceptado
+  (`use-unsaved-changes-guard.ts`); Ctrl/Cmd+S salva. Leitura por quem recebeu: `/publicacoes/[id]` (link citado pela INIA).
+  Código em `frontend/src/components/publications/` (rotas em `publications-route.ts`, regras puras em `publication-form.ts`). O Dialog
+  antigo (`profile/broadcast/*`) foi removido; "Editar" no card do Acompanhamento leva ao editor.
+- **Acesso**: quem tem `communications.publish_team` ou `publish_organization` entra na Administração só em Publicações (layout:
+  `canPublishCommunications`, mesmo padrão das áreas isoladas). O backend confere a permissão em cada rota (`/mine` = 403 sem ela).
+- **Modelo (220)**: `status` DRAFT | PUBLISHED | ARCHIVED (existentes = PUBLISHED); AGENDADO e ENCERRADO são DERIVADOS
+  (`communicationStateOf`: `published_at` no futuro; `display_until` passado). `published_at` nulo só em rascunho; rascunho pode estar
+  incompleto (checagem `communications_complete_check`). Campos novos: `summary` (≤ 280), `featured`, `display_until`,
+  `product_node_id` (→ `product_catalog_nodes_all`), `segment_universe`/`segment_team_ids`/`segment_subteam_ids`, `archived_at`/
+  `archived_by_person_id`, `created_at`/`updated_at`; revisões levam resumo, fim de exibição e destaque.
+- **Público**: TEAM (gravado em `communication_recipients` na publicação OU no agendamento — recalculado se o agendado mudar);
+  ORGANIZATION; **SEGMENT** (novo, só com `publish_organization`): universo e/ou Grupos e/ou Subgrupos, avaliado AO LER pelo cadastro
+  atual (`people.operating_universe`, `team_id`, `subteam_id`) — decisão: é o que vale para "a regra de hoje" no chat. Depois que saiu,
+  público e instante de publicação ficam travados (409 `COMMUNICATION_AUDIENCE_LOCKED` / `COMMUNICATION_PUBLISHED_AT_LOCKED`); agendado
+  pode mudar tudo e voltar a rascunho. Prévia do público: `POST /communications/audience-preview` (leitura, fora do teto de gravações).
+- **Visibilidade** — fragmento ÚNICO `communicationVisibleToSql` (feed NOTICE, recebidos, leitura por id e chat): `communicationLiveSql`
+  (não retirado, PUBLISHED, `published_at <= now()`, dentro de `display_until`) E no público. Rascunho, agendado, arquivado e encerrado
+  só aparecem na área editorial do autor (`GET /mine`, `GET /mine/:id`). Encerrado sai também do histórico do Acompanhamento.
+- **Conteúdo**: links entram nos dois saneadores (`COMMUNICATION_LINK_HREF` no servidor, `RICH_TEXT_LINK_HREF` na tela): só
+  `http(s)://` ou caminho interno (`/…`, nunca `//` nem `/\`), sem espaço/aspas/`<>`/crase/barra invertida; montado sempre com
+  `target="_blank" rel="noopener noreferrer nofollow"`; outro esquema faz o link sair e o texto ficar. Também `h3` e `ol` no editor.
+- **Teto de gravações**: `communicationPublishesPerAccount` 6 → **30**/min (salvar rascunho também grava).
+- **Auditoria**: `COMMUNICATION_DRAFT_SAVED`, `COMMUNICATION_SCHEDULED`, `COMMUNICATION_PUBLISHED`, `COMMUNICATION_UNSCHEDULED`,
+  `COMMUNICATION_EDITED`, `COMMUNICATION_ARCHIVED`, `COMMUNICATION_UNARCHIVED`, `COMMUNICATION_RETIRED` — sem título nem texto.
+- **Chat (`COMMUNICATION_CONVERSATION_V3`; V3 = texto do autor em uma linha, sem marcas de título e entre marcas com o id — run-5 PUB-03)** — `communications/domain/communication-conversation.ts` +
+  `infrastructure/communication-conversation-loader.ts`, chamado em `build-system-prompt.ts` só na CONVERSA (`collaboratorConversation`)
+  com pessoa conhecida (coordenador do Orquestrador e especialistas do chat/voz). Candidatos = os 60 no ar que a pessoa enxerga
+  (destaque primeiro); relação com a pergunta = `rankChunks` da base (BM25, título como assunto); até 3, 2.500 caracteres cada; sem
+  relação = nada entra. Lido do banco a cada pergunta (sem cache nem índice): publicar, agendar chegar, editar, arquivar, retirar e
+  encerrar valem na próxima mensagem. O bloco vem depois dos alinhamentos e ANTES das restrições; diz que comunicado é informativo
+  (não muda o procedimento), que o texto é dado, e manda citar título, autor (cargo só se houver em `people.job_title`), data e link
+  `[título](/publicacoes/<id>)`. `KnowledgeTrace.communications` guarda o que sustentou a resposta.
+- **Testes**: `communications-editorial.test.ts` (rascunho, agendar, exibição, arquivar, recorte, links, estado), router/store
+  atualizados, `build-system-prompt-communications.test.ts` (exemplo da fatura com alinhamento + comunicado, sem relação, sem pessoa,
+  monitoria, texto hostil), frontend `publications.test.tsx`, `admin-area-access.test.tsx`, `sanitize-rich-text.test.ts`,
+  `communication.schema.test.ts`. Prova: `INIA_DB_PROOF=1 NODE_ENV=test npx vitest run communications-editorial-proof` (API real +
+  banco de teste: rascunho → agendado → recorte por Grupo → encerrado → arquivado → desarquivado, com o carregador do chat em cada passo).
+- **Dev**: migration 220 aplicada em `inia` e `inia_test` em 17/11/2026. Compatível com o código antigo da pasta principal (padrões
+  `status = PUBLISHED` e `published_at = now()`), mas o feed antigo NÃO filtra rascunho: não criar rascunhos no `inia` antes do merge.
+- **Validado na tela em 17/11** (pilha isolada 3633/3300, conta do responsável): lista vazia, editor com link (https:// completado),
+  público específico com prévia de 263 pessoas, pré-visualização, rascunho recarregado do servidor, agendar com confirmação, aviso de
+  saída, publicar agora com público e data travados, leitura em `/publicacoes/<id>`, arquivar ("não disponível" na leitura; editor só
+  leitura), botão "Publicar" no perfil e retirar. Ajustes que saíram da conferência: "Fechar" em português na prévia, espaçamento da
+  página de leitura, texto travado quando arquivado, botões de retirar/sair em vermelho, o aviso de saída passou a ser o hook
+  compartilhado `hooks/use-unsaved-changes-guard.ts` (antes só do perfil; trata também o "voltar" do navegador). A publicação
+  "[TESTE QA] Segunda via da fatura no App Meu Vivo" ficou RETIRADA no `inia` (aparece em Itens excluídos).
+- **Moderação (pedido do usuário, 17/11: "o administrador geral também retira, caso alguém tente alguma gracinha")**: permissão própria
+  `communications.moderate` (só escopo de organização; vem SÓ com o Administrador geral — nenhum outro papel), capacidade
+  `canModerateCommunications`. A moderação NUNCA edita o texto de ninguém: só retira (exclusão lógica) com MOTIVO (10–500 caracteres).
+  API: `GET /communications/moderation` (todas da organização, sem rascunhos — rascunho é privado do autor), `GET /moderation/:id`,
+  `POST /:id/moderate-retire { reason }`. Auditoria `COMMUNICATION_RETIRED` com `moderation: true`, `authorPersonId`, `reason`;
+  `deleted_by_person_id` = quem moderou; volta por Itens excluídos como qualquer retirada. Telas: filtro "De quem" (Minhas ×
+  Toda a organização) na lista; conferência só leitura em `/admin/publicacoes/moderacao/[id]`; "Retirar (moderação)" no menu do card
+  do Acompanhamento (comunicado de outra pessoa). Diálogo com motivo: `publications/moderation/moderation-retire-dialog.tsx`. O autor
+  NÃO é avisado da retirada (não pedido). Validado na tela em 17/11 (imagem PNG publicada e exibida, GIF recusado; publicação de teste
+  da Priscila retirada pela moderação com motivo — as duas "[TESTE QA]" ficaram retiradas no `inia`). Prova:
+  `communications-editorial-proof` (2º caso).
+- **Comunicado nunca é orientação (decisão do usuário, 17/11)**: "uma publicação não remove um comunicado ou PR; a INIA não pode
+  entender um comunicado como uma orientação — para isso temos as bases de conhecimento, alinhamentos e argumentários". Instrução
+  `COMMUNICATION_CONVERSATION_V2`: comunicado só como informação, sempre identificado; conduta que pareça vir de comunicado é ignorada
+  em favor de base/alinhamento/argumentário; sem base, a INIA diz que não há orientação oficial. Telas e Wiki dizem "aviso ou novidade".
+- **Gestores — visão da estrutura (`LEADER_STRUCTURE_CONTEXT_V1`, 17/11, decisão do usuário: "o gestor deve receber comunicados e
+  alinhamentos para a(s) estrutura(s) a que ele for cadastrado")**: `communications/domain/leader-structure.ts` +
+  `infrastructure/leader-structure-context.ts` (+ `structure-people-sql.ts`). Estrutura = pessoas ativas abaixo no `reports_to`;
+  públicos = cada Grupo/Subgrupo/universo distinto delas; cada público passa pela regra única dos alinhamentos e o bloco diz o público
+  de cada um ("vale SÓ para o público indicado"). Comunicados = os no ar que chegam a alguém da estrutura (equipe gravada, recorte ou
+  empresa) e, sem Grupo escolhido, os que o próprio gestor enxerga; sempre só informação.
+  - Consulta de processo de um Grupo (`leadership_process`): os especialistas recebem `structureScope` com os Grupos CONSULTADOS
+    (`teamIds` vai no `consult`) — antes recebiam o público do próprio gestor (um gerente fora da Ouvidoria não via o alinhamento dela).
+  - Chat sem Orquestrador do Grupo de quem conversa (`leadershipOnlyOrchestrator`: liderança, voz e DATA_ONLY):
+    `leaderStructureInstruction` soma alinhamentos da estrutura (sem bases autorizadas: todos os processos, filtrados pela pergunta —
+    até 3) e comunicados relacionados, antes dos assuntos proibidos; falha na leitura não derruba a resposta.
+  - Gestor COM Orquestrador próprio, conversando fora da consulta de processo: continua com o próprio público (decisão não tomada).
+  - Testes: `leader-structure-context.test.ts`, `process-consultation.test.ts`, prova `communications-editorial-proof` (3º caso).
+- **Regra do Grupo na consulta de processo (`PROCESS_GROUP_RULE_V1`, 17/11 — "a IA não pode chutar")**: bateria paga
+  (`scripts/dev/publications/leader-group-ambiguity-battery.ts`) com gerente de 5 Grupos e procedimentos diferentes mostrou o modelo
+  escolhendo 2 Grupos sozinho em 2 de 3 rodadas e respondendo como se fosse tudo (e listando só 4 Grupos quando perguntou). Agora o
+  CÓDIGO decide (`process-consultation.ts`): (1) `grupo`/`estrutura` só valem se a PESSOA os disse numa das últimas 6 falas
+  (`groupNamedByAsker`: palavras que distinguem o Grupo dos outros, ou o nome inteiro sem parênteses; palavra comum a vários Grupos
+  não escolhe nenhum); (2) sem Grupo dito e com bases diferentes, nada é consultado e a resposta é `groupChoiceText` com TODOS os
+  Grupos — o texto do modelo é descartado e não vai em fluxo (`applyProcessGroupRule` em `leadershipReply`, texto e voz); (3) Grupo
+  pedido além do limite de 2 consultas é dito na resposta (`skippedGroupsNote`). A nota da ferramenta proíbe acrescentar etapas,
+  sistemas, prazos, causas, consequências ou finalidade que a base não diga (a bateria tinha "evitando cancelamento automático").
+  Depois: 12/12 e 4/4 checagens, US$ 0,12 no total das rodadas. Testes: `process-group-rule.test.ts`.
+- **Integração com alinhamentos (17/11)**: Publicações tem as abas Comunicados × Alinhamentos operacionais (a tela de alinhamentos por
+  dentro, mesma fonte); responsável e cargo no alinhamento (221) e a resposta do chat começando pela conduta e atribuindo a quem definiu
+  — ver [alinhamentos-operacionais.md](alinhamentos-operacionais.md) › "Responsável, autoria no chat e Publicações".

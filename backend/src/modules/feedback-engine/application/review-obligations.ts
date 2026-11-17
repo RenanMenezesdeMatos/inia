@@ -1,3 +1,4 @@
+import { hasOperationalAlignments, renderOperationalAlignmentsForModel } from "../domain/operational-alignment-context.js"
 import { createHash } from "node:crypto"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { TranscriptProjection } from "../../investigation/domain/transcript-projection.js"
@@ -68,7 +69,8 @@ export async function reviewObligationAnalysis(deps: { model: EngineModelPort },
     ...(products ? { requests: (input.model.requests ?? []).map((request) => ({ id: request.id, summary: request.summary, object: request.object, product: { status: request.product.status, targets: request.product.targets, evidence: request.product.evidence.map((unit) => ({ kind: unit.kind, turn: unit.turn, speaker: unit.speaker, quote: unit.quote, metadata: unit.metadata, criterion: unit.criterion, relation: unit.relation, supports: unit.supports })) } })) } : {}),
   }
   const requested = { linesToAssess: targets.linesToAssess.map((line) => line.id) }
-  const contract = obligationReviewContractFor(Boolean(products))
+  const alignmentMode = hasOperationalAlignments(input.context)
+  const contract = obligationReviewContractFor(Boolean(products), alignmentMode)
   const request: EngineModelRequest = { stage: "CALL_REVIEW", systemPrompt: contract.systemPrompt, contents: [{ role: "user", text: renderObligationReviewUserTurn({ projection: input.projection, transcriptStatus: input.transcriptStatus, subject: input.subject, context: input.context, targets, products }) }], responseSchema: contract.schema, tag: "review:obligations" }
   const requestSha256 = sha(`${request.systemPrompt}\n${request.contents[0]!.text}`)
   let review: ObligationReviewInput = { attempted: true, review: null, error: null, sentClaims: claims, requested, actPlaceRequired: true }
@@ -106,8 +108,8 @@ export async function reviewObligationAnalysis(deps: { model: EngineModelPort },
   if (discoveries.length === 0) return { analysis, review: legacyView, raw, reviewReused, pending: null, confirmationRaw: null }
   // CONFIRMAÇÃO FOCAL: só os achados pendentes, com o texto das linhas de origem e a transcrição inteira.
   const confirmationClaims = discoveries.map(withScope)
-  const confirmationContract = obligationConfirmationContractFor(Boolean(products))
-  const confirmationRequest: EngineModelRequest = { stage: "CALL_CONFIRMATION", systemPrompt: confirmationContract.systemPrompt, contents: [{ role: "user", text: renderObligationConfirmationUserTurn({ projection: input.projection, transcriptStatus: input.transcriptStatus, subject: input.subject, claims: confirmationClaims, products }) }], responseSchema: confirmationContract.schema, tag: "confirmation:obligations" }
+  const confirmationContract = obligationConfirmationContractFor(Boolean(products), alignmentMode)
+  const confirmationRequest: EngineModelRequest = { stage: "CALL_CONFIRMATION", systemPrompt: confirmationContract.systemPrompt, contents: [{ role: "user", text: renderObligationConfirmationUserTurn({ projection: input.projection, transcriptStatus: input.transcriptStatus, subject: input.subject, claims: confirmationClaims, products, alignments: alignmentMode ? renderOperationalAlignmentsForModel(input.context) : null }) }], responseSchema: confirmationContract.schema, tag: "confirmation:obligations" }
   const confirmationSha = sha(`${confirmationRequest.systemPrompt}\n${confirmationRequest.contents[0]!.text}`)
   const storedConfirmation = (input.storedConfirmations ?? []).find((entry) => entry.requestSha256 === confirmationSha)
   const storedConfirmationParsed = storedConfirmation ? parseObligationConfirmation(storedConfirmation.text) : null

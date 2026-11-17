@@ -62,3 +62,19 @@ describe("AgentPicker — o rótulo de quem usa o seletor nomeia a busca", () =>
     expect(screen.getByRole("button", { name: /Especialista de Faturamento/ })).toBeInTheDocument()
   })
 })
+
+// QA de 17/11: a etapa de um Workflow B2B com agente B2C salvo parecia válida com o seletor fechado.
+describe("AgentPicker — agente escolhido que não pode mais ser usado", () => {
+  it("com a lista fechada, mostra o motivo abaixo do agente escolhido", () => {
+    const agents = [agent("a-b2c", "Agente B2C", null)]
+    render(<AgentPicker agents={agents} value="a-b2c" onChange={vi.fn()} disabledReason={() => "De outro universo de atuação (B2C) — escolha um agente do universo deste Workflow."} />)
+    expect(screen.queryByPlaceholderText("Buscar agente...")).not.toBeInTheDocument()
+    expect(screen.getByTestId("agent-picker-selected-blocked")).toHaveTextContent("De outro universo de atuação (B2C)")
+  })
+
+  it("agente escolhido válido não mostra aviso", () => {
+    const agents = [agent("a-ok", "Agente válido", null)]
+    render(<AgentPicker agents={agents} value="a-ok" onChange={vi.fn()} disabledReason={() => null} />)
+    expect(screen.queryByTestId("agent-picker-selected-blocked")).not.toBeInTheDocument()
+  })
+})

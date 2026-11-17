@@ -18,7 +18,9 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import type { DateRangeFilter, OrgScopeFilter, SubjectScopeFilter } from "@/lib/admin/list-query"
+import { teamsForUniverse, type UniverseChoice, type UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
 import type { Subject, Team } from "@/schemas/admin/org-structure.schema"
+import { OPERATING_UNIVERSES, type OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 // Área de filtros padrão das listagens administrativas. Layout em duas linhas: busca + modo de
 // visualização em cima; seletores + "Limpar filtros" embaixo. Cada tela escolhe quais filtros
@@ -234,18 +236,26 @@ function decodeOrgScope(encoded: string, teams: Team[]): OrgScopeFilter {
   return {}
 }
 
+/**
+ * Filtro de Grupo/Subgrupo. Com `universe` (o universo escolhido no filtro ao lado), só oferece Grupos e Subgrupos daquele universo
+ * (o Grupo/Subgrupo sem universo some) — hierarquia universo → Grupo → Subgrupo. Quem troca o universo limpa o Grupo que deixou de caber com
+ * `orgScopeAfterUniverseChange` (lib/operating-universe/hierarchy.ts).
+ */
 export function ListOrgScopeFilter({
   value,
   onChange,
   teams,
   globalLabel = "Somente globais (todos os grupos)",
+  universe,
 }: {
   value: OrgScopeFilter
   onChange: (value: OrgScopeFilter) => void
   teams: Team[] | undefined
   globalLabel?: string
+  universe?: UniverseChoice
 }) {
   const encoded = encodeOrgScope(value)
+  const visibleTeams = teams ? teamsForUniverse(teams, universe) : undefined
   return (
     <Select value={encoded} onValueChange={(next) => onChange(decodeOrgScope(next, teams ?? []))} disabled={!teams}>
       <SelectTrigger className={cn("w-full sm:w-auto sm:min-w-40", encoded !== ALL && "border-primary/50")} aria-label="Filtrar por grupo">
@@ -254,10 +264,10 @@ export function ListOrgScopeFilter({
       <SelectContent>
         <SelectItem value={ALL}>Qualquer grupo</SelectItem>
         <SelectItem value="global">{globalLabel}</SelectItem>
-        {teams?.map((team) => (
+        {visibleTeams?.map((team) => (
           <SelectGroup key={team.id}>
             <SelectLabel>{team.name}</SelectLabel>
-            <SelectItem value={`team:${team.id}`}>{team.name} (grupo inteiro)</SelectItem>
+            {team.selectable ? <SelectItem value={`team:${team.id}`}>{team.name} (grupo inteiro)</SelectItem> : null}
             {team.subteams.map((subteam) => (
               <SelectItem key={subteam.id} value={`subteam:${subteam.id}`}>
                 {team.name} › {subteam.name}
@@ -268,6 +278,24 @@ export function ListOrgScopeFilter({
       </SelectContent>
     </Select>
   )
+}
+
+const UNIVERSE_FILTER_OPTIONS: FilterOption<UniverseFilterValue>[] = [
+  ...OPERATING_UNIVERSES.map((universe) => ({ value: universe, label: universe })),
+  { value: "PENDING", label: "Pendente (sem universo)" },
+]
+
+/**
+ * Filtro "Universo" das listagens (topo da hierarquia: universo → Grupo → Subgrupo). Um valor só; `PENDING` = ainda sem classificação.
+ * A tela passa o valor escolhido ao `ListOrgScopeFilter` e limpa o Grupo incompatível ao trocar.
+ */
+export function ListUniverseFilter({ value, onChange }: { value: UniverseFilterValue | undefined; onChange: (value: UniverseFilterValue | undefined) => void }) {
+  return <ListSelectFilter<UniverseFilterValue> value={value} onChange={onChange} options={UNIVERSE_FILTER_OPTIONS} allLabel="Qualquer universo" ariaLabel="Filtrar por universo de atuação" />
+}
+
+/** Escolha de universo (para encadear) a partir do valor do filtro: pendente não restringe as opções de baixo. */
+export function universeChoiceOf(value: UniverseFilterValue | undefined): OperatingUniverse | undefined {
+  return value === "PENDING" ? undefined : value
 }
 
 export function ListSubjectScopeFilter({

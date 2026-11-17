@@ -1,7 +1,7 @@
 /**
  * PROVA contra o banco de TESTE real: Conversas com a INIA (migration 094) — persistência Postgres (lock por dono,
  * idempotência, ordem estável, paginação), rotas do próprio operador e o monitoramento da gestão por permissão + escopo
- * (papel "Leitor de conversas da INIA", concessão aos gestores, 404 fora do alcance, nenhum outro módulo liberado).
+ * (papel "Leitor de conversas da INIA" concedido pelo fluxo normal, 404 fora do alcance, nenhum outro módulo liberado).
  * Tudo numa transação desfeita no fim (banco intacto). Nenhuma chamada de modelo.
  *   INIA_DB_PROOF=1 npx vitest run assistant-conversations-proof
  */
@@ -99,17 +99,16 @@ describe.skipIf(!ENABLED)("Conversas com a INIA — prova Postgres", () => {
     expect((await sup.get("/api/v1/auth/me")).body.data.access.capabilities).toMatchObject({ canViewAssistantConversations: false, canAccessAdministration: false })
     expect((await sup.get("/api/v1/admin/assistant-conversations")).status).toBe(403)
 
-    // Administrador geral concede aos gestores (Minha estrutura), em lote e de forma idempotente.
+    // Administrador geral concede o papel à supervisora pelo fluxo normal de Usuários e acessos (Minha estrutura), auditado.
     const adm = await login(geral.email)
-    const grant = await adm.post("/api/v1/admin/access/roles/LEITOR_DE_CONVERSAS_INIA/grant-to-leaders")
-    expect(grant.status).toBe(200)
-    expect(grant.body.data.granted).toBeGreaterThanOrEqual(1)
+    const grant = await adm.post(`/api/v1/admin/access/accounts/${supervisor.accountId}/roles`).send({ roleCode: "LEITOR_DE_CONVERSAS_INIA", scope: { type: "MY_STRUCTURE" } })
+    expect(grant.status).toBe(201)
     const supGrant = (await client.query("select scope_type from access_role_assignments where user_account_id = $1 and role_code = 'LEITOR_DE_CONVERSAS_INIA' and revoked_at is null", [supervisor.accountId])).rows
     expect(supGrant).toEqual([{ scope_type: "MY_STRUCTURE" }])
-    expect((await client.query("select count(*)::int n from access_role_assignments where user_account_id = $1 and role_code = 'LEITOR_DE_CONVERSAS_INIA'", [larissa.accountId])).rows[0].n).toBe(0) // não lidera ninguém
     const audit = await client.query("select payload from audit_logs where action = 'ACCESS_ROLE_GRANTED' and payload->>'recipientAccountId' = $1", [supervisor.accountId])
     expect(audit.rows[0]?.payload).toMatchObject({ roleCode: "LEITOR_DE_CONVERSAS_INIA", scope: { type: "MY_STRUCTURE" } })
-    expect((await adm.post("/api/v1/admin/access/roles/LEITOR_DE_CONVERSAS_INIA/grant-to-leaders")).body.data.granted).toBe(0)
+    // A rota de concessão em lote saiu.
+    expect((await adm.post("/api/v1/admin/access/roles/LEITOR_DE_CONVERSAS_INIA/grant-to-leaders")).status).toBe(404)
 
     // Supervisora: vê a Larissa (estrutura), não o Bruno; nenhum outro módulo administrativo.
     expect((await sup.get("/api/v1/auth/me")).body.data.access.capabilities).toMatchObject({ canViewAssistantConversations: true, canAccessAdministration: false })

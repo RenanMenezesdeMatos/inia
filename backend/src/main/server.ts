@@ -48,6 +48,7 @@ import { droppedLogLines, flushLogs, routeConsoleToLog } from "../shared/infrast
 import { configureServiceName } from "../shared/application/observability/service-identity.js"
 import { createOccurrenceRecorder, registerOccurrenceRecorder } from "../modules/error-diagnostics/application/occurrence-recorder.js"
 import { purgeOldOccurrences } from "../modules/error-diagnostics/infrastructure/pg-error-occurrence-store.js"
+import { runAlignmentLifecycle } from "../modules/operational-alignments/application/alignment-audit.js"
 
 // Todo log (console.* e pino) num destino assíncrono: no Windows a saída do serviço é um pipe, e escrever em pipe ali é síncrono.
 routeConsoleToLog()
@@ -169,6 +170,8 @@ function startProcessing() {
     { name: "login-attempts-purge", intervalMs: 3_600_000, run: () => purgeOldLoginAttempts(pool), errorLabel: "Falha na limpeza das tentativas de login:" },
     // Ocorrências de erro além da guarda (INIA_ERROR_OCCURRENCE_RETENTION_DAYS, padrão 30 dias), em lotes.
     { name: "error-occurrences-purge", intervalMs: 3_600_000, run: () => purgeOldOccurrences(pool, env.INIA_ERROR_OCCURRENCE_RETENTION_DAYS).then(() => undefined), errorLabel: "Falha na limpeza das ocorrências de erro:" },
+    // Alinhamentos operacionais: grava no rastro de auditoria quando cada versão começou a valer e quando expirou (migration 212).
+    { name: "operational-alignments-lifecycle", intervalMs: 5 * 60_000, runOnStart: true, run: () => runAlignmentLifecycle(pool).then(() => undefined), errorLabel: "Falha no rastro dos alinhamentos operacionais:" },
   ])
   // Processamento sem HTTP (papel `worker`): a API avisa por NOTIFY que há carga nova na Central de Dados — processa na hora
   // (o tick de 15 s continua sendo a garantia). Com o papel `all` a própria API processa, sem aviso.

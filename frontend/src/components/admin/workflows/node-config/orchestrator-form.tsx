@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { scopesAreCompatible } from "@/lib/admin/scope-compatibility"
+import { fitsUniverse } from "@/lib/operating-universe/hierarchy"
+import { useWorkflowUniverse } from "../workflow-universe-context"
 import type { Team } from "@/schemas/admin/org-structure.schema"
 import type { Orchestrator } from "@/schemas/admin/assistant.schema"
 import { useOrchestratorVersionsQuery } from "@/queries/admin/use-assistant-queries"
@@ -63,9 +65,15 @@ export function OrchestratorForm({
   // Nunca oferecer um Orchestrator exclusivo de outro grupo (Parte 6/24 do pedido) — o backend
   // também valida no publish (scopesAreCompatible em workflow-router.ts), isto é só o picker já
   // vindo correto. Sem `scope` (ex.: workflow ainda carregando), não filtra por grupo.
+  // Universo: só Orquestradores do universo do Workflow; o já escolhido de outro universo fica visível e marcado (o publish recusa).
+  const universe = useWorkflowUniverse()
   const workflowOrchestrators = orchestrators.filter(
-    (orchestrator) => orchestrator.invocationMode !== "INTERACTIVE" && (!scope || scopesAreCompatible(teams, scope, orchestrator)),
+    (orchestrator) =>
+      orchestrator.invocationMode !== "INTERACTIVE" &&
+      (!scope || scopesAreCompatible(teams, scope, orchestrator)) &&
+      (fitsUniverse(orchestrator.operatingUniverse, universe) || orchestrator.id === node.config.orchestratorId),
   )
+  const selectedOutOfUniverse = orchestrators.find((candidate) => candidate.id === node.config.orchestratorId && !fitsUniverse(candidate.operatingUniverse, universe))
   const fieldId = useId()
   return (
     <div className="space-y-3">
@@ -93,11 +101,15 @@ export function OrchestratorForm({
               {workflowOrchestrators.map((orchestrator) => (
                 <SelectItem key={orchestrator.id} value={orchestrator.id}>
                   {orchestrator.name}
+                  {fitsUniverse(orchestrator.operatingUniverse, universe) ? "" : ` (de outro universo: ${orchestrator.operatingUniverse})`}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         )}
+        {selectedOutOfUniverse ? (
+          <p className="text-xs text-destructive">Este Orquestrador é de outro universo de atuação — a publicação vai rejeitar. Escolha um do universo deste Workflow.</p>
+        ) : null}
       </div>
       <OrchestratorVersionNote
         orchestrator={orchestrators.find((candidate) => candidate.id === node.config.orchestratorId) ?? null}

@@ -1,3 +1,4 @@
+import type { LeaderStructureScope } from "../../communications/domain/leader-structure.js"
 import { loadAgentGuardrails } from "../../agents/application/agent-guardrails.js"
 import { checkResponse, enforceResponseBeforeNextStep, recordResponseCheck, RESPONSE_CHECK_UNAVAILABLE_CODE } from "../../governance/application/response-compliance.js"
 import { complianceSourcesOfExcerpts, responseCheckMode, SPECIALIST_BLOCKED_TEXT } from "../../governance/domain/response-compliance.js"
@@ -23,7 +24,7 @@ import { buildClaimCandidates } from "../../investigation/domain/claim-candidate
 import { criticalFactsOf } from "../../investigation/domain/decision-critical-facts.js"
 import { assembleAgentSynthesisPrompt } from "../../agents/application/agent-synthesis-prompt.js"
 import type { LedgerEntry } from "../../investigation/domain/evidence-ledger.js"
-import { loadInteractionSubject, type KnowledgeTrace } from "../../knowledge/application/retrieve-knowledge.js"
+import { loadInteractionStartedAt, loadInteractionSubject, type KnowledgeTrace } from "../../knowledge/application/retrieve-knowledge.js"
 import {
   buildSupportMaterialCandidates,
   extractSupportMaterialsMarker,
@@ -171,6 +172,8 @@ export type SpecialistToolOptions = {
    * ASKER_QUESTION_RETRIEVAL_VERSION). Só vale com `collaboratorConversation`; o input do especialista continua com a `query`.
    */
   askerQuestion?: string | undefined
+  /** Gestor perguntando sobre Grupos da estrutura (consulta de processo): alinhamentos e comunicados dos públicos deles. */
+  structureScope?: LeaderStructureScope | null | undefined
 }
 
 /** Contrato estruturado se aplica quando há transcrição pra verificar e o especialista audita
@@ -254,7 +257,10 @@ async function runSpecialistToolUnchecked(db: Database, organizationId: string, 
   // V1.7.1d — avaliação de processo de uma chamada que chegou ao fim: o plano de cobertura garante as seções de fechamento.
   // V1.7.1m — o assunto estruturado da interação do enrollment identifica o documento PRIMÁRIO do processo na cobertura.
   const coverage = contract === "FEEDBACK" && options.outputContract === "PROCESS_ASSESSMENT" && sharedContext && closingPhaseReached(sharedContext) ? { phases: ["CLOSING" as const], subject: await loadInteractionSubject(db, organizationId, options.investigation?.interactionId) } : null
-  const built = await buildSystemPromptWithTrace(db, agentId, agent, { query: sharedContext ? `${query}\n${sharedContext}` : query, coverage, markProcessRoles: contract === "FEEDBACK" && options.outputContract === "PROCESS_ASSESSMENT", processAssessment: contract === "FEEDBACK" && options.outputContract === "PROCESS_ASSESSMENT", governanceSubjectPersonId: operatorId, collaboratorConversation: options.collaboratorConversation ?? false, askerQuestion: options.collaboratorConversation === true ? (options.askerQuestion ?? null) : null })
+  // Avaliação de processo de uma chamada: os alinhamentos valem pela DATA DO ATENDIMENTO (como no motor de feedback), nunca por hoje.
+  const processAssessment = contract === "FEEDBACK" && options.outputContract === "PROCESS_ASSESSMENT"
+  const alignmentReferenceDate = processAssessment ? await loadInteractionStartedAt(db, organizationId, options.investigation?.interactionId) : null
+  const built = await buildSystemPromptWithTrace(db, agentId, agent, { ...(alignmentReferenceDate ? { alignmentReferenceDate } : {}), query: sharedContext ? `${query}\n${sharedContext}` : query, coverage, markProcessRoles: contract === "FEEDBACK" && options.outputContract === "PROCESS_ASSESSMENT", processAssessment: contract === "FEEDBACK" && options.outputContract === "PROCESS_ASSESSMENT", governanceSubjectPersonId: operatorId, collaboratorConversation: options.collaboratorConversation ?? false, askerQuestion: options.collaboratorConversation === true ? (options.askerQuestion ?? null) : null, structureScope: options.structureScope ?? null })
   attachKnowledgeTrace(withoutCheckpointCatalog(built.knowledge))
   // INVESTIGAÇÃO do especialista: com capacidades configuradas no PRÓPRIO Agent, ele investiga
   // com as Tools antes de responder (sujeito = operador da conversa/enrollment; o Orquestrador

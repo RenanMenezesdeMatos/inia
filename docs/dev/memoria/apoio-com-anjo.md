@@ -650,3 +650,23 @@ piloto (B1 ligada num Subgrupo) falta o roteiro do IIS da especificação (chama
     reset).
   - **Consultas**: mensagens por atendimento filtram também `m.request_id` (índice (request_id, seq)); passo 4c em dois ramos
     `union all`; passo 3 ordena a última causa de conexão por `(occurred_at, id)` (índice da pessoa). Índices em `banco-e-consultas.md`.
+
+### Tela de Escopos redesenhada (2026-11-17)
+
+Pedido do responsável: quem chega à aba Escopos (Administração › Configuração dos Anjos) precisa saber, sem conhecer a implementação,
+se o Anjo está habilitado, se foi definido ali ou herdado (e de onde), e o que fazer para habilitar. Regra INALTERADA (servidor,
+`domain/enablement.ts`); só a tela mudou. `scope-rules.ts` espelha a regra para explicar e prever (teste `scope-rules.test.ts`).
+- Layout: lista Organização › Grupo › Subgrupo com o estado em vigor e a origem curta de cada um (na tela estreita, um `Select`);
+  detalhe em três blocos, nesta ordem: "Escopo em edição" (nome e caminho), "Em vigor agora" (título "Anjo habilitado em X", frase
+  de origem, opção salva × resultado aplicado × origem, e a lista "Para o Anjo funcionar": chave geral, opção que habilita, Anjo que
+  atende — com "Ligar na aba Configuração", "Ver Anjos" e "Conceder o papel Anjo em Usuários e acessos" ou "peça a quem administra os
+  acessos") e "O que você pode alterar" (opções com o efeito em uma frase, prévia "Resultado esperado ao salvar" com os Subgrupos que
+  herdam, confirmação `AlertDialog` ao desabilitar, faixa "Salvo. Em vigor agora: …" depois). Organização: só leitura da chave geral
+  e o caminho para a aba Configuração.
+- Rótulos: "Habilitar neste escopo", "Desabilitar neste escopo" e, SÓ no Subgrupo, "Herdar do escopo superior". No Grupo, a mesma
+  gravação `INHERIT` aparece como "Sem configuração própria", porque a chave geral não habilita Grupos (herdar dela seria enganoso).
+- Quem edita: só `human_support.manage` na organização (Administrador geral); sem ela, a página redireciona e as rotas dão 403.
+- Conferido no navegador (17/11) numa cópia da pasta `frontend` no scratchpad (o `next dev` não aceita dois na mesma pasta) + API
+  3533 sobre o banco de dev: herança real de "B2C · Atendimento Geral" › Chat; Grupo de teste "ATENDIMENTO GERAL" habilitado e
+  revertido (ficou uma linha `INHERIT`, equivalente a nenhuma, com os eventos e a auditoria).
+

@@ -20,6 +20,9 @@ import { SelectEmployeesForm } from "./node-config/select-employees-form"
 import { NextStepFields } from "./node-config/next-step-fields"
 import { WaitForm } from "./node-config/wait-form"
 import { nodeKindLabel } from "./node-visuals"
+import { useWorkflowQuery } from "@/queries/admin/use-workflow-queries"
+import { withDraftConfiguration } from "@/schemas/admin/workflow.schema"
+import { WorkflowUniverseProvider } from "./workflow-universe-context"
 
 export function NodeConfigPanel({
   node,
@@ -58,11 +61,15 @@ export function NodeConfigPanel({
 }) {
   const agentsQuery = useAgentsQuery()
   const orchestratorsQuery = useOrchestratorsQuery()
+  // Universo do Workflow (rascunho; mesmo cache da página do editor): os seletores abaixo só oferecem recursos dele.
+  const workflowQuery = useWorkflowQuery(workflowId)
+  const universe = workflowQuery.data ? (withDraftConfiguration(workflowQuery.data).operatingUniverse ?? null) : undefined
   const teamsQuery = useTeamsQuery()
   const agentsById = new Map((agentsQuery.data ?? []).map((agent) => [agent.id, agent]))
   const orchestratorsById = new Map((orchestratorsQuery.data ?? []).map((orchestrator) => [orchestrator.id, orchestrator]))
 
   return (
+    <WorkflowUniverseProvider value={universe}>
     <aside className="h-full space-y-4 p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -184,6 +191,7 @@ export function NodeConfigPanel({
       {node.type === "end" ? <p className="text-sm text-muted-foreground">Marca o fim deste caminho do fluxo.</p> : null}
       {onConnectBranch ? <NextStepFields node={node} graph={graph} onConnectBranch={onConnectBranch} /> : null}
     </aside>
+    </WorkflowUniverseProvider>
   )
 }
 

@@ -10,10 +10,11 @@ import { HUMAN_SUPPORT_MONITORING_PATH } from "@/components/human-support/monito
 import { defaultPanelPeriod, PeriodPicker, type PanelPeriod } from "@/components/human-support/monitoring/period-picker"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/surface"
-import { useComplianceQuery, useFeedbackQuery, useRepliesQuery, useResponseTimeQuery, useRoutesQuery, useSuccessContextQuery, useSupportQuery } from "@/queries/inia-success/use-inia-success-queries"
+import { useAlignmentsSuccessQuery, useComplianceQuery, useFeedbackQuery, useRepliesQuery, useResponseTimeQuery, useRoutesQuery, useSuccessContextQuery, useSupportQuery } from "@/queries/inia-success/use-inia-success-queries"
 import type { SuccessContext, SuccessFilter } from "@/schemas/inia-success/inia-success.schema"
 
 import type { SuccessBlocks } from "./success-blocks"
+import { SuccessAlignments } from "./success-alignments"
 import { SuccessCoverage } from "./success-coverage"
 import { SuccessEvolution } from "./success-evolution"
 import { SuccessFeedback } from "./success-feedback"
@@ -67,6 +68,7 @@ export function IniaSuccessPage() {
       query: useComplianceQuery(filter, Boolean(sections?.compliance)),
     },
   }
+  const alignmentsQuery = useAlignmentsSuccessQuery(filter, Boolean(sections?.alignments))
   const granularity =
     Object.values(blocks)
       .map((block) => (block.query.data as { period?: { granularity: "DAY" | "WEEK" } } | undefined)?.period?.granularity)
@@ -85,7 +87,7 @@ export function IniaSuccessPage() {
       <PageHeader
         icon={Gauge}
         title="Indicadores de sucesso da INIA"
-        description="Tempo de resposta, avaliação das respostas e dos feedbacks, falhas registradas e assuntos da procura — com a base de cada número. Somente leitura."
+        description="Tempo de resposta, avaliação das respostas e dos feedbacks, falhas registradas, assuntos da procura e alinhamentos operacionais — com a base de cada número. Somente leitura."
       />
 
       {context.isPending ? (
@@ -162,6 +164,15 @@ export function IniaSuccessPage() {
           >
             <SuccessCoverage blocks={blocks} links={sourceLinks(context.data)} />
           </SuccessSection>
+
+          <SuccessSection
+            id="alinhamentos"
+            label="7 · Alinhamentos operacionais"
+            title="Orientações temporárias de processo publicadas pela gestão"
+            description="Por área, quem mais faz, o mais antigo ainda ativo, as bases mais associadas, o motivo do alinhamento e os pedidos do cliente relacionados. Período e Grupo/Subgrupo filtram pelo público do alinhamento."
+          >
+            <SuccessAlignments allowed={Boolean(sections?.alignments)} query={alignmentsQuery} />
+          </SuccessSection>
         </>
       )}
     </section>
@@ -180,6 +191,7 @@ function sourceLinks(context: SuccessContext) {
           label: "Conferência das respostas",
         }
       : null,
+    context.sections.alignments ? { href: "/admin/operational-alignments", label: "Alinhamentos operacionais" } : null,
   ].filter((link): link is { href: string; label: string } => link !== null)
 }
 

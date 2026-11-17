@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { Activity, Ban, BookA, BookOpen, Bot, Boxes, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, Flag, FlaskConical, Gauge, Goal, HeartHandshake, ImageIcon, Layers, LifeBuoy, MessageSquareWarning, MessagesSquare, PhoneCall, SearchCode, ShieldCheck, Users, Waypoints, Zap, type LucideIcon, Globe2 } from "lucide-react"
+import { Activity, Megaphone, Ban, BookA, BookOpen, Bot, Boxes, CalendarClock, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, Flag, FlaskConical, Gauge, Goal, HeartHandshake, ImageIcon, Layers, LifeBuoy, MessageSquareWarning, MessagesSquare, PhoneCall, SearchCode, ShieldCheck, Users, Waypoints, Zap, type LucideIcon, Globe2 } from "lucide-react"
 
 import { HUMAN_SUPPORT_ADMIN_PATH, HUMAN_SUPPORT_MONITORING_PATH } from "@/components/human-support/monitoring/human-support-monitoring-route"
 import { INIA_SUCCESS_PATH } from "@/components/inia-success/inia-success-route"
@@ -61,6 +61,11 @@ const governanceTab = (tab: "prohibited" | "glossary"): ActiveMatcher => (pathna
 
 const GROUPS: NavGroup[] = [
   {
+    // Área editorial dos comunicados (rascunho, agendamento, público, prévia); quem só publica vê só este item.
+    label: "Comunicação",
+    entries: [{ href: "/admin/publicacoes", label: "Publicações", icon: Megaphone, capability: "canPublishTeamCommunications" }],
+  },
+  {
     label: "Dados",
     entries: [
       {
@@ -96,6 +101,8 @@ const GROUPS: NavGroup[] = [
       },
       { href: "/admin/assistant", label: "Orquestrador da INIA", icon: Waypoints, capability: "canManageAgents" },
       { href: "/admin/argument-scripts", label: "Argumentários", icon: PhoneCall, capability: "canManageConfiguration" },
+      // Orientações temporárias que se sobrepõem ao trecho de um procedimento oficial (chat e monitoria).
+      { href: "/admin/operational-alignments", label: "Alinhamentos operacionais", icon: CalendarClock, capability: "canManageOperationalAlignments" },
       {
         // Guardrails globais da IA — somados às restrições de cada Agent, nunca substituídos.
         label: "Governança",

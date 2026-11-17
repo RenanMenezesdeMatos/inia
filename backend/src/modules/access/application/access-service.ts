@@ -117,38 +117,6 @@ export async function assignRole(deps: AccessDeps, actor: SessionActor, input: {
 }
 
 /**
- * "Conceder aos gestores": atribui um papel com escopo "Minha estrutura" a CADA conta ativa de quem lidera alguém (tem
- * subordinado direto ativo por reports_to) dentro do alcance de quem concede. Não é concessão por cargo: é uma ação
- * explícita do administrador, que cria uma atribuição auditada por pessoa pela MESMA regra de delegação da atribuição
- * individual (papel delegável, escopo coberto, pessoa alcançada, nunca a si mesmo). Idempotente: quem já tem o papel
- * com esse escopo é contado e ignorado.
- */
-export async function assignRoleToLeaders(deps: AccessDeps, actor: SessionActor, input: { roleCode: string }) {
-  const catalog = deps.catalog ?? systemRoleCatalog
-  const access = await resolveAccess(deps, actor)
-  if (!canAnywhere(access, "access.roles.assign", catalog)) throw delegationError("NOT_AUTHORIZED_TO_ASSIGN")
-  const role = catalog.find(input.roleCode)
-  if (!role) throw delegationError("UNKNOWN_ROLE")
-  if (!role.allowedScopes.includes("MY_STRUCTURE")) throw delegationError("SCOPE_NOT_ALLOWED_FOR_ROLE")
-  const scope: AccessScope = { type: "MY_STRUCTURE" }
-  const leaders = await deps.repository.listLeaderAccounts(actor.organizationId, visibilityOf(access, "access.roles.assign", catalog))
-  let granted = 0
-  let alreadyAssigned = 0
-  let skipped = 0
-  for (const leader of leaders) {
-    const verdict = checkDelegation(access, { roleCode: role.code, scope, recipientAccountId: leader.accountId, recipient: { personId: leader.personId, teamId: leader.teamId, subteamId: leader.subteamId } }, {}, catalog)
-    if (!verdict.ok) {
-      skipped += 1
-      continue
-    }
-    const created = await deps.repository.createAssignment({ organizationId: actor.organizationId, accountId: leader.accountId, roleCode: role.code, scope, grantedByAccountId: actor.accountId, actorPersonId: actor.personId, permissions: role.permissions, at: deps.now() })
-    if (created.ok) granted += 1
-    else alreadyAssigned += 1
-  }
-  return { leaders: leaders.length, granted, alreadyAssigned, skipped }
-}
-
-/**
  * Revoga (nunca apaga). Quem revoga precisa poder conceder aquele papel naquele escopo (a mesma regra de delegação; revogar
  * o próprio papel é permitido). Proteção mínima contra lockout: não se revoga o ÚLTIMO Administrador geral ativo do tenant.
  */

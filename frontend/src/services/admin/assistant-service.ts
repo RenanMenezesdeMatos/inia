@@ -1,3 +1,4 @@
+import type { UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
 import type { OrchestratorPolicyKind, RoutingPolicyKind } from "@/schemas/admin/orchestrator-policy"
 import { z } from "zod"
 
@@ -20,6 +21,8 @@ export type OrchestratorListParams = ListParams &
     orchestratorAgentId?: string
     specialistAgentId?: string
     createdAt: DateRangeFilter
+    /** Universo de atuação; PENDING = sem classificação. */
+    operatingUniverse?: UniverseFilterValue
   }
 
 export async function fetchOrchestratorsPage(params: OrchestratorListParams): Promise<PageResult<Orchestrator>> {

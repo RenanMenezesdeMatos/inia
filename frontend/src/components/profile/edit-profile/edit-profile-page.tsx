@@ -24,7 +24,7 @@ import type { ProfileUpdateInput } from "@/services/profile/profile-service"
 import { AvatarCropper, loadImage, renderCover, renderCroppedAvatar, type CropState, type LoadedImage } from "./avatar-cropper"
 import { clearLegacyLocalCover, readLegacyLocalCover, type LegacyLocalCover } from "./legacy-local-cover"
 import type { ProfileEditorSection } from "./profile-editor-context"
-import { useUnsavedChangesGuard } from "./use-unsaved-changes-guard"
+import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard"
 
 type PhotoDraft = { kind: "keep" } | { kind: "remove" } | { kind: "new"; src: string; image: LoadedImage; crop: CropState }
 type CoverDraft = { kind: "keep" } | { kind: "default" } | { kind: "preset"; preset: CoverPreset } | { kind: "custom"; src: string; image: LoadedImage }

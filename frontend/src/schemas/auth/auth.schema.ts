@@ -56,6 +56,7 @@ export const accessCapabilitiesSchema = z.object({
   canManageKnowledge: capability,
   canManageWorkflows: capability,
   canManageConfiguration: capability,
+  canManageOperationalAlignments: capability,
   canManageDataHub: capability,
   /** Consulta somente leitura dos dados aprovados da Central (Administrador geral e Administrador de dados). */
   canExploreData: capability,
@@ -81,6 +82,7 @@ export const accessCapabilitiesSchema = z.object({
   // Comunicados da liderança: para a própria estrutura / também para toda a organização (o público é sempre calculado no servidor).
   canPublishTeamCommunications: capability,
   canPublishOrganizationCommunications: capability,
+  canModerateCommunications: capability,
   // Base de boas práticas: o público do Diagnóstico lê; quem administra a configuração também lê e revisa (o escopo é do backend).
   canViewBestPractices: capability,
   canManageBestPractices: capability,

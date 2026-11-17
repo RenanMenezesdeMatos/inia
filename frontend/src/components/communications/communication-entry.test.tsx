@@ -9,11 +9,13 @@ import type { Communication, ReceivedCommunication } from "@/schemas/communicati
 
 import { CommunicationEntry } from "./communication-entry"
 
-const service = vi.hoisted(() => ({ editCommunication: vi.fn(), retireCommunication: vi.fn(), publishCommunication: vi.fn(), fetchReceivedCommunications: vi.fn(), fetchCommunication: vi.fn() }))
+const service = vi.hoisted(() => ({ retireCommunication: vi.fn(), fetchReceivedCommunications: vi.fn(), fetchCommunication: vi.fn(), moderateRetireCommunication: vi.fn() }))
 vi.mock("@/services/communications/communication-service", () => service)
+const session = vi.hoisted(() => ({ canModerateCommunications: false }))
+vi.mock("@/services/auth/auth-service", () => ({ fetchCurrentUser: async () => ({ personId: "me", name: "Ana", access: { capabilities: { canModerateCommunications: session.canModerateCommunications } } }) }))
 
 beforeAll(() => installJsdomStubs())
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.clearAllMocks(); session.canModerateCommunications = false })
 
 const notice = (overrides: Partial<Communication> = {}): Communication => ({
   id: "c-1", title: "Roteiro novo", contentHtml: "<p>Usem o <strong>roteiro</strong>.</p>", plainText: "Usem o roteiro.", tags: ["Processos"], audience: "TEAM",
@@ -33,23 +35,10 @@ describe("Comunicado — ações de quem publicou", () => {
     expect(screen.getByText(/editado/)).toBeInTheDocument()
   })
 
-  it("editar abre o formulário com o texto atual e salva sem mexer no público", async () => {
-    service.editCommunication.mockResolvedValue(notice({ title: "Roteiro corrigido", editedAt: "2026-11-16T13:00:00.000Z" }))
+  it("editar leva à área editorial da publicação (Administração › Publicações)", async () => {
     renderWithQuery(<CommunicationEntry notice={notice()} />)
     openMenu()
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Editar" }))
-    const title = await screen.findByLabelText("Título")
-    expect(title).toHaveValue("Roteiro novo")
-    expect(screen.getByText(/O público não muda \(sua equipe\)/)).toBeInTheDocument()
-    expect(screen.queryByText("Publicar para")).toBeNull()
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "Conteúdo do comunicado" }).innerHTML).toContain("<strong>roteiro</strong>"))
-    fireEvent.change(title, { target: { value: "Roteiro corrigido" } })
-    fireEvent.click(screen.getByRole("button", { name: "Salvar" }))
-    await waitFor(() => expect(service.editCommunication).toHaveBeenCalledTimes(1))
-    const [id, input] = service.editCommunication.mock.calls[0]!
-    expect(id).toBe("c-1")
-    expect(input).toEqual({ title: "Roteiro corrigido", contentHtml: expect.stringContaining("<strong>roteiro</strong>"), tags: ["Processos"] })
-    expect(input).not.toHaveProperty("audience")
+    expect(await screen.findByRole("menuitem", { name: "Editar" })).toHaveAttribute("href", "/admin/publicacoes/c-1")
   })
 
   it("retirar só depois de confirmar; manter não chama o servidor", async () => {
@@ -82,3 +71,26 @@ describe("Comunicado recebido — lista leve", () => {
     expect(service.fetchCommunication).toHaveBeenCalledWith("c-2")
   })
 })
+
+describe("Comunicado — moderação (Administrador geral)", () => {
+  it("quem modera retira o comunicado de outra pessoa com motivo; sem a permissão, não há menu", async () => {
+    renderWithQuery(<CommunicationEntry notice={notice({ authoredByViewer: false, recipientCount: null, author: { personId: "p-2", name: "Carlos" } })} />)
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Moderação do comunicado" })).toBeNull())
+    cleanup()
+
+    session.canModerateCommunications = true
+    service.moderateRetireCommunication.mockResolvedValue(undefined)
+    renderWithQuery(<CommunicationEntry notice={notice({ authoredByViewer: false, recipientCount: null, author: { personId: "p-2", name: "Carlos" } })} />)
+    const trigger = await screen.findByRole("button", { name: "Moderação do comunicado" })
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false })
+    fireEvent.keyDown(trigger, { key: "Enter" })
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Retirar \(moderação\)/ }))
+    expect(await screen.findByText("Retirar publicação de Carlos")).toBeInTheDocument()
+    const confirm = screen.getByRole("button", { name: "Retirar publicação" })
+    expect(confirm).toBeDisabled()
+    fireEvent.change(screen.getByLabelText("Motivo da retirada"), { target: { value: "Orientação contrária ao procedimento." } })
+    fireEvent.click(confirm)
+    await waitFor(() => expect(service.moderateRetireCommunication).toHaveBeenCalledWith("c-1", "Orientação contrária ao procedimento."))
+  })
+})
+

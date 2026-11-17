@@ -52,10 +52,11 @@ export type MemorySummary = z.infer<typeof memorySummarySchema>
 
 export const filterOptionsSchema = z.object({
   teams: z.array(z.object({ id: z.string(), name: z.string() })),
-  subteams: z.array(z.object({ id: z.string(), name: z.string() })),
+  // `teamId`/`subteamId` opcionais: encadeiam Grupo → Subgrupo → pessoa nos filtros (servidor antigo = sem encadear).
+  subteams: z.array(z.object({ id: z.string(), name: z.string(), teamId: z.string().nullable().optional() })),
   subjects: z.array(z.string()),
   documents: z.array(z.object({ id: z.string(), title: z.string() })),
-  people: z.array(z.object({ id: z.string(), name: z.string() })),
+  people: z.array(z.object({ id: z.string(), name: z.string(), teamId: z.string().nullable().optional(), subteamId: z.string().nullable().optional() })),
 })
 export type FilterOptions = z.infer<typeof filterOptionsSchema>
 

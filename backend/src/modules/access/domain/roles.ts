@@ -19,19 +19,19 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     code: "ADMINISTRADOR_GERAL",
     name: "Administrador geral",
     description: "Autoridade ampla no tenant, sempre na organização inteira: todas as permissões de administração. Pode cadastrar outros administradores. Executar e aprovar intervenções e a decisão sensível de continuidade não vêm com o papel: são concessões explícitas (separação de funções).",
-    permissions: ["access.users.view", "access.users.manage", "access.roles.view", "access.roles.assign", "people.manage", "agents.manage", "agents.inactive.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "data_hub.explore", "data_hub.cancel_records", "ai.view", "ai.manage", "ai.usage_ranking.view", "qa_lab.use", "feedback_quality_review.view", "feedback_quality_review.decide", "feedback_contestations.review", "privacy.subject_data.export", "indicators.view", "structure.metrics.view", "calendar.manage", "assistant_conversations.view", "inia_experience.manage", "usability.view", "usability.users.view", "usability.export", "usability.comments.view", "usability.manage", ...INTERVENTION_POLICY_PERMISSIONS, "interventions.view", "human_support.coordinate", "human_support.manage", "support.diagnostics.view", "operating_universes.all", "communications.publish_organization"],
+    permissions: ["access.users.view", "access.users.manage", "access.roles.view", "access.roles.assign", "people.manage", "agents.manage", "agents.inactive.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "operational_alignments.manage", "data_hub.manage", "data_hub.explore", "data_hub.cancel_records", "ai.view", "ai.manage", "ai.usage_ranking.view", "qa_lab.use", "feedback_quality_review.view", "feedback_quality_review.decide", "feedback_contestations.review", "privacy.subject_data.export", "indicators.view", "structure.metrics.view", "calendar.manage", "assistant_conversations.view", "inia_experience.manage", "usability.view", "usability.users.view", "usability.export", "usability.comments.view", "usability.manage", ...INTERVENTION_POLICY_PERMISSIONS, "interventions.view", "human_support.coordinate", "human_support.manage", "support.diagnostics.view", "operating_universes.all", "communications.publish_organization", "communications.moderate"],
     allowedScopes: ["ORGANIZATION"],
     // Apoio com Anjo: acompanha e configura, mas não ATENDE (atender é o papel Anjo, concessão explícita).
-    delegates: ["ADMINISTRADOR_GERAL", "ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "ADMINISTRADOR_DE_DADOS", "QA_DE_FEEDBACK", "REVISOR_DE_CONTESTACOES", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "AVALIADOR_DE_CONTINUIDADE", "REPORT", "ANJO", "COORDENADOR_DE_ANJOS", "ACESSO_A_TODOS_OS_UNIVERSOS", "COMUNICADOS_DA_EQUIPE", "COMUNICADOS_DA_EMPRESA"],
+    delegates: ["ADMINISTRADOR_GERAL", "ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "ADMINISTRADOR_DE_DADOS", "QA_DE_FEEDBACK", "REVISOR_DE_CONTESTACOES", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "AVALIADOR_DE_CONTINUIDADE", "REPORT", "ANJO", "COORDENADOR_DE_ANJOS", "ACESSO_A_TODOS_OS_UNIVERSOS", "COMUNICADOS_DA_EQUIPE", "COMUNICADOS_DA_EMPRESA", "GESTOR_DE_ALINHAMENTOS"],
     system: true,
   },
   {
     code: "ADMINISTRADOR",
     name: "Administrador",
     description: "Administra usuários, agentes, workflows e configurações e vê Indicadores, dados de gestão da Estrutura, o Calendário da equipe e quem mais usa a IA dentro do escopo atribuído. Não usa o QA Lab nem altera IA.",
-    permissions: [...ACCESS_ADMIN_PERMISSIONS, "people.manage", "agents.manage", "agents.inactive.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "ai.view", "ai.usage_ranking.view", "indicators.view", "structure.metrics.view", "calendar.manage", "operating_universes.all", ...INTERVENTION_POLICY_PERMISSIONS],
+    permissions: [...ACCESS_ADMIN_PERMISSIONS, "people.manage", "agents.manage", "agents.inactive.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "operational_alignments.manage", "ai.view", "ai.usage_ranking.view", "indicators.view", "structure.metrics.view", "calendar.manage", "operating_universes.all", ...INTERVENTION_POLICY_PERMISSIONS],
     allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
-    delegates: ["ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "REVISOR_DE_CONTESTACOES", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "REPORT", "ACESSO_A_TODOS_OS_UNIVERSOS"],
+    delegates: ["ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "REVISOR_DE_CONTESTACOES", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "REPORT", "ACESSO_A_TODOS_OS_UNIVERSOS", "GESTOR_DE_ALINHAMENTOS"],
     system: true,
   },
   {
@@ -84,9 +84,9 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     system: true,
   },
   {
-    // Gestores (Diretor, Gerente Sênior, Gerente, Coordenador, Supervisor) recebem este papel com escopo "Minha
-    // estrutura" — leitura das conversas de quem está abaixo deles. Cargo não concede: a atribuição é explícita
-    // (individual ou pela ação "Conceder aos gestores", ambas auditadas). Não abre nenhum outro módulo da Administração.
+    // Gestores (Diretor, Gerente Sênior, Gerente, Coordenador, Supervisor) podem receber este papel com escopo "Minha
+    // estrutura" — leitura das conversas de quem está abaixo deles. Cargo não concede: a atribuição é explícita, conta a
+    // conta, pelo fluxo normal de Usuários e acessos (auditada). Não abre nenhum outro módulo da Administração.
     code: "LEITOR_DE_CONVERSAS_INIA",
     name: "Leitor de conversas da INIA",
     description: "Lê, sem editar nem enviar mensagens, as conversas dos colaboradores com a INIA dentro do escopo (para gestores: a própria estrutura).",
@@ -182,6 +182,17 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     description: "Publica comunicados para a própria estrutura ou para toda a organização.",
     permissions: ["communications.publish_organization"],
     allowedScopes: ["ORGANIZATION"],
+    delegates: [],
+    system: true,
+  },
+  {
+    // Alinhamentos operacionais (migration 209): a gestão de uma área publica orientações temporárias de processo para o público do
+    // escopo da atribuição (Grupo/Subgrupo; "todo o universo" só com escopo de organização) — sem administrar mais nada.
+    code: "GESTOR_DE_ALINHAMENTOS",
+    name: "Gestor de alinhamentos",
+    description: "Cadastra, publica e encerra alinhamentos operacionais (orientações temporárias de processo, antes de a base oficial ser atualizada) para o público do escopo. Não altera bases, agentes nem configurações.",
+    permissions: ["operational_alignments.manage"],
+    allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
     delegates: [],
     system: true,
   },

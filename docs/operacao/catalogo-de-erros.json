@@ -4345,18 +4345,72 @@
       "family": "FAMILIA-REGRA-DE-NEGOCIO"
     },
     {
+      "code": "COMMUNICATION_ALREADY_OUT",
+      "module": "communications",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Um comunicado que já saiu não volta a rascunho. Arquive-o para tirá-lo de circulação."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "COMMUNICATION_ARCHIVE_STATE",
+      "module": "communications",
+      "statuses": [
+        409
+      ],
+      "messages": [],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "COMMUNICATION_ARCHIVED",
+      "module": "communications",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Desarquive o comunicado antes de alterá-lo."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
       "code": "COMMUNICATION_AUDIENCE_FORBIDDEN",
       "module": "communications",
       "statuses": [
         403
       ],
       "messages": [
-        "Você não tem permissão para publicar para toda a empresa."
+        "Você não tem permissão para publicar para este público."
       ],
       "refs": [
         "backend/src/modules/communications/application/communication-service.ts"
       ],
       "family": "FAMILIA-ACESSO"
+    },
+    {
+      "code": "COMMUNICATION_AUDIENCE_LOCKED",
+      "module": "communications",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "O público não muda depois que o comunicado saiu. Arquive e crie outro, se precisar."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
     },
     {
       "code": "COMMUNICATION_CONTENT_EMPTY",
@@ -4373,13 +4427,56 @@
       "family": "FAMILIA-REGRA-DE-NEGOCIO"
     },
     {
+      "code": "COMMUNICATION_DISPLAY_WINDOW_INVALID",
+      "module": "communications",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "O fim da exibição precisa ser depois do início da publicação."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "COMMUNICATION_DISPLAY_WINDOW_TOO_LONG",
+      "module": "communications",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "O período de exibição pode ser de no máximo um ano."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "COMMUNICATION_DRAFT_NOT_ARCHIVABLE",
+      "module": "communications",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Rascunho não é arquivado: descarte-o pelo menu."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
       "code": "COMMUNICATION_EDIT_FORBIDDEN",
       "module": "communications",
       "statuses": [
         403
       ],
       "messages": [
-        "Você não tem mais permissão para publicar para este público; ainda pode retirar o comunicado."
+        "Você não tem mais permissão para publicar para este público; ainda pode arquivar ou retirar o comunicado.",
+        "Você não tem mais permissão para publicar para este público."
       ],
       "refs": [
         "backend/src/modules/communications/application/communication-service.ts"
@@ -4429,13 +4526,27 @@
       "family": "FAMILIA-REGRA-DE-NEGOCIO"
     },
     {
+      "code": "COMMUNICATION_MODERATION_FORBIDDEN",
+      "module": "communications",
+      "statuses": [
+        403
+      ],
+      "messages": [
+        "Você não tem permissão para moderar publicações."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-ACESSO"
+    },
+    {
       "code": "COMMUNICATION_NO_AUDIENCE",
       "module": "communications",
       "statuses": [
         422
       ],
       "messages": [
-        "Não há ninguém na sua equipe para receber o comunicado."
+        "Não há ninguém neste público para receber o comunicado."
       ],
       "refs": [
         "backend/src/modules/communications/application/communication-service.ts"
@@ -4455,6 +4566,90 @@
         "backend/src/modules/communications/application/communication-service.ts"
       ],
       "family": "FAMILIA-NAO-ENCONTRADO"
+    },
+    {
+      "code": "COMMUNICATION_PUBLISHED_AT_LOCKED",
+      "module": "communications",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "O comunicado já foi publicado; o instante da publicação não muda."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "COMMUNICATION_REFERENCE_INVALID",
+      "module": "communications",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Um Grupo, Subgrupo ou produto escolhido não existe nesta organização."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "COMMUNICATION_SCHEDULE_IN_PAST",
+      "module": "communications",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "A data de publicação já passou. Escolha agora ou um horário futuro."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "COMMUNICATION_SCHEDULE_TOO_FAR",
+      "module": "communications",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "O agendamento pode ser de no máximo um ano."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "COMMUNICATION_SEGMENT_EMPTY",
+      "module": "communications",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Escolha o universo, ao menos um Grupo ou ao menos um Subgrupo para o público."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "COMMUNICATION_TAGS_REQUIRED",
+      "module": "communications",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Selecione ao menos uma categoria."
+      ],
+      "refs": [
+        "backend/src/modules/communications/application/communication-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
     },
     {
       "code": "COMMUNICATION_TEXT_TOO_LONG",
@@ -9575,6 +9770,353 @@
       ],
       "refs": [
         "backend/src/modules/operating-universe/application/universe-administration.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_ACTOR_REQUIRED",
+      "module": "operational-alignments",
+      "statuses": [
+        403
+      ],
+      "messages": [
+        "Sua conta não está vinculada a um colaborador: não é possível registrar quem publicou."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-ACESSO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_CHANGE_REASON_REQUIRED",
+      "module": "operational-alignments",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Informe o motivo da alteração: o alinhamento já foi publicado e a nova versão fica no histórico.",
+        "Informe o motivo da alteração."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_CHECK_UNAVAILABLE",
+      "module": "operational-alignments",
+      "statuses": [
+        503
+      ],
+      "messages": [
+        "Não foi possível conferir a orientação contra os assuntos proibidos agora. Tente publicar de novo em instantes."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-DEPENDENCIA"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_CONFLICT",
+      "module": "operational-alignments",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Há alinhamento do MESMO ponto com o MESMO público no mesmo período, sem precedência entre eles. Encerre o outro, ajuste o período ou use um recorte mais específico."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_DOCUMENT_NOT_FOUND",
+      "module": "operational-alignments",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Algum processo escolhido não foi encontrado nas bases desta organização."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_DRAFT_CHANGED",
+      "module": "operational-alignments",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "O rascunho mudou enquanto você publicava. Confira e publique de novo.",
+        "O alinhamento mudou enquanto você encerrava. Confira de novo."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_GROUP_UNCLASSIFIED",
+      "module": "operational-alignments",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Este Grupo/Subgrupo ainda não tem universo de atuação. Classifique-o em Administração › Universo de atuação antes de publicar um alinhamento para ele."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_NO_DRAFT",
+      "module": "operational-alignments",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Não há rascunho para descartar.",
+        "Não há rascunho para publicar."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_NOT_FOUND",
+      "module": "operational-alignments",
+      "statuses": [
+        404
+      ],
+      "messages": [
+        "Alinhamento não encontrado."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-NAO-ENCONTRADO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_NOT_PUBLISHED",
+      "module": "operational-alignments",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Não há versão publicada para encerrar."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_PERIOD_TOO_LONG",
+      "module": "operational-alignments",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Um alinhamento é temporário: a vigência vai até ${MAX_ALIGNMENT_DAYS} dias. Para uma mudança permanente, atualize a base oficial."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_PRODUCT_NOT_FOUND",
+      "module": "operational-alignments",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Produto não encontrado ou inativo."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_PROHIBITED_TOPIC",
+      "module": "operational-alignments",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "A orientação trata de assunto proibido pela Governança e não pode ser publicada: ${check.reason}"
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_REASON_DUPLICATED",
+      "module": "operational-alignments",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Já existe o motivo \"${name}\".",
+        "Já existe o motivo \"${input.name}\"."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_REASON_NOT_FOUND",
+      "module": "operational-alignments",
+      "statuses": [
+        404,
+        422
+      ],
+      "messages": [
+        "Motivo do alinhamento não encontrado ou desativado. Escolha outro.",
+        "Motivo não encontrado."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-NAO-ENCONTRADO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_RELATION_REQUIRED",
+      "module": "operational-alignments",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Outros alinhamentos alcançam o mesmo público, algum processo em comum e o mesmo período. Diga, para cada um, se tratam do mesmo ponto ou de pontos diferentes."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_REQUEST_REASON_DUPLICATED",
+      "module": "operational-alignments",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Já existe o motivo do pedido \"${existing.name}\"${existing.active ? \"\" : \" (desativado)\"}."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_REQUEST_REASON_INVALID",
+      "module": "operational-alignments",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Nome inválido para um motivo do pedido."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_REQUEST_REASON_NOT_FOUND",
+      "module": "operational-alignments",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Algum motivo do pedido do cliente não foi encontrado ou está desativado."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_RESPONSIBLE_INVALID",
+      "module": "operational-alignments",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Responsável inválido: escolha uma liderança ativa da organização (ou deixe você mesmo)."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_RETROACTIVE_VERSION",
+      "module": "operational-alignments",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "A nova versão não pode começar antes da versão publicada (${previous.starts_on}): o que já valia não é reescrito."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_SCOPE_FORBIDDEN",
+      "module": "operational-alignments",
+      "statuses": [
+        403
+      ],
+      "messages": [
+        "Só quem administra a organização inteira publica um alinhamento para todo o universo. Escolha um Grupo ou Subgrupo.",
+        "Você não administra este Grupo/Subgrupo.",
+        "Você não administra o público deste alinhamento."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-ACESSO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_SCOPE_INVALID",
+      "module": "operational-alignments",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Subgrupo não encontrado nesta organização.",
+        "Grupo não encontrado nesta organização."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "OPERATIONAL_ALIGNMENT_UNIVERSE_CONFLICT",
+      "module": "operational-alignments",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "O público escolhido é do universo ${groupUniverse}; o alinhamento está marcado como ${input.operatingUniverse}. Universos são separados.",
+        "Processo de outro universo: ${otherUniverse.map((document) => ",
+        "O produto é do universo ${product.operating_universe}; o alinhamento está marcado como ${input.operatingUniverse}."
+      ],
+      "refs": [
+        "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
       ],
       "family": "FAMILIA-CONFLITO"
     },

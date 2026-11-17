@@ -1,3 +1,4 @@
+import { OPERATIONAL_ALIGNMENT_ANALYSIS_INSTRUCTIONS, OPERATIONAL_ALIGNMENT_PROMPT_VERSION, withAlignmentInstructions } from "./operational-alignment-context.js"
 /**
  * CONTRATO DA ANÁLISE ORIENTADA AO CASO (`CALL_ANALYSIS_PROMPT_V8`, contrato `OBLIGATIONS_V1`).
  *
@@ -216,7 +217,12 @@ export const OBLIGATION_ANALYSIS_PRODUCT_RESPONSE_SCHEMA: Record<string, unknown
 })()
 
 /** O contrato da análise para esta chamada: o de sempre, ou o de sempre + produto (quando há catálogo vigente). */
-export function obligationAnalysisContractFor(productMode: boolean): { systemPrompt: string; schema: Record<string, unknown>; promptVersion: string } {
+export function obligationAnalysisContractFor(productMode: boolean, alignmentMode = false): { systemPrompt: string; schema: Record<string, unknown>; promptVersion: string } {
+  const base = obligationAnalysisBaseContractFor(productMode)
+  // Alinhamento operacional apresentado (A-n): instruções próprias antes do fechamento; schema igual (o conflito vai em sourceConflicts).
+  return alignmentMode ? { ...base, systemPrompt: withAlignmentInstructions(base.systemPrompt, OPERATIONAL_ALIGNMENT_ANALYSIS_INSTRUCTIONS), promptVersion: `${base.promptVersion}+${OPERATIONAL_ALIGNMENT_PROMPT_VERSION}` } : base
+}
+function obligationAnalysisBaseContractFor(productMode: boolean): { systemPrompt: string; schema: Record<string, unknown>; promptVersion: string } {
   return productMode
     ? { systemPrompt: OBLIGATION_ANALYSIS_PRODUCT_SYSTEM_PROMPT, schema: OBLIGATION_ANALYSIS_PRODUCT_RESPONSE_SCHEMA, promptVersion: `${OBLIGATION_ANALYSIS_PROMPT_VERSION}+${PRODUCT_SCOPE_PROMPT_VERSION}` }
     : { systemPrompt: OBLIGATION_ANALYSIS_SYSTEM_PROMPT, schema: OBLIGATION_ANALYSIS_RESPONSE_SCHEMA, promptVersion: OBLIGATION_ANALYSIS_PROMPT_VERSION }

@@ -167,6 +167,13 @@ export function AgentPicker({
           )}
         </button>
       )}
+      {/* O agente JÁ escolhido que não pode mais ser usado (ex.: de outro universo) diz o motivo também com a lista fechada —
+          antes só aparecia ao reabrir a busca (achado do QA de 17/11). */}
+      {!showList && selected && disabledReason(selected) ? (
+        <p className="text-xs text-destructive" role="status" data-testid="agent-picker-selected-blocked">
+          {disabledReason(selected)}
+        </p>
+      ) : null}
 
       {/* O Radix envolve o conteúdo num `display: table` que ignora a largura disponível: sem o `block`, nomes longos não truncam
           e empurram o contêiner (no antigo diálogo "Novo orquestrador", escondiam o botão de criar). */}

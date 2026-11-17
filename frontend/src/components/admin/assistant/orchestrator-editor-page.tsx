@@ -34,7 +34,8 @@ import { AgentPicker } from "@/components/admin/workflows/agent-picker"
 import { checkSpecialistAgainstRouting, describeRoutingProblem, POLICY_REQUIRED_MESSAGE, resolveAgentSpecialty, resolveRoutingPolicy, routingDomainPayload, type RoutingPolicy } from "@/schemas/admin/orchestrator-policy"
 import { useBusinessDomainsQuery } from "@/queries/admin/use-business-domain-queries"
 import { OrchestratorPolicyFields } from "./orchestrator-policy-fields"
-import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { OrgScopeSelect, orgScopeValueAfterUniverseChange, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { fitsUniverse } from "@/lib/operating-universe/hierarchy"
 import type { Agent } from "@/schemas/admin/agent.schema"
 import { ORCHESTRATOR_INVOCATION_MODE_LABELS, type Orchestrator, type OrchestratorInvocationMode } from "@/schemas/admin/assistant.schema"
 import { type StructuredOutputDefinition, type StructuredOutputIssue } from "@/schemas/admin/structured-output"
@@ -217,22 +218,30 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
   }, [])
 
   const agentsById = useMemo(() => new Map((agentsQuery.data ?? []).map((agent) => [agent.id, agent])), [agentsQuery.data])
+  // Hierarquia universo → Grupo → agentes/domínios: só se oferece o que é do universo do Orquestrador (o escolhido na criação; o do
+  // registro na edição). Pendente (nulo) cabe em qualquer um. O que já está SALVO de outro universo continua visível e marcado; o
+  // backend recusa a mistura (OPERATING_UNIVERSE_LINK_CONFLICT).
+  const universe = orchestrator ? (orchestrator.operatingUniverse ?? null) : operatingUniverse
+  const savedAgentIds = useMemo(() => new Set([...(orchestrator?.specialists.map((specialist) => specialist.agentId) ?? []), ...(orchestrator?.orchestratorAgentId ? [orchestrator.orchestratorAgentId] : [])]), [orchestrator])
+  const agentFits = useCallback((agent: Agent) => fitsUniverse(agent.operatingUniverse, universe) || savedAgentIds.has(agent.id), [universe, savedAgentIds])
+  const domainOptions = useMemo(() => (businessDomainsQuery.data ?? []).filter((domain) => fitsUniverse(domain.operatingUniverse, universe)), [businessDomainsQuery.data, universe])
   // Nunca oferecer um Agent exclusivo de outro grupo (Parte 6/24 do pedido) — o backend também
   // valida na gravação (validateAgentsCompatibleWithScope em assistant-router.ts), isto é só o
   // picker já vindo correto.
   const teamsForCompatibility = useMemo(() => manageableTeamsQuery.data?.teams ?? [], [manageableTeamsQuery.data])
   const orchestratorAgents = useMemo(
-    () => (agentsQuery.data ?? []).filter((agent) => agent.agentType === "ORCHESTRATOR" && scopesAreCompatible(teamsForCompatibility, orgScope, agent)),
-    [agentsQuery.data, teamsForCompatibility, orgScope],
+    () => (agentsQuery.data ?? []).filter((agent) => agent.agentType === "ORCHESTRATOR" && scopesAreCompatible(teamsForCompatibility, orgScope, agent) && agentFits(agent)),
+    [agentsQuery.data, teamsForCompatibility, orgScope, agentFits],
   )
   const specialistAgents = useMemo(
-    () => (agentsQuery.data ?? []).filter((agent) => agent.agentType !== "ORCHESTRATOR" && scopesAreCompatible(teamsForCompatibility, orgScope, agent)),
-    [agentsQuery.data, teamsForCompatibility, orgScope],
+    () => (agentsQuery.data ?? []).filter((agent) => agent.agentType !== "ORCHESTRATOR" && scopesAreCompatible(teamsForCompatibility, orgScope, agent) && agentFits(agent)),
+    [agentsQuery.data, teamsForCompatibility, orgScope, agentFits],
   )
   // Política de especialistas (orchestrator-policy.ts): quem não pode entrar aparece desabilitado
   // com o motivo — o backend aplica a mesma regra na gravação (422), isto é só a antecipação.
   // Nunca publicado também não entra (PEN-047; 422 ORCHESTRATOR_AGENT_NOT_PUBLISHED no backend).
   const specialistDisabledReason = (agent: Agent): string | null => {
+    if (!fitsUniverse(agent.operatingUniverse, universe)) return `É de outro universo de atuação (${agent.operatingUniverse}).`
     const unpublished = unpublishedReason(agent)
     if (unpublished) return unpublished
     const verdict = checkSpecialistAgainstRouting(routing, { name: agent.name, specialty: resolveAgentSpecialty(agent) })
@@ -275,6 +284,17 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
   // Ligado com campos = definição; desligado (ou ligado sem nenhum campo) = null (só texto livre).
   const structuredOutputPayload: StructuredOutputDefinition | null = structuredEnabled && structuredDefinition && structuredDefinition.nodes.length > 0 ? structuredDefinition : null
   const structuredBlocking = structuredEnabled && structuredIssues.length > 0
+
+  // Trocar o universo (só na criação) limpa o que deixou de caber: Grupo/Subgrupo, agente orquestrador, especialistas e domínios.
+  function handleUniverseChange(next: OperatingUniverse | null) {
+    setOperatingUniverse(next)
+    setOrgScope((current) => orgScopeValueAfterUniverseChange(current, manageableTeamsQuery.data?.teams, next))
+    const fits = (agentId: string) => fitsUniverse(agentsById.get(agentId)?.operatingUniverse, next)
+    if (orchestratorAgentId && !fits(orchestratorAgentId)) setOrchestratorAgentId("")
+    setSpecialistAgentIds((current) => current.filter((agentId) => agentId.length === 0 || fits(agentId)))
+    const catalog = businessDomainsQuery.data ?? []
+    setRouting((current) => (current.kind === "DOMAINS" ? { ...current, domains: current.domains.filter((domain) => fitsUniverse(catalog.find((candidate) => candidate.code === domain.code)?.operatingUniverse, next)) } : current))
+  }
 
   // 422 ORCHESTRATOR_AGENT_NOT_PUBLISHED: marca o agente recusado (a mensagem do backend já diz qual).
   function markNotPublished(error: unknown) {
@@ -466,7 +486,7 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
               {!isEditing ? (
                 <div className="space-y-1.5">
                   <Label htmlFor="orchestrator-universe">Universo de atuação</Label>
-                  <UniverseSelect id="orchestrator-universe" value={operatingUniverse} onChange={setOperatingUniverse} aria-describedby="orchestrator-universe-help" />
+                  <UniverseSelect id="orchestrator-universe" value={operatingUniverse} onChange={handleUniverseChange} aria-describedby="orchestrator-universe-help" />
                   <p id="orchestrator-universe-help" className="text-xs text-muted-foreground">Universos são separados: este recurso só será usado no universo escolhido.</p>
                 </div>
               ) : null}
@@ -491,7 +511,7 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
               <div className="space-y-1.5">
                 <Label>Grupo</Label>
                 {manageableTeamsQuery.data ? (
-                  <OrgScopeSelect teams={manageableTeamsQuery.data.teams} value={orgScope} onChange={setOrgScope} allowAllTeams={manageableTeamsQuery.data.unrestricted} />
+                  <OrgScopeSelect teams={manageableTeamsQuery.data.teams} value={orgScope} onChange={setOrgScope} allowAllTeams={manageableTeamsQuery.data.unrestricted} universe={universe} />
                 ) : (
                   <Skeleton className="h-10 w-full" />
                 )}
@@ -525,7 +545,7 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
                 <CardDescription>Quais especialistas este orquestrador pode escolher — a regra vale no servidor ao salvar.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
-                <OrchestratorPolicyFields routing={routing} domains={businessDomainsQuery.data ?? []} domainsLoading={businessDomainsQuery.isPending} onChange={setRouting} />
+                <OrchestratorPolicyFields routing={routing} domains={domainOptions} domainsLoading={businessDomainsQuery.isPending} onChange={setRouting} />
                 {showPolicyProblem ? (
                   <p className="text-xs text-destructive" role="alert" data-testid="policy-problem">
                     {policyProblem}

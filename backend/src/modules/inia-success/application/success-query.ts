@@ -8,7 +8,8 @@ import { assertFunnelPeriod } from "../../assistant/application/reply-funnel.js"
  * de cada bloco é o da permissão daquele bloco, decidido no servidor.
  */
 export type Queryable = Pick<Database, "query">
-export type SuccessViewer = { organizationId: string; personId: string }
+/** `accountId`: a conta da sessão (blocos cujo alcance vem das atribuições da conta, como o dos alinhamentos). */
+export type SuccessViewer = { organizationId: string; personId: string; accountId?: string }
 export type SuccessQuery = { from: string; to: string; teamId?: string | null | undefined; subteamId?: string | null | undefined }
 
 export function assertSuccessPeriod(query: SuccessQuery) {

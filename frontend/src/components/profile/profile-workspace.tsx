@@ -24,7 +24,7 @@ import { NO_ACCESS_CAPABILITIES, profileLinksFor, type AccessCapabilities } from
 
 import { WhereToActCard } from "@/components/leadership/where-to-act-card"
 
-import { SupervisorBroadcastDialog } from "./broadcast/supervisor-broadcast-dialog"
+import { PublishButton } from "@/components/publications/publish-button"
 // Abas fora da entrada (Indicadores, Equipe, Calendário, Estrutura) chegam sob demanda; o Acompanhamento — aba de entrada, com o
 // avatar — continua importado direto.
 import { IndicatorsView, PersonStructureView, TeamCalendarView, TeamView } from "./profile-tab-views"
@@ -87,7 +87,7 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
   return (
     <div className="min-h-screen overflow-x-clip bg-muted text-foreground">
       <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
-        <ProfileHeader person={ownHeaderPerson(baseProfile, me)} isOwn attached={!contextQuery.isError || Boolean(context)} actions={canPublishCommunications ? <SupervisorBroadcastDialog canPublishOrganization={capabilities.canPublishOrganizationCommunications} /> : undefined} />
+        <ProfileHeader person={ownHeaderPerson(baseProfile, me)} isOwn attached={!contextQuery.isError || Boolean(context)} actions={canPublishCommunications ? <PublishButton /> : undefined} />
         <main className="min-h-0">
           {contextQuery.isPending && !context ? <TabsSkeleton /> : null}
           {contextQuery.isError && !context ? <div className="mt-3"><AnalyticsErrorState error={contextQuery.error} onRetry={() => void contextQuery.refetch()} /></div> : null}

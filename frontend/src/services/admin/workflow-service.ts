@@ -1,3 +1,4 @@
+import type { UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
 import { z } from "zod"
 
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
@@ -89,6 +90,8 @@ export type WorkflowListParams = ListParams &
     active?: boolean
     hasActiveEnrollments?: boolean
     createdAt: DateRangeFilter
+    /** Universo de atuação; PENDING = sem classificação. */
+    operatingUniverse?: UniverseFilterValue
   }
 
 export async function fetchWorkflowsPage(params: WorkflowListParams): Promise<PageResult<Workflow>> {

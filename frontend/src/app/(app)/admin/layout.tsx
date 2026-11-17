@@ -7,6 +7,7 @@ import { ASSISTANT_CONVERSATIONS_PATH } from "@/components/admin/assistant-conve
 import { FEEDBACK_CONTESTATIONS_PATH } from "@/components/admin/feedback-contestations/feedback-contestations-route"
 import { USABILITY_PATH } from "@/components/admin/usability/usability-route"
 import { INIA_SUCCESS_PATH } from "@/components/inia-success/inia-success-route"
+import { PUBLICATIONS_PATH } from "@/components/publications/publications-route"
 import { HUMAN_SUPPORT_ADMIN_PATH, HUMAN_SUPPORT_MONITORING_PATH } from "@/components/human-support/monitoring/human-support-monitoring-route"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
@@ -21,9 +22,12 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   if (!user) redirect("/auth/login")
   // V1.5.7: a Administração abre por PERMISSÃO (papéis da conta), nunca por cargo/nível hierárquico.
   const { canAccessAdministration, canViewAssistantConversations, canReviewFeedbackContestations, canCoordinateHumanSupport, canManageHumanSupport, canViewIniaSuccess } = user.access.capabilities
+  // Publicações (área editorial dos comunicados): quem publica para a equipe ou para a empresa — sem outro módulo da Administração.
+  // Também quem só gerencia alinhamentos operacionais: eles fazem parte de Publicações (aba própria).
+  const canPublishCommunications = user.access.capabilities.canPublishTeamCommunications || user.access.capabilities.canPublishOrganizationCommunications || user.access.capabilities.canManageOperationalAlignments
   // Monitoria de usabilidade: permissão própria E painel ligado no ambiente (módulo desligado ≠ sem permissão: some do menu).
   const canViewUsability = user.access.capabilities.canViewUsability && user.features.usabilityPanel
-  if (!canAccessAdministration && !canViewAssistantConversations && !canViewUsability && !canReviewFeedbackContestations && !canCoordinateHumanSupport && !canManageHumanSupport && !canViewIniaSuccess) redirect(landingRouteFor(user))
+  if (!canAccessAdministration && !canViewAssistantConversations && !canViewUsability && !canReviewFeedbackContestations && !canCoordinateHumanSupport && !canManageHumanSupport && !canViewIniaSuccess && !canPublishCommunications) redirect(landingRouteFor(user))
   // Quem só lê as conversas, a monitoria, revisa contestações e/ou coordena os Anjos entra SÓ nessas áreas — nenhum outro módulo abre por
   // aqui (o backend também nega).
   if (!canAccessAdministration) {
@@ -35,6 +39,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       canCoordinateHumanSupport ? HUMAN_SUPPORT_MONITORING_PATH : null,
       canManageHumanSupport ? HUMAN_SUPPORT_ADMIN_PATH : null,
       canViewIniaSuccess ? INIA_SUCCESS_PATH : null,
+      canPublishCommunications ? PUBLICATIONS_PATH : null,
     ].filter((path): path is string => path !== null)
     if (!allowed.some((path) => onPath(path, pathname))) redirect(allowed[0]!)
   }
@@ -43,7 +48,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     <div className="relative mx-auto w-full max-w-7xl" style={{ contain: "layout" }}>
       {/* Um fundo só (o da página): sem a faixa de cor do variant "inset" nem o conteúdo como painel flutuante com sombra. */}
       <SidebarProvider className="has-data-[variant=inset]:bg-transparent">
-        <AdminSidebar capabilities={{ ...user.access.capabilities, canViewUsability }} />
+        <AdminSidebar capabilities={{ ...user.access.capabilities, canViewUsability, canPublishTeamCommunications: canPublishCommunications }} />
         <SidebarInset className="min-w-0 bg-transparent md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none">
           <div className="flex items-center gap-2 border-b border-border px-4 py-3 sm:px-6">
             <SidebarTrigger />

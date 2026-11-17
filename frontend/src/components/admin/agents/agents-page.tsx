@@ -1,5 +1,6 @@
 "use client"
 
+import { UniverseBadge } from "@/components/operating-universe/universe-badge"
 import Link from "next/link"
 import { Bot, BookOpen, CalendarClock, Plus, ShieldBan, UserRound, Zap } from "lucide-react"
 
@@ -20,6 +21,8 @@ import {
   ListDateRangeFilter,
   ListMultiSelectFilter,
   ListOrgScopeFilter,
+  ListUniverseFilter,
+  universeChoiceOf,
   ListSearchInput,
   ListSelectFilter,
   ListToolbar,
@@ -31,6 +34,9 @@ import { useAgentsPageQuery, useToggleAgentActiveMutation } from "@/queries/admi
 import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import { useKnowledgeDocumentsQuery } from "@/queries/admin/use-knowledge-queries"
 import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
+import type { OrgScopeFilter } from "@/lib/admin/list-query"
+import { filterByUniverse, orgScopeAfterUniverseChange, orgScopePatch, scopesFitOrgScope } from "@/lib/operating-universe/hierarchy"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import type { AgentListParams } from "@/services/admin/agent-service"
 import { AGENT_TYPE_COLORS, AGENT_TYPE_LABELS, agentPublicationLabel, type Agent } from "@/schemas/admin/agent.schema"
 
@@ -76,6 +82,7 @@ function AgentCard({ agent }: { agent: Agent }) {
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{AGENT_TYPE_LABELS[agent.agentType]}</span>
           <span aria-hidden>·</span>
           <span>{groupLabel(agent)}</span>
+          <UniverseBadge universe={agent.operatingUniverse} />
         </>
       }
       title={agent.name}
@@ -159,7 +166,12 @@ function AgentsTable({ agents }: { agents: Agent[] }) {
                 <TableCell>
                   <Badge variant="outline">{AGENT_TYPE_LABELS[agent.agentType]}</Badge>
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground">{groupLabel(agent)}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {groupLabel(agent)}
+                    <UniverseBadge universe={agent.operatingUniverse} />
+                  </div>
+                </TableCell>
                 <TableCell className="text-sm text-muted-foreground">{agent.knowledgeDocuments.length}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{agent.usageCount}</TableCell>
                 <TableCell>
@@ -197,6 +209,13 @@ export function AgentsPage() {
   const list = useAdminListState({ storageKey: "agents", defaultFilters: DEFAULT_FILTERS })
   const pageQuery = useAgentsPageQuery(list.params)
   const canManageInactive = useCurrentUserQuery().data?.access.capabilities.canManageInactiveAgents ?? false
+  // Hierarquia universo → Grupo/Subgrupo → base: cada filtro só oferece o que cabe nos de cima; trocar um de cima limpa os de baixo.
+  const universeChoice = universeChoiceOf(list.filters.operatingUniverse)
+  const currentScope: OrgScopeFilter = { scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }
+  const knowledgeOptions = (universe: OperatingUniverse | undefined, scope: OrgScopeFilter) =>
+    filterByUniverse(knowledgeQuery.data ?? [], universe).filter((document) => scopesFitOrgScope(document.orgScopes, scope, teamsQuery.data))
+  const keepKnowledge = (id: string | undefined, universe: OperatingUniverse | undefined, scope: OrgScopeFilter) =>
+    id && knowledgeOptions(universe, scope).some((document) => document.id === id) ? id : undefined
 
   return (
     <section className="space-y-4">
@@ -232,15 +251,24 @@ export function AgentsPage() {
             {canManageInactive ? (
               <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
             ) : null}
+            <ListUniverseFilter
+              value={list.filters.operatingUniverse}
+              onChange={(operatingUniverse) => {
+                const universe = universeChoiceOf(operatingUniverse)
+                const scope = orgScopeAfterUniverseChange(currentScope, teamsQuery.data, universe)
+                list.patchFilters({ operatingUniverse, ...orgScopePatch(scope), knowledgeDocumentId: keepKnowledge(list.filters.knowledgeDocumentId, universe, scope) })
+              }}
+            />
             <ListOrgScopeFilter
               teams={teamsQuery.data}
-              value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
-              onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
+              universe={universeChoice}
+              value={currentScope}
+              onChange={(scope) => list.patchFilters({ ...orgScopePatch(scope), knowledgeDocumentId: keepKnowledge(list.filters.knowledgeDocumentId, universeChoice, scope) })}
             />
             <ListSelectFilter
               value={list.filters.knowledgeDocumentId}
               onChange={(value) => list.setFilter("knowledgeDocumentId", value)}
-              options={(knowledgeQuery.data ?? []).map((document) => ({ value: document.id, label: document.title }))}
+              options={knowledgeOptions(universeChoice, currentScope).map((document) => ({ value: document.id, label: document.title }))}
               allLabel="Qualquer base de conhecimento"
               ariaLabel="Filtrar por base de conhecimento"
               className="sm:max-w-64"

@@ -1,40 +1,37 @@
 import { describe, expect, it } from "vitest"
 
-import { broadcastImageSchema, broadcastSchema, communicationSchema, receivedCommunicationsSchema } from "./communication.schema"
+import { broadcastImageSchema, communicationSchema, editorialFormSchema, publishBlockers, receivedCommunicationsSchema, type EditorialForm } from "./communication.schema"
 
-describe("broadcastSchema", () => {
-  it("aceita comunicado válido com múltiplas categorias", () => {
-    const result = broadcastSchema.safeParse({ title: "Nova campanha", contentHtml: "<p>Conteúdo</p>", plainText: "Conteúdo", audience: "TEAM", tags: ["Aviso", "Campanha"] })
-    expect(result.success).toBe(true)
-  })
-
-  it("rejeita comunicado vazio, sem categoria ou com público desconhecido", () => {
-    expect(broadcastSchema.safeParse({ title: "", contentHtml: "", plainText: "", audience: "TEAM", tags: [] }).success).toBe(false)
-    expect(broadcastSchema.safeParse({ title: "Título", contentHtml: "<p>x</p>", plainText: "x", audience: "team", tags: ["Aviso"] }).success).toBe(false)
-  })
-
-  it("aceita uma imagem de 1,4 MB em base64 e recusa o comunicado acima de 2 MB", () => {
-    const fits = `<p>Imagem</p><img src="data:image/png;base64,${"a".repeat(1_870_000)}">`
-    expect(broadcastSchema.safeParse({ title: "Comunicado com imagem", contentHtml: fits, plainText: "Imagem", audience: "TEAM", tags: ["Aviso"] }).success).toBe(true)
-    const tooBig = `<img src="data:image/png;base64,${"a".repeat(2_000_001)}">`
-    expect(broadcastSchema.safeParse({ title: "Comunicado grande", contentHtml: tooBig, plainText: "x", audience: "TEAM", tags: ["Aviso"] }).success).toBe(false)
-  })
+const form = (overrides: Partial<EditorialForm> = {}): EditorialForm => ({
+  title: "Nova campanha", contentHtml: "<p>Conteúdo</p>", plainText: "Conteúdo", tags: ["Aviso", "Campanha"], summary: "", featured: false, audience: "TEAM",
+  segment: { universe: null, teamIds: [], subteamIds: [] }, productNodeId: null, publishAt: null, displayUntil: null, ...overrides,
 })
 
-describe("broadcastSchema — a mesma regra do servidor", () => {
-  const base = { title: "Comunicado", audience: "TEAM", tags: ["Aviso"] } as const
-  const image = `<img src="data:image/png;base64,aGVsbG8=">`
-
-  it("só imagem, sem texto, é aceito; sem texto e sem imagem, não (B11)", () => {
-    expect(broadcastSchema.safeParse({ ...base, contentHtml: `<p>${image}</p>`, plainText: "" }).success).toBe(true)
-    const empty = broadcastSchema.safeParse({ ...base, contentHtml: "<p><br></p>", plainText: "  " })
-    expect(empty.success).toBe(false)
-    expect(empty.error?.issues[0]?.message).toBe("Digite o conteúdo do comunicado.")
+describe("editorialFormSchema + publishBlockers", () => {
+  it("aceita publicação válida; rascunho só precisa do título", () => {
+    expect(editorialFormSchema.safeParse(form()).success).toBe(true)
+    expect(publishBlockers(form())).toEqual([])
+    const draft = form({ contentHtml: "", plainText: "", tags: [] })
+    expect(editorialFormSchema.safeParse(draft).success).toBe(true)
+    expect(publishBlockers(draft)).toEqual(["Escreva o conteúdo da publicação.", "Escolha ao menos uma categoria."])
+    expect(editorialFormSchema.safeParse(form({ title: "x" })).success).toBe(false)
   })
 
-  it("no máximo 6 imagens, como o servidor", () => {
-    expect(broadcastSchema.safeParse({ ...base, contentHtml: image.repeat(6), plainText: "" }).success).toBe(true)
-    expect(broadcastSchema.safeParse({ ...base, contentHtml: image.repeat(7), plainText: "" }).error?.issues[0]?.message).toBe("O comunicado pode ter no máximo 6 imagens.")
+  it("aceita uma imagem de 1,4 MB em base64 e recusa a publicação acima de 2 MB", () => {
+    expect(editorialFormSchema.safeParse(form({ contentHtml: `<p>Imagem</p><img src="data:image/png;base64,${"a".repeat(1_870_000)}">` })).success).toBe(true)
+    expect(editorialFormSchema.safeParse(form({ contentHtml: `<img src="data:image/png;base64,${"a".repeat(2_000_001)}">` })).success).toBe(false)
+  })
+
+  it("só imagem vale; no máximo 6 imagens, como o servidor (B11)", () => {
+    const image = `<img src="data:image/png;base64,aGVsbG8=">`
+    expect(publishBlockers(form({ contentHtml: `<p>${image}</p>`, plainText: "" }))).toEqual([])
+    expect(publishBlockers(form({ contentHtml: image.repeat(7), plainText: "" }))).toEqual(["A publicação pode ter no máximo 6 imagens."])
+  })
+
+  it("recorte sem critério e fim antes do início travam a publicação", () => {
+    expect(publishBlockers(form({ audience: "SEGMENT" }))).toEqual(["Escolha o universo, um Grupo ou um Subgrupo para o público."])
+    expect(publishBlockers(form({ audience: "SEGMENT", segment: { universe: "B2C", teamIds: [], subteamIds: [] } }))).toEqual([])
+    expect(publishBlockers(form({ publishAt: "2026-11-20T12:00:00.000Z", displayUntil: "2026-11-19T12:00:00.000Z" }))).toEqual(["O fim da exibição precisa ser depois do início."])
   })
 
   it("GIF é recusado ao escolher a imagem (U4-03)", () => {

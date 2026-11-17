@@ -63,6 +63,10 @@ export function DiagnosticsPage() {
     [period, fallback, teamId, subteamId, personId, subject, documentId],
   )
   const options = useMemoryFilterOptionsQuery()
+  // Só o que cabe no Grupo/Subgrupo escolhido. Item sem a informação (servidor antigo) continua oferecido.
+  const subteamsOf = (team: string | undefined) => (options.data?.subteams ?? []).filter((subteam) => !team || !subteam.teamId || subteam.teamId === team)
+  const peopleOf = (team: string | undefined, subteam: string | undefined) =>
+    (options.data?.people ?? []).filter((person) => (!team || person.teamId === undefined || person.teamId === team) && (!subteam || person.subteamId === undefined || person.subteamId === subteam))
   const summary = useMemorySummaryQuery(filters)
   const hasActiveFilters = Boolean(teamId || subteamId || personId || subject || documentId || period.from !== fallback.from || period.to !== fallback.to)
   const clearFilters = () => {
@@ -84,9 +88,29 @@ export function DiagnosticsPage() {
         onClearFilters={clearFilters}
       >
         <ListDateRangeFilter label="Período" value={period} onChange={setPeriod} />
-        <ListSelectFilter ariaLabel="Grupo" allLabel="Todos os grupos" value={teamId} onChange={setTeamId} options={(options.data?.teams ?? []).map((team) => ({ value: team.id, label: team.name }))} />
-        <ListSelectFilter ariaLabel="Subgrupo" allLabel="Todos os subgrupos" value={subteamId} onChange={setSubteamId} options={(options.data?.subteams ?? []).map((subteam) => ({ value: subteam.id, label: subteam.name }))} />
-        <ListSelectFilter ariaLabel="Pessoa" allLabel="Todas as pessoas" value={personId} onChange={setPersonId} options={(options.data?.people ?? []).map((person) => ({ value: person.id, label: person.name }))} />
+        <ListSelectFilter
+          ariaLabel="Grupo"
+          allLabel="Todos os grupos"
+          value={teamId}
+          onChange={(next) => {
+            setTeamId(next)
+            // Hierarquia Grupo → Subgrupo → pessoa: trocar o Grupo limpa o Subgrupo e a pessoa que deixaram de caber.
+            if (subteamId && !subteamsOf(next).some((subteam) => subteam.id === subteamId)) setSubteamId(undefined)
+            if (personId && !peopleOf(next, subteamId && subteamsOf(next).some((subteam) => subteam.id === subteamId) ? subteamId : undefined).some((person) => person.id === personId)) setPersonId(undefined)
+          }}
+          options={(options.data?.teams ?? []).map((team) => ({ value: team.id, label: team.name }))}
+        />
+        <ListSelectFilter
+          ariaLabel="Subgrupo"
+          allLabel="Todos os subgrupos"
+          value={subteamId}
+          onChange={(next) => {
+            setSubteamId(next)
+            if (personId && !peopleOf(teamId, next).some((person) => person.id === personId)) setPersonId(undefined)
+          }}
+          options={subteamsOf(teamId).map((subteam) => ({ value: subteam.id, label: subteam.name }))}
+        />
+        <ListSelectFilter ariaLabel="Pessoa" allLabel="Todas as pessoas" value={personId} onChange={setPersonId} options={peopleOf(teamId, subteamId).map((person) => ({ value: person.id, label: person.name }))} />
         <ListSelectFilter ariaLabel="Assunto" allLabel="Todos os assuntos" value={subject} onChange={setSubject} options={(options.data?.subjects ?? []).map((name) => ({ value: name, label: name }))} />
         <ListSelectFilter ariaLabel="Procedimento" allLabel="Todos os procedimentos" value={documentId} onChange={setDocumentId} options={(options.data?.documents ?? []).map((document) => ({ value: document.id, label: document.title }))} />
       </ListToolbar>

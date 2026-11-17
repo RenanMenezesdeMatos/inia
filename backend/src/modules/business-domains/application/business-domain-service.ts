@@ -13,7 +13,7 @@ import { businessDomainInputSchema, businessDomainPatchSchema, type BusinessDoma
  */
 type Queryable = { query: Database["query"] }
 
-const DOMAIN_COLUMNS = `d.id, d.code, d.name, d.description, d.active, d.created_at "createdAt", d.updated_at "updatedAt"`
+const DOMAIN_COLUMNS = `d.id, d.code, d.name, d.description, d.active, d.operating_universe "operatingUniverse", d.created_at "createdAt", d.updated_at "updatedAt"`
 
 /** Contadores das dependências reais — FK/relação nova OU código legado (agente/orquestrador ainda
  * sem backfill continua contando: é uma referência de verdade). Uma subquery por tabela, nunca N+1. */

@@ -9,12 +9,16 @@ const subjectSchema = z.object({ name: z.string().trim().min(2), description: z.
 const subteamSchema = z.object({ name: z.string().trim().min(2) })
 
 async function fetchTeamsWithSubteams(db: Database, organizationId: string) {
-  const teams = await db.query<{ id: string; name: string; operationId: string }>(
-    `select id, name, operation_id "operationId" from teams where organization_id = $1 order by name`,
+  // `operatingUniverse` (universo de atuação, migration 204): no Grupo, o dele; no Subgrupo, o EFETIVO (o próprio ou, sem ele, o do
+  // Grupo-pai). Só para os seletores encadearem (universo → Grupo → Subgrupo); quem decide é o backend de cada recurso.
+  const teams = await db.query<{ id: string; name: string; operationId: string; operatingUniverse: string | null }>(
+    `select id, name, operation_id "operationId", operating_universe "operatingUniverse" from teams where organization_id = $1 order by name`,
     [organizationId],
   )
-  const subteams = await db.query<{ id: string; teamId: string; name: string }>(
-    `select id, team_id "teamId", name from subteams where organization_id = $1 order by name`,
+  const subteams = await db.query<{ id: string; teamId: string; name: string; operatingUniverse: string | null }>(
+    `select s.id, s.team_id "teamId", s.name, coalesce(s.operating_universe, t.operating_universe) "operatingUniverse"
+       from subteams s join teams t on t.id = s.team_id
+      where s.organization_id = $1 order by s.name`,
     [organizationId],
   )
   return teams.rows.map((team) => ({

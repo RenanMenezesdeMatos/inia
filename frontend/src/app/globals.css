@@ -95,10 +95,15 @@
 }
 
 .inia-rich-editor h2 { font-family: var(--font-sans); font-size: 1.25rem; font-weight: 600; margin-block: .5rem; }
+.inia-rich-editor h3 { font-family: var(--font-sans); font-size: 1.05rem; font-weight: 600; margin-block: .5rem; }
 .inia-rich-editor ul { list-style: disc; padding-left: 1.25rem; }
+.inia-rich-editor ol { list-style: decimal; padding-left: 1.25rem; }
+.inia-rich-editor a, .inia-rich-content a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
 .inia-rich-editor img { border-radius: .75rem; display: block; margin-block: .75rem; max-height: 16rem; max-width: 100%; object-fit: cover; }
 .inia-rich-content h2, .inia-rich-content h3 { color: var(--foreground); font-family: var(--font-sans); font-size: 1.1rem; font-weight: 600; margin-block: .5rem; }
 .inia-rich-content ul { list-style: disc; padding-left: 1.25rem; }
+.inia-rich-content ol { list-style: decimal; padding-left: 1.25rem; }
+.inia-rich-content h3 { font-size: 1rem; }
 .inia-rich-content img { border-radius: .75rem; display: block; margin-block: .75rem; max-height: 20rem; max-width: 100%; object-fit: cover; }
 
 :root {

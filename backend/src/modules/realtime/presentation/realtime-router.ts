@@ -1,3 +1,5 @@
+import type { LeaderStructureScope } from "../../communications/domain/leader-structure.js"
+import { loadLeaderStructureBlock } from "../../communications/infrastructure/leader-structure-context.js"
 import { Router } from "express"
 import { parseFeedbackSessionClarificationScope, type FeedbackSessionClarificationScope } from "../../feedback-application/domain/product-confirmation.js"
 import { FEEDBACK_PRESENTATION_CUE } from "../../feedback-application/domain/application-presentation.js"
@@ -37,7 +39,7 @@ import { buildLeadershipChatContext, loadLeadershipSession, visibleCards, type L
 import { isLeadershipTool, LEADERSHIP_ASK_DECLARATION, LEADERSHIP_ASK_TOOL, summarizeLeadershipCard } from "../../leadership-analytics/application/leadership-toolset.js"
 import { loadSelfChatContext, SELF_ASK_DECLARATION, SELF_ASK_TOOL, SELF_TOOL, type SelfChatContext } from "../../leadership-analytics/application/self-context.js"
 import { queryTableMarkdown } from "../../leadership-analytics/application/indicator-query.js"
-import { buildProcessConsultationToolset, combineToolsets, parseProcessClarificationScope, PROCESS_TOOL, reachableProcessOrchestrators, type ProcessClarificationScope } from "../../leadership-analytics/application/process-consultation.js"
+import { buildProcessConsultationToolset, combineToolsets, groupChoiceText, parseProcessClarificationScope, PROCESS_TOOL, reachableProcessOrchestrators, skippedGroupsNote, type ProcessClarificationScope, type ProcessTurnOutcome } from "../../leadership-analytics/application/process-consultation.js"
 import { classifyReply, createPostgresProposalStore, REPORT_OFFER_LINE, type ProposalRecord, type ProposalStore } from "../../reports/application/report-proposals.js"
 import { createPostgresReportRuntime, type ReportRuntime } from "../../reports/application/report-runtime.js"
 import { createPostgresReportStore, type ReportStore } from "../../reports/application/report-store.js"
@@ -205,6 +207,23 @@ const voiceSessionSchema = z.object({
 
 /** "Orquestrador" mínimo para quem lidera numa organização sem Orquestrador do chat: só as ferramentas do backend (passadas à
  * parte), nenhum especialista nem resultado estruturado. Ids vazios = não há registro de Orquestrador/Agente a referenciar. */
+/**
+ * Chat sem Orquestrador do Grupo de quem conversa (só ferramentas da liderança/dados): alinhamentos vigentes dos públicos da ESTRUTURA
+ * de quem lidera e comunicados que chegam a ela (ou que a pessoa recebeu), só os relacionados à pergunta (`LEADER_STRUCTURE_CONTEXT_V1`).
+ * Vai ANTES dos assuntos proibidos. Falha na leitura nunca derruba a resposta (fica sem o bloco).
+ */
+export async function leaderStructureInstruction(db: Database, organizationId: string, personId: string, question: string): Promise<string> {
+  try {
+    const block = await loadLeaderStructureBlock(db, { organizationId, scope: { kind: "LEADER_STRUCTURE", leaderPersonId: personId, teamIds: null }, question })
+    return block.text ? `\n\n${block.text}` : ""
+  } catch (error) {
+    console.error(JSON.stringify({ event: "leader_structure_context_failed", message: (error as Error).message }))
+    return ""
+  }
+}
+
+const lastUserText = (history: readonly { role: string; text: string }[]) => [...history].reverse().find((turn) => turn.role === "user")?.text ?? ""
+
 export function leadershipOnlyOrchestrator(organizationId: string, systemPrompt: string): ResolvedOrchestrator {
   return { organizationId, orchestratorId: "", orchestratorName: "INIA", orchestratorAgentId: "", systemPrompt, specialists: [], tools: [], outputInstructions: null, structuredOutput: null, recommendSupportMaterials: false }
 }
@@ -243,6 +262,17 @@ export function leadershipTextWithClarification(reply: OrchestratedReply, clarif
   const others = (reply.directResults ?? []).filter((result) => !(result.toolName === PROCESS_TOOL && result.trace && "knowledgeClarification" in result.trace))
   const lead = others.length > 0 ? reply.text.trim() : ""
   return { text: lead ? `${lead}\n\n${clarificationContent}` : clarificationContent, withLead: Boolean(lead) }
+}
+
+/**
+ * PROCESS_GROUP_RULE_V1 — a palavra final é do sistema: sem Grupo dito e com procedimentos diferentes, a resposta é a pergunta do
+ * Grupo (o texto do modelo é descartado); com Grupo pedido que ficou de fora pelo limite, a resposta diz qual.
+ */
+export function applyProcessGroupRule(reply: OrchestratedReply, turn: ProcessTurnOutcome | null): OrchestratedReply {
+  if (!turn) return reply
+  if (turn.groupChoice && turn.consultedGroups.length === 0) return { ...reply, text: groupChoiceText(turn.groupChoice) }
+  if (turn.skippedGroups.length > 0) return { ...reply, text: `${reply.text.trimEnd()}${skippedGroupsNote([...new Set(turn.skippedGroups)])}` }
+  return reply
 }
 
 /** Moldura da consulta de processo de quem lidera, para o Orquestrador do Grupo e os especialistas dele. */
@@ -489,7 +519,9 @@ export function createRealtimeRouter(
       ? buildProcessConsultationToolset({
           scope: input.leadership.processScope,
           orchestrators,
-          consult: async ({ orchestrator, groupNames, question }) => {
+          // PROCESS_GROUP_RULE_V1: o Grupo só vale se a pessoa o disse — as falas dela nesta conversa (as mais recentes).
+          askerTexts: input.history.filter((turn) => turn.role === "user").slice(-6).map((turn) => turn.text),
+          consult: async ({ orchestrator, groupNames, teamIds, question }) => {
             const resolved = await orchestratorById(input.organizationId, orchestrator.id, question, input.leadership.processScope?.orchestratorUniverses ?? null)
             if (!resolved) return null
             const scope: ProcessClarificationScope = { kind: "LEADERSHIP_PROCESS", orchestratorId: resolved.orchestratorId, orchestratorName: orchestrator.name, groupNames }
@@ -503,7 +535,10 @@ export function createRealtimeRouter(
             // material de análise (transcrição), e especialista de domínio passaria a exigir citação literal dele (mesmo cuidado da
             // sessão de feedback). A moldura chega aos especialistas pelo canal próprio (`conversationFrame`).
             const session = { ...resolved, systemPrompt: `${resolved.systemPrompt}${await askingPersonProfile(input.organizationId, input.personId, { processConsultation: true })}\n\n${frame}` }
-            const reply = await orchestratedReply(db, session, [{ role: "user", text: question }], "", input.personId, { collaboratorConversation: true, conversationFrame: frame })
+            // Alinhamentos e comunicados dos públicos dos Grupos CONSULTADOS (`LEADER_STRUCTURE_CONTEXT_V1`), não os do próprio gestor:
+            // é a regra que vale hoje para quem atende nesses Grupos.
+            const structureScope: LeaderStructureScope = { kind: "LEADER_STRUCTURE", leaderPersonId: input.personId, teamIds: teamIds.length > 0 ? teamIds : null, groupNames }
+            const reply = await orchestratedReply(db, session, [{ role: "user", text: question }], "", input.personId, { collaboratorConversation: true, conversationFrame: frame, structureScope })
             if (reply.supportMaterials && reply.supportMaterials.length > 0) materials.push({ orchestratorId: resolved.orchestratorId, recommendations: reply.supportMaterials })
             sources.push(...replyComplianceSources(reply, resolved))
             return { text: reply.text, trace: { specialists: reply.calls.map((call) => call.toolName), agentId: reply.agentId } }
@@ -511,11 +546,14 @@ export function createRealtimeRouter(
         })
       : null
     const directTools = process ? combineToolsets(process, input.leadership.toolset) : input.leadership.toolset
-    const top = leadershipOnlyOrchestrator(input.organizationId, input.instruction + guardrails)
+    const top = leadershipOnlyOrchestrator(input.organizationId, input.instruction + (await leaderStructureInstruction(db, input.organizationId, input.personId, lastUserText(input.history))) + guardrails)
     // Em fluxo, só enquanto nenhuma consulta de processo virou esclarecimento: nesse caso o texto da resposta é o do esclarecimento
     // (`leadershipTextWithClarification`) e o do modelo não vai para a tela antes da hora.
-    const stream = input.stream ? { ...input.stream, allow: () => clarifications.length === 0 } : undefined
-    const reply = await orchestratedReply(db, top, input.history, "", input.personId, { collaboratorConversation: true }, {}, { directTools, toleratesToolFailure: true, ...(stream ? { stream } : {}) })
+    // Grupo exigido ou Grupo que ficou de fora (PROCESS_GROUP_RULE_V1): o texto final é do sistema, então o do modelo não vai em fluxo.
+    const decided = () => { const turn = process?.outcome?.(); return Boolean(turn && ((turn.groupChoice && turn.consultedGroups.length === 0) || turn.skippedGroups.length > 0)) }
+    const stream = input.stream ? { ...input.stream, allow: () => clarifications.length === 0 && !decided() } : undefined
+    const modelReply = await orchestratedReply(db, top, input.history, "", input.personId, { collaboratorConversation: true }, {}, { directTools, toleratesToolFailure: true, ...(stream ? { stream } : {}) })
+    const reply = applyProcessGroupRule(modelReply, process?.outcome?.() ?? null)
     return { reply, materials, clarification: clarifications[0] ?? null, sources }
   }
 
@@ -827,7 +865,7 @@ export function createRealtimeRouter(
     const orchestrate = (hooks: Pick<NonNullable<Parameters<typeof runOrchestratedReply>[7]>, "proceed"> = {}) =>
       askOrchestrator
         ? orchestratedReply(db, withConversationInstruction(askOrchestrator, instruction), history, "", personId, { collaboratorConversation: true, askerQuestion: spoken }, {}, { directTools: ask.toolset, toleratesToolFailure: true, ...hooks })
-        : conversationGuardrails(scope.organizationId, null).then((guardrails) => orchestratedReply(db, leadershipOnlyOrchestrator(scope.organizationId, instruction + guardrails), history, "", personId, { collaboratorConversation: true, askerQuestion: spoken }, {}, { directTools: ask.toolset, toleratesToolFailure: true, ...hooks }))
+        : Promise.all([conversationGuardrails(scope.organizationId, null), leaderStructureInstruction(db, scope.organizationId, personId, spoken)]).then(([guardrails, structure]) => orchestratedReply(db, leadershipOnlyOrchestrator(scope.organizationId, instruction + structure + guardrails), history, "", personId, { collaboratorConversation: true, askerQuestion: spoken }, {}, { directTools: ask.toolset, toleratesToolFailure: true, ...hooks }))
     // Orquestração que já começou junto do esclarecimento (pergunta nova de quem atende) — usada se ele passar.
     let speculated: Promise<OrchestratedReply> | null = null
     if (!ask.leadership && askOrchestrator && clarifies) {
@@ -1656,7 +1694,7 @@ export function createRealtimeRouter(
           trace.setPath("DATA_ONLY")
           // Sem Orquestrador configurado, a pessoa ainda consulta os próprios dados (ou os da estrutura que lidera): a mesma
           // orquestração, só com as ferramentas do backend (sem especialistas) e os assuntos proibidos.
-          const instruction = systemInstruction + (await conversationGuardrails(scope.organizationId, null))
+          const instruction = systemInstruction + (await leaderStructureInstruction(db, scope.organizationId, operatorId, lastUserText(history))) + (await conversationGuardrails(scope.organizationId, null))
           await sendOrchestratedReply(await trace.span("orchestration", () => orchestratedReply(db, leadershipOnlyOrchestrator(scope.organizationId, instruction), history, "", operatorId, { collaboratorConversation: true }, {}, { directTools: dataTools, stream: liveStream, toleratesToolFailure: true })), "")
           send("done", {})
           return

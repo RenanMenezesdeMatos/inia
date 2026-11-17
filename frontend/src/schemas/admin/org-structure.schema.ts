@@ -1,9 +1,15 @@
 import { z } from "zod"
+import { operatingUniverseSchema } from "@/schemas/operating-universe/operating-universe.schema"
+
+// Universo de atuação (migration 204): no Grupo, o dele; no Subgrupo, o EFETIVO (o próprio ou o do Grupo-pai). Opcional e nulo =
+// pendente/servidor antigo — os seletores tratam ausência como "cabe em qualquer universo" (lib/operating-universe/hierarchy.ts).
+const unitUniverseSchema = operatingUniverseSchema.nullable().optional().catch(null)
 
 export const subteamSchema = z.object({
   id: z.string(),
   teamId: z.string(),
   name: z.string(),
+  operatingUniverse: unitUniverseSchema,
 })
 export type Subteam = z.infer<typeof subteamSchema>
 
@@ -11,6 +17,7 @@ export const teamSchema = z.object({
   id: z.string(),
   name: z.string(),
   operationId: z.string(),
+  operatingUniverse: unitUniverseSchema,
   subteams: z.array(subteamSchema),
 })
 export type Team = z.infer<typeof teamSchema>

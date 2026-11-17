@@ -19,6 +19,7 @@ import { loadVisibleIndicatorDependencies } from "../../indicators/application/i
 import { createIndicatorDefinition, deleteIndicatorDefinition, findIndicatorDefinition, updateIndicatorDefinition } from "../../indicators/application/indicator-definition-service.js"
 import { applyIndicatorCorrection, impactForViewer, previewIndicatorCorrection } from "../../indicators/application/indicator-correction-service.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { applyUniverseListFilter, universeListParam } from "../../operating-universe/application/universe-list-filter.js"
 
 
 const ruleSchema = z.object({
@@ -53,12 +54,13 @@ const listIndicatorsSchema = orgScopeFilterSchema.extend({
   hasGlossary: booleanParam,
   dailySupported: booleanParam,
   calculationPeriod: listParam(z.enum(["DAILY", "WEEKLY", "MONTHLY"])),
+  operatingUniverse: universeListParam,
 })
 
 // V1.6.2 — status compacto da estratégia de diagnóstico (Configurado | Rascunho | Não configurado | Inativo).
 const INDICATOR_SELECT = `
   select
-    d.id, d.code, d.name, d.unit, d.desired_direction "desiredDirection", d.active,
+    d.id, d.code, d.name, d.unit, d.desired_direction "desiredDirection", d.active, d.operating_universe "operatingUniverse",
     d.operational_aggregation "operationalAggregation", d.daily_supported "dailySupported",
     d.minimum_sample_size "minimumSampleSize", d.minimum_coverage::float "minimumCoverage", d.official_closure_supported "officialClosureSupported", d.proves_work_activity "provesWorkActivity", d.unjustified_absence_policy "unjustifiedAbsencePolicy", d.availability_policy "availabilityPolicy", d.icon_key "iconKey",
     g.description "glossaryDescription", g.interpretation, g.good_practices "goodPractices", g.feedback_guidance "feedbackGuidance",
@@ -130,6 +132,7 @@ export function createIndicatorRuleRouter(db: Database) {
       filter.add(`exists (select 1 from indicator_calculation_rules r where r.indicator_definition_id = q.id and r.deleted_at is null and r.scope_type = 'ALL_TEAMS')`)
     }
     if (input.dailySupported !== undefined) filter.equals('q."dailySupported"', input.dailySupported)
+    applyUniverseListFilter(filter, 'q."operatingUniverse"', input.operatingUniverse)
     const data = await respondList<{ operationalAggregation: string; unit: string }>(db, request.query, { select: INDICATOR_SELECT, filter, orderBy: "q.name, q.id" })
     // Texto funcional do cálculo derivado de estratégia + unidade (nunca por código) — o frontend
     // não repete a derivação. Vale pra lista completa (editor de Workflow) e paginada (tela).

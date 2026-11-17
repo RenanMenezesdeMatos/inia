@@ -1,3 +1,4 @@
+import { OPERATIONAL_ALIGNMENT_PROMPT_VERSION, OPERATIONAL_ALIGNMENT_REVIEW_INSTRUCTIONS, renderOperationalAlignmentsForModel } from "./operational-alignment-context.js"
 import { z } from "zod"
 import { renderTranscriptForModel, type TranscriptProjection } from "../../investigation/domain/transcript-projection.js"
 import { decideConfirmation, EVIDENCE_READINGS, LIST_READINGS, parseCallReview, REVIEW_ISSUES, type AssessedLine, type ClaimVerdict, type ConfirmationDecision, type PathVerdict, type ReviewFocus, type ReviewRule } from "./call-review.js"
@@ -257,6 +258,7 @@ const claimPayload = (claim: ObligationClaim) => ({ id: claim.id, proposedStatus
 
 export function renderObligationReviewUserTurn(input: { projection: TranscriptProjection; transcriptStatus: TranscriptStatus; subject: string | null; context: ProcedureContext; targets: ObligationReviewTargets; products?: ProductContext | null }): string {
   const scripts = renderArgumentScriptsForModel(input.context)
+  const alignments = renderOperationalAlignmentsForModel(input.context)
   const payload = {
     ...(input.targets.need ? { need: input.targets.need } : {}),
     ...(input.targets.requests ? { requests: input.targets.requests } : {}),
@@ -279,6 +281,7 @@ export function renderObligationReviewUserTurn(input: { projection: TranscriptPr
     "PROCEDIMENTOS DISPONÍVEIS (seções [S-n], linhas [L-n])",
     renderProcedureForModel(input.context),
     ...(scripts ? ["", "ARGUMENTÁRIOS DA OPERAÇÃO PARA O ESCOPO DO COLABORADOR (G-n)", scripts] : []),
+    ...(alignments ? ["", "ALINHAMENTOS OPERACIONAIS TEMPORÁRIOS VIGENTES NA DATA DA CHAMADA PARA O PÚBLICO DO COLABORADOR (A-n)", alignments] : []),
     ...(input.products ? ["", renderInteractionMetadataForModel(input.products), "", renderProductCatalogForModel(input.products)] : []),
     "",
     "EVIDÊNCIA DISPONÍVEL: a transcrição acima. Registros operacionais de sistemas não estão integrados.",
@@ -289,7 +292,7 @@ export function renderObligationReviewUserTurn(input: { projection: TranscriptPr
 }
 
 /** Confirmação focal: transcrição + só as conclusões pendentes, cada uma com o texto das suas linhas de origem. */
-export function renderObligationConfirmationUserTurn(input: { projection: TranscriptProjection; transcriptStatus: TranscriptStatus; subject: string | null; claims: readonly ObligationClaim[]; products?: ProductContext | null }): string {
+export function renderObligationConfirmationUserTurn(input: { projection: TranscriptProjection; transcriptStatus: TranscriptStatus; subject: string | null; claims: readonly ObligationClaim[]; products?: ProductContext | null; alignments?: string | null }): string {
   return [
     "CHAMADA",
     `Assunto registrado: ${input.subject ?? "não registrado"}`,
@@ -299,6 +302,7 @@ export function renderObligationConfirmationUserTurn(input: { projection: Transc
     renderTranscriptForModel(input.projection),
     "",
     ...(input.products ? [renderProductCatalogForModel(input.products), ""] : []),
+    ...(input.alignments ? ["ALINHAMENTOS OPERACIONAIS TEMPORÁRIOS VIGENTES NA DATA DA CHAMADA PARA O PÚBLICO DO COLABORADOR (A-n)", input.alignments, ""] : []),
     "EVIDÊNCIA DISPONÍVEL: a transcrição acima. Registros operacionais de sistemas não estão integrados.",
     "",
     "CONCLUSÕES A CONFERIR (JSON):",
@@ -422,13 +426,16 @@ const withProductReview = (schema: Record<string, unknown>, options: { requests:
 const insertBeforeForm = (prompt: string, block: string) => prompt.replace("\nFORMA\n", `\n${block}\n\nFORMA\n`)
 
 /** A revisão desta chamada: a de sempre, ou a de sempre + produto (mesmo texto e schema fora do modo produto). */
-export function obligationReviewContractFor(productMode: boolean): { systemPrompt: string; schema: Record<string, unknown>; promptVersion: string } {
-  return productMode
+/** `alignmentMode`: há alinhamento operacional apresentado (A-n) — acrescenta as instruções dele; sem alinhamento, o contrato é o de sempre. */
+export function obligationReviewContractFor(productMode: boolean, alignmentMode = false): { systemPrompt: string; schema: Record<string, unknown>; promptVersion: string } {
+  const base = productMode
     ? { systemPrompt: insertBeforeForm(OBLIGATION_REVIEW_SYSTEM_PROMPT, PRODUCT_SCOPE_REVIEW_INSTRUCTIONS), schema: withProductReview(OBLIGATION_REVIEW_RESPONSE_SCHEMA, { requests: true }), promptVersion: `${OBLIGATION_REVIEW_PROMPT_VERSION}+${PRODUCT_SCOPE_REVIEW_PROMPT_VERSION}` }
     : { systemPrompt: OBLIGATION_REVIEW_SYSTEM_PROMPT, schema: OBLIGATION_REVIEW_RESPONSE_SCHEMA, promptVersion: OBLIGATION_REVIEW_PROMPT_VERSION }
+  return alignmentMode ? { ...base, systemPrompt: insertBeforeForm(base.systemPrompt, OPERATIONAL_ALIGNMENT_REVIEW_INSTRUCTIONS), promptVersion: `${base.promptVersion}+${OPERATIONAL_ALIGNMENT_PROMPT_VERSION}` } : base
 }
-export function obligationConfirmationContractFor(productMode: boolean): { systemPrompt: string; schema: Record<string, unknown> } {
-  return productMode
+export function obligationConfirmationContractFor(productMode: boolean, alignmentMode = false): { systemPrompt: string; schema: Record<string, unknown> } {
+  const base = productMode
     ? { systemPrompt: insertBeforeForm(OBLIGATION_CONFIRMATION_SYSTEM_PROMPT, PRODUCT_SCOPE_CLAIM_RULE), schema: withProductReview(OBLIGATION_CONFIRMATION_RESPONSE_SCHEMA, { requests: false }) }
     : { systemPrompt: OBLIGATION_CONFIRMATION_SYSTEM_PROMPT, schema: OBLIGATION_CONFIRMATION_RESPONSE_SCHEMA }
+  return alignmentMode ? { ...base, systemPrompt: insertBeforeForm(base.systemPrompt, OPERATIONAL_ALIGNMENT_REVIEW_INSTRUCTIONS) } : base
 }

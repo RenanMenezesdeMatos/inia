@@ -39,6 +39,9 @@ import type { FlowGraph } from "@/schemas/admin/workflow-graph.schema"
 import { cn } from "@/lib/utils"
 
 import { TimeListEditor } from "./time-list-editor"
+import { fitsUniverse } from "@/lib/operating-universe/hierarchy"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
+import { useWorkflowUniverse } from "./workflow-universe-context"
 
 type ScheduleTrigger = Extract<WorkflowTriggerInput, { kind: "schedule" }>
 type ScopeInput = { scopeType: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; teamId?: string }
@@ -435,13 +438,22 @@ export function TriggerFields({
   value,
   onChange,
   scope,
+  universe: universeProp,
 }: {
   value: WorkflowTriggerInput
   onChange: (next: WorkflowTriggerInput) => void
   scope?: ScopeInput
+  /** Universo de atuação do Workflow (criação/configuração); sem a prop, vale o do editor (`WorkflowUniverseProvider`). Só
+   * indicadores desse universo são oferecidos; o já escolhido de outro universo fica visível e marcado. */
+  universe?: OperatingUniverse | null
 }) {
   const flagsQuery = useChannelFlagsQuery()
   const indicatorsQuery = useIndicatorsWithRulesQuery()
+  const contextUniverse = useWorkflowUniverse()
+  const universe = universeProp !== undefined ? universeProp : contextUniverse
+  const currentIndicatorCode = value.kind === "indicator" || value.kind === "manual" ? (value.indicatorCode ?? "") : ""
+  const indicatorOptions = (indicatorsQuery.data ?? []).filter((indicator) => fitsUniverse(indicator.operatingUniverse, universe) || indicator.code === currentIndicatorCode)
+  const indicatorLabel = (indicator: { name: string; operatingUniverse?: string | null }) => (fitsUniverse(indicator.operatingUniverse, universe) ? indicator.name : `${indicator.name} (de outro universo: ${indicator.operatingUniverse})`)
   const fieldId = useId()
 
   return (
@@ -512,9 +524,9 @@ export function TriggerFields({
                   <SelectValue placeholder="Selecione o indicador" />
                 </SelectTrigger>
                 <SelectContent>
-                  {indicatorsQuery.data?.map((indicator) => (
+                  {indicatorOptions.map((indicator) => (
                     <SelectItem key={indicator.code} value={indicator.code}>
-                      {indicator.name}
+                      {indicatorLabel(indicator)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -549,9 +561,9 @@ export function TriggerFields({
               <SelectValue placeholder="Selecione o indicador" />
             </SelectTrigger>
             <SelectContent>
-              {indicatorsQuery.data?.map((indicator) => (
+              {indicatorOptions.map((indicator) => (
                 <SelectItem key={indicator.code} value={indicator.code}>
-                  {indicator.name}
+                  {indicatorLabel(indicator)}
                 </SelectItem>
               ))}
             </SelectContent>

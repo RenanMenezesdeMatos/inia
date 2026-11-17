@@ -130,11 +130,25 @@ export default function FollowUpPage() {
         <FieldRow label="Avatar" value="Compacto por padrão, com o estado e os controles da chamada ao lado. O botão “Ampliar a INIA” dá a ela uma área própria, acima das mensagens, para falar por voz ou vídeo; ela nunca fica por cima da conversa. “Compactar a INIA” volta ao tamanho menor. Trocar o tamanho não interrompe a voz." />
       </WikiSection>
 
+      <WikiSection id="comunicados" title="Comunicados e Publicações" eyebrow="Conteúdo da liderança">
+        <p>
+          Quem tem o papel de comunicados escreve em <strong className="font-medium text-foreground">Administração › Publicações</strong> (botão
+          “Publicar” no cabeçalho do perfil). O comunicado aparece no Acompanhamento de quem o recebe e a INIA pode usá-lo no chat dessa pessoa,
+          citando título, autor, cargo, data e link. Comunicado é <strong className="font-medium text-foreground">só informação</strong> (aviso,
+          novidade): nunca é orientação de conduta e não substitui nem remove outro comunicado, PR ou IT. O que fazer no atendimento vem das bases
+          de conhecimento, dos alinhamentos operacionais vigentes e dos argumentários.
+        </p>
+        <FieldRow label="Ciclo" value="Rascunho (só o autor vê) → publicar agora ou agendar → no ar até o fim da exibição ou até ser arquivado. Arquivar tira do Acompanhamento e do chat sem excluir; desarquivar devolve. Retirar é a exclusão lógica (volta por Consultar dados › Itens excluídos)." />
+        <FieldRow label="Público" value="Minha equipe (todos abaixo de quem publica, gravados na publicação), toda a empresa ou um público específico por universo, Grupo e Subgrupo (pelo cadastro atual). Toda a empresa e público específico exigem o papel de comunicados da empresa. O público não muda depois que o comunicado sai." />
+        <FieldRow label="Editor" value="Título e texto em destaque; subtítulo, seção, negrito, itálico, listas, link (só https:// ou caminho do app), cor e imagem (JPG, PNG ou WebP, até 6). Resumo, categoria, destaque, produto relacionado e período de exibição ficam na lateral. Pré-visualizar mostra o card como o colaborador verá, com o público e as datas. Sair com alterações não salvas pede confirmação." />
+        <FieldRow label="Moderação" value="Só quem publicou edita, arquiva ou retira a própria publicação. O Administrador geral pode retirar a publicação de qualquer pessoa da organização (em Publicações › Toda a organização ou pelo menu do comunicado no Acompanhamento), sempre com um motivo, que fica na auditoria. A moderação nunca altera o texto de ninguém." />
+        <FieldRow label="No chat" value="A cada pergunta, a INIA considera só os comunicados no ar que a pessoa recebeu e que se relacionam com a pergunta, e os usa só como informação: se um comunicado parecer orientar uma conduta, ela segue a base, o alinhamento ou o argumentário. Rascunho, agendado, encerrado e arquivado nunca entram. Assuntos proibidos e limites de atuação valem acima de qualquer comunicado." />
+      </WikiSection>
+
       <WikiSection id="limitacoes" title="Limitações atuais" eyebrow="Transparência">
         <ul className="list-inside list-disc space-y-1">
           <li>O chat/voz da INIA ainda <strong className="font-medium text-foreground">não persiste</strong> as interações: mensagens, curtidas/descurtidas e dúvidas se perdem ao recarregar a página.</li>
           <li>Outputs de Workflow nas superfícies Avatar e Chat são gravados, mas o avatar/chat ainda não os lê.</li>
-          <li>Comunicados publicados pelo gestor ainda não são persistidos.</li>
           <li>Material de apoio: feedbacks manuais não trazem recomendação; o Orquestrador pós-JOIN (síntese consolidada) não aciona especialistas e por isso não tem candidatos; na voz a seleção acontece por especialista acionado (a orquestração da voz roda fora do backend). O clique em &quot;Acessar material&quot; não é registrado.</li>
           <li>O histórico do chat/voz passou a ser reaberto a partir do que foi persistido (mensagens e materiais); curtidas/descurtidas continuam só na tela.</li>
         </ul>

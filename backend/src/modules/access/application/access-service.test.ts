@@ -3,7 +3,7 @@ import { accessCapabilities, canAnywhere, canOnCollaborator, canOrganizationWide
 import { scopeCovers } from "../domain/access-scope.js"
 import { SYSTEM_ROLES } from "../domain/roles.js"
 import { createInMemoryAccessRepository, createInMemoryAccountAccessRepository, type MemAssignment } from "../testing/in-memory-access-repository.js"
-import { assignRole, assignRoleToLeaders, describeAccess, getAccount, listAccounts, listRoles, revokeRole, visibilityOf, wouldRemoveLastTenantAdmin } from "./access-service.js"
+import { assignRole, describeAccess, getAccount, listAccounts, listRoles, revokeRole, visibilityOf, wouldRemoveLastTenantAdmin } from "./access-service.js"
 import { disableAccess, enableAccess, issueTemporaryPassword, listIdentifiedUsers, type AccountAccessDeps } from "./account-access-service.js"
 
 const ORG = "00000000-0000-4000-8000-00000000a001"
@@ -247,7 +247,7 @@ describe("V1.5.8 — visões ampliadas no catálogo de papéis (permission + sco
   })
 })
 
-describe("Conversas com a INIA — papel de leitura e concessão aos gestores", () => {
+describe("Conversas com a INIA — papel de leitura", () => {
   it("papel só com a permissão de leitura, em qualquer escopo (inclusive Minha estrutura); não abre a Administração", async () => {
     const role = SYSTEM_ROLES.find((entry) => entry.code === "LEITOR_DE_CONVERSAS_INIA")!
     expect(role.permissions).toEqual(["assistant_conversations.view"])
@@ -260,30 +260,12 @@ describe("Conversas com a INIA — papel de leitura e concessão aos gestores", 
     expect(accessCapabilities(await s.context("joao"))).toMatchObject({ canViewAssistantConversations: true, canAccessAdministration: false, canManageAgents: false, canViewUsers: false })
   })
 
-  it("Conceder aos gestores: só quem lidera alguém, escopo Minha estrutura, idempotente, auditado, nunca a si mesmo", async () => {
+  it("o papel de leitura só chega pela atribuição individual: quem não pode atribuir é recusado; quem pode, concede Minha estrutura (auditado)", async () => {
     const s = setup()
-    s.memory.people.find((entry) => entry.id === PEOPLE.maria.id)!.reportsToId = PEOPLE.joao.id
-    s.memory.people.find((entry) => entry.id === PEOPLE.joao.id)!.reportsToId = PEOPLE.ana.id
-    const result = await assignRoleToLeaders(s.deps, s.actor("geral"), { roleCode: "LEITOR_DE_CONVERSAS_INIA" })
-    expect(result).toEqual({ leaders: 2, granted: 2, alreadyAssigned: 0, skipped: 0 })
-    const holders = s.memory.assignments.filter((entry) => entry.roleCode === "LEITOR_DE_CONVERSAS_INIA")
-    expect(holders.map((entry) => entry.accountId).sort()).toEqual([accountOf("joao").id, accountOf("ana").id].sort())
-    expect(holders.every((entry) => entry.scope.type === "MY_STRUCTURE")).toBe(true)
-    expect(s.memory.audit.filter((entry) => entry.action === "ACCESS_ROLE_GRANTED" && (entry.payload as { roleCode: string }).roleCode === "LEITOR_DE_CONVERSAS_INIA")).toHaveLength(2)
-    expect(await assignRoleToLeaders(s.deps, s.actor("geral"), { roleCode: "LEITOR_DE_CONVERSAS_INIA" })).toEqual({ leaders: 2, granted: 0, alreadyAssigned: 2, skipped: 0 })
-    // A própria Ana (lidera o João) tenta conceder: ela mesma é pulada (sem auto-concessão).
-    const s2 = setup()
-    s2.memory.people.find((entry) => entry.id === PEOPLE.joao.id)!.reportsToId = PEOPLE.ana.id
-    expect(await assignRoleToLeaders(s2.deps, s2.actor("ana"), { roleCode: "LEITOR_DE_CONVERSAS_INIA" })).toEqual({ leaders: 1, granted: 0, alreadyAssigned: 0, skipped: 1 })
-  })
-
-  it("Conceder aos gestores exige poder atribuir e papel que aceite Minha estrutura", async () => {
-    const s = setup()
-    await expect(assignRoleToLeaders(s.deps, s.actor("maria"), { roleCode: "LEITOR_DE_CONVERSAS_INIA" })).rejects.toMatchObject({ code: "ACCESS_NOT_AUTHORIZED_TO_ASSIGN" })
-    await expect(assignRoleToLeaders(s.deps, s.actor("geral"), { roleCode: "ADMINISTRADOR" })).rejects.toMatchObject({ code: "ACCESS_SCOPE_NOT_ALLOWED_FOR_ROLE" })
-    // Administrador de Grupo não cobre "Minha estrutura" (só a organização cobre) → ninguém recebe.
-    s.memory.people.find((entry) => entry.id === PEOPLE.maria.id)!.reportsToId = PEOPLE.joao.id
-    expect(await assignRoleToLeaders(s.deps, s.actor("carlos"), { roleCode: "LEITOR_DE_CONVERSAS_INIA" })).toMatchObject({ granted: 0, skipped: 1 })
+    await expect(assignRole(s.deps, s.actor("maria"), { accountId: accountOf("joao").id, roleCode: "LEITOR_DE_CONVERSAS_INIA", scope: { type: "MY_STRUCTURE" } })).rejects.toMatchObject({ code: "ACCESS_NOT_AUTHORIZED_TO_ASSIGN" })
+    await assignRole(s.deps, s.actor("geral"), { accountId: accountOf("joao").id, roleCode: "LEITOR_DE_CONVERSAS_INIA", scope: { type: "MY_STRUCTURE" } })
+    expect(s.memory.audit.filter((entry) => entry.action === "ACCESS_ROLE_GRANTED" && (entry.payload as { roleCode: string }).roleCode === "LEITOR_DE_CONVERSAS_INIA")).toHaveLength(1)
+    await expect(assignRole(s.deps, s.actor("geral"), { accountId: accountOf("joao").id, roleCode: "LEITOR_DE_CONVERSAS_INIA", scope: { type: "MY_STRUCTURE" } })).rejects.toMatchObject({ code: "ACCESS_ROLE_ALREADY_ASSIGNED" })
   })
 })
 

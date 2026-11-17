@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { operatingUniverseSchema } from "@/schemas/operating-universe/operating-universe.schema"
 import { businessDomainRefSchema } from "./business-domain.schema"
 import { agentSpecialtySchema, orchestratorPolicyKindSchema, routingPolicyKindSchema, specialtyKindSchema } from "./orchestrator-policy"
 import { outputSchemaSchema } from "./output-schema-fields"
@@ -51,6 +52,8 @@ export const orchestratorSchema = z.object({
   active: z.boolean(),
   createdAt: z.coerce.string(),
   scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]),
+  /** Universo de atuação (nulo = pendente). Opcional: os seletores encadeiam por ele (lib/operating-universe/hierarchy.ts). */
+  operatingUniverse: operatingUniverseSchema.nullable().optional().catch(null),
   teamId: z.string().nullable(),
   teamName: z.string().nullable(),
   subteamId: z.string().nullable(),

@@ -18,6 +18,8 @@ import {
   ListDateRangeFilter,
   ListMultiSelectFilter,
   ListOrgScopeFilter,
+  ListUniverseFilter,
+  universeChoiceOf,
   ListSearchInput,
   ListSubjectScopeFilter,
   ListToolbar,
@@ -27,6 +29,7 @@ import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
 import { useKnowledgeDocumentsPageQuery } from "@/queries/admin/use-knowledge-queries"
 import { useSubjectsQuery, useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
+import { orgScopeAfterUniverseChange, orgScopePatch } from "@/lib/operating-universe/hierarchy"
 import type { KnowledgeListParams } from "@/services/admin/knowledge-service"
 import {
   DOCUMENT_TYPE_LABELS,
@@ -68,6 +71,7 @@ function KnowledgeCard({ document, products }: { document: KnowledgeDocument; pr
             <DocumentTypeLabel documentType={document.documentType} />
             <span aria-hidden>·</span>
             <span>{SOURCE_TYPE_LABELS[document.sourceType]}</span>
+            <UniverseBadge universe={document.operatingUniverse} className="ml-0.5" />
           </div>
           <h3 className="mt-0.5 line-clamp-2 text-[15px] font-semibold leading-snug">
             {/* Link "esticado": o card inteiro abre a base, sem envolver tudo num <a>. */}
@@ -188,6 +192,8 @@ export function KnowledgePage() {
   // A biblioteca nasceu em cards — continua sendo o padrão desta tela.
   const list = useAdminListState({ storageKey: "knowledge", defaultFilters: DEFAULT_FILTERS, defaultView: "cards" })
   const pageQuery = useKnowledgeDocumentsPageQuery(list.params)
+  // Hierarquia universo → Grupo/Subgrupo: o filtro de Grupo só oferece os do universo escolhido; trocar o universo limpa o Grupo que não cabe.
+  const currentScope = { scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }
 
   // Compatibilidade com o atalho antigo "?new=1" — o cadastro agora tem rota própria.
   useEffect(() => {
@@ -227,10 +233,15 @@ export function KnowledgePage() {
             <ListMultiSelectFilter label="Tipo" values={list.filters.documentType} onChange={(values) => list.setFilter("documentType", values)} options={DOCUMENT_TYPE_OPTIONS} />
             <ListMultiSelectFilter label="Formato" values={list.filters.sourceType} onChange={(values) => list.setFilter("sourceType", values)} options={SOURCE_TYPE_OPTIONS} />
             <ListMultiSelectFilter label="Status" values={list.filters.status} onChange={(values) => list.setFilter("status", values)} options={STATUS_OPTIONS} />
+            <ListUniverseFilter
+              value={list.filters.operatingUniverse}
+              onChange={(operatingUniverse) => list.patchFilters({ operatingUniverse, ...orgScopePatch(orgScopeAfterUniverseChange(currentScope, teamsQuery.data, universeChoiceOf(operatingUniverse))) })}
+            />
             <ListOrgScopeFilter
               teams={teamsQuery.data}
-              value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
-              onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
+              universe={universeChoiceOf(list.filters.operatingUniverse)}
+              value={currentScope}
+              onChange={(scope) => list.patchFilters(orgScopePatch(scope))}
             />
             <ListSubjectScopeFilter
               subjects={subjectsQuery.data}

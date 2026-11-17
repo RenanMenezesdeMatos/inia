@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { operatingUniverseSchema } from "@/schemas/operating-universe/operating-universe.schema"
 
 /**
  * Domínio de negócio — catálogo ADMINISTRÁVEL (`/admin/business-domains`). Classifica Agents
@@ -35,6 +36,8 @@ export const businessDomainSchema = z.object({
   name: z.string(),
   description: z.string().nullable().catch(null),
   active: z.boolean(),
+  /** Universo de atuação (nulo = pendente). Opcional: os seletores encadeiam por ele (lib/operating-universe/hierarchy.ts). */
+  operatingUniverse: operatingUniverseSchema.nullable().optional().catch(null),
   createdAt: z.coerce.string(),
   updatedAt: z.coerce.string().catch(""),
   agentCount: z.number().catch(0),

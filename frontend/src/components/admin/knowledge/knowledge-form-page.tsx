@@ -14,8 +14,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 
-import { ProductScopeField, useSourceProductScope } from "@/components/admin/product-catalog/product-scope-field"
-import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { ProductScopeField, productsCompatibleWith, useSourceProductScope } from "@/components/admin/product-catalog/product-scope-field"
+import { OrgScopeSelect, orgScopeValueAfterUniverseChange, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import { SubjectScopeSelect, type SubjectScopeValue } from "@/components/admin/shared/subject-scope-select"
 import { useTeamsQuery, useSubjectsQuery } from "@/queries/admin/use-org-structure-queries"
 import {
@@ -39,6 +39,8 @@ import { UniverseSelect } from "@/components/operating-universe/universe-select"
 import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import { useSetKnowledgeUniverseMutation } from "@/queries/operating-universe/use-operating-universe"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
+import { teamScopeFitsUniverse } from "@/lib/operating-universe/hierarchy"
+import type { Team } from "@/schemas/admin/org-structure.schema"
 
 const LIST_HREF = "/admin/knowledge"
 const MIN_CONTENT_LENGTH = 10
@@ -88,6 +90,14 @@ function CreateKnowledgeForm() {
   }
 
   const canSubmit = title.trim().length > 1 && (sourceMode === "text" ? content.trim().length > 9 : Boolean(file)) && (!universeEnforced || universe !== null)
+
+  // Hierarquia universo → Grupo → Subgrupo: trocar o universo limpa o alcance que deixou de caber.
+  function handleUniverseChange(next: OperatingUniverse | null) {
+    setUniverse(next)
+    setOrgScope((current) => orgScopeValueAfterUniverseChange(current, teamsQuery.data, next))
+    const compatible = new Set(productsCompatibleWith(productScope.nodes, next).map((node) => node.id))
+    if (productScope.value.some((id) => !compatible.has(id))) productScope.setValue(productScope.value.filter((id) => compatible.has(id)))
+  }
 
   return (
     <div className="max-w-2xl space-y-4">
@@ -139,8 +149,9 @@ function CreateKnowledgeForm() {
         </TabsContent>
       </Tabs>
 
+      <KnowledgeUniverseField id="knowledge-universe" value={universe} onChange={handleUniverseChange} allowPending={!universeEnforced} />
       {teamsQuery.data ? (
-        <OrgScopeSelect teams={teamsQuery.data} value={orgScope} onChange={setOrgScope} />
+        <OrgScopeSelect teams={teamsQuery.data} value={orgScope} onChange={setOrgScope} universe={universe} />
       ) : (
         <Skeleton className="h-10 w-full" />
       )}
@@ -149,8 +160,6 @@ function CreateKnowledgeForm() {
       ) : (
         <Skeleton className="h-10 w-full" />
       )}
-
-      <KnowledgeUniverseField id="knowledge-universe" value={universe} onChange={setUniverse} allowPending={!universeEnforced} />
       {productScope.available ? <ProductScopeField nodes={productScope.nodes} value={productScope.value} onChange={productScope.setValue} idPrefix="knowledge-products" universe={universe} /> : null}
 
       {createMutation.isError ? <p className="text-sm text-destructive">{(createMutation.error as Error).message}</p> : null}
@@ -248,6 +257,13 @@ function EditKnowledgeFields({ document }: { document: KnowledgeDocumentDetail }
   const [universe, setUniverse] = useState<OperatingUniverse | null>(document.operatingUniverse)
   const universeEnforced = useCurrentUserQuery().data?.operatingUniverseEnforced ?? false
   const universeMutation = useSetKnowledgeUniverseMutation()
+
+  function handleUniverseChange(next: OperatingUniverse | null) {
+    setUniverse(next)
+    setOrgScope((current) => orgScopeValueAfterUniverseChange(current, teamsQuery.data, next))
+    const compatible = new Set(productsCompatibleWith(productScope.nodes, next).map((node) => node.id))
+    if (productScope.value.some((id) => !compatible.has(id))) productScope.setValue(productScope.value.filter((id) => compatible.has(id)))
+  }
 
   const fromFile = isFileSource(draftFile.sourceType)
   const hasText = content.trim().length > 0
@@ -359,15 +375,21 @@ function EditKnowledgeFields({ document }: { document: KnowledgeDocumentDetail }
         {hasText && content.trim().length < MIN_CONTENT_LENGTH ? <p className="text-xs text-destructive">O conteúdo precisa ter pelo menos {MIN_CONTENT_LENGTH} caracteres.</p> : null}
       </div>
 
-      {teamsQuery.data ? <OrgScopeSelect teams={teamsQuery.data} value={orgScope} onChange={setOrgScope} /> : <Skeleton className="h-10 w-full" />}
+      <KnowledgeUniverseField id="edit-knowledge-universe" value={universe} onChange={handleUniverseChange} allowPending={!universeEnforced && document.operatingUniverse === null} />
+      {universeMutation.isError ? <p className="text-sm text-destructive">{(universeMutation.error as Error).message}</p> : null}
+      {teamsQuery.data ? (
+        <>
+          <OrgScopeSelect teams={teamsQuery.data} value={orgScope} onChange={setOrgScope} universe={universe} />
+          <ScopeOutsideUniverseNotice teams={teamsQuery.data} scope={orgScope} universe={universe} />
+        </>
+      ) : (
+        <Skeleton className="h-10 w-full" />
+      )}
       {subjectsQuery.data ? (
         <SubjectScopeSelect subjects={subjectsQuery.data} value={subjectScope} onChange={setSubjectScope} />
       ) : (
         <Skeleton className="h-10 w-full" />
       )}
-
-      <KnowledgeUniverseField id="edit-knowledge-universe" value={universe} onChange={setUniverse} allowPending={!universeEnforced && document.operatingUniverse === null} />
-      {universeMutation.isError ? <p className="text-sm text-destructive">{(universeMutation.error as Error).message}</p> : null}
       {productScope.available ? (
         <div className="space-y-1">
           <ProductScopeField nodes={productScope.nodes} value={productScope.value} onChange={productScope.setValue} idPrefix="edit-knowledge-products" universe={universe} />
@@ -437,5 +459,21 @@ function KnowledgeUniverseField({ id, value, onChange, allowPending }: { id: str
         A base só é consultada por quem atua neste universo, e só vale para produtos dele. Mudar o universo vale na hora (fora do rascunho).
       </p>
     </div>
+  )
+}
+
+/**
+ * Alcance JÁ SALVO de outro universo (cadastro anterior à classificação do Grupo): o seletor não oferece mais esse Grupo/Subgrupo,
+ * então o aviso diz qual era — nada some em silêncio. Escolher outro alcance resolve; o backend continua a autoridade.
+ */
+function ScopeOutsideUniverseNotice({ teams, scope, universe }: { teams: Team[]; scope: OrgScopeValue; universe: OperatingUniverse | null }) {
+  if (scope.scopeType === "ALL_TEAMS" || teamScopeFitsUniverse(teams, scope, universe)) return null
+  const team = teams.find((candidate) => candidate.id === scope.teamId || candidate.subteams.some((subteam) => subteam.id === scope.subteamId))
+  const subteam = team?.subteams.find((candidate) => candidate.id === scope.subteamId)
+  const name = subteam ? `${team?.name} › ${subteam.name}` : (team?.name ?? "—")
+  return (
+    <p role="status" data-testid="knowledge-scope-outside-universe" className="text-xs text-amber-700 dark:text-amber-300">
+      O alcance salvo ({name}) é de outro universo. Escolha um Grupo ou Subgrupo de {universe}.
+    </p>
   )
 }

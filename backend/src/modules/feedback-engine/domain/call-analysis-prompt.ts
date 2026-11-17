@@ -1,3 +1,4 @@
+import { renderOperationalAlignmentsForModel } from "./operational-alignment-context.js"
 import { renderTranscriptForModel, type TranscriptProjection } from "../../investigation/domain/transcript-projection.js"
 import { renderInteractionMetadataForModel, renderProductCatalogForModel, type ProductContext } from "./product-applicability.js"
 import { renderArgumentScriptsForModel, renderProcedureForModel, type ProcedureContext, type TranscriptStatus } from "./procedure.js"
@@ -188,6 +189,12 @@ export function renderCallAnalysisUserTurn(input: CallAnalysisPromptInput): stri
     lines.push("")
     lines.push("ARGUMENTÁRIOS DA OPERAÇÃO PARA O ESCOPO DO COLABORADOR (versões vigentes na data da chamada; G-n)")
     lines.push(scripts)
+  }
+  const alignments = renderOperationalAlignmentsForModel(input.context)
+  if (alignments) {
+    lines.push("")
+    lines.push("ALINHAMENTOS OPERACIONAIS TEMPORÁRIOS VIGENTES NA DATA DA CHAMADA PARA O PÚBLICO DO COLABORADOR (A-n; prevalecem sobre o trecho conflitante do procedimento afetado)")
+    lines.push(alignments)
   }
   if (input.products) {
     lines.push("")

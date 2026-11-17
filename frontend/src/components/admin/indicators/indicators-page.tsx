@@ -1,5 +1,6 @@
 "use client"
 
+import { UniverseBadge } from "@/components/operating-universe/universe-badge"
 import { useMemo, useState } from "react"
 import { Activity, BookText, CalendarRange, Gauge, ListChecks, Pencil, Plus, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react"
 
@@ -36,6 +37,8 @@ import {
   ListBooleanFilter,
   ListMultiSelectFilter,
   ListOrgScopeFilter,
+  ListUniverseFilter,
+  universeChoiceOf,
   ListSearchInput,
   ListToolbar,
   optionsFromLabels,
@@ -50,6 +53,7 @@ import { STRATEGY_STATUS_LABELS } from "@/schemas/admin/indicator-diagnostic-str
 import { formatIndicatorValue } from "@/lib/analytics/format"
 import { describeIndicatorCapability, MEASUREMENT_COMPONENT_LABELS, OPERATIONAL_GRANULARITY_LABELS } from "@/schemas/admin/indicator-definition.schema"
 import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
+import { orgScopeAfterUniverseChange, orgScopePatch, teamScopeFitsUniverse } from "@/lib/operating-universe/hierarchy"
 import type { IndicatorListParams } from "@/services/admin/indicator-rule-service"
 import {
   useCreateIndicatorDefinitionMutation,
@@ -449,7 +453,13 @@ export function IndicatorManager({ indicator }: { indicator: IndicatorWithRules 
         {ruleFormOpen ? (
           <div className="max-w-xl space-y-4">
             <h3 className="text-sm font-semibold">{editingRule ? "Editar regra" : "Nova regra"}</h3>
-            {teamsQuery.data ? <OrgScopeSelect teams={teamsQuery.data} value={orgScope} onChange={setOrgScope} /> : <Skeleton className="h-10 w-full" />}
+            {/* Hierarquia: a regra só vale para Grupos/Subgrupos classificados no universo do indicador. */}
+            {teamsQuery.data ? <OrgScopeSelect teams={teamsQuery.data} value={orgScope} onChange={setOrgScope} universe={indicator.operatingUniverse ?? null} /> : <Skeleton className="h-10 w-full" />}
+            {teamsQuery.data && orgScope.scopeType !== "ALL_TEAMS" && !teamScopeFitsUniverse(teamsQuery.data, orgScope, indicator.operatingUniverse ?? null) ? (
+              <p role="status" data-testid="indicator-rule-scope-outside-universe" className="text-xs text-amber-700 dark:text-amber-300">
+                O Grupo/Subgrupo salvo nesta regra é de outro universo. Escolha um do universo {indicator.operatingUniverse} do indicador.
+              </p>
+            ) : null}
 
             <div className="space-y-1.5">
               <Label htmlFor={`calculation-period-${indicator.id}`}>Periodicidade de apuração</Label>
@@ -560,6 +570,7 @@ function IndicatorCard({ indicator, onManage }: { indicator: IndicatorWithRules;
           <span>{indicator.unit}</span>
           <span aria-hidden>·</span>
           <span>{DESIRED_DIRECTION_LABELS[indicator.desiredDirection as DesiredDirection] ?? indicator.desiredDirection}</span>
+          <UniverseBadge universe={indicator.operatingUniverse} />
         </>
       }
       title={indicator.name}
@@ -612,7 +623,10 @@ function IndicatorsTable({ indicators, onManage }: { indicators: IndicatorWithRu
                 <button type="button" className="text-left font-medium hover:underline" onClick={() => onManage(indicator)}>
                   {indicator.name}
                 </button>
-                <p className="text-xs text-muted-foreground">{indicator.code}</p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">{indicator.code}</span>
+                  <UniverseBadge universe={indicator.operatingUniverse} />
+                </div>
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">{indicator.unit}</TableCell>
               <TableCell className="text-sm text-muted-foreground">{DESIRED_DIRECTION_LABELS[indicator.desiredDirection as DesiredDirection] ?? indicator.desiredDirection}</TableCell>
@@ -680,6 +694,8 @@ export function IndicatorsPage() {
 
   const list = useAdminListState({ storageKey: "indicators", defaultFilters: DEFAULT_FILTERS })
   const pageQuery = useIndicatorsWithRulesPageQuery(list.params)
+  // Hierarquia universo → Grupo/Subgrupo das regras: o filtro de Grupo só oferece os do universo escolhido; trocar o universo limpa o que não cabe.
+  const currentScope = { scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }
 
   // O painel lê sempre o registro mais recente da página — depois de salvar uma regra ou o
   // glossário, a lista é invalidada e o painel acompanha sem precisar reabrir.
@@ -741,11 +757,16 @@ export function IndicatorsPage() {
                 <ListBooleanFilter value={list.filters.hasGlossary} onChange={(value) => list.setFilter("hasGlossary", value)} allLabel="Com ou sem glossário" trueLabel="Com glossário" falseLabel="Sem glossário" ariaLabel="Filtrar por glossário" />
                 <ListBooleanFilter value={list.filters.dailySupported} onChange={(value) => list.setFilter("dailySupported", value)} allLabel="Qualquer medição" trueLabel="Com medição diária" falseLabel="Só fechamento oficial" ariaLabel="Filtrar por medição operacional" />
                 <ListMultiSelectFilter label="Periodicidade das regras" values={list.filters.calculationPeriod} onChange={(values) => list.setFilter("calculationPeriod", values)} options={PERIOD_OPTIONS} />
+                <ListUniverseFilter
+                  value={list.filters.operatingUniverse}
+                  onChange={(operatingUniverse) => list.patchFilters({ operatingUniverse, ...orgScopePatch(orgScopeAfterUniverseChange(currentScope, teamsQuery.data, universeChoiceOf(operatingUniverse))) })}
+                />
                 <ListOrgScopeFilter
                   teams={teamsQuery.data}
                   globalLabel="Com regra para todos os grupos"
-                  value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
-                  onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
+                  universe={universeChoiceOf(list.filters.operatingUniverse)}
+                  value={currentScope}
+                  onChange={(scope) => list.patchFilters(orgScopePatch(scope))}
                 />
               </ListToolbar>
 

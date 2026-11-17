@@ -1,3 +1,4 @@
+import type { CriterionAlignmentRef } from "./operational-alignment-context.js"
 import { z } from "zod"
 import { verifyEvidenceUnit, type ProjectedInteraction, type TranscriptProjection } from "../../investigation/domain/transcript-projection.js"
 import { CALL_REVIEW_VERSION, decideConfirmation, decideExclusionChallenge, decidePathConfirmation, exclusionTargetsOf, reviewDiscoveriesOf, reviewTargetsOf, sameEvidenceAsSibling, type AssessedLine, type CallReview, type ClaimVerdict, type Confirmation, type ConfirmationDecision, type ConfirmationReason, type EvidenceReading, type ListReading, type ReviewClaim, type ReviewFocus, type ReviewIssue } from "./call-review.js"
@@ -309,6 +310,9 @@ export type AssessedCriterion = {
   whyItMatters: string | null
   ruleConflict: boolean
   downgrades: string[]
+  /** Alinhamento operacional (`OPERATIONAL_ALIGNMENT_PRECEDENCE_V1`): obrigação avaliada pelo alinhamento (GUIDANCE) ou trecho oficial
+   * substituído por ele (SUPERSEDED — não aplicável, com a referência). Ausente = nenhum alinhamento envolvido. */
+  operationalAlignment?: CriterionAlignmentRef | null
   /** V5 — natureza do que a linha pede e papel no caso (leituras do modelo: análise ou, na contestação, revisora). */
   itemNature?: ItemNature | null
   scenarioRole?: ScenarioRole | null

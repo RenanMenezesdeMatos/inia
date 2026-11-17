@@ -175,3 +175,4 @@ Ferramentas em [ferramentas/](ferramentas/), Node puro, sem dependências:
 Entrada desta geração: `CLAUDE.md` com 506102 bytes, sha256 `e762eb3f8b70a22dfcbb7a32638fb20e6474ce479e47f3ec900ee037f35da847`. Resultado: `CLAUDE.md` com 21,3 KB.
 
 | [universo-de-atuacao.md](universo-de-atuacao.md) | universo de atuação B2B/B2C/B2X: regra, onde é aplicado, implantação e limitações (16/11/2026). | b | — |
+| [alinhamentos-operacionais.md](alinhamentos-operacionais.md) | alinhamentos operacionais: cadastro, regra única (chat × monitoria), precedência, diagnósticos e reprocessamento (17/11/2026). | b | — |

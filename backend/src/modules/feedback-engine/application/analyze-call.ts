@@ -1,3 +1,5 @@
+import { addOperationalAlignments, alignmentAssessmentRecordOf, hasOperationalAlignments, withoutOperationalAlignments } from "../domain/operational-alignment-context.js"
+import type { AlignmentResolution } from "../../operational-alignments/domain/operational-alignment.js"
 import { createHash } from "node:crypto"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { ModelOutputContractError } from "../../../shared/domain/model-output-contract-error.js"
@@ -60,6 +62,11 @@ export type AnalyzeCallDeps = {
   /** Busca nas bases em escala (camada 4): documentos na ordem do cartão-resumo contra a consulta; null = o vetor não ajuda agora. Só é
    * chamada quando os documentos não cabem todos no orçamento. Ausente = ordem de sempre. */
   rankDocumentsByCard?: (organizationId: string, query: string, documents: readonly CandidateDocument[]) => Promise<string[] | null>
+  /**
+   * ALINHAMENTOS OPERACIONAIS (`OPERATIONAL_ALIGNMENT_RULE_V1`): a regra única aplicada ao colaborador NA DATA DO ATENDIMENTO, para as
+   * bases autorizadas do especialista. Ausente ou sem alinhamento aplicável = análise idêntica à de antes (mesma chave).
+   */
+  loadOperationalAlignments?: (organizationId: string, personId: string, at: Date, documentIds: readonly string[], context?: { interactionId: string; agentId: string | null }) => Promise<AlignmentResolution>
   now: () => Date
   /**
    * Trava de SUJEITO (ensaios/avaliações): só estes colaboradores podem ter chamadas analisadas. Checada antes de qualquer leitura
@@ -274,9 +281,9 @@ export function analysisKeysOf(input: { interaction: InteractionForAnalysis; age
   const scripts = input.context.documents.filter((document) => document.kind === "ARGUMENT_SCRIPT").map((document) => `G:${document.documentId}@${document.version}@${document.contentHash}`)
   // Modo produto: o contrato com produto e a fotografia do cadastro (o texto do catálogo já está na mensagem) mudam a proposta; sem
   // catálogo, a chave é exatamente a de antes (nenhuma análise anterior deixa de ser reaproveitada por causa do modo produto).
-  const contract = obligationAnalysisContractFor(Boolean(products))
+  const contract = obligationAnalysisContractFor(Boolean(products), hasOperationalAlignments(input.context))
   const proposalKey = sha([CALL_ANALYSIS_PROMPT_VERSION, CRITERIA_EXTRACTION_VERSION, interaction.id, interaction.transcript?.checksum ?? "none", agent ? `${agent.id}@${agent.updatedAt.toISOString()}` : "none", ...input.documents.map((document) => `${document.documentId}@${document.version}@${document.contentHash}`), ...scripts, ...(products ? [`PRODUCTS:${products.fingerprint}`] : []), sha(`${contract.systemPrompt}\n${proposalTurn}`)].join("|"))
-  return { proposalKey, analysisKey: sha([CALL_ANALYSIS_LOGIC_VERSION, CALL_REVIEW_PROMPT_VERSION, obligationReviewContractFor(Boolean(products)).promptVersion, proposalKey].join("|")), specialist, interactionView, contract }
+  return { proposalKey, analysisKey: sha([CALL_ANALYSIS_LOGIC_VERSION, CALL_REVIEW_PROMPT_VERSION, obligationReviewContractFor(Boolean(products), hasOperationalAlignments(input.context)).promptVersion, proposalKey].join("|")), specialist, interactionView, contract }
 }
 
 /** A ordem pelo cartão só ajuda: qualquer falha = a ordem de sempre (nunca derruba a análise). */
@@ -309,6 +316,11 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
   const selection = selectDocumentsForCall(candidates, { subject, transcript: interaction.transcript?.content ?? "", productScoped: new Set((catalog?.scopes ?? []).map((scope) => scope.sourceId)), semanticOrder })
   const context = buildProcedureContext(selection.selected, scripts)
   context.omitted = selection.omitted
+  // Alinhamentos: pela data do ATENDIMENTO (nunca a da monitoria/reprocessamento), para o público do colaborador nessa data e só para
+  // as bases autorizadas ao especialista (todas as candidatas, não só as selecionadas: o alinhamento vale mesmo que o trecho oficial não
+  // tenha entrado pelo orçamento). A falta da data fica registrada e nenhum alinhamento é aplicado.
+  const alignments = deps.loadOperationalAlignments && candidates.length > 0 ? await deps.loadOperationalAlignments(request.organizationId, interaction.operatorId, interaction.startedAt, candidates.map((document) => document.documentId), { interactionId: interaction.id, agentId: agent?.id ?? null }) : null
+  addOperationalAlignments(context, alignments)
   const presentedScripts = context.documents.filter((document) => document.kind === "ARGUMENT_SCRIPT")
   const products = productContextOf(catalog, { presentedSourceIds: context.documents.map((document) => document.documentId), metadata: interactionMetadataOf(interaction, subject) })
   if (products) for (const document of context.documents) document.productScopeLabel = scopeLabelFor(products, document.documentId)
@@ -358,6 +370,10 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
       evidenceAvailability: { transcript: transcriptStatus, operationalRecords: "NOT_INTEGRATED" },
       productApplicability: products ? { version: PRODUCT_APPLICABILITY_VERSION, fingerprint: products.fingerprint, analysisPromptVersion: contract.promptVersion, reviewPromptVersion: obligationReviewContractFor(true).promptVersion, nodes: products.nodes.length, criteria: products.criteria.map((criterion) => ({ handle: criterion.handle, versionId: criterion.versionId, version: criterion.version })), scopes: [...products.scopes.entries()].map(([sourceId, scope]) => ({ sourceId, assignmentId: scope.assignmentId, handles: scope.handles })) } : null,
       subjectAnchoredDocumentIds: selection.anchoredDocumentIds,
+      // Alinhamentos operacionais: a regra, a data de referência (a do atendimento), o que foi aplicado (id, versão, hash, vigência,
+      // público) e o que ficou de fora com o motivo. A fotografia final (com o que cada um superou) vai também para a avaliação.
+      operationalAlignments: alignmentAssessmentRecordOf(context, []),
+      operationalAlignmentRule: alignments ? { rule: alignments.rule, status: alignments.status, referenceDate: alignments.referenceDate?.toISOString() ?? null, setAside: alignments.setAside } : null,
       ...(selection.semanticOrdering ? { documentOrdering: "LEXICAL_AND_CARD_VECTOR" } : {}),
       procedureChars: context.renderedChars,
     }
@@ -458,13 +474,15 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
     // (uma vez por linha), as obrigações compostas sem linha de conduta e o tema dos pontos novos. Nunca derruba a análise — sem
     // orçamento ou com falha, o que faltou fica com a própria identidade e volta na próxima vez.
     if (deps.organizePractices) {
-      const organized = await organizePracticesOfAnalysis({ memory: deps.memory, call: (request) => callModel(deps.model, request, metrics), now: deps.now }, request.organizationId, context, reviewed.analysis.criteria)
+      // Alinhamento é temporário: suas linhas não viram prática permanente da base.
+      const organized = await organizePracticesOfAnalysis({ memory: deps.memory, call: (request) => callModel(deps.model, request, metrics), now: deps.now }, request.organizationId, withoutOperationalAlignments(context), reviewed.analysis.criteria.filter((criterion) => criterion.operationalAlignment?.role !== "GUIDANCE"))
       provenance.practices = organized.lines
       if (organized.combined) provenance.practiceCombined = organized.combined
       if (organized.themes) provenance.practiceThemes = organized.themes
     }
 
     const analysis = reviewed.analysis
+    if (hasOperationalAlignments(context)) provenance.operationalAlignments = alignmentAssessmentRecordOf(context, analysis.criteria, analysis.sourceConflicts ?? [])
     const documentVersions = new Map([...selection.selected.map((document) => [document.documentId, { version: document.version, perspective: document.perspective }] as const), ...presentedScripts.map((document) => [document.documentId, { version: document.version, perspective: document.perspective }] as const)])
     await deps.memory.completeCallAnalysis(request.organizationId, runId, { snapshot, analysis, identities, documentVersions, provenance, metrics: metricsNow() }, deps.now())
     const assessment = await deps.memory.getCallAssessmentByRun(request.organizationId, runId)

@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { operatingUniverseSchema } from "@/schemas/operating-universe/operating-universe.schema"
 
 /**
  * Argumentário (`/api/v1/admin/argument-scripts`) — evolução das antigas "Regras de chamada". Cada campo guarda o SIGNIFICADO
@@ -85,6 +86,8 @@ export const argumentScriptSchema = z.object({
   businessDomainId: nullableText,
   businessDomainName: nullableText,
   scopeType: argumentScriptScopeTypeSchema,
+  /** Universo de atuação (nulo = pendente). Opcional: os seletores encadeiam por ele (lib/operating-universe/hierarchy.ts). */
+  operatingUniverse: operatingUniverseSchema.nullable().optional().catch(null),
   teamId: nullableText,
   teamName: nullableText,
   subteamId: nullableText,

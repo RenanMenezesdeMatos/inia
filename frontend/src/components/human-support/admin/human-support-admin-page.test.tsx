@@ -95,60 +95,157 @@ describe("Apoio com Anjo › Configuração", () => {
 })
 
 describe("Apoio com Anjo › Escopos", () => {
-  async function renderScopes() {
-    service.fetchSupportSettings.mockResolvedValue({ enabled: true, defaultCapacity: 2, version: 1 })
-    service.fetchSupportScopes.mockResolvedValue(TREE)
-    renderWithQuery(<HumanSupportAdminPage canGrantRoles />)
+  async function renderScopes(options: { enabled?: boolean; canGrantRoles?: boolean; tree?: ScopeNode[] } = {}) {
+    service.fetchSupportSettings.mockResolvedValue({ enabled: options.enabled ?? true, defaultCapacity: 2, version: 1 })
+    service.fetchSupportScopes.mockResolvedValue(options.tree ?? TREE)
+    renderWithQuery(<HumanSupportAdminPage canGrantRoles={options.canGrantRoles ?? true} />)
     openTab("Escopos")
     await screen.findByTestId("scope-x1")
   }
+  const select = (id: string) => fireEvent.click(screen.getByTestId(`scope-${id}`))
+  const effective = () => screen.getByTestId("scope-effective")
+  const option = (name: string) => screen.getByRole("radio", { name })
 
-  it("mostra o efetivo de cada nó, quantos Anjos atendem e o alerta 'Ligado sem Anjo'", async () => {
+  it("a lista mostra o estado em vigor e a origem de cada escopo; o detalhe separa opção salva, resultado e origem", async () => {
     await renderScopes()
-    // CUJ 7: X1 "Ligado (herdado do Grupo)" e X2 "Desligado" (o efetivo; o estado gravado fica no seletor).
-    expect(within(screen.getByTestId("scope-x1")).getByText("Ligado (herdado do Grupo)")).toBeInTheDocument()
-    expect(within(screen.getByTestId("scope-x1")).getByRole("combobox", { name: "Estado de X1" })).toHaveTextContent("Herdar")
-    expect(within(screen.getByTestId("scope-x2")).getByText("Desligado", { selector: "td > span" })).toBeInTheDocument()
-    expect(within(screen.getByTestId("scope-gx")).getByRole("button", { name: "3 Anjos" })).toBeInTheDocument()
-    expect(within(screen.getByTestId("scope-gy")).getByText("Ligado sem Anjo")).toBeInTheDocument()
-    expect(within(screen.getByTestId("scope-gx")).queryByText("Ligado sem Anjo")).not.toBeInTheDocument()
+    expect(screen.getByTestId("scope-x1")).toHaveTextContent("Habilitado · Herdado de Grupo X")
+    expect(screen.getByTestId("scope-x2")).toHaveTextContent("Desabilitado · Definido neste escopo")
+    expect(screen.getByTestId("scope-__organization__")).toHaveTextContent("Chave geral ligada")
+    select("x1")
+    expect(screen.getByRole("heading", { name: "X1" })).toBeInTheDocument()
+    expect(screen.getByLabelText("Caminho do escopo")).toHaveTextContent("Organização › Grupo X › X1")
+    expect(within(effective()).getByRole("status")).toHaveTextContent("Anjo habilitado em X1")
+    expect(effective()).toHaveTextContent("e Grupo X está com “Habilitar neste escopo”")
+    expect(effective()).toHaveTextContent("Opção salva neste escopoHerdar do escopo superior")
+    expect(effective()).toHaveTextContent("Resultado aplicadoHabilitado")
+    expect(effective()).toHaveTextContent("OrigemHerdado de Grupo X")
+    expect(option("Herdar do escopo superior")).toBeChecked()
+    // Cada opção explica o efeito em uma frase.
+    expect(option("Habilitar neste escopo")).toHaveAccessibleDescription(/mesmo que Grupo X esteja desabilitado/)
+    expect(option("Herdar do escopo superior")).toHaveAccessibleDescription(/Segue Grupo X, que hoje está habilitado/)
   })
 
-  it("ligar um escopo chama a mutação na hora, sem confirmação", async () => {
-    service.saveSupportScopeState.mockResolvedValue({ ...TREE[0]!.children![1]!, state: "ON", effective: true })
+  it("no Grupo não existe 'Herdar do escopo superior': a mesma gravação é 'Sem configuração própria' (desabilitado)", async () => {
     await renderScopes()
-    await choose(screen.getByRole("combobox", { name: "Estado de X2" }), "Ligado")
-    await waitFor(() => expect(service.saveSupportScopeState).toHaveBeenCalledWith("subgroup", "x2", "ON"))
+    select("gx")
+    expect(screen.queryByRole("radio", { name: "Herdar do escopo superior" })).not.toBeInTheDocument()
+    expect(option("Sem configuração própria")).toHaveAccessibleDescription(/A organização não habilita Grupos sozinha/)
+    expect(option("Habilitar neste escopo")).toBeChecked()
+    expect(option("Desabilitar neste escopo")).toHaveAccessibleDescription(/no Subgrupo que herda dele/)
+  })
+
+  it("mudar a opção mostra o resultado esperado antes de salvar; depois de salvar, confirma o estado aplicado", async () => {
+    service.saveSupportScopeState.mockResolvedValue({ ...TREE[0]!.children![1]!, state: "INHERIT", effective: true, effectiveSource: "GROUP" })
+    await renderScopes()
+    select("x2")
+    expect(screen.getByRole("button", { name: "Salvar" })).toBeDisabled()
+    fireEvent.click(option("Herdar do escopo superior"))
+    const preview = screen.getByTestId("scope-preview")
+    expect(preview).toHaveTextContent("Anjo habilitado pela configuração de Grupo X.")
+    expect(preview).toHaveTextContent("Hoje: desabilitado · Depois de salvar: habilitado")
+    expect(service.saveSupportScopeState).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }))
+    await waitFor(() => expect(service.saveSupportScopeState).toHaveBeenCalledWith("subgroup", "x2", "INHERIT"))
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+    expect(await screen.findByText("Salvo. Em vigor agora: Anjo habilitado pela configuração de Grupo X.")).toBeInTheDocument()
   })
 
-  it("desligar um escopo ligado confirma antes (a fila é cancelada, os atendimentos continuam)", async () => {
+  it("Descartar volta à opção salva sem chamar o servidor", async () => {
+    await renderScopes()
+    select("x2")
+    fireEvent.click(option("Habilitar neste escopo"))
+    fireEvent.click(screen.getByRole("button", { name: "Descartar" }))
+    expect(option("Desabilitar neste escopo")).toBeChecked()
+    expect(screen.queryByTestId("scope-preview")).not.toBeInTheDocument()
+    expect(service.saveSupportScopeState).not.toHaveBeenCalled()
+  })
+
+  it("desabilitar um escopo habilitado confirma antes (a fila é cancelada, os atendimentos continuam)", async () => {
     service.saveSupportScopeState.mockResolvedValue({ ...TREE[0]!.children![0]!, state: "OFF", effective: false, effectiveSource: "OWN" })
     await renderScopes()
-    await choose(screen.getByRole("combobox", { name: "Estado de X1" }), "Desligado")
+    select("x1")
+    fireEvent.click(option("Desabilitar neste escopo"))
+    expect(screen.getByTestId("scope-preview")).toHaveTextContent("Anjo desabilitado pela configuração deste Subgrupo.")
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }))
     const dialog = await screen.findByRole("alertdialog")
-    expect(dialog).toHaveTextContent("Desligar o apoio em X1?")
+    expect(dialog).toHaveTextContent("Desabilitar o Anjo em X1?")
     expect(dialog).toHaveTextContent("Os atendimentos em andamento continuam")
     expect(service.saveSupportScopeState).not.toHaveBeenCalled()
-    fireEvent.click(within(dialog).getByRole("button", { name: "Desligar" }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Desabilitar e salvar" }))
     await waitFor(() => expect(service.saveSupportScopeState).toHaveBeenCalledWith("subgroup", "x1", "OFF"))
   })
 
-  it("desligar o Grupo avisa que os Subgrupos que herdam dele também saem", async () => {
-    service.saveSupportScopeState.mockResolvedValue({ ...TREE[0]!, state: "OFF", effective: false })
+  it("alteração no escopo superior: desabilitar o Grupo prevê e confirma o efeito nos Subgrupos que herdam, e o Subgrupo passa a mostrar o novo estado", async () => {
+    const after: ScopeNode[] = [
+      { ...TREE[0]!, state: "OFF", effective: false, children: [{ ...TREE[0]!.children![0]!, effective: false }, TREE[0]!.children![1]!] },
+      TREE[1]!,
+    ]
+    service.saveSupportScopeState.mockResolvedValue(after[0]!)
     await renderScopes()
-    await choose(screen.getByRole("combobox", { name: "Estado de Grupo X" }), "Desligado")
+    service.fetchSupportScopes.mockResolvedValue(after)
+    select("gx")
+    fireEvent.click(option("Desabilitar neste escopo"))
+    expect(screen.getByTestId("scope-preview")).toHaveTextContent("X1 (herda deste Grupo): passa a desabilitado")
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }))
     const dialog = await screen.findByRole("alertdialog")
     expect(dialog).toHaveTextContent("Subgrupos que herdam dele (X1)")
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }))
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument())
-    expect(service.saveSupportScopeState).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Desabilitar e salvar" }))
+    await waitFor(() => expect(service.saveSupportScopeState).toHaveBeenCalledWith("group", "gx", "OFF"))
+    await waitFor(() => expect(screen.getByTestId("scope-x1")).toHaveTextContent("Desabilitado · Herdado de Grupo X"))
+    select("x1")
+    expect(within(effective()).getByRole("status")).toHaveTextContent("Anjo desabilitado em X1")
+    expect(effective()).toHaveTextContent("Grupo X está com “Desabilitar neste escopo”")
   })
 
-  it("o número de Anjos leva à aba Anjos já filtrada pelo escopo", async () => {
+  it("escopo sem configuração local e Grupo sem opção própria: diz que nenhum nível habilita e o que fazer", async () => {
+    const tree: ScopeNode[] = [node({ type: "GROUP", id: "gz", name: "Grupo Z", anjoCount: 1, children: [node({ id: "z1", name: "Z1", anjoCount: 1 })] })]
+    await renderScopes({ tree: [...tree, ...TREE] })
+    select("z1")
+    expect(within(effective()).getByRole("status")).toHaveTextContent("Anjo desabilitado em Z1")
+    expect(effective()).toHaveTextContent("Grupo Z também não tem opção própria")
+    expect(effective()).toHaveTextContent("OrigemNenhuma opção habilita")
+    expect(effective()).toHaveTextContent("Escolha “Habilitar neste escopo” abaixo, ou habilite Grupo Z e mantenha “Herdar do escopo superior”.")
+  })
+
+  it("habilitado sem nenhum Anjo: avisa e mostra onde conceder o papel (ou a quem pedir, sem acesso aos papéis)", async () => {
+    await renderScopes()
+    select("gy")
+    expect(effective()).toHaveTextContent("Os operadores veem o apoio, mas ninguém atende os pedidos.")
+    expect(screen.getByRole("link", { name: "Conceder o papel Anjo em Usuários e acessos" })).toHaveAttribute("href", "/admin/users")
+    cleanup()
+    await renderScopes({ canGrantRoles: false })
+    select("gy")
+    expect(screen.queryByRole("link", { name: /Conceder o papel Anjo/ })).not.toBeInTheDocument()
+    expect(screen.getByText("Peça a quem administra os acessos para conceder o papel Anjo.")).toBeInTheDocument()
+  })
+
+  it("chave geral desligada: o motivo aparece em todos os escopos e o caminho leva à aba Configuração", async () => {
+    const off = TREE.map((group) => ({ ...group, effective: false, effectiveSource: "MASTER_OFF" as const, warnings: [], children: (group.children ?? []).map((child) => ({ ...child, effective: false, effectiveSource: "MASTER_OFF" as const })) }))
+    await renderScopes({ enabled: false, tree: off })
+    expect(screen.getByRole("alert")).toHaveTextContent("A chave geral do Apoio com Anjo está desligada")
+    expect(screen.getByTestId("scope-x1")).toHaveTextContent("Desabilitado · Bloqueado pela organização")
+    select("x1")
+    expect(effective()).toHaveTextContent("Opção salva neste escopoHerdar do escopo superior")
+    expect(effective()).toHaveTextContent("Está desligada: nenhum escopo tem o Anjo.")
+    fireEvent.click(option("Habilitar neste escopo"))
+    expect(screen.getByTestId("scope-preview")).toHaveTextContent("só passa a valer quando ela for ligada")
+    fireEvent.click(within(effective()).getByRole("button", { name: "Ligar na aba Configuração" }))
+    expect(await screen.findByRole("switch", { name: "Apoio com Anjo ligado" })).toBeInTheDocument()
+  })
+
+  it("a Organização mostra a chave geral e manda alterá-la na aba Configuração", async () => {
+    await renderScopes()
+    select("__organization__")
+    expect(screen.getByRole("status")).toHaveTextContent("Chave geral ligada")
+    expect(screen.getByText(/Habilitado agora em 2 de 2 Grupos e 1 de 2 Subgrupos/)).toBeInTheDocument()
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument()
+  })
+
+  it("'Ver Anjos' leva à aba Anjos já filtrada pelo escopo", async () => {
     service.fetchSupportAnjos.mockResolvedValue([anjo({ personId: "p-ana", name: "Ana Souza", canReceiveAssignment: true })])
     await renderScopes()
-    fireEvent.click(within(screen.getByTestId("scope-x1")).getByRole("button", { name: "3 Anjos" }))
+    select("x1")
+    fireEvent.click(screen.getByRole("button", { name: "Ver Anjos" }))
     expect(await screen.findByTestId("anjo-p-ana")).toBeInTheDocument()
     expect(service.fetchSupportAnjos).toHaveBeenCalledWith({ teamId: "gx", subteamId: "x1" })
   })

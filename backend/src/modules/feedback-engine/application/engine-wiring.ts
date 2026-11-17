@@ -26,6 +26,7 @@ import { deliveredViewOf, engineProjectionSource, publishEngineFeedbackToFollowU
 import { loadArgumentScriptsInForce } from "../../argument-scripts/infrastructure/argument-script-loaders.js"
 import { loadProductCatalogAt } from "../../product-catalog/infrastructure/product-catalog-loaders.js"
 import { rankCandidateDocumentsByCard } from "../../knowledge/application/knowledge-recall.js"
+import { resolveOperationalAlignmentsFor } from "../../operational-alignments/infrastructure/operational-alignment-loaders.js"
 
 /**
  * MONTAGEM do motor de feedback e a FRONTEIRA DE EFEITOS do Workflow (`WorkflowEffectSink.feedbackEngine`). Produção grava na
@@ -56,6 +57,8 @@ export function createEngineDeps(input: { db: Database; model?: EngineModelPort;
     loadProductCatalog: (organizationId, at, sourceIds) => loadProductCatalogAt(input.db, organizationId, at, sourceIds),
     // Busca nas bases em escala (camada 4): só quando as bases não cabem no orçamento; desligada com INIA_KB_SCALE_RETRIEVAL=off.
     rankDocumentsByCard: rankCandidateDocumentsByCard(input.db),
+    // Alinhamentos operacionais: a MESMA regra do chat (`resolveOperationalAlignmentsFor`), pela data do atendimento.
+    loadOperationalAlignments: (organizationId, personId, at, documentIds, context) => resolveOperationalAlignmentsFor(input.db, { organizationId, personId, at, documentIds, ...(context ? { usage: { surface: "MONITORING", interactionId: context.interactionId, agentId: context.agentId } } : {}) }),
     now: () => clock.now(),
     ...(input.allowCollaborator ? { allowCollaborator: input.allowCollaborator } : {}),
     organizePractices: input.organizePractices ?? true,

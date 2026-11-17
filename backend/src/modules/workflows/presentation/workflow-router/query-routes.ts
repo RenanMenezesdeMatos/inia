@@ -6,6 +6,7 @@ import { applyManageableScopeFilter, canManageScope, getManageableScopes } from 
 import type { FlowGraph } from "../../domain/graph-schema.js"
 import { NOT_FOUND, WORKFLOW_LIST_SELECT } from "./shared.js"
 import { sessionUser } from "../../../auth/presentation/session-user.js"
+import { applyUniverseListFilter, universeListParam } from "../../../operating-universe/application/universe-list-filter.js"
 
 const listWorkflowsSchema = orgScopeFilterSchema.extend({
   search: searchParam,
@@ -15,6 +16,7 @@ const listWorkflowsSchema = orgScopeFilterSchema.extend({
   hasActiveEnrollments: booleanParam,
   createdFrom: dateParam,
   createdTo: dateParam,
+  operatingUniverse: universeListParam,
 })
 
 /** Lista e detalhe de Workflows. Registradas na ordem original (ver workflow-router.ts). */
@@ -31,6 +33,7 @@ export function registerWorkflowQueryRoutes(router: Router, db: Database): void 
       .equals("q.active", input.active)
       .orgScope("q", input)
       .dateRange('q."createdAt"', input.createdFrom, input.createdTo)
+    applyUniverseListFilter(filter, 'q."operatingUniverse"', input.operatingUniverse)
     if (input.hasActiveEnrollments !== undefined) filter.add(`q."activeEnrollments" ${input.hasActiveEnrollments ? ">" : "="} 0`)
     applyManageableScopeFilter(scopes, filter)
     const data = await respondList(db, request.query, { select: WORKFLOW_LIST_SELECT, filter, orderBy: 'q."createdAt" desc, q.id' })

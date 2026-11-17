@@ -1,3 +1,4 @@
+import type { UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
 import { z } from "zod"
 
 import { adminGet, adminGetBlob, adminSend, adminUpload } from "@/lib/admin/admin-api"
@@ -39,6 +40,8 @@ export type KnowledgeListParams = ListParams &
     status: KnowledgeStatus[]
     hasFile?: boolean
     createdAt: DateRangeFilter
+    /** Universo de atuação; PENDING = sem classificação. */
+    operatingUniverse?: UniverseFilterValue
   }
 
 export async function fetchKnowledgeDocumentsPage(params: KnowledgeListParams): Promise<PageResult<KnowledgeDocument>> {

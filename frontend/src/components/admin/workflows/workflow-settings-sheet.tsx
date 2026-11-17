@@ -21,8 +21,10 @@ import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 
-import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { OrgScopeSelect, orgScopeValueAfterUniverseChange, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import { TriggerConfigEditor } from "./trigger-fields"
+import { WorkflowUniverseProvider } from "./workflow-universe-context"
+import { fitsUniverse, teamsForUniverse, type UniverseChoice } from "@/lib/operating-universe/hierarchy"
 import { useManageableTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import { useUserAccountsQuery } from "@/queries/admin/use-user-account-queries"
 import { useDiscardWorkflowConfigurationMutation, useUpdateWorkflowAnalysisConfigMutation, useUpdateWorkflowMutation } from "@/queries/admin/use-workflow-queries"
@@ -94,19 +96,23 @@ function structureGroupId(kind: StructureAnchorKind, structure: ConsolidatedStru
 /** Numeração visual da sequência Abrangência → Gatilho → Alvo da avaliação → População/Estrutura —
  * transmite que são 4 decisões em ORDEM, não campos soltos (Parte 1/5 do pedido). */
 /** Grupos/Subgrupos que a âncora pode usar: só os que quem edita gerencia, dentro da Abrangência do Workflow. */
+// Também só os do universo do Workflow (hierarquia universo → Grupo → Subgrupo); pendente cabe em qualquer universo.
 function groupOptionsFor(
   kind: StructureAnchorKind | "ALL" | "EMPLOYEE",
   manageable: ReturnType<typeof useManageableTeamsQuery>["data"],
   scopeType: WorkflowDetail["scopeType"],
   teamId: WorkflowDetail["teamId"],
+  universe: UniverseChoice = null,
 ) {
   if (!manageable) return []
+  const universeTeams = teamsForUniverse(manageable.teams, universe)
   if (kind === "TEAM") {
-    if (scopeType === "TEAM" || scopeType === "SUBTEAM") return manageable.teams.filter((team) => team.id === teamId)
-    return manageable.teams
+    const selectable = universeTeams.filter((team) => team.selectable)
+    if (scopeType === "TEAM" || scopeType === "SUBTEAM") return selectable.filter((team) => team.id === teamId)
+    return selectable
   }
   if (kind === "SUBTEAM") {
-    const teams = scopeType === "ALL_TEAMS" ? manageable.teams : manageable.teams.filter((team) => team.id === teamId)
+    const teams = scopeType === "ALL_TEAMS" ? universeTeams : universeTeams.filter((team) => team.id === teamId)
     return teams.flatMap((team) => team.subteams)
   }
   return []
@@ -164,6 +170,12 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
   const universeChanged = universe !== editable.operatingUniverse
   const scopeChanged = orgScopeChanged || universeChanged
 
+  // Trocar o universo limpa o Grupo/Subgrupo da Abrangência que deixou de caber nele (salvos juntos em "Salvar abrangência").
+  function handleUniverseChange(next: typeof universe) {
+    setUniverse(next)
+    setOrgScope((current) => orgScopeValueAfterUniverseChange(current, manageableTeamsQuery.data?.teams, next))
+  }
+
   async function handleSaveScope() {
     try {
       await updateMutation.mutateAsync({ id: workflow.id, ...(orgScopeChanged ? { orgScope } : {}), ...(universeChanged ? { operatingUniverse: universe } : {}) })
@@ -214,21 +226,21 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
 
   const structurePeopleOptions = useMemo(() => {
     if (!structureAnchorRole || !usersQuery.data) return []
-    return usersQuery.data.filter((person) => person.role === structureAnchorRole && (editable.scopeType === "ALL_TEAMS" || person.teamId === editable.teamId))
-  }, [usersQuery.data, structureAnchorRole, editable.scopeType, editable.teamId])
+    return usersQuery.data.filter((person) => person.role === structureAnchorRole && (editable.scopeType === "ALL_TEAMS" || person.teamId === editable.teamId) && fitsUniverse(person.operatingUniverse, editable.operatingUniverse))
+  }, [usersQuery.data, structureAnchorRole, editable.scopeType, editable.teamId, editable.operatingUniverse])
 
   const filterPeopleOptions = useMemo(() => {
     if (!filterAnchorRole || !usersQuery.data) return []
-    return usersQuery.data.filter((person) => person.role === filterAnchorRole && (editable.scopeType === "ALL_TEAMS" || person.teamId === editable.teamId))
-  }, [usersQuery.data, filterAnchorRole, editable.scopeType, editable.teamId])
+    return usersQuery.data.filter((person) => person.role === filterAnchorRole && (editable.scopeType === "ALL_TEAMS" || person.teamId === editable.teamId) && fitsUniverse(person.operatingUniverse, editable.operatingUniverse))
+  }, [usersQuery.data, filterAnchorRole, editable.scopeType, editable.teamId, editable.operatingUniverse])
 
   const structureGroupOptions = useMemo(
-    () => groupOptionsFor(structureKind, manageableTeamsQuery.data, editable.scopeType, editable.teamId),
-    [manageableTeamsQuery.data, structureKind, editable.scopeType, editable.teamId],
+    () => groupOptionsFor(structureKind, manageableTeamsQuery.data, editable.scopeType, editable.teamId, editable.operatingUniverse),
+    [manageableTeamsQuery.data, structureKind, editable.scopeType, editable.teamId, editable.operatingUniverse],
   )
   const filterGroupOptions = useMemo(
-    () => groupOptionsFor(filterKind, manageableTeamsQuery.data, editable.scopeType, editable.teamId),
-    [manageableTeamsQuery.data, filterKind, editable.scopeType, editable.teamId],
+    () => groupOptionsFor(filterKind, manageableTeamsQuery.data, editable.scopeType, editable.teamId, editable.operatingUniverse),
+    [manageableTeamsQuery.data, filterKind, editable.scopeType, editable.teamId, editable.operatingUniverse],
   )
 
   const nextStructure = buildConsolidatedStructure(structureKind, structureAnchorId)
@@ -301,16 +313,17 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
 
         <div className="space-y-3 px-4">
           <SectionHeading n={1} title="Abrangência" />
+          {/* Universo primeiro: é o topo da hierarquia — os Grupos/Subgrupos da Abrangência abaixo são só os dele. */}
+          <div className="space-y-1.5">
+            <Label htmlFor="workflow-settings-universe">Universo de atuação</Label>
+            <UniverseSelect id="workflow-settings-universe" value={universe} onChange={handleUniverseChange} allowPending={!universeEnforced && editable.operatingUniverse === null} />
+            <p className="text-xs text-muted-foreground">Só colaboradores deste universo entram nas execuções. Agentes, Orquestradores e indicadores das etapas precisam ser do mesmo universo — conferido ao Publicar.</p>
+          </div>
           {manageableTeamsQuery.data ? (
-            <OrgScopeSelect teams={manageableTeamsQuery.data.teams} value={orgScope} onChange={setOrgScope} allowAllTeams={manageableTeamsQuery.data.unrestricted} />
+            <OrgScopeSelect teams={manageableTeamsQuery.data.teams} value={orgScope} onChange={setOrgScope} allowAllTeams={manageableTeamsQuery.data.unrestricted} universe={universe} />
           ) : (
             <Skeleton className="h-10 w-full" />
           )}
-          <div className="space-y-1.5">
-            <Label htmlFor="workflow-settings-universe">Universo de atuação</Label>
-            <UniverseSelect id="workflow-settings-universe" value={universe} onChange={setUniverse} allowPending={!universeEnforced && editable.operatingUniverse === null} />
-            <p className="text-xs text-muted-foreground">Só colaboradores deste universo entram nas execuções. Agentes, Orquestradores e indicadores das etapas precisam ser do mesmo universo — conferido ao Publicar.</p>
-          </div>
           <p className="text-xs text-muted-foreground">
             Em quais grupos este workflow pode atuar. Trocar a abrangência é conferido com os Orquestradores, a Estrutura Consolidada e o
             Filtro Populacional já configurados. Se algo ficar fora do novo grupo, a troca é recusada e a mensagem diz o quê.
@@ -328,6 +341,7 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
             Quando e por que este workflow começa. É a mesma configuração do nó Gatilho no canvas — editar aqui ou lá dá no mesmo. Fica no
             rascunho: nada muda nas execuções até Publicar.
           </p>
+          <WorkflowUniverseProvider value={editable.operatingUniverse}>
           <TriggerConfigEditor
             trigger={editable.trigger}
             workflowId={workflow.id}
@@ -336,6 +350,7 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
             consolidatedStructure={editable.consolidatedStructure ?? null}
             populationFilter={editable.populationFilter ?? null}
           />
+          </WorkflowUniverseProvider>
         </div>
 
         <Separator />

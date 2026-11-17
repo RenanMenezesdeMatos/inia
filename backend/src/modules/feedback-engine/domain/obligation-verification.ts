@@ -1,3 +1,4 @@
+import { applyAlignmentPrecedence, hasOperationalAlignments } from "./operational-alignment-context.js"
 import { createHash } from "node:crypto"
 import type { ProjectedInteraction, TranscriptProjection } from "../../investigation/domain/transcript-projection.js"
 import {
@@ -335,7 +336,9 @@ export function verifyObligationAnalysis(input: ObligationVerificationInput): Ve
   let downgraded = 0
   const ordering = byPosition(context)
 
-  const procedureDocument = model.sources.primary ? context.documents.find((document) => document.handle === model.sources.primary && document.kind !== "ARGUMENT_SCRIPT") ?? null : null
+  // O alinhamento nunca é o procedimento principal: apontado como principal, vale o procedimento que ele afeta (quando apresentado).
+  const primaryHandle = model.sources.primary ? context.documents.find((document) => document.handle === model.sources.primary && document.kind === "OPERATIONAL_ALIGNMENT")?.alignment?.affectedDocumentHandle ?? model.sources.primary : null
+  const procedureDocument = primaryHandle ? context.documents.find((document) => document.handle === primaryHandle && document.kind !== "ARGUMENT_SCRIPT" && document.kind !== "OPERATIONAL_ALIGNMENT") ?? null : null
   if (model.sources.primary && !procedureDocument) auditNotes.push("O procedimento indicado pela análise não estava entre os documentos apresentados.")
   const scripts = verifyScriptAssessments({ argumentScripts: model.argumentScripts.map((script) => ({ script: script.script, applicability: script.applies, situation: null, evidence: script.evidence, rationale: script.rationale })) }, context, interactions, projection)
   const scriptApplicability = new Map(scripts.map((script) => [script.scriptId, script.applicability]))
@@ -515,8 +518,14 @@ export function verifyObligationAnalysis(input: ObligationVerificationInput): Ve
     const criterion = obligationCriterion(obligation, `O${index + 1}`, "ANALYSIS")
     if (criterion) criteria.push(criterion)
   })
-  const conflictLines = new Set(model.sourceConflicts.flatMap((conflict) => conflict.lines))
-  for (const criterion of criteria) if ((criterion.sources ?? []).some((source) => conflictLines.has(source.handle))) criterion.ruleConflict = true
+  // Conflitos entre fontes: sem alinhamento operacional, exatamente a regra de sempre (ninguém é acusado pela linha em conflito). Com
+  // alinhamento (`OPERATIONAL_ALIGNMENT_PRECEDENCE_V1`), a linha do procedimento afetado que conflita com ele é SUPERADA e a obrigação
+  // que só se apoia nela fica não aplicável; a obrigação do alinhamento é avaliada normalmente.
+  if (hasOperationalAlignments(context)) applyAlignmentPrecedence(criteria, model.sourceConflicts, context)
+  else {
+    const conflictLines = new Set(model.sourceConflicts.flatMap((conflict) => conflict.lines))
+    for (const criterion of criteria) if ((criterion.sources ?? []).some((source) => conflictLines.has(source.handle))) criterion.ruleConflict = true
+  }
 
   // COBERTURA: itens avaliáveis do argumentário que se aplica sem obrigação que os cubra (lista estrutural do cadastro) e o que a
   // análise declarou não ter avaliado — os dois ficam como NÃO AVALIADOS, com o motivo, até alguém avaliá-los.

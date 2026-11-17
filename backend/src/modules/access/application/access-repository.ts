@@ -25,7 +25,6 @@ export interface AccessRepository {
   listAssignments(organizationId: string, accountId: string): Promise<AssignmentRecord[]>
   findAssignment(organizationId: string, assignmentId: string): Promise<{ id: string; accountId: string; roleCode: string; scope: AccessScope; revoked: boolean } | null>
   /** Contas ATIVAS de pessoas ATIVAS que lideram alguém (≥ 1 subordinado direto ativo por reports_to), no alcance. */
-  listLeaderAccounts(organizationId: string, visibility: VisibilityFilter): Promise<{ accountId: string; personId: string; teamId: string | null; subteamId: string | null }[]>
   scopeOptions(organizationId: string, visibility: VisibilityFilter): Promise<{ teams: { id: string; name: string }[]; subteams: { id: string; name: string; teamId: string; teamName: string }[] }>
   /** Grava a atribuição + auditoria estruturada; ALREADY_ASSIGNED = já existe ativa igual. */
   createAssignment(input: { organizationId: string; accountId: string; roleCode: string; scope: AccessScope; grantedByAccountId: string; actorPersonId: string; permissions: readonly string[]; at: Date }): Promise<{ ok: true; id: string } | { ok: false; error: "ALREADY_ASSIGNED" }>

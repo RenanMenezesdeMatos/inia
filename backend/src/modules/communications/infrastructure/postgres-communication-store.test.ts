@@ -14,7 +14,7 @@ function fakeDb(rows: Record<string, unknown>[]) {
   return { db, calls }
 }
 
-const base = { id: ID, title: "Aviso", tags: ["Aviso"], audience: "TEAM", authorPersonId: AUTHOR, authorName: "Paula", recipientCount: 7, publishedAt: new Date("2026-11-16T12:00:00Z"), editedAt: null }
+const base = { id: ID, title: "Aviso", tags: ["Aviso"], audience: "TEAM", authorPersonId: AUTHOR, authorName: "Paula", authorJobTitle: "Supervisora", recipientCount: 7, publishedAt: new Date("2026-11-16T12:00:00Z"), editedAt: null, summary: null, featured: false, displayUntil: null }
 
 describe("store Postgres dos comunicados — lista leve × leitura pelo id (achado U4-02)", () => {
   it("listReceived não seleciona o conteúdo nem o texto inteiro e devolve trecho + hasImages", async () => {
@@ -24,7 +24,7 @@ describe("store Postgres dos comunicados — lista leve × leitura pelo id (acha
     expect(sql).not.toMatch(/content_html "contentHtml"/)
     expect(sql).not.toMatch(/plain_text "plainText"/)
     expect(sql).toMatch(/left\(n\.plain_text, \d+\) "plainTextStart"/)
-    expect(items).toEqual([{ id: ID, title: "Aviso", tags: ["Aviso"], audience: "TEAM", author: { personId: AUTHOR, name: "Paula" }, recipientCount: null, authoredByViewer: false, publishedAt: "2026-11-16T12:00:00.000Z", editedAt: null, excerpt: "Texto do aviso", hasImages: true }])
+    expect(items).toEqual([{ id: ID, title: "Aviso", tags: ["Aviso"], audience: "TEAM", author: { personId: AUTHOR, name: "Paula", jobTitle: "Supervisora" }, recipientCount: null, authoredByViewer: false, publishedAt: "2026-11-16T12:00:00.000Z", editedAt: null, summary: null, featured: false, displayUntil: null, excerpt: "Texto do aviso", hasImages: true }])
     expect(items[0]).not.toHaveProperty("contentHtml")
   })
 

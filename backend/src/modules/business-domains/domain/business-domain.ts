@@ -55,6 +55,8 @@ export type BusinessDomainRecord = {
   name: string
   description: string | null
   active: boolean
+  /** Universo de atuação (migration 197); nulo = pendente. Só leitura aqui — para os seletores encadearem pelo universo. */
+  operatingUniverse?: string | null
   createdAt: string
   updatedAt: string
 }

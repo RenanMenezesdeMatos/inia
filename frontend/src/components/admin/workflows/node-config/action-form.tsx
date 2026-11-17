@@ -16,6 +16,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AgentPicker } from "../agent-picker"
 import { resolveFeedbackOrigins } from "../content-sources"
 import { IndicatorSelect } from "../indicator-select"
+import { useWorkflowUniverse } from "../workflow-universe-context"
+import { fitsUniverse } from "@/lib/operating-universe/hierarchy"
 import { fetchAgentPromptPreview } from "@/services/admin/agent-service"
 import type { Agent } from "@/schemas/admin/agent.schema"
 import type { Orchestrator } from "@/schemas/admin/assistant.schema"
@@ -115,6 +117,8 @@ export function ActionForm({
 }) {
   const config = node.config
   const fieldId = useId()
+  // Só agentes do universo do Workflow; o já escolhido de outro universo fica visível e desabilitado com o motivo.
+  const universe = useWorkflowUniverse()
   // Contexto do node no grafo: depois de "Consolidar resultados" = Agent de síntese (evolução 2026-09-16).
   const afterJoin = useMemo(() => resolveNodeContexts(graph).get(node.id) === "CONSOLIDATED_RESULT", [graph, node.id])
   // V1.5.10: "Gerar feedback de atendimento" só é oferecido com o módulo LIGADO neste ambiente (mesma flag do backend);
@@ -227,7 +231,7 @@ export function ActionForm({
             <Label htmlFor={`${fieldId}-agent`}>Agente</Label>
             <AgentPicker
               id={`${fieldId}-agent`}
-              agents={agents}
+              agents={agents.filter((candidate) => fitsUniverse(candidate.operatingUniverse, universe) || candidate.id === config.agentId)}
               value={config.agentId}
               onChange={(agentId) => {
                 // Sem versão fixada (revisão de 03/11/2026): cada execução usa a vigente do agente. Uma referência legada some aqui.
@@ -237,6 +241,7 @@ export function ActionForm({
               }}
               disabledReason={(candidate) => {
                 // Espelho do publish: pós-Join só Agent que aceita o consolidado; síntese só pós-Join.
+                if (!fitsUniverse(candidate.operatingUniverse, universe)) return `De outro universo de atuação (${candidate.operatingUniverse}) — escolha um agente do universo deste Workflow.`
                 const specialty = resolveAgentSpecialty(candidate)
                 if (afterJoin && !specialty.acceptsConsolidated) return "Analisa um colaborador por vez — depois de \"Consolidar resultados\" só um Agent de síntese roda aqui."
                 if (!afterJoin && specialty.kind === "SYNTHESIS") return "Agent de síntese — só roda depois de \"Consolidar resultados\"."

@@ -699,7 +699,7 @@ async function executeAgentRun(
     const coverage = assessingProcess ? { phases: ["CLOSING" as const], subject: coverageSubject } : diagnosisCoverage ? { phases: ["CLOSING" as const], subject: diagnosisCoverage.subject } : null
     // V1.7.4 — monitoria (avaliação de processo por Flag): a régua é só a base aplicável; Regras de chamada genéricas ficam fora do prompt.
     const monitoringProcessAssessment = input.workflow?.kind === "channel_flag" && input.workflow.outputContract === "PROCESS_ASSESSMENT"
-    const built = await buildSystemPromptWithTrace(db, input.agentId, agent, { query: input.inputContext, coverage, markProcessRoles, processAssessment: monitoringProcessAssessment, governanceSubjectPersonId: input.workflow && "operatorId" in input.workflow ? input.workflow.operatorId : null })
+    const built = await buildSystemPromptWithTrace(db, input.agentId, agent, { query: input.inputContext, coverage, markProcessRoles, processAssessment: monitoringProcessAssessment, governanceSubjectPersonId: input.workflow && "operatorId" in input.workflow ? input.workflow.operatorId : null, ...(input.workflow?.kind === "channel_flag" ? { alignmentReferenceDate: new Date(input.workflow.startedAt) } : {}) })
     attachKnowledgeTrace(withoutCheckpointCatalog(built.knowledge))
     const baseSystemPrompt = built.systemPrompt
 

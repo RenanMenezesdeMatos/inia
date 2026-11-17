@@ -44,7 +44,8 @@ describe("consulta de processo por Grupo", () => {
     const { toolset, consulted } = toolsetFor([FATURAMENTO], [ORCH_FAT, ORCH_ALL])
     expect(toolset!.declarations[0]!.parameters!.properties).not.toHaveProperty("grupo")
     const result = await toolset!.execute(PROCESS_TOOL, { pergunta: "Como orientar a equipe na contestação de fatura?" })
-    expect(consulted).toEqual([{ orchestrator: ORCH_FAT, groupNames: ["B2C · Faturamento"], question: "Como orientar a equipe na contestação de fatura?" }])
+    // Os Grupos consultados vão junto: os alinhamentos e comunicados da resposta são os dos públicos deles (LEADER_STRUCTURE_CONTEXT_V1).
+    expect(consulted).toEqual([{ orchestrator: ORCH_FAT, groupNames: ["B2C · Faturamento"], teamIds: ["team-fat"], question: "Como orientar a equipe na contestação de fatura?" }])
     expect(result.text).toContain('Orquestrador "INIA Faturamento" (Grupo B2C · Faturamento)')
     expect(result.text).toContain("Procedimento segundo INIA Faturamento.")
     expect(result.trace).toEqual({ groups: ["B2C · Faturamento"], orchestratorId: "orch-fat", orchestratorName: "INIA Faturamento", specialists: ["agent_kb"] })

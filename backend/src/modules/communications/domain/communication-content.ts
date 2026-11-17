@@ -11,17 +11,24 @@
  * `application/communication-images.ts`; aqui só a forma.
  */
 
-const ALLOWED = new Set(["p", "div", "br", "strong", "b", "em", "i", "ul", "ol", "li", "h2", "h3", "span", "img"])
+const ALLOWED = new Set(["p", "div", "br", "strong", "b", "em", "i", "ul", "ol", "li", "h2", "h3", "span", "img", "a"])
 const VOID = new Set(["br", "img"])
 /** Marcas cujo CONTEÚDO também sai (não é texto para ler). */
 const DROP_WITH_CONTENT = new Set(["script", "style", "template", "iframe", "object", "embed", "noscript", "textarea", "title", "svg", "math", "select", "head"])
 
 const COLOR = /^(#[0-9a-f]{6}|rgb\(\d{1,3}, ?\d{1,3}, ?\d{1,3}\))$/i
+/**
+ * Link (área editorial, 17/11/2026): só endereço web (`http://`/`https://`) ou caminho interno do app (`/…`, nunca `//`), sem
+ * espaço, aspas ou `<>`, até 2.000 caracteres. Qualquer outro esquema (`javascript:`, `data:`, `mailto:`…) faz o `<a>` sair e o
+ * texto ficar. Na montagem o link sempre abre em outra aba, com `rel` fixo.
+ */
+export const COMMUNICATION_LINK_HREF = /^(?:https?:\/\/[^\s"'<>`\\]{1,1990}|\/(?![/\\])[^\s"'<>`\\]{0,1990})$/i
+
 export const COMMUNICATION_IMAGE_SOURCE = /^data:image\/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/]+={0,2})$/
 
 export type SanitizedNode =
   | { kind: "text"; text: string }
-  | { kind: "open"; tag: string; color?: string; src?: string }
+  | { kind: "open"; tag: string; color?: string; src?: string; href?: string }
   | { kind: "close"; tag: string }
 
 // Atributos fora de aspas não aceitam "<" (achado COMM-01): com `[^>"']`, cada "<" sem ">" adiante varria o resto do texto e a
@@ -103,6 +110,14 @@ export function parseCommunicationHtml(html: string): SanitizedNode[] {
       nodes.push({ kind: "open", tag })
       continue
     }
+    if (tag === "a") {
+      const href = attribute(attributes, "href")?.trim() ?? ""
+      // Link inválido: a marca sai e o texto dela fica (não entra na pilha; o fechamento é ignorado).
+      if (!COMMUNICATION_LINK_HREF.test(href) || stack.includes("a")) continue
+      nodes.push({ kind: "open", tag, href })
+      stack.push(tag)
+      continue
+    }
     const color = tag === "span" ? colorOf(attributes) : undefined
     nodes.push(color ? { kind: "open", tag, color } : { kind: "open", tag })
     stack.push(tag)
@@ -120,6 +135,7 @@ export function renderCommunicationHtml(nodes: readonly SanitizedNode[]): string
       if (node.kind === "close") return `</${node.tag}>`
       if (node.tag === "img") return `<img src="${node.src}" alt="Imagem do comunicado">`
       if (node.tag === "br") return "<br>"
+      if (node.tag === "a") return `<a href="${escapeText(node.href ?? "")}" target="_blank" rel="noopener noreferrer nofollow">`
       return node.color ? `<span style="color: ${node.color}">` : `<${node.tag}>`
     })
     .join("")

@@ -1,12 +1,15 @@
 "use client"
 
 import { useState } from "react"
-import { EllipsisVertical, Pencil, Trash2 } from "lucide-react"
+import { EllipsisVertical, Pencil, ShieldAlert, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { FeedbackCard, FeedbackEntryHeader } from "@/components/feedbacks/feedback-entry-header"
 import { IniaFeedItem } from "@/components/operator/inia-feed"
-import { EditCommunicationDialog } from "@/components/profile/broadcast/supervisor-broadcast-dialog"
+import Link from "next/link"
+import { publicationPath } from "@/components/publications/publications-route"
+import { ModerationRetireDialog } from "@/components/publications/moderation/moderation-retire-dialog"
+import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
@@ -20,7 +23,7 @@ import type { Communication, ReceivedCommunication } from "@/schemas/communicati
 
 /** Para quem foi e, para quem publicou, quantas pessoas receberam. */
 export function communicationAudienceLabel(notice: Communication | ReceivedCommunication): string {
-  const audience = notice.audience === "ORGANIZATION" ? "toda a empresa" : notice.authoredByViewer ? "sua equipe" : "a equipe"
+  const audience = notice.audience === "ORGANIZATION" ? "toda a empresa" : notice.audience === "SEGMENT" ? "um público específico" : notice.authoredByViewer ? "sua equipe" : "a equipe"
   if (!notice.authoredByViewer) return `Para ${audience}`
   const count = notice.recipientCount === null ? "" : ` · ${notice.recipientCount.toLocaleString("pt-BR")} ${notice.recipientCount === 1 ? "pessoa" : "pessoas"}`
   return `Publicado para ${audience}${count}`
@@ -51,7 +54,7 @@ export function CommunicationEntry({ notice }: { notice: Communication | Receive
                   {tag}
                 </Badge>
               ))}
-              action={full?.authoredByViewer ? <AuthorActions notice={full} /> : undefined}
+              action={full?.authoredByViewer ? <AuthorActions notice={full} /> : !notice.authoredByViewer ? <ModeratorActions notice={notice} /> : undefined}
             />
           }
         >
@@ -101,7 +104,6 @@ function CollapsedCommunication({ notice }: { notice: ReceivedCommunication }) {
 }
 
 function AuthorActions({ notice }: { notice: Communication }) {
-  const [editing, setEditing] = useState(false)
   const [retiring, setRetiring] = useState(false)
   const retire = useRetireCommunicationMutation()
   return (
@@ -113,9 +115,11 @@ function AuthorActions({ notice }: { notice: Communication }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={() => setEditing(true)}>
-            <Pencil />
-            Editar
+          <DropdownMenuItem asChild>
+            <Link href={publicationPath(notice.id)}>
+              <Pencil />
+              Editar
+            </Link>
           </DropdownMenuItem>
           <DropdownMenuItem variant="destructive" onSelect={() => setRetiring(true)}>
             <Trash2 />
@@ -123,7 +127,6 @@ function AuthorActions({ notice }: { notice: Communication }) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <EditCommunicationDialog communication={notice} open={editing} onOpenChange={setEditing} />
       <AlertDialog open={retiring} onOpenChange={setRetiring}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -133,6 +136,7 @@ function AuthorActions({ notice }: { notice: Communication }) {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={retire.isPending}>Manter</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               disabled={retire.isPending}
               onClick={(event) => {
                 event.preventDefault()
@@ -153,3 +157,29 @@ function AuthorActions({ notice }: { notice: Communication }) {
     </>
   )
 }
+
+/** Moderação (Administrador geral): retirar, com motivo, o comunicado de outra pessoa direto do Acompanhamento. Sem a permissão, nada aparece. */
+function ModeratorActions({ notice }: { notice: Communication | ReceivedCommunication }) {
+  const me = useCurrentUserQuery()
+  const [retiring, setRetiring] = useState(false)
+  if (!me.data?.access.capabilities.canModerateCommunications) return null
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Moderação do comunicado">
+            <EllipsisVertical />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem variant="destructive" onSelect={() => setRetiring(true)}>
+            <ShieldAlert />
+            Retirar (moderação)
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ModerationRetireDialog id={notice.id} title={notice.title} authorName={notice.author.name} open={retiring} onOpenChange={setRetiring} />
+    </>
+  )
+}
+

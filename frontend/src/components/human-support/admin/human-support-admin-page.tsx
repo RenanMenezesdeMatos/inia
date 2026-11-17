@@ -34,6 +34,8 @@ export function HumanSupportAdminPage({ canGrantRoles }: { canGrantRoles: boolea
         <TabsContent value="settings"><SettingsTab /></TabsContent>
         <TabsContent value="scopes">
           <ScopesTab
+            canGrantRoles={canGrantRoles}
+            onOpenSettings={() => setTab("settings")}
             onShowAnjos={(filter) => {
               setAnjoFilter(filter)
               setTab("anjos")

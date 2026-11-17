@@ -1624,7 +1624,7 @@ já diz a regra; a família do status diz como investigar.
 
 **Recuperação:** Restabelecer a dependência; repetir a ação. **Escalar para:** Infraestrutura da VM (servidor, IIS, PostgreSQL). Sem solução em 30 min: equipe de desenvolvimento da INIA com a referência, o horário UTC e as linhas do log.
 
-## Códigos dos módulos (904)
+## Códigos dos módulos (942)
 
 ### Módulo `access`
 
@@ -2256,14 +2256,28 @@ já diz a regra; a família do status diz como investigar.
 
 | Código | Status | Família | Mensagem | Onde |
 | --- | --- | --- | --- | --- |
-| `COMMUNICATION_AUDIENCE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem permissão para publicar para toda a empresa. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_ALREADY_OUT` | 409 | FAMILIA-CONFLITO | Um comunicado que já saiu não volta a rascunho. Arquive-o para tirá-lo de circulação. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_ARCHIVE_STATE` | 409 | FAMILIA-CONFLITO | (mensagem montada no código) | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_ARCHIVED` | 409 | FAMILIA-CONFLITO | Desarquive o comunicado antes de alterá-lo. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_AUDIENCE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem permissão para publicar para este público. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_AUDIENCE_LOCKED` | 409 | FAMILIA-CONFLITO | O público não muda depois que o comunicado saiu. Arquive e crie outro, se precisar. | `backend/src/modules/communications/application/communication-service.ts` |
 | `COMMUNICATION_CONTENT_EMPTY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Digite o conteúdo do comunicado. | `backend/src/modules/communications/application/communication-images.ts` |
-| `COMMUNICATION_EDIT_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem mais permissão para publicar para este público; ainda pode retirar o comunicado. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_DISPLAY_WINDOW_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O fim da exibição precisa ser depois do início da publicação. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_DISPLAY_WINDOW_TOO_LONG` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O período de exibição pode ser de no máximo um ano. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_DRAFT_NOT_ARCHIVABLE` | 409 | FAMILIA-CONFLITO | Rascunho não é arquivado: descarte-o pelo menu. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_EDIT_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem mais permissão para publicar para este público; ainda pode arquivar ou retirar o comunicado. | `backend/src/modules/communications/application/communication-service.ts` |
 | `COMMUNICATION_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem permissão para publicar comunicados. | `backend/src/modules/communications/application/communication-service.ts` |
 | `COMMUNICATION_IMAGE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Uma das imagens do comunicado não pôde ser lida. Use JPG, PNG ou WebP. | `backend/src/modules/communications/application/communication-images.ts` |
 | `COMMUNICATION_IMAGE_TYPE_UNSUPPORTED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Formato de imagem não suportado no comunicado. Use JPG, PNG ou WebP. | `backend/src/modules/communications/application/communication-images.ts` |
-| `COMMUNICATION_NO_AUDIENCE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Não há ninguém na sua equipe para receber o comunicado. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_MODERATION_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem permissão para moderar publicações. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_NO_AUDIENCE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Não há ninguém neste público para receber o comunicado. | `backend/src/modules/communications/application/communication-service.ts` |
 | `COMMUNICATION_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Comunicado não encontrado. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_PUBLISHED_AT_LOCKED` | 409 | FAMILIA-CONFLITO | O comunicado já foi publicado; o instante da publicação não muda. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_REFERENCE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Um Grupo, Subgrupo ou produto escolhido não existe nesta organização. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_SCHEDULE_IN_PAST` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A data de publicação já passou. Escolha agora ou um horário futuro. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_SCHEDULE_TOO_FAR` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O agendamento pode ser de no máximo um ano. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_SEGMENT_EMPTY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escolha o universo, ao menos um Grupo ou ao menos um Subgrupo para o público. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_TAGS_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Selecione ao menos uma categoria. | `backend/src/modules/communications/application/communication-service.ts` |
 | `COMMUNICATION_TEXT_TOO_LONG` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O texto deve ter no máximo ${COMMUNICATION_MAX_PLAIN_TEXT.toLocaleString("pt-BR")} caracteres. | `backend/src/modules/communications/application/communication-images.ts` |
 | `COMMUNICATION_TOO_LARGE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O comunicado passou de 2 MB. Use imagens menores ou em menor número. | `backend/src/modules/communications/application/communication-images.ts` |
 | `COMMUNICATION_TOO_MANY_IMAGES` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O comunicado pode ter no máximo ${COMMUNICATION_MAX_IMAGES} imagens. | `backend/src/modules/communications/application/communication-images.ts` |
@@ -2705,6 +2719,35 @@ já diz a regra; a família do status diz como investigar.
 | `PRODUCT_SCOPE_SOURCE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Base não encontrada nesta organização. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
 | `PRODUCT_SCOPE_TARGET_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escolha só produtos ou categorias ativos. | `backend/src/modules/product-catalog/application/product-scope-assignments.ts` |
 | `PRODUCT_TREE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+
+### Módulo `operational-alignments`
+
+| Código | Status | Família | Mensagem | Onde |
+| --- | --- | --- | --- | --- |
+| `OPERATIONAL_ALIGNMENT_ACTOR_REQUIRED` | 403 | FAMILIA-ACESSO | Sua conta não está vinculada a um colaborador: não é possível registrar quem publicou. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_CHANGE_REASON_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Informe o motivo da alteração: o alinhamento já foi publicado e a nova versão fica no histórico. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_CHECK_UNAVAILABLE` | 503 | FAMILIA-DEPENDENCIA | Não foi possível conferir a orientação contra os assuntos proibidos agora. Tente publicar de novo em instantes. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_CONFLICT` | 409 | FAMILIA-CONFLITO | Há alinhamento do MESMO ponto com o MESMO público no mesmo período, sem precedência entre eles. Encerre o outro, ajuste o período ou use um recorte mais específico. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_DOCUMENT_NOT_FOUND` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Algum processo escolhido não foi encontrado nas bases desta organização. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_DRAFT_CHANGED` | 409 | FAMILIA-CONFLITO | O rascunho mudou enquanto você publicava. Confira e publique de novo. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_GROUP_UNCLASSIFIED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Este Grupo/Subgrupo ainda não tem universo de atuação. Classifique-o em Administração › Universo de atuação antes de publicar um alinhamento para ele. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_NO_DRAFT` | 409 | FAMILIA-CONFLITO | Não há rascunho para descartar. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Alinhamento não encontrado. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_NOT_PUBLISHED` | 409 | FAMILIA-CONFLITO | Não há versão publicada para encerrar. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_PERIOD_TOO_LONG` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Um alinhamento é temporário: a vigência vai até ${MAX_ALIGNMENT_DAYS} dias. Para uma mudança permanente, atualize a base oficial. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_PRODUCT_NOT_FOUND` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Produto não encontrado ou inativo. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_PROHIBITED_TOPIC` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A orientação trata de assunto proibido pela Governança e não pode ser publicada: ${check.reason} | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_REASON_DUPLICATED` | 409 | FAMILIA-CONFLITO | Já existe o motivo "${name}". | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_REASON_NOT_FOUND` | 404, 422 | FAMILIA-NAO-ENCONTRADO | Motivo do alinhamento não encontrado ou desativado. Escolha outro. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_RELATION_REQUIRED` | 409 | FAMILIA-CONFLITO | Outros alinhamentos alcançam o mesmo público, algum processo em comum e o mesmo período. Diga, para cada um, se tratam do mesmo ponto ou de pontos diferentes. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_REQUEST_REASON_DUPLICATED` | 409 | FAMILIA-CONFLITO | Já existe o motivo do pedido "${existing.name}"${existing.active ? "" : " (desativado)"}. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_REQUEST_REASON_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Nome inválido para um motivo do pedido. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_REQUEST_REASON_NOT_FOUND` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Algum motivo do pedido do cliente não foi encontrado ou está desativado. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_RESPONSIBLE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Responsável inválido: escolha uma liderança ativa da organização (ou deixe você mesmo). | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_RETROACTIVE_VERSION` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A nova versão não pode começar antes da versão publicada (${previous.starts_on}): o que já valia não é reescrito. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Só quem administra a organização inteira publica um alinhamento para todo o universo. Escolha um Grupo ou Subgrupo. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_SCOPE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Subgrupo não encontrado nesta organização. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_UNIVERSE_CONFLICT` | 409 | FAMILIA-CONFLITO | O público escolhido é do universo ${groupUniverse}; o alinhamento está marcado como ${input.operatingUniverse}. Universos são separados. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
 
 ### Módulo `reporting`
 

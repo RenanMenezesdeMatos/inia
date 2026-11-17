@@ -24,6 +24,7 @@ import {
 import { deleteOrchestratorIfUnreferenced } from "../application/orchestrator-deletion.js"
 import { assertStructuredOutputChangeAllowed, loadStructuredOutputUsage } from "../application/structured-output-dependencies.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { applyUniverseListFilter, universeListParam } from "../../operating-universe/application/universe-list-filter.js"
 
 
 const NOT_FOUND = { error: { code: "ORCHESTRATOR_NOT_FOUND", message: "Orquestrador não encontrado." } }
@@ -36,12 +37,13 @@ const listOrchestratorsSchema = orgScopeFilterSchema.extend({
   specialistAgentId: z.string().uuid().optional(),
   createdFrom: dateParam,
   createdTo: dateParam,
+  operatingUniverse: universeListParam,
 })
 
 const ORCHESTRATOR_SELECT = `
   select
     o.id, o.name, o.scope_type "scopeType", o.team_id "teamId", t.name "teamName",
-    o.subteam_id "subteamId", st.name "subteamName", o.active, o.created_at "createdAt",
+    o.subteam_id "subteamId", st.name "subteamName", o.active, o.created_at "createdAt", o.operating_universe "operatingUniverse",
     o.invocation_mode "invocationMode", o.output_instructions "outputInstructions", o.output_schema "outputSchema",
     o.structured_output "structuredOutputRaw", o.recommend_support_materials "recommendSupportMaterials",
     o.orchestrator_agent_id "orchestratorAgentId", oa.name "orchestratorAgentName", oa.active "orchestratorAgentActive",
@@ -259,6 +261,7 @@ export function createAssistantRouter(db: Database) {
       .equals('q."orchestratorAgentId"', input.orchestratorAgentId)
       .orgScope("q", input)
       .dateRange('q."createdAt"', input.createdFrom, input.createdTo)
+    applyUniverseListFilter(filter, 'q."operatingUniverse"', input.operatingUniverse)
     if (input.specialistAgentId) {
       filter.add(`exists (select 1 from assistant_orchestrator_specialists s where s.orchestrator_id = q.id and s.agent_id = ${filter.param(input.specialistAgentId)}::uuid)`)
     }

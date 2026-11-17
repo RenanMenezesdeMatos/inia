@@ -37,12 +37,16 @@ import {
   ListDateRangeFilter,
   ListMultiSelectFilter,
   ListOrgScopeFilter,
+  ListUniverseFilter,
+  universeChoiceOf,
   ListSearchInput,
   ListToolbar,
 } from "@/components/admin/shared/list/list-filters"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
-import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { OrgScopeSelect, orgScopeValueAfterUniverseChange, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { fitsUniverse, orgScopeAfterUniverseChange, orgScopePatch } from "@/lib/operating-universe/hierarchy"
+import { useIndicatorsWithRulesQuery } from "@/queries/admin/use-indicator-rule-queries"
 import { formatScopeLabel } from "@/lib/admin/scope-compatibility"
 import { isTriggerComplete, TriggerFields } from "@/components/admin/workflows/trigger-fields"
 import { useManageableTeamsQuery, useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
@@ -63,6 +67,7 @@ const EMPTY_TRIGGER: WorkflowTriggerInput = { kind: "channel_flag", channelFlagI
 
 function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (open: boolean) => void; onCreated: (id: string) => void }) {
   const manageableTeamsQuery = useManageableTeamsQuery()
+  const indicatorsQuery = useIndicatorsWithRulesQuery()
   const createMutation = useCreateWorkflowMutation()
 
   const [name, setName] = useState("")
@@ -80,6 +85,17 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
     if (manageableTeamsQuery.data && !manageableTeamsQuery.data.unrestricted && orgScope.scopeType === "ALL_TEAMS") {
       setOrgScope({ scopeType: "TEAM" })
     }
+  }
+
+  // Trocar o universo limpa o que deixou de caber: Grupo/Subgrupo e o indicador do gatilho de outro universo.
+  function handleUniverseChange(next: OperatingUniverse | null) {
+    setUniverse(next)
+    setOrgScope((current) => orgScopeValueAfterUniverseChange(current, manageableTeamsQuery.data?.teams, next))
+    setTrigger((current) => {
+      if ((current.kind !== "indicator" && current.kind !== "manual") || !current.indicatorCode) return current
+      const indicator = indicatorsQuery.data?.find((candidate) => candidate.code === current.indicatorCode)
+      return fitsUniverse(indicator?.operatingUniverse, next) ? current : { ...current, indicatorCode: "" }
+    })
   }
 
   async function handleCreate() {
@@ -110,7 +126,13 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
             <Label htmlFor="workflow-name">Nome</Label>
             <Input id="workflow-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Nota URA baixa — Contas" />
           </div>
-          <TriggerFields value={trigger} onChange={setTrigger} scope={orgScope} />
+          {/* Universo antes do gatilho e da Abrangência: é o topo da hierarquia — Grupos/Subgrupos e indicadores abaixo só os dele. */}
+          <div className="space-y-1.5">
+            <Label htmlFor="workflow-universe">Universo de atuação</Label>
+            <UniverseSelect id="workflow-universe" value={universe} onChange={handleUniverseChange} allowPending={!universeEnforced} aria-describedby="workflow-universe-help" />
+            <p id="workflow-universe-help" className="text-xs text-muted-foreground">Só colaboradores deste universo entram nas execuções; agentes, Orquestradores e indicadores precisam ser do mesmo universo.</p>
+          </div>
+          <TriggerFields value={trigger} onChange={setTrigger} scope={orgScope} universe={universe} />
           <div className="space-y-1.5">
             <Label>Abrangência</Label>
             <p className="text-xs text-muted-foreground">Em quais grupos este workflow pode atuar.</p>
@@ -120,15 +142,11 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
                 value={orgScope}
                 onChange={setOrgScope}
                 allowAllTeams={manageableTeamsQuery.data.unrestricted}
+                universe={universe}
               />
             ) : (
               <Skeleton className="h-10 w-full" />
             )}
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="workflow-universe">Universo de atuação</Label>
-            <UniverseSelect id="workflow-universe" value={universe} onChange={setUniverse} allowPending={!universeEnforced} aria-describedby="workflow-universe-help" />
-            <p id="workflow-universe-help" className="text-xs text-muted-foreground">Só colaboradores deste universo entram nas execuções; agentes, Orquestradores e indicadores precisam ser do mesmo universo.</p>
           </div>
           {createMutation.isError ? <p className="text-sm text-destructive">{(createMutation.error as Error).message}</p> : null}
         </div>
@@ -360,6 +378,8 @@ export function WorkflowsPage() {
 
   const list = useAdminListState({ storageKey: "workflows", defaultFilters: DEFAULT_FILTERS })
   const pageQuery = useWorkflowsPageQuery(list.params)
+  // Hierarquia universo → Grupo/Subgrupo: o filtro de Grupo só oferece os do universo escolhido; trocar o universo limpa o que não cabe.
+  const currentScope = { scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }
 
   // `?new` na URL abre o diálogo (ajuste na renderização, sem render extra) e consome o pedido: cada nova navegação com
   // `?new` abre de novo.
@@ -400,10 +420,15 @@ export function WorkflowsPage() {
             <ListBooleanFilter value={list.filters.published} onChange={(value) => list.setFilter("published", value)} allLabel="Publicados e rascunhos" trueLabel="Publicados" falseLabel="Rascunhos" ariaLabel="Filtrar por publicação" />
             <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Ligados e desligados" trueLabel="Ligados" falseLabel="Desligados" ariaLabel="Filtrar por interruptor ligado ou desligado" />
             <ListBooleanFilter value={list.filters.hasActiveEnrollments} onChange={(value) => list.setFilter("hasActiveEnrollments", value)} allLabel="Com ou sem execuções" trueLabel="Com execuções em andamento" falseLabel="Sem execuções em andamento" ariaLabel="Filtrar por execuções em andamento" />
+            <ListUniverseFilter
+              value={list.filters.operatingUniverse}
+              onChange={(operatingUniverse) => list.patchFilters({ operatingUniverse, ...orgScopePatch(orgScopeAfterUniverseChange(currentScope, teamsQuery.data, universeChoiceOf(operatingUniverse))) })}
+            />
             <ListOrgScopeFilter
               teams={teamsQuery.data}
-              value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
-              onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
+              universe={universeChoiceOf(list.filters.operatingUniverse)}
+              value={currentScope}
+              onChange={(scope) => list.patchFilters(orgScopePatch(scope))}
             />
             <ListDateRangeFilter label="Criado em" value={list.filters.createdAt} onChange={(value) => list.setFilter("createdAt", value)} />
           </ListToolbar>

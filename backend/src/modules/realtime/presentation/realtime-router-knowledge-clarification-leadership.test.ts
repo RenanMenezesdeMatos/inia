@@ -32,6 +32,7 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, next) => {
 
 const GROUP_A = { teamId: "team-a", name: "Grupo A (teste)" }
 const GROUP_B = { teamId: "team-b", name: "Grupo B (teste)" }
+// PROCESS_GROUP_RULE_V1: o Grupo só vale se a pessoa o disse — as perguntas abaixo citam o Grupo ("no Grupo A").
 const ORCHESTRATORS: InteractiveOrchestratorScope[] = [
   { id: "orch-a", name: "Orquestrador A (teste)", scopeType: "TEAM", teamId: "team-a" },
   { id: "orch-b", name: "Orquestrador B (teste)", scopeType: "TEAM", teamId: "team-b" },
@@ -158,10 +159,10 @@ describe("consulta de processo de quem lidera — esclarecimento pelas bases do 
     const { ask, top, clarification, toolTexts } = setup((call) => clarify(call))
     // O modelo da liderança "resolve" a ambiguidade por conta própria ao montar a consulta (visto no QA de 20/10).
     top.process = { pergunta: "Quais documentos preciso para troca de titularidade residencial?", grupo: GROUP_A.name }
-    const sse = await ask("Quais documentos preciso para a troca de titularidade?")
-    expect(clarification.calls[0]!.prompt).toContain("Quais documentos preciso para a troca de titularidade?")
+    const sse = await ask("Quais documentos preciso para a troca de titularidade no Grupo A?")
+    expect(clarification.calls[0]!.prompt).toContain("Quais documentos preciso para a troca de titularidade no Grupo A?")
     expect(clarification.calls[0]!.prompt).not.toContain("titularidade residencial?")
-    expect((clarificationOf(sse) as unknown as { originalQuestion: string }).originalQuestion).toBe("Quais documentos preciso para a troca de titularidade?")
+    expect((clarificationOf(sse) as unknown as { originalQuestion: string }).originalQuestion).toBe("Quais documentos preciso para a troca de titularidade no Grupo A?")
     expect(toolTexts[0]).toContain(PROCESS_CLARIFICATION_NOTE)
   })
 
@@ -177,14 +178,14 @@ describe("consulta de processo de quem lidera — esclarecimento pelas bases do 
 
   it("acesso de quem lidera: base que ela não pode ler não chega à IA, nem como opção", async () => {
     const { ask, clarification } = setup((call) => ({ decision: "INSUFFICIENT", insufficient: { reason: call.prompt.includes("titularidade — Empresa") ? "viu" : "não viu" } }), { accessible: (id) => id !== "kb-fic-tt-empresa" })
-    await ask("Quais documentos preciso para troca de titularidade?")
+    await ask("Quais documentos preciso para troca de titularidade no Grupo A?")
     expect(clarification.calls[0]!.prompt).toContain("— Residencial")
     expect(clarification.calls[0]!.prompt).not.toContain("titularidade — Empresa")
   })
 
   it("escolha no formulário: continua no MESMO Orquestrador do Grupo, direto pelo serviço (sem o modelo da liderança), e responde com fontes", async () => {
     const { ask, memory, orchestrated, clarification } = setup((call, index) => (index === 0 ? clarify(call) : answerFor(call)))
-    const first = await ask("Quais documentos preciso para troca de titularidade?")
+    const first = await ask("Quais documentos preciso para troca de titularidade no Grupo A?")
     const view = clarificationOf(first)!
     const step = view.steps[0]!
     const second = await ask("Empresa", { clarification: { clarificationId: view.id, stepId: step.id, optionIds: [step.options[0]!.id] } }, conversationOf(first))
@@ -200,7 +201,7 @@ describe("consulta de processo de quem lidera — esclarecimento pelas bases do 
 
   it("escolha no formulário com o Orquestrador fora do alcance (a estrutura mudou): erro explícito, nada respondido", async () => {
     const { ask, setScope, clarification } = setup((call) => clarify(call))
-    const first = await ask("Quais documentos preciso para troca de titularidade?")
+    const first = await ask("Quais documentos preciso para troca de titularidade no Grupo A?")
     const view = clarificationOf(first)!
     setScope({ groups: [GROUP_B], groupsOfStructure: () => ({ kind: "NOT_FOUND", message: "x" }) })
     const second = await ask("Empresa", { clarification: { clarificationId: view.id, stepId: view.steps[0]!.id, optionIds: [view.steps[0]!.options[0]!.id] } }, conversationOf(first))
@@ -210,7 +211,7 @@ describe("consulta de processo de quem lidera — esclarecimento pelas bases do 
 
   it("escolha no formulário quando quem lidera não alcança mais o universo do Orquestrador: erro explícito, nada respondido (U4-01)", async () => {
     const { ask, setScope, clarification } = setup((call) => clarify(call))
-    const first = await ask("Quais documentos preciso para troca de titularidade?")
+    const first = await ask("Quais documentos preciso para troca de titularidade no Grupo A?")
     const view = clarificationOf(first)!
     setScope({ groups: [GROUP_A, GROUP_B], groupsOfStructure: () => ({ kind: "NOT_FOUND", message: "x" }), orchestratorUniverses: ["B2C"] })
     const second = await ask("Empresa", { clarification: { clarificationId: view.id, stepId: view.steps[0]!.id, optionIds: [view.steps[0]!.options[0]!.id] } }, conversationOf(first))
@@ -222,7 +223,7 @@ describe("consulta de processo de quem lidera — esclarecimento pelas bases do 
     const { ask, top } = setup((call) => clarify(call))
     top.data = true
     top.text = "Três pessoas da estrutura estão fora da referência."
-    const sse = await ask("Quem está fora da referência e quais documentos para troca de titularidade?")
+    const sse = await ask("Quem está fora da referência e quais documentos para troca de titularidade no Grupo A?")
     expect(sse.find((item) => item.event === "chunk")!.data.text).toBe("Três pessoas da estrutura estão fora da referência.\n\nPara qual tipo de cliente é a troca de titularidade?\n\nOpções encontradas nas bases consultadas: Empresa · Residencial.")
     expect(sse.find((item) => item.event === "analytics")!.data.cards).toEqual([CARD])
     expect(clarificationOf(sse)!.status).toBe("OPEN")
@@ -234,7 +235,7 @@ describe("consulta de processo de quem lidera — esclarecimento pelas bases do 
       if (call.stage === "PLANNER") return { decision: "ANSWER", pendingReply: { kind: "OPTIONS", optionRefs: ["O1"] }, questionFacts: [], answerEvidence: [refOf(call.prompt, "titularidade — Empresa", "troca comum")] }
       return answerFor(call)
     })
-    const first = await ask("Quais documentos preciso para troca de titularidade?")
+    const first = await ask("Quais documentos preciso para troca de titularidade no Grupo A?")
     top.process = { pergunta: "Quais documentos preciso para troca de titularidade? É para empresa.", grupo: GROUP_A.name }
     const typed = await ask("é para empresa", {}, conversationOf(first))
     expect(clarification.calls[1]!.prompt).toContain("Pergunta de esclarecimento EM ABERTO")
@@ -245,7 +246,7 @@ describe("consulta de processo de quem lidera — esclarecimento pelas bases do 
 
   it("dúvida que não é das bases (NOT_APPLICABLE): a consulta de sempre ao Orquestrador do Grupo, sem formulário", async () => {
     const { ask, orchestrated, memory } = setup(() => ({ decision: "NOT_APPLICABLE" }))
-    const sse = await ask("Como orientar a equipe sobre troca de titularidade?")
+    const sse = await ask("Como orientar a equipe sobre troca de titularidade no Grupo A?")
     expect(orchestrated).toEqual(["", "orch-a"])
     expect(clarificationOf(sse)).toBeUndefined()
     expect(sse.find((item) => item.event === "chunk")!.data.text).toBe("Texto do modelo da liderança.")

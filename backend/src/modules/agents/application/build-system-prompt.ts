@@ -4,7 +4,13 @@ import { renderAcronymContext } from "../../knowledge/domain/query-acronyms.js"
 import { loadArgumentScriptPromptLines, type ArgumentScriptAudience } from "../../argument-scripts/infrastructure/argument-script-loaders.js"
 import { retrieveKnowledgeForAgent, type KnowledgeCoverageRequest, type KnowledgeTrace } from "../../knowledge/application/retrieve-knowledge.js"
 import { agentSnapshotFor } from "./agent-runtime-context.js"
+import { hadRecentAlignments, resolveOperationalAlignmentsFor } from "../../operational-alignments/infrastructure/operational-alignment-loaders.js"
+import { alignmentSnapshotOf, NO_ALIGNMENT_IN_FORCE_NOTICE, renderAlignmentsForConversation, type AlignmentResolution } from "../../operational-alignments/domain/operational-alignment.js"
 import { loadAgentGuardrails, renderAgentGuardrails } from "./agent-guardrails.js"
+import { loadCommunicationsForConversation } from "../../communications/infrastructure/communication-conversation-loader.js"
+import { communicationSnapshotOf } from "../../communications/domain/communication-conversation.js"
+import type { LeaderStructureScope } from "../../communications/domain/leader-structure.js"
+import { renderAlignmentsForStructure, resolveAlignmentsForStructure } from "../../communications/infrastructure/leader-structure-context.js"
 
 
 export type AgentConfig = {
@@ -36,6 +42,15 @@ export type BuildSystemPromptOptions = {
    * Regras de chamada da organização são expectativas genéricas, não etapas daquele processo — ficam de fora (senão o modelo as
    * avalia como um "processo" a mais, fora de qualquer documento). O diagnóstico de indicador não passa esta opção. */
   processAssessment?: boolean
+  /** ALINHAMENTOS OPERACIONAIS: de quem é o público (padrão: `governanceSubjectPersonId`) e a data de referência (padrão: agora — o
+   * chat; a avaliação de uma chamada passa a data do ATENDIMENTO). Sem pessoa, nenhum alinhamento entra (o alcance é sempre de alguém). */
+  alignmentSubjectPersonId?: string | null
+  alignmentReferenceDate?: Date | null
+  /**
+   * Gestor perguntando sobre a estrutura (`LEADER_STRUCTURE_CONTEXT_V1`; consulta de processo de um Grupo): alinhamentos e
+   * comunicados dos públicos da estrutura (ou dos Grupos consultados), não os do público do próprio gestor.
+   */
+  structureScope?: LeaderStructureScope | null
 }
 
 /** V1.7.4 — no lugar das Regras de chamada, na avaliação de processo da monitoria. */
@@ -62,7 +77,7 @@ export type SystemPromptParts = {
   restrictions: string
 }
 
-export type BuiltSystemPrompt = { systemPrompt: string; knowledge: KnowledgeTrace; parts: SystemPromptParts }
+export type BuiltSystemPrompt = { systemPrompt: string; knowledge: KnowledgeTrace; parts: SystemPromptParts; alignments: AlignmentResolution | null }
 
 /**
  * Hierarquia de instruções aplicada no próprio texto do prompt: sistema > instruções do agente >
@@ -127,6 +142,31 @@ async function argumentAudienceOf(db: Database, organizationId: string, agentId:
 export async function buildSystemPromptWithTrace(db: Database, agentId: string, agent: AgentConfig, options: BuildSystemPromptOptions = {}): Promise<BuiltSystemPrompt> {
   const knowledge = await retrieveKnowledgeForAgent(db, agentId, options.query ?? "", undefined, options.coverage ?? null, { markProcessRoles: options.markProcessRoles ?? false, governanceSubjectPersonId: options.governanceSubjectPersonId ?? null, askerQuestion: options.collaboratorConversation ? (options.askerQuestion ?? null) : null })
 
+  // Alinhamentos operacionais (regra única, `operational-alignments`): o público de quem está na conversa (ou do colaborador avaliado),
+  // na data de referência, para as bases autorizadas a ESTE agente. Ficam depois das bases e ANTES das restrições: assunto proibido e
+  // limite de atuação continuam acima (o texto do bloco diz isso e a conferência da resposta segue valendo).
+  const alignmentSubject = options.alignmentSubjectPersonId ?? options.governanceSubjectPersonId ?? null
+  const structureScope = options.structureScope ?? null
+  const authorizedDocumentIds = knowledge.trace.authorizedDocuments.map((document) => document.id)
+  const alignments = structureScope
+    ? await resolveAlignmentsForStructure(db, { organizationId: agent.organization_id, scope: structureScope, at: options.alignmentReferenceDate ?? new Date(), documentIds: authorizedDocumentIds, usage: { agentId } })
+    : alignmentSubject
+    ? await resolveOperationalAlignmentsFor(db, { organizationId: agent.organization_id, personId: alignmentSubject, at: options.alignmentReferenceDate ?? new Date(), documentIds: knowledge.trace.authorizedDocuments.map((document) => document.id), usage: { surface: options.collaboratorConversation ? "CONVERSATION" : "AGENT", agentId } })
+    : null
+  if (alignments && alignments.applied.length > 0) knowledge.trace.operationalAlignments = alignments.applied.map(alignmentSnapshotOf)
+  // Ajuste de segurança da CONVERSA: nada vale hoje, mas houve alinhamento recente para estas bases — o histórico da conversa pode
+  // trazer uma resposta baseada nele, que não vale mais.
+  const alignmentNotice = !structureScope && alignmentSubject && options.collaboratorConversation && alignments && alignments.applied.length === 0 && (await hadRecentAlignments(db, agent.organization_id, knowledge.trace.authorizedDocuments.map((document) => document.id), options.alignmentReferenceDate ?? new Date()))
+    ? NO_ALIGNMENT_IN_FORCE_NOTICE
+    : null
+
+  // Comunicados (`COMMUNICATION_CONVERSATION_V2`): só na CONVERSA com uma pessoa conhecida, os comunicados no ar que ela enxerga e que
+  // se relacionam com a pergunta dela (sem pergunta = nenhum). Informativos: entram depois dos alinhamentos e antes das restrições.
+  const communications = options.collaboratorConversation && (alignmentSubject || structureScope)
+    ? await loadCommunicationsForConversation(db, { organizationId: agent.organization_id, personId: alignmentSubject ?? structureScope!.leaderPersonId, question: options.askerQuestion ?? options.query ?? "", structure: structureScope })
+    : null
+  if (communications && communications.items.length > 0) knowledge.trace.communications = communications.items.map(communicationSnapshotOf)
+
   // Limites de atuação DESTE Agent (quando ligados) + assuntos proibidos da organização.
   const guardrails = await loadAgentGuardrails(db, agent.organization_id, agentId)
 
@@ -141,7 +181,7 @@ export async function buildSystemPromptWithTrace(db: Database, agentId: string, 
 
   const parts: SystemPromptParts = {
     identity: [`Você é ${agent.name}.`, `Objetivo: ${agent.objective}`, `Descrição: ${agent.description}`, "", agent.context_prompt].join("\n"),
-    knowledge: ["Bases de conhecimento disponíveis (cada uma identificada pelo título exato depois de ###):", describeKnowledgeBlock(knowledge.trace, knowledge.promptBlock)].join("\n"),
+    knowledge: ["Bases de conhecimento disponíveis (cada uma identificada pelo título exato depois de ###):", describeKnowledgeBlock(knowledge.trace, knowledge.promptBlock), ...(alignments && alignments.applied.length > 0 ? ["", structureScope ? renderAlignmentsForStructure(alignments, structureScope) : renderAlignmentsForConversation(alignments, { evaluation: Boolean(options.processAssessment) })] : []), ...(alignmentNotice ? ["", alignmentNotice] : []), ...(communications?.promptBlock ? ["", communications.promptBlock] : [])].join("\n"),
     knowledgeTitles: describeKnowledgeTitles(knowledge.trace),
     expectations: options.collaboratorConversation
       ? COLLABORATOR_CONVERSATION_RULE
@@ -152,7 +192,7 @@ export async function buildSystemPromptWithTrace(db: Database, agentId: string, 
   }
   const systemPrompt = [parts.identity, "", parts.knowledge, "", parts.expectations, "", parts.restrictions].join("\n")
 
-  return { systemPrompt, knowledge: knowledge.trace, parts }
+  return { systemPrompt, knowledge: knowledge.trace, parts, alignments }
 }
 
 /** Mesmo prompt, registrando o rastro de KB na telemetria corrente (QA Lab) — para quem só

@@ -13,6 +13,7 @@ import type { LeadershipToolResult } from "./leadership-toolset.js"
 import { resolveAnalysisPeriod, resolveIndicatorReference } from "./references.js"
 import { buildSelfResults } from "./self-results.js"
 import { executeSelfPractices, SELF_PRACTICES_DECLARATION, SELF_PRACTICES_RULE, SELF_PRACTICES_TOOL } from "../../best-practices/application/operator-guidance.js"
+import { ALIGNMENT_HISTORY_DECLARATION, ALIGNMENT_HISTORY_RULE, ALIGNMENT_HISTORY_TOOL, executeAlignmentHistory } from "../../operational-alignments/application/alignment-history.js"
 
 /**
  * INIA para o OPERADOR — a mesma arquitetura da liderança (a IA escolhe a ferramenta, o backend calcula, a IA explica), com UMA
@@ -44,6 +45,7 @@ export const SELF_RESPONSE_RULES = [
   "- \"Pior indicador\" = o de menor atingimento (a tabela já vem do menor para o maior, depois do PRV); \"melhor\" = o de maior. Diga qual é, com o número.",
   "- \"Este mês\" ainda não tem fechamento oficial: use a medição diária (fonte OPERACIONAL) e diga que é parcial.",
   SELF_PRACTICES_RULE,
+  ALIGNMENT_HISTORY_RULE,
 ].join("\n")
 
 /** Voz do operador: UMA ferramenta que leva a pergunta à mesma orquestração do chat de texto (`my_results` + especialistas), no
@@ -52,7 +54,7 @@ export const SELF_ASK_TOOL = "self_ask"
 export const SELF_ASK_DECLARATION: FunctionDeclaration = {
   name: SELF_ASK_TOOL,
   description:
-    "Responde com os dados reais da própria pessoa e com a base de conhecimento qualquer pergunta sobre o trabalho dela: os próprios resultados (PRV, quartil, indicadores, metas, pior ou melhor indicador, evolução, este mês), como melhorar, processos, procedimentos e regras do atendimento. Passe a pergunta completa, já com o contexto da conversa (qual indicador ou mês foi falado antes).",
+    "Responde com os dados reais da própria pessoa e com a base de conhecimento qualquer pergunta sobre o trabalho dela: os próprios resultados (PRV, quartil, indicadores, metas, pior ou melhor indicador, evolução, este mês), como melhorar, processos, procedimentos e regras do atendimento, alinhamentos operacionais (os de hoje e os anteriores, como histórico). Passe a pergunta completa, já com o contexto da conversa (qual indicador ou mês foi falado antes).",
   parameters: { type: "object", properties: { query: { type: "string", description: "A pergunta do usuário, completa e com o contexto da conversa." } }, required: ["query"] },
 }
 
@@ -88,6 +90,8 @@ export async function loadSelfChatContext(db: Database, user: AuthTokenPayload, 
   const person = { id: scope.viewer.id, name: scope.viewer.name }
   const execute = async (name: string, args: Record<string, unknown>): Promise<LeadershipToolResult> => {
     if (name === SELF_PRACTICES_TOOL) return executeSelfPractices(db, repository, { scope, closure, args })
+    // Histórico de alinhamentos operacionais que já não valem (sempre da própria pessoa; nenhum parâmetro alcança outra).
+    if (name === ALIGNMENT_HISTORY_TOOL) return executeAlignmentHistory(db, { organizationId: scope.organizationId, personId: person.id, now: options.now ?? new Date() })
     if (name !== SELF_TOOL) return { text: "Ferramenta desconhecida.", card: null, issue: { kind: "INVALID", message: "Ferramenta desconhecida.", candidates: [] } }
     const definitions = await repository.loadIndicatorDefinitions(scope.organizationId)
     const requested = Array.isArray(args.indicadores) ? args.indicadores.filter((value): value is string => typeof value === "string" && value.trim() !== "") : []
@@ -110,5 +114,5 @@ export async function loadSelfChatContext(db: Database, user: AuthTokenPayload, 
     const text = ["[Seus resultados, calculados pelo sistema — use exatamente estes números]", `${card.title} · ${card.scopeNote}`, "", queryTableMarkdown(card), ...(card.limitations.length > 0 ? ["", `Limitações: ${card.limitations.join(" ")}`] : []), `Base: ${card.methods.join(" ")}`].join("\n")
     return { text, card }
   }
-  return { instructions: SELF_RESPONSE_RULES, voiceInstructions: SELF_VOICE_RULES, toolset: { declarations: [SELF_TOOL_DECLARATION, SELF_PRACTICES_DECLARATION], handles: (name) => name === SELF_TOOL || name === SELF_PRACTICES_TOOL, execute } }
+  return { instructions: SELF_RESPONSE_RULES, voiceInstructions: SELF_VOICE_RULES, toolset: { declarations: [SELF_TOOL_DECLARATION, SELF_PRACTICES_DECLARATION, ALIGNMENT_HISTORY_DECLARATION], handles: (name) => name === SELF_TOOL || name === SELF_PRACTICES_TOOL || name === ALIGNMENT_HISTORY_TOOL, execute } }
 }

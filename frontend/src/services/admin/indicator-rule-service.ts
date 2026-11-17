@@ -1,3 +1,4 @@
+import type { UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
 import { z } from "zod"
 
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
@@ -28,6 +29,8 @@ export type IndicatorListParams = ListParams &
     hasGlossary?: boolean
     dailySupported?: boolean
     calculationPeriod: CalculationPeriod[]
+    /** Universo de atuação; PENDING = sem classificação. */
+    operatingUniverse?: UniverseFilterValue
   }
 
 export async function fetchIndicatorsWithRulesPage(params: IndicatorListParams): Promise<PageResult<IndicatorWithRules>> {

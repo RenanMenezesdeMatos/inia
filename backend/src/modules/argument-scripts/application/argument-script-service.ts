@@ -14,6 +14,7 @@ import {
   type PublishIssue,
   type ScriptScope,
 } from "../domain/argument-script.js"
+import { applyUniverseListFilter, universeListParam } from "../../operating-universe/application/universe-list-filter.js"
 import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
@@ -56,6 +57,7 @@ export const listQuerySchema = z.object({
   subteamId: z.string().uuid().optional(),
   conversion: z.enum(["NATIVE", "LEGACY_UNSTRUCTURED"]).optional(),
   hasDraft: booleanParam,
+  operatingUniverse: universeListParam,
 })
 
 type ScriptRow = {
@@ -75,6 +77,7 @@ type ScriptRow = {
   currentEffectiveFrom: Date | null
   currentEffectiveUntil: Date | null
   draftVersion: number | null
+  operatingUniverse: string | null
   updatedAt: Date
   createdAt: Date
 }
@@ -83,7 +86,7 @@ const SELECT_SCRIPTS = `
   select s.id, s.name, s.business_domain_id "businessDomainId", bd.name "businessDomainName",
          s.scope_type "scopeType", s.team_id "teamId", t.name "teamName", s.subteam_id "subteamId", st.name "subteamName", sub.name "subjectName",
          s.status, s.conversion, cur.version "currentVersion", cur.effective_from "currentEffectiveFrom", cur.effective_until "currentEffectiveUntil",
-         dr.version "draftVersion", s.updated_at "updatedAt", s.created_at "createdAt"
+         dr.version "draftVersion", s.operating_universe "operatingUniverse", s.updated_at "updatedAt", s.created_at "createdAt"
   from argument_scripts s
   left join business_domains bd on bd.id = s.business_domain_id
   left join teams t on t.id = s.team_id
@@ -121,6 +124,7 @@ export async function listArgumentScripts(db: Database, organizationId: string, 
     .equals('q."businessDomainId"', input.businessDomainId)
     .equals("q.conversion", input.conversion)
     .orgScope("q", input)
+  applyUniverseListFilter(filter, 'q."operatingUniverse"', input.operatingUniverse)
   if (input.hasDraft !== undefined) filter.add(input.hasDraft ? `q."draftVersion" is not null` : `q."draftVersion" is null`)
   visibilityClause(filter, scopes, await parentTeamsOf(db, scopes))
   const data = await respondList<ScriptRow>(db, query, { select: SELECT_SCRIPTS, filter, orderBy: `q.status, q."updatedAt" desc, q.id` })

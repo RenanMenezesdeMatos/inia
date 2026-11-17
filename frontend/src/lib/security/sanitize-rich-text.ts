@@ -1,4 +1,11 @@
-const allowedTags = new Set(["P", "DIV", "BR", "STRONG", "B", "EM", "I", "UL", "OL", "LI", "H2", "H3", "SPAN", "IMG"])
+const allowedTags = new Set(["P", "DIV", "BR", "STRONG", "B", "EM", "I", "UL", "OL", "LI", "H2", "H3", "SPAN", "IMG", "A"])
+
+/**
+ * Link aceito: a mesma forma de `COMMUNICATION_LINK_HREF` no servidor — endereço web (`http(s)://`) ou caminho interno (`/…`, nunca
+ * `//` nem `/\`), sem espaço, aspas, `<>`, crase ou barra invertida. Outro esquema (`javascript:`, `data:`…) faz o link sair e o
+ * texto ficar. O link sempre abre em outra aba, com `rel` fixo.
+ */
+export const RICH_TEXT_LINK_HREF = /^(?:https?:\/\/[^\s"'<>`\\]{1,1990}|\/(?![/\\])[^\s"'<>`\\]{0,1990})$/i
 
 /**
  * Imagem aceita: a URL de dados INTEIRA, ancorada no alfabeto base64 — a mesma forma de `COMMUNICATION_IMAGE_SOURCE` no servidor
@@ -20,6 +27,7 @@ export function sanitizeRichText(html: string) {
       continue
     }
     const source = element.tagName === "IMG" ? element.getAttribute("src") ?? "" : ""
+    const href = element.tagName === "A" ? (element.getAttribute("href") ?? "").trim() : ""
     const color = element.tagName === "SPAN" ? (element as HTMLElement).style.color : ""
     for (const attribute of Array.from(element.attributes)) element.removeAttribute(attribute.name)
     if (element.tagName === "IMG") {
@@ -28,6 +36,15 @@ export function sanitizeRichText(html: string) {
         element.setAttribute("src", source)
         element.setAttribute("alt", "Imagem do comunicado")
       }
+    }
+    if (element.tagName === "A") {
+      if (!RICH_TEXT_LINK_HREF.test(href) || element.parentElement?.closest("a")) {
+        element.replaceWith(...Array.from(element.childNodes))
+        continue
+      }
+      element.setAttribute("href", href)
+      element.setAttribute("target", "_blank")
+      element.setAttribute("rel", "noopener noreferrer nofollow")
     }
     if (element.tagName === "SPAN") {
       if (/^(#[0-9a-f]{6}|rgb\(\d{1,3}, \d{1,3}, \d{1,3}\))$/i.test(color)) element.setAttribute("style", `color: ${color}`)

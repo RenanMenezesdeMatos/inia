@@ -20,7 +20,7 @@ import { AccessUsersView } from "./access-users-view"
 import { AccessRolesView } from "./access-roles-view"
 import { UsersAndAccessPage } from "./users-and-access-page"
 
-const service = vi.hoisted(() => ({ fetchIdentifiedUsers: vi.fn(), fetchAccessAccount: vi.fn(), fetchAccessRoles: vi.fn(), fetchScopeOptions: vi.fn(), enableUserAccess: vi.fn(), issueTemporaryPassword: vi.fn(), disableUserAccess: vi.fn(), assignAccessRole: vi.fn(), revokeAccessRole: vi.fn(), grantRoleToLeaders: vi.fn() }))
+const service = vi.hoisted(() => ({ fetchIdentifiedUsers: vi.fn(), fetchAccessAccount: vi.fn(), fetchAccessRoles: vi.fn(), fetchScopeOptions: vi.fn(), enableUserAccess: vi.fn(), issueTemporaryPassword: vi.fn(), disableUserAccess: vi.fn(), assignAccessRole: vi.fn(), revokeAccessRole: vi.fn() }))
 vi.mock("@/services/access/access-service", () => service)
 vi.mock("@/components/admin/users/users-page", () => ({ UsersPage: () => <p>cadastro de pessoas</p> }))
 const session = vi.hoisted(() => ({ fetchCurrentUser: vi.fn(), fetchFeedbackQualityAccess: vi.fn(), refresh: vi.fn() }))
@@ -247,25 +247,31 @@ describe("Conversas com a INIA — acesso na UI", () => {
     for (const other of ["Usuários e acessos", "Workflows", "Agentes", "Base de conhecimento", "Governança", "QA Lab"]) expect(screen.queryByText(other)).not.toBeInTheDocument()
   })
 
-  it("Administrador geral concede o papel de leitura aos gestores em lote, com confirmação", async () => {
-    const { toast } = await import("sonner")
+  it("a aba Papéis não tem mais a concessão em lote 'Conceder aos gestores', nem para quem pode conceder o papel", async () => {
     service.fetchAccessRoles.mockResolvedValue([...ROLES, ROLE("LEITOR_DE_CONVERSAS_INIA", "Leitor de conversas da INIA", true, ["ORGANIZATION", "GROUP", "SUBGROUP", "MY_STRUCTURE"])])
-    service.grantRoleToLeaders.mockResolvedValue({ leaders: 3, granted: 3, alreadyAssigned: 0, skipped: 0 })
     renderWithQuery(<AccessRolesView />)
-    const buttons = await screen.findAllByRole("button", { name: "Conceder aos gestores" })
-    expect(buttons).toHaveLength(1) // só no papel de leitura de conversas
-    fireEvent.click(buttons[0]!)
-    expect(await screen.findByText(/Minha estrutura/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Conceder" }))
-    await waitFor(() => expect(service.grantRoleToLeaders).toHaveBeenCalledWith("LEITOR_DE_CONVERSAS_INIA"))
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("3 gestores receberam")))
+    const card = (await screen.findByText("Leitor de conversas da INIA")).closest("li")!
+    expect(within(card).getByText("Você pode conceder")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Conceder aos gestores" })).not.toBeInTheDocument()
+    expect(screen.queryAllByRole("button")).toHaveLength(0)
   })
 
-  it("sem poder conceder o papel, o botão não aparece", async () => {
-    service.fetchAccessRoles.mockResolvedValue([ROLE("LEITOR_DE_CONVERSAS_INIA", "Leitor de conversas da INIA", false, ["MY_STRUCTURE"])])
-    renderWithQuery(<AccessRolesView />)
-    await screen.findByText("Leitor de conversas da INIA")
-    expect(screen.queryByRole("button", { name: "Conceder aos gestores" })).not.toBeInTheDocument()
+  it("quem pode conceder atribui o Leitor de conversas a um gestor pelo fluxo normal (papel + Minha estrutura)", async () => {
+    service.fetchIdentifiedUsers.mockResolvedValue(page([identified(JOAO)]))
+    service.fetchAccessAccount.mockResolvedValue(JOAO)
+    service.fetchAccessRoles.mockResolvedValue([...ROLES, ROLE("LEITOR_DE_CONVERSAS_INIA", "Leitor de conversas da INIA", true, ["ORGANIZATION", "GROUP", "SUBGROUP", "MY_STRUCTURE"])])
+    service.fetchScopeOptions.mockResolvedValue({ organizationWide: true, teams: [], subteams: [] })
+    service.assignAccessRole.mockResolvedValue({ id: "as-10" })
+    renderWithQuery(<AccessUsersView canManageUsers canAssignRoles />)
+    fireEvent.click((await screen.findAllByRole("button", { name: /^Papéis de / }))[0]!)
+    const dialog = await screen.findByRole("dialog")
+    const form = await within(dialog).findByRole("form", { name: "Adicionar papel" })
+    fireEvent.click(within(form).getByRole("combobox", { name: "Papel" }))
+    fireEvent.click(await screen.findByRole("option", { name: "Leitor de conversas da INIA" }))
+    fireEvent.click(within(form).getByRole("combobox", { name: "Escopo" }))
+    fireEvent.click(await screen.findByRole("option", { name: "Estrutura da pessoa (quem está abaixo dela)" }))
+    fireEvent.click(within(form).getByRole("button", { name: /Atribuir papel/ }))
+    await waitFor(() => expect(service.assignAccessRole).toHaveBeenCalledWith("acc-joao", { roleCode: "LEITOR_DE_CONVERSAS_INIA", scope: { type: "MY_STRUCTURE" } }))
   })
 })
 

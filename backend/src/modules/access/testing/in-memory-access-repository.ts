@@ -51,13 +51,6 @@ export function createInMemoryAccessRepository(seed: { people: MemPerson[]; acco
     async getAccount(organizationId, accountId) { const account = accounts.find((entry) => entry.id === accountId && entry.organizationId === organizationId); return account ? summary(account) : null },
     async listAssignments(organizationId, accountId) { return active(organizationId, accountId).map((entry) => ({ id: entry.id, accountId: entry.accountId, roleCode: entry.roleCode, scope: entry.scope, scopeLabel: entry.scope.type, source: "MANUAL", grantedAt: entry.grantedAt, grantedByName: null })) },
     async findAssignment(organizationId, assignmentId) { const entry = assignments.find((item) => item.id === assignmentId && item.organizationId === organizationId); return entry ? { id: entry.id, accountId: entry.accountId, roleCode: entry.roleCode, scope: entry.scope, revoked: entry.revokedAt !== null } : null },
-    async listLeaderAccounts(organizationId, visibility) {
-      return accounts
-        .filter((account) => account.organizationId === organizationId && account.active)
-        .map((account) => ({ account, person: people.find((entry) => entry.id === account.personId)! }))
-        .filter(({ person }) => person.active && visible(visibility, person) && people.some((sub) => sub.reportsToId === person.id && sub.active && sub.organizationId === organizationId))
-        .map(({ account, person }) => ({ accountId: account.id, personId: person.id, teamId: person.teamId, subteamId: person.subteamId }))
-    },
     async scopeOptions(organizationId, visibility) {
       return {
         teams: seed.teams.filter((team) => team.organizationId === organizationId && (visibility.organizationWide || visibility.teamIds.includes(team.id))).map(({ id, name }) => ({ id, name })),

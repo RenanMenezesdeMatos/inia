@@ -1,11 +1,12 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { IndicatorWithRules } from "@/schemas/admin/indicator-rule.schema"
 
 import { aggregationOptionLabel, describeIndicatorMismatch, IndicatorSelect, indicatorMeetsRequirement } from "./indicator-select"
+import { WorkflowUniverseProvider } from "./workflow-universe-context"
 
 afterEach(cleanup)
 
@@ -23,6 +24,8 @@ const CATALOG = [
   indicator({ code: "SO_OFICIAL", name: "Só fechamento oficial", dailySupported: false, operationalAggregation: "AVERAGE" }),
   indicator({ code: "SO_OPERACIONAL", name: "Só operacional", officialClosureSupported: false }),
   indicator({ code: "INATIVO", name: "Indicador desativado", active: false }),
+  indicator({ code: "EMPRESAS", name: "Indicador Empresas", operatingUniverse: "B2B" }),
+  indicator({ code: "CONSUMIDOR", name: "Indicador Consumidor", operatingUniverse: "B2C" }),
 ]
 
 vi.mock("@/queries/admin/use-indicator-rule-queries", () => ({
@@ -60,5 +63,34 @@ describe("IndicatorSelect — catálogo dinâmico filtrado por capacidade", () =
     expect(aggregationOptionLabel("WEIGHTED_AVERAGE", CATALOG[0])).toBe("Cálculo no período: Taxa consolidada do período")
     expect(aggregationOptionLabel("MAXIMUM", CATALOG[0])).toBe("Máximo (pior/melhor período)")
     expect(aggregationOptionLabel("WEIGHTED_AVERAGE", undefined)).toBe("Média ponderada pelo volume (Σ total ÷ Σ volume)")
+  })
+})
+
+describe("IndicatorSelect — universo do Workflow (hierarquia universo → indicador)", () => {
+  // Radix Select no jsdom: abrir a lista precisa de scrollIntoView.
+  Element.prototype.scrollIntoView ??= () => {}
+
+  it("num Workflow B2B só se oferecem indicadores B2B ou sem universo; o B2C não aparece", async () => {
+    render(
+      <WorkflowUniverseProvider value="B2B">
+        <IndicatorSelect value="" requirement="ANY" onValueChange={vi.fn()} />
+      </WorkflowUniverseProvider>,
+    )
+    fireEvent.click(screen.getByRole("combobox", { name: "Indicador" }))
+    expect(await screen.findByRole("option", { name: "Indicador Empresas" })).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: "Indicador operacional" })).toBeInTheDocument()
+    expect(screen.queryByRole("option", { name: "Indicador Consumidor" })).toBeNull()
+  })
+
+  it("a referência já salva de outro universo continua visível, marcada, com o aviso", () => {
+    render(
+      <WorkflowUniverseProvider value="B2B">
+        <IndicatorSelect value="CONSUMIDOR" requirement="ANY" onValueChange={vi.fn()} />
+      </WorkflowUniverseProvider>,
+    )
+    expect(screen.getByRole("combobox", { name: "Indicador" })).toHaveTextContent("Indicador Consumidor (de outro universo (B2C))")
+    expect(screen.getByText(/a publicação vai rejeitar/)).toBeInTheDocument()
+    expect(describeIndicatorMismatch(CATALOG[5], "ANY", "B2B")).toBe("de outro universo (B2C)")
+    expect(describeIndicatorMismatch(CATALOG[5], "ANY", null)).toBeNull()
   })
 })

@@ -1,5 +1,6 @@
 "use client"
 
+import { UniverseBadge } from "@/components/operating-universe/universe-badge"
 import { useState } from "react"
 import { CalendarClock, Eye, Layers, Pencil, PhoneCall, Plus, Trash2, Users } from "lucide-react"
 
@@ -16,7 +17,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
 import { EntityCard, EntityCardIcon, EntityCardTag } from "@/components/admin/shared/list/entity-card"
-import { ListBooleanFilter, ListOrgScopeFilter, ListSearchInput, ListSelectFilter, ListToolbar } from "@/components/admin/shared/list/list-filters"
+import { ListBooleanFilter, ListOrgScopeFilter, ListSearchInput, ListSelectFilter, ListToolbar, ListUniverseFilter, universeChoiceOf } from "@/components/admin/shared/list/list-filters"
+import { filterByUniverse, orgScopeAfterUniverseChange, orgScopePatch, type UniverseChoice } from "@/lib/operating-universe/hierarchy"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
 import { useArgumentScriptsPageQuery } from "@/queries/admin/use-argument-script-queries"
@@ -111,7 +113,12 @@ function ArgumentScriptsTable({ items, onOpen }: { items: ArgumentScript[]; onOp
                 </div>
               </TableCell>
               <TableCell className="text-sm">{item.businessDomainName ?? "—"}</TableCell>
-              <TableCell className="text-sm">{scopeLabel(item)}</TableCell>
+              <TableCell className="text-sm">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {scopeLabel(item)}
+                  <UniverseBadge universe={item.operatingUniverse} />
+                </div>
+              </TableCell>
               <TableCell className="text-sm text-muted-foreground">{currentVersionLabel(item)}</TableCell>
               <TableCell>
                 <StatusBadge status={item.status} />
@@ -139,6 +146,7 @@ function ArgumentScriptCard({ item, onOpen }: { item: ArgumentScript; onOpen: (i
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Argumentário</span>
           <span aria-hidden>·</span>
           <span>{item.businessDomainName ?? "Sem área"}</span>
+          <UniverseBadge universe={item.operatingUniverse} />
         </>
       }
       title={item.name}
@@ -185,6 +193,10 @@ export function ArgumentScriptsPage() {
   const domainsQuery = useBusinessDomainsQuery({ includeInactive: true })
   const list = useAdminListState({ storageKey: "argument-scripts", defaultFilters: DEFAULT_FILTERS })
   const pageQuery = useArgumentScriptsPageQuery(list.params)
+  // Hierarquia universo → Grupo/Subgrupo e universo → área: cada filtro só oferece o que cabe no universo escolhido; trocar o universo limpa o que deixou de caber.
+  const universeChoice = universeChoiceOf(list.filters.operatingUniverse)
+  const currentScope = { scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }
+  const keepDomain = (id: string | undefined, universe: UniverseChoice) => (id && filterByUniverse(domainsQuery.data ?? [], universe).some((domain) => domain.id === id) ? id : undefined)
 
   // `?new=1` (atalho da sidebar) abre o formulário de criação sem efeito: o pedido da URL vale até a primeira navegação.
   const [autoOpen, setAutoOpen] = useAutoOpenFromQuery("new")
@@ -240,15 +252,23 @@ export function ArgumentScriptsPage() {
                 hasActiveFilters={list.hasActiveFilters}
                 onClearFilters={list.resetFilters}
               >
+                <ListUniverseFilter
+                  value={list.filters.operatingUniverse}
+                  onChange={(operatingUniverse) => {
+                    const universe = universeChoiceOf(operatingUniverse)
+                    list.patchFilters({ operatingUniverse, ...orgScopePatch(orgScopeAfterUniverseChange(currentScope, teamsQuery.data, universe)), businessDomainId: keepDomain(list.filters.businessDomainId, universe) })
+                  }}
+                />
                 <ListOrgScopeFilter
                   teams={teamsQuery.data}
-                  value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
-                  onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
+                  universe={universeChoice}
+                  value={currentScope}
+                  onChange={(scope) => list.patchFilters(orgScopePatch(scope))}
                 />
                 <ListSelectFilter
                   value={list.filters.businessDomainId}
                   onChange={(value) => list.setFilter("businessDomainId", value)}
-                  options={(domainsQuery.data ?? []).map((domain) => ({ value: domain.id, label: domain.name }))}
+                  options={filterByUniverse(domainsQuery.data ?? [], universeChoice).map((domain) => ({ value: domain.id, label: domain.name }))}
                   allLabel="Qualquer área"
                   ariaLabel="Filtrar por área responsável"
                 />

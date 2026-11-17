@@ -114,16 +114,6 @@ export function createPostgresAccessRepository(db: Queryable): AccessRepository 
       const row = result.rows[0]
       return row ? { id: row.id, accountId: row.user_account_id, roleCode: row.role_code, scope: toScope(row), revoked: row.revoked_at !== null } : null
     },
-    async listLeaderAccounts(organizationId, visibility) {
-      const result = await db.query<{ account_id: string; person_id: string; team_id: string | null; subteam_id: string | null }>(
-        `select ua.id account_id, p.id person_id, p.team_id, p.subteam_id from user_accounts ua join people p on p.id = ua.person_id and p.organization_id = ua.organization_id
-         where ua.organization_id = $1 and ua.active and p.active and ${visibilitySql(2)}
-           and exists (select 1 from people sub where sub.organization_id = p.organization_id and sub.reports_to_id = p.id and sub.active)
-         order by p.name`,
-        [organizationId, ...visibilityParams(visibility)],
-      )
-      return result.rows.map((row) => ({ accountId: row.account_id, personId: row.person_id, teamId: row.team_id, subteamId: row.subteam_id }))
-    },
     async scopeOptions(organizationId, visibility) {
       const [teams, subteams] = await Promise.all([
         db.query<{ id: string; name: string }>(`select t.id, t.name from teams t where t.organization_id = $1 and ($2::boolean or t.id = any($3::uuid[])) order by t.name`, [organizationId, visibility.organizationWide, visibility.teamIds]),

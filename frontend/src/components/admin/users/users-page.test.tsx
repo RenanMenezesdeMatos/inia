@@ -30,7 +30,7 @@ const users = vi.hoisted(() => ({
 vi.mock("@/services/admin/user-account-service", () => users)
 vi.mock("@/services/admin/org-structure-service", () => ({ fetchTeams: vi.fn(async () => [{ id: "t-atd", name: "Atendimento" }, { id: "t-ret", name: "Retenção" }]), fetchManageableTeams: vi.fn(), fetchSubjects: vi.fn() }))
 vi.mock("@/services/admin/operational-calendar-service", () => ({ fetchCapitals: vi.fn(async () => ({ capitals: [] })), fetchCalendarSettings: vi.fn(), fetchHolidayCatalog: vi.fn(), fetchHolidayCatalogCoverage: vi.fn(), fetchHolidays: vi.fn(), createHoliday: vi.fn(), deleteHoliday: vi.fn(), updateCalendarSettings: vi.fn(), updateHoliday: vi.fn() }))
-const access = vi.hoisted(() => ({ fetchAccessAccount: vi.fn(), fetchAccessRoles: vi.fn(), fetchScopeOptions: vi.fn(), fetchIdentifiedUsers: vi.fn(), enableUserAccess: vi.fn(), issueTemporaryPassword: vi.fn(), disableUserAccess: vi.fn(), assignAccessRole: vi.fn(), revokeAccessRole: vi.fn(), grantRoleToLeaders: vi.fn() }))
+const access = vi.hoisted(() => ({ fetchAccessAccount: vi.fn(), fetchAccessRoles: vi.fn(), fetchScopeOptions: vi.fn(), fetchIdentifiedUsers: vi.fn(), enableUserAccess: vi.fn(), issueTemporaryPassword: vi.fn(), disableUserAccess: vi.fn(), assignAccessRole: vi.fn(), revokeAccessRole: vi.fn() }))
 vi.mock("@/services/access/access-service", () => access)
 vi.mock("next/navigation", () => ({ usePathname: () => "/admin/users", useSearchParams: () => new URLSearchParams(), useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }) }))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))

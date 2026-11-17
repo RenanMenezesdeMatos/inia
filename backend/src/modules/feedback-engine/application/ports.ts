@@ -41,7 +41,7 @@ export type ModelCallMetric = { stage: EngineModelStage; tag: string | null; mod
 // ---------------------------------------------------------------------------------------------
 export type AnalysisKind = "CALL_ANALYSIS" | "INDICATOR_INVESTIGATION"
 export type AnalysisTrigger = {
-  kind: "WORKFLOW_SOURCE_NODE" | "FEEDBACK_GENERATION" | "INDICATOR_INVESTIGATION" | "EVALUATION" | "LEGACY_HOLD_REPROCESS" | "DIAGNOSTIC_BOOTSTRAP"
+  kind: "WORKFLOW_SOURCE_NODE" | "FEEDBACK_GENERATION" | "INDICATOR_INVESTIGATION" | "EVALUATION" | "LEGACY_HOLD_REPROCESS" | "DIAGNOSTIC_BOOTSTRAP" | "OPERATIONAL_ALIGNMENT_REPROCESS"
   workflowId?: string | null
   workflowVersionId?: string | null
   enrollmentId?: string | null

@@ -1,3 +1,5 @@
+import type { CommunicationSnapshot } from "../../communications/domain/communication-conversation.js"
+import type { AlignmentSnapshot } from "../../operational-alignments/domain/operational-alignment.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { chunkKnowledgeDocument, type KnowledgeChunk } from "../domain/knowledge-chunking.js"
 import { withChunkPages } from "../domain/pdf-markdown/page-map.js"
@@ -56,6 +58,10 @@ export type KnowledgeRetrievalMode =
 export type KnowledgeTrace = {
   mode: KnowledgeRetrievalMode
   authorizedDocuments: AuthorizedKnowledgeDocument[]
+  /** Alinhamentos operacionais que entraram nas instruções junto com estas bases (referência e versão — o que sustentou a resposta). */
+  operationalAlignments?: AlignmentSnapshot[]
+  /** Comunicados que entraram na conversa (`COMMUNICATION_CONVERSATION_V2`) — o que sustentou a resposta, pelo id. */
+  communications?: CommunicationSnapshot[]
   retrieved: RetrievedKnowledgeExcerpt[]
   /** Caracteres de KB efetivamente colocados no prompt. */
   injectedChars: number
@@ -505,6 +511,17 @@ export function withoutCheckpointCatalog(trace: KnowledgeTrace): KnowledgeTrace 
 
 function toExcerpt(chunk: RankedChunk): RetrievedKnowledgeExcerpt {
   return { documentId: chunk.documentId, documentTitle: chunk.documentTitle, heading: chunk.heading, excerpt: chunk.text, score: Number(chunk.score.toFixed(3)), chunkIndex: chunk.index, ...(chunk.pages ? { pages: chunk.pages } : {}) }
+}
+
+/**
+ * Início do atendimento — data de referência dos alinhamentos operacionais numa avaliação de processo (regra única: vale o que
+ * estava em vigor na data do atendimento, nunca a data em que a avaliação roda). Interação de outra organização = null.
+ */
+export async function loadInteractionStartedAt(db: Database, organizationId: string, interactionId: string | null | undefined): Promise<Date | null> {
+  if (!interactionId) return null
+  const row = await db.query<{ started_at: Date | null }>(`select started_at from interactions where id = $1 and organization_id = $2`, [interactionId, organizationId])
+  const value = row.rows[0]?.started_at
+  return value ? new Date(value) : null
 }
 
 /**

@@ -68,7 +68,7 @@ export function accessCapabilities(access: AccessContext, catalog: RoleCatalog =
   const any = (permission: Permission) => canAnywhere(access, permission, catalog)
   const org = (permission: Permission) => canOrganizationWide(access, permission, catalog)
   return {
-    canAccessAdministration: ["access.users.view", "access.roles.view", "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "ai.manage", "qa_lab.use", "inia_experience.manage", "intervention_policies.edit", "intervention_policies.simulate", "intervention_policies.publish", "intervention_policies.audit"].some((permission) => any(permission as Permission)),
+    canAccessAdministration: ["access.users.view", "access.roles.view", "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "operational_alignments.manage", "data_hub.manage", "ai.view", "ai.manage", "qa_lab.use", "inia_experience.manage", "intervention_policies.edit", "intervention_policies.simulate", "intervention_policies.publish", "intervention_policies.audit"].some((permission) => any(permission as Permission)),
     // A tela tem abas de acessos, pessoas e papéis: quem não alcança nenhuma (só a Central de Dados, por exemplo) não vê a entrada.
     canOpenUsersAndAccess: ["access.users.view", "access.roles.view", "people.manage"].some((permission) => any(permission as Permission)),
     canManageUsers: any("access.users.manage"),
@@ -81,6 +81,8 @@ export function accessCapabilities(access: AccessContext, catalog: RoleCatalog =
     canManageKnowledge: any("knowledge.manage"),
     canManageWorkflows: any("workflows.manage"),
     canManageConfiguration: any("configuration.manage"),
+    // Alinhamentos operacionais: o público concreto (universo, Grupo/Subgrupo) é decidido pelo backend no escopo da atribuição.
+    canManageOperationalAlignments: any("operational_alignments.manage"),
     // Central de Dados: dados e credenciais da organização inteira — só com escopo de organização (igual ao guard da rota).
     canManageDataHub: org("data_hub.manage"),
     // Consulta de dados: como a rota, só com escopo de organização.
@@ -104,6 +106,8 @@ export function accessCapabilities(access: AccessContext, catalog: RoleCatalog =
     // como o módulo confere). O público concreto é sempre do servidor.
     canPublishTeamCommunications: any("communications.publish_team") || org("communications.publish_organization"),
     canPublishOrganizationCommunications: org("communications.publish_organization"),
+    // Moderação: retirar publicação de outra pessoa (só escopo de organização).
+    canModerateCommunications: org("communications.moderate"),
     // Cenário da INIA: recurso do tenant inteiro (como o QA Lab) — escopo de organização.
     canManageIniaScenes: org("inia_experience.manage"),
     // Monitoria de usabilidade — FORA de `canAccessAdministration` (como as conversas): quem só tem a monitoria vê só ela.
@@ -130,7 +134,7 @@ export function accessCapabilities(access: AccessContext, catalog: RoleCatalog =
     canManageHumanSupport: org("human_support.manage"),
     // Indicadores de sucesso da INIA: quem lê ao menos um bloco (conversas, painel do apoio, contestações ou a conferência das respostas
     // na organização inteira). Cada bloco confere a própria permissão no backend (`inia-success/application/context-reader.ts`).
-    canViewIniaSuccess: any("assistant_conversations.view") || any("human_support.coordinate") || any("feedback_contestations.review") || org("configuration.manage"),
+    canViewIniaSuccess: any("assistant_conversations.view") || any("human_support.coordinate") || any("feedback_contestations.review") || org("configuration.manage") || any("operational_alignments.manage"),
     // Diagnóstico de erros (catálogo + ocorrências da organização): só com escopo de organização, como a rota.
     canViewErrorDiagnostics: org("support.diagnostics.view"),
     // Universo de atuação: consultar todos os universos (no escopo). Sem ela, a tela só oferece o universo do próprio cadastro.

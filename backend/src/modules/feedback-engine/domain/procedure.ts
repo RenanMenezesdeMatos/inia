@@ -1,3 +1,5 @@
+import type { AlignmentDocumentMeta } from "./operational-alignment-context.js"
+import type { AlignmentResolution } from "../../operational-alignments/domain/operational-alignment.js"
 import { createHash } from "node:crypto"
 import { inlineEnumerationOf, isListLine } from "../../knowledge/domain/knowledge-list.js"
 import { normalizeForLiteralQuote } from "../../knowledge/domain/knowledge-match.js"
@@ -115,9 +117,10 @@ export type ArgumentDocumentMeta = {
 
 export type ProcedureDocument = {
   handle: string
-  /** Base de conhecimento (D-n) × argumentário (G-n). */
-  kind?: "KNOWLEDGE_DOCUMENT" | "ARGUMENT_SCRIPT"
+  /** Base de conhecimento (D-n) × argumentário (G-n) × alinhamento operacional temporário (A-n, `operational-alignment-context.ts`). */
+  kind?: "KNOWLEDGE_DOCUMENT" | "ARGUMENT_SCRIPT" | "OPERATIONAL_ALIGNMENT"
   argument?: ArgumentDocumentMeta
+  alignment?: AlignmentDocumentMeta
   documentId: string
   title: string
   version: number
@@ -131,6 +134,8 @@ export type ProcedureDocument = {
 
 export type ProcedureContext = {
   documents: ProcedureDocument[]
+  /** Regra dos alinhamentos operacionais aplicada a esta chamada (o que valeu e o que ficou de fora, com o motivo). */
+  alignmentResolution?: AlignmentResolution | null
   lines: Map<string, ProcedureLine>
   sections: Map<string, ProcedureSection>
   omitted: { documentId: string; title: string; reason: "BUDGET" }[]
@@ -383,7 +388,7 @@ const ROLE_HINT: Partial<Record<SectionProcessRole, string>> = {
 export function renderProcedureForModel(context: Pick<ProcedureContext, "documents">): string {
   const blocks: string[] = []
   for (const document of context.documents) {
-    if (document.kind === "ARGUMENT_SCRIPT") continue
+    if (document.kind === "ARGUMENT_SCRIPT" || document.kind === "OPERATIONAL_ALIGNMENT") continue
     blocks.push(`=== ${document.handle} · ${document.title} (versão ${document.version} · ${PERSPECTIVE_LABEL[document.perspective]}${document.productScopeLabel ? ` · ${document.productScopeLabel}` : ""}) ===`)
     for (const section of document.sections) {
       const title = section.heading ?? "(cabeçalho do documento)"

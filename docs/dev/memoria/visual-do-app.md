@@ -125,6 +125,11 @@ levantamento, 10/11). Regra geral: o elemento repetido mora no kit (`components/
   `GridCard{id,title,defaultWidth,widths?,defaultRows?,render({rows})}`; gráfico: `chartHeightPx(rows, reserva)`); falha da leitura principal = um aviso só, não um por card.
   Rejeitados: react-grid-layout (posição absoluta, teclado fraco) e guardar só no navegador. `react-resizable-panels` continua só para
   divisórias de painel. Primeiro uso: Painel dos Anjos — Indicadores, Monitoria Online, Jornada e atendimentos.
+- **Filtros e seletores encadeados** (pedido do responsável, 17/11/2026) — todo filtro de lista e todo campo de seleção segue a
+  hierarquia organização → universo → Grupo → Subgrupo → pessoa/recurso: o de baixo só oferece o que cabe no de cima, trocar o de
+  cima limpa o de baixo que deixou de caber, nunca opção incompatível (em edição, o já salvo incompatível fica visível e marcado).
+  Peças: `ListUniverseFilter` + `ListOrgScopeFilter universe=…` (listas), `OrgScopeSelect universe=…` (formulários), regra em
+  `lib/operating-universe/hierarchy.ts`. Inventário em `universo-de-atuacao.md` › "Filtros e seletores encadeados".
 - **Confirmação** — `AlertDialog` (50 telas; nenhum `window.confirm`). Dialog só quando a confirmação pede campos (motivo,
   digitar o código).
 - **Lista/Cards** — `ListViewToggle` (13 telas, já uniforme).

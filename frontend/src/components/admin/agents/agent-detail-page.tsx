@@ -24,7 +24,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { OrgScopeSelect, orgScopeValueAfterUniverseChange, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { filterByUniverse, fitsUniverse } from "@/lib/operating-universe/hierarchy"
 import { ActionLimitsCard } from "@/components/admin/agents/action-limits-card"
 import { describeBusinessDomain, type BusinessDomainRef } from "@/schemas/admin/business-domain.schema"
 import { resolveAgentSpecialty, SPECIALTY_KIND_HELP, SPECIALTY_KIND_LABELS, type SpecialtyKind } from "@/schemas/admin/orchestrator-policy"
@@ -368,7 +369,6 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
   const [specialtyKind, setSpecialtyKind] = useState<SpecialtyKind | null>(sourceSpecialty?.kind ?? null)
   const [domain, setDomain] = useState<BusinessDomainRef | null>(sourceSpecialty?.domain ?? null)
   const businessDomainsQuery = useBusinessDomainsQuery()
-  const domainOptions: BusinessDomainRef[] = [...(businessDomainsQuery.data ?? []).filter((candidate) => candidate.active), ...(domain && !(businessDomainsQuery.data ?? []).some((candidate) => candidate.active && candidate.code === domain.code) ? [domain] : [])]
   const [capability, setCapability] = useState<string>(sourceSpecialty?.capability ?? "")
   const [consolidatedInput, setConsolidatedInput] = useState<boolean>(sourceSpecialty?.acceptsConsolidated ?? false)
   const [recommendSupportMaterials, setRecommendSupportMaterials] = useState<boolean>(source?.recommendSupportMaterials ?? false)
@@ -389,7 +389,22 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
   const [actionLimitsEnabled, setActionLimitsEnabled] = useState<boolean>(source?.actionLimitsEnabled ?? false)
   const [actionLimits, setActionLimits] = useState<string>(source?.actionLimits ?? "")
   // Universo de atuação: escolhido só na criação (o agente existente muda pela classificação do universo).
-  const [operatingUniverse, setOperatingUniverse] = useState<OperatingUniverse | null>(null)
+  const [operatingUniverse, setOperatingUniverse] = useState<OperatingUniverse | null>(duplicateFrom?.operatingUniverse ?? null)
+  // Hierarquia universo → Grupo → bases/domínio: o universo do agente (o escolhido na criação; o do registro na edição) limita o que
+  // os seletores oferecem. Pendente (nulo) cabe em qualquer universo. O que já está SALVO e é de outro universo continua visível e
+  // sinalizado (nunca some em silêncio); nada novo incompatível é oferecido. O backend recusa o vínculo (OPERATING_UNIVERSE_LINK_CONFLICT).
+  const universe = savedAgent ? (savedAgent.operatingUniverse ?? null) : operatingUniverse
+  const savedKnowledgeIds = new Set(savedAgent?.knowledgeDocuments.map((document) => document.id) ?? [])
+  const savedDomainCode = savedAgent ? resolveAgentSpecialty(editableAgentOf(savedAgent)).domain?.code ?? null : null
+  const knowledgeOptions = filterByUniverse(knowledgeQuery.data ?? [], universe, (document) => savedKnowledgeIds.has(document.id))
+  const outOfUniverseKnowledge = knowledgeOptions.filter((document) => knowledgeDocumentIds.includes(document.id) && !fitsUniverse(document.operatingUniverse, universe))
+  const domainCatalog = businessDomainsQuery.data ?? []
+  const domainUniverseOf = (code: string) => domainCatalog.find((candidate) => candidate.code === code)?.operatingUniverse ?? null
+  const domainOptions: BusinessDomainRef[] = [
+    ...domainCatalog.filter((candidate) => candidate.active && (fitsUniverse(candidate.operatingUniverse, universe) || candidate.code === savedDomainCode)),
+    ...(domain && !domainCatalog.some((candidate) => candidate.active && candidate.code === domain.code && (fitsUniverse(candidate.operatingUniverse, universe) || candidate.code === savedDomainCode)) ? [domain] : []),
+  ]
+  const domainOutOfUniverse = domain ? !fitsUniverse(domainUniverseOf(domain.code), universe) : false
 
   // Escopo Administrativo (Parte 10/11): criando um agente novo, um admin restrito nunca deve
   // ficar com "Todos os grupos" pré-selecionado.
@@ -427,8 +442,17 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
   function handleOrgScopeChange(nextScope: OrgScopeValue) {
     setOrgScope(nextScope)
     if (!isEditing && knowledgeQuery.data) {
-      setKnowledgeDocumentIds(teamDefaultDocumentIds(knowledgeQuery.data, nextScope))
+      setKnowledgeDocumentIds(teamDefaultDocumentIds(filterByUniverse(knowledgeQuery.data, universe), nextScope))
     }
+  }
+
+  // Trocar o universo (só na criação) limpa o que deixou de caber: Grupo/Subgrupo, bases e domínio de outro universo.
+  function handleUniverseChange(next: OperatingUniverse | null) {
+    setOperatingUniverse(next)
+    setOrgScope((current) => orgScopeValueAfterUniverseChange(current, manageableTeamsQuery.data?.teams, next))
+    const documents = knowledgeQuery.data ?? []
+    setKnowledgeDocumentIds((current) => current.filter((id) => fitsUniverse(documents.find((document) => document.id === id)?.operatingUniverse, next)))
+    if (domain && !fitsUniverse(domainUniverseOf(domain.code), next)) setDomain(null)
   }
 
   const [conflict, setConflict] = useState<{ message: string; recovery: CreateAgentInput } | null>(null)
@@ -689,7 +713,7 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
                 {!isEditing ? (
                   <div className="space-y-1.5">
                     <Label htmlFor="agent-universe">Universo de atuação</Label>
-                    <UniverseSelect id="agent-universe" value={operatingUniverse} onChange={setOperatingUniverse} aria-describedby="agent-universe-help" />
+                    <UniverseSelect id="agent-universe" value={operatingUniverse} onChange={handleUniverseChange} aria-describedby="agent-universe-help" />
                     <p id="agent-universe-help" className="text-xs text-muted-foreground">Universos são separados: este recurso só será usado no universo escolhido.</p>
                   </div>
                 ) : null}
@@ -726,6 +750,7 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
                           {domainOptions.map((candidate) => (
                             <SelectItem key={candidate.code} value={candidate.code}>
                               {describeBusinessDomain(candidate)}
+                              {fitsUniverse(domainUniverseOf(candidate.code), universe) ? "" : " (de outro universo)"}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -733,6 +758,7 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
                       <p className="text-xs text-muted-foreground">
                         Lista do catálogo de <Link href="/admin/business-domains" className="underline underline-offset-2">Domínios de negócio</Link> — cadastre um novo lá e ele aparece aqui.
                         {domain && !domain.id ? " Este Agent referencia um código legado ainda sem registro no catálogo — escolha um domínio para salvar." : ""}
+                        {domainOutOfUniverse ? " O domínio salvo é de outro universo — escolha um do universo deste agente." : ""}
                       </p>
                     </div>
                   ) : null}
@@ -788,6 +814,7 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
                       value={orgScope}
                       onChange={handleOrgScopeChange}
                       allowAllTeams={manageableTeamsQuery.data.unrestricted}
+                      universe={universe}
                     />
                   ) : (
                     <Skeleton className="h-10 w-full" />
@@ -824,10 +851,17 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {knowledgeQuery.data?.length ? (
-                    <KnowledgeBaseMover documents={knowledgeQuery.data} selectedIds={knowledgeDocumentIds} onChange={setKnowledgeDocumentIds} />
+                  {knowledgeOptions.length ? (
+                    <>
+                      <KnowledgeBaseMover documents={knowledgeOptions} selectedIds={knowledgeDocumentIds} onChange={setKnowledgeDocumentIds} universe={universe} />
+                      {outOfUniverseKnowledge.length ? (
+                        <p className="mt-2 text-xs text-destructive" data-testid="agent-knowledge-out-of-universe">
+                          De outro universo (remova para salvar): {outOfUniverseKnowledge.map((document) => document.title).join(", ")}.
+                        </p>
+                      ) : null}
+                    </>
                   ) : (
-                    <p className="text-sm text-muted-foreground">Nenhuma base de conhecimento cadastrada ainda.</p>
+                    <p className="text-sm text-muted-foreground">{knowledgeQuery.data?.length ? "Nenhuma base de conhecimento deste universo de atuação." : "Nenhuma base de conhecimento cadastrada ainda."}</p>
                   )}
                 </CardContent>
               </Card>

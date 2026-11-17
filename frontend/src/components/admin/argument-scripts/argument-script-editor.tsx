@@ -19,7 +19,8 @@ import { ErrorState } from "@/components/ui/states"
 import { ProductScopeCard, ProductScopeField, productsCompatibleWith, useSourceProductScope } from "@/components/admin/product-catalog/product-scope-field"
 import { UniverseSelect } from "@/components/operating-universe/universe-select"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
-import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { OrgScopeSelect, orgScopeValueAfterUniverseChange, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { filterByUniverse, fitsUniverse, teamScopeFitsUniverse } from "@/lib/operating-universe/hierarchy"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import {
   useArgumentScriptQuery,
@@ -64,10 +65,16 @@ function scopeIsComplete(scope: OrgScopeValue) {
   return true
 }
 
-function AreaSelect({ value, onChange, currentName }: { value: string | null; onChange: (value: string) => void; currentName: string | null }) {
+/**
+ * Área responsável (domínio de negócio). Com o universo do argumentário, só oferece domínios dele (ou ainda sem universo) — o backend
+ * recusa a mistura (`OPERATING_UNIVERSE_LINK_CONFLICT`). A área já salva e incompatível continua visível, marcada.
+ */
+function AreaSelect({ value, onChange, currentName, universe }: { value: string | null; onChange: (value: string) => void; currentName: string | null; universe: OperatingUniverse | null }) {
   const domainsQuery = useBusinessDomainsQuery()
-  const options = domainsQuery.data ?? []
+  const options = filterByUniverse(domainsQuery.data ?? [], universe)
   const missing = value !== null && !options.some((domain) => domain.id === value)
+  const missingDomain = (domainsQuery.data ?? []).find((domain) => domain.id === value)
+  const missingOutsideUniverse = missing && missingDomain !== undefined && !fitsUniverse(missingDomain.operatingUniverse, universe)
   return (
     <div className="space-y-1.5">
       <Label htmlFor="argument-script-area">Área responsável *</Label>
@@ -76,7 +83,7 @@ function AreaSelect({ value, onChange, currentName }: { value: string | null; on
           <SelectValue placeholder="Selecione a área" />
         </SelectTrigger>
         <SelectContent>
-          {missing ? <SelectItem value={value!}>{currentName ?? "Área atual"}</SelectItem> : null}
+          {missing ? <SelectItem value={value!}>{missingDomain?.name ?? currentName ?? "Área atual"}{missingOutsideUniverse ? ` (outro universo: ${missingDomain?.operatingUniverse})` : ""}</SelectItem> : null}
           {options.map((domain) => (
             <SelectItem key={domain.id} value={domain.id}>
               {domain.name}
@@ -89,21 +96,33 @@ function AreaSelect({ value, onChange, currentName }: { value: string | null; on
   )
 }
 
-function ScopeField({ value, onChange, teams, scopeOptions, lockedLabel }: { value: OrgScopeValue; onChange: (value: OrgScopeValue) => void; teams: Team[] | undefined; scopeOptions: ArgumentScriptScopeOptions | undefined; lockedLabel?: string | null }) {
+function ScopeField({ value, onChange, teams, scopeOptions, lockedLabel, universe }: { value: OrgScopeValue; onChange: (value: OrgScopeValue) => void; teams: Team[] | undefined; scopeOptions: ArgumentScriptScopeOptions | undefined; lockedLabel?: string | null; universe: OperatingUniverse | null }) {
   if (lockedLabel) {
     return (
       <div className="space-y-1">
         <p className="text-sm font-medium">Escopo</p>
         <p className="text-sm">{lockedLabel}</p>
         <p className="text-xs text-muted-foreground">O escopo não muda depois da primeira publicação. Para outro escopo, desative este argumentário e crie outro.</p>
+        {/* Escopo travado e de outro universo (Grupo classificado depois): não há o que escolher aqui — o aviso diz como resolver
+            (achado do QA de 17/11; antes nada indicava a incoerência). */}
+        {teams && value.scopeType !== "ALL_TEAMS" && !teamScopeFitsUniverse(teams, value, universe) ? (
+          <p role="status" data-testid="argument-script-locked-scope-outside-universe" className="text-xs text-amber-700 dark:text-amber-300">
+            Este escopo é de um Grupo/Subgrupo fora do universo {universe} do argumentário. Para usá-lo em {universe}, desative este argumentário e crie outro com um escopo de {universe}.
+          </p>
+        ) : null}
       </div>
     )
   }
   if (!teams || !scopeOptions) return <Skeleton className="h-16 w-full" />
   return (
     <div className="space-y-1.5" data-testid="argument-script-scope">
-      <OrgScopeSelect teams={teamsForScope(teams, scopeOptions, value.scopeType)} value={value} onChange={onChange} allowAllTeams={scopeOptions.allTeams} />
-      <p className="text-xs text-muted-foreground">Para quem o argumentário vale. Você só escolhe grupos e subgrupos que administra.</p>
+      <OrgScopeSelect teams={teamsForScope(teams, scopeOptions, value.scopeType)} value={value} onChange={onChange} allowAllTeams={scopeOptions.allTeams} universe={universe} />
+      <p className="text-xs text-muted-foreground">Para quem o argumentário vale. Você só escolhe grupos e subgrupos que administra{universe ? `, do universo ${universe}` : ""}.</p>
+      {value.scopeType !== "ALL_TEAMS" && !teamScopeFitsUniverse(teams, value, universe) ? (
+        <p role="status" data-testid="argument-script-scope-outside-universe" className="text-xs text-amber-700 dark:text-amber-300">
+          O escopo salvo é de outro universo. Escolha um Grupo ou Subgrupo de {universe}.
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -116,6 +135,7 @@ function HeaderFields({
   currentAreaName,
   scopeLockedLabel,
   universe,
+  savedUniverse,
 }: {
   value: HeaderState
   onChange: (value: HeaderState) => void
@@ -125,16 +145,13 @@ function HeaderFields({
   scopeLockedLabel?: string | null
   /** Só na criação: o universo de atuação (o existente muda pela classificação do universo). */
   universe?: { value: OperatingUniverse | null; onChange: (value: OperatingUniverse | null) => void }
+  /** Na edição: o universo já classificado do argumentário — só para encadear área e escopo. */
+  savedUniverse?: OperatingUniverse | null
 }) {
+  // Topo da hierarquia: universo → área (domínio) e escopo (Grupo → Subgrupo) só do mesmo universo.
+  const effectiveUniverse = universe ? universe.value : (savedUniverse ?? null)
   return (
     <div className="space-y-4 rounded-lg border p-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label htmlFor="argument-script-name">Nome *</Label>
-          <Input id="argument-script-name" value={value.name} onChange={(event) => onChange({ ...value, name: event.target.value })} maxLength={160} placeholder="Ex.: Retenção por preço" />
-        </div>
-        <AreaSelect value={value.businessDomainId} onChange={(businessDomainId) => onChange({ ...value, businessDomainId })} currentName={currentAreaName} />
-      </div>
       {universe ? (
         <div className="space-y-1.5">
           <Label htmlFor="argument-script-universe">Universo de atuação *</Label>
@@ -142,14 +159,22 @@ function HeaderFields({
           <p id="argument-script-universe-help" className="text-xs text-muted-foreground">Universos são separados: este recurso só será usado no universo escolhido.</p>
         </div>
       ) : null}
-      <ScopeField value={value.scope} onChange={(scope) => onChange({ ...value, scope })} teams={teams} scopeOptions={scopeOptions} lockedLabel={scopeLockedLabel} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="argument-script-name">Nome *</Label>
+          <Input id="argument-script-name" value={value.name} onChange={(event) => onChange({ ...value, name: event.target.value })} maxLength={160} placeholder="Ex.: Retenção por preço" />
+        </div>
+        <AreaSelect value={value.businessDomainId} onChange={(businessDomainId) => onChange({ ...value, businessDomainId })} currentName={currentAreaName} universe={effectiveUniverse} />
+      </div>
+      <ScopeField value={value.scope} onChange={(scope) => onChange({ ...value, scope })} teams={teams} scopeOptions={scopeOptions} lockedLabel={scopeLockedLabel} universe={effectiveUniverse} />
     </div>
   )
 }
 
-function useKnowledgeOptions() {
+/** Bases para "Base de origem": só as do universo do argumentário (ou ainda sem universo); a já escolhida o formulário mostra mesmo assim. */
+function useKnowledgeOptions(universe: OperatingUniverse | null) {
   const knowledgeQuery = useKnowledgeDocumentsQuery()
-  return { documents: knowledgeQuery.data, unavailable: knowledgeQuery.isError }
+  return { documents: knowledgeQuery.data ? filterByUniverse(knowledgeQuery.data, universe) : undefined, unavailable: knowledgeQuery.isError }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -166,15 +191,28 @@ export function ArgumentScriptCreateForm({ onCreated, onCancel }: { onCreated: (
 
 function CreateForm({ scopeOptions, teams, onCreated, onCancel }: { scopeOptions: ArgumentScriptScopeOptions; teams: Team[]; onCreated: (id: string) => void; onCancel: () => void }) {
   const createMutation = useCreateArgumentScriptMutation()
-  const knowledge = useKnowledgeOptions()
   const [header, setHeader] = useState<HeaderState>(() => ({ name: "", businessDomainId: null, scope: { scopeType: defaultScopeType(scopeOptions) } }))
   const [content, setContent] = useState<ContentFormState>(EMPTY_CONTENT_FORM)
   const productScope = useSourceProductScope("ARGUMENT_SCRIPT", null)
   const [operatingUniverse, setOperatingUniverse] = useState<OperatingUniverse | null>(null)
+  const knowledge = useKnowledgeOptions(operatingUniverse)
+  const domainsQuery = useBusinessDomainsQuery()
+  const allKnowledge = useKnowledgeDocumentsQuery().data
 
-  // Trocou o universo: produtos já marcados de outro universo saem da escolha (universos não se misturam).
+  // Trocou o universo: o que já estava escolhido e é de outro universo sai da escolha (universos não se misturam) — área, escopo
+  // (Grupo/Subgrupo), base de origem e produtos.
   function handleUniverseChange(next: OperatingUniverse | null) {
     setOperatingUniverse(next)
+    setHeader((current) => {
+      const domain = (domainsQuery.data ?? []).find((candidate) => candidate.id === current.businessDomainId)
+      return {
+        ...current,
+        businessDomainId: domain && !fitsUniverse(domain.operatingUniverse, next) ? null : current.businessDomainId,
+        scope: orgScopeValueAfterUniverseChange(current.scope, teams, next),
+      }
+    })
+    const source = (allKnowledge ?? []).find((document) => document.id === content.sourceDocumentId)
+    if (source && !fitsUniverse(source.operatingUniverse, next)) setContent((current) => ({ ...current, sourceDocumentId: null }))
     const compatible = new Set(productsCompatibleWith(productScope.nodes, next).map((node) => node.id))
     if (productScope.value.some((id) => !compatible.has(id))) productScope.setValue(productScope.value.filter((id) => compatible.has(id)))
   }
@@ -268,8 +306,8 @@ function StatusBadges({ detail, now }: { detail: ArgumentScriptDetail; now: numb
 function ArgumentScriptEditor({ detail, onBack, onDeleted }: { detail: ArgumentScriptDetail; onBack: () => void; onDeleted: () => void }) {
   const scopeOptionsQuery = useArgumentScriptScopeOptionsQuery()
   const teamsQuery = useTeamsQuery()
-  const knowledge = useKnowledgeOptions()
   const updateMutation = useUpdateArgumentScriptMutation()
+  const knowledge = useKnowledgeOptions(detail.operatingUniverse ?? null)
 
   // Edição parte do rascunho (ou da vigente, quando o rascunho ainda vai nascer); a leitura mostra o que vale hoje.
   const base: ArgumentScriptVersion | null = detail.draft ?? detail.current
@@ -374,6 +412,7 @@ function ArgumentScriptEditor({ detail, onBack, onDeleted }: { detail: ArgumentS
             scopeOptions={scopeOptionsQuery.data}
             currentAreaName={detail.businessDomainName}
             scopeLockedLabel={detail.everPublished ? scopeLabel(detail) : null}
+            savedUniverse={detail.operatingUniverse ?? null}
           />
           <ArgumentScriptContentFields value={content} onChange={setContent} knowledgeDocuments={knowledge.documents} knowledgeUnavailable={knowledge.unavailable} currentSourceTitle={base?.sourceDocumentTitle ?? null} />
         </>

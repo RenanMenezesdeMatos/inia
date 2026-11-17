@@ -110,9 +110,8 @@ OPERADOR (`people_active_operator_requires_universe`; liderança fica nula de pr
 
 ## Limitações conhecidas
 
-- Listas de agentes, Orquestradores, indicadores, domínios e argumentários ainda não devolvem o universo (o selo não aparece nelas);
-  a classificação deles é pela tela de regularização. Seletores de agentes no Orquestrador e de área no argumentário não filtram por
-  universo (o backend recusa a mistura).
+- A classificação de agentes, Orquestradores, indicadores, domínios e argumentários continua pela tela de regularização (as listas só
+  mostram o selo e filtram).
 - Feed do Acompanhamento e ficha usam o universo ATUAL da pessoa para quem vê; o carimbo do caso ainda não filtra o feed.
 - Apoio com Anjo: atendimento já em andamento na ativação (ou na troca de universo do operador) segue até terminar; o painel de
   presença/histórico dos Anjos não filtra pelo universo do Anjo.
@@ -123,3 +122,95 @@ OPERADOR (`people_active_operator_requires_universe`; liderança fica nula de pr
   `inia_universo` (do `inia_test`, com a conta de teste `qa-universo@inia.test` e o Grupo "B2B · Grandes Contas" classificado). O
   `inia_test` NÃO tem a 197. Numeração: 195/196 já eram de outros ramos e 199/201 de "communications" — por isso 197.
 - Merge na main local em 16/11 (`c4cd8ae6`), sem push.
+
+## Filtros e seletores encadeados pela hierarquia (17/11/2026)
+
+Pedido do usuário: todo filtro de lista e todo campo de seleção respeita a hierarquia **organização → universo → Grupo → Subgrupo →
+pessoa/recurso**: escolhido um nível, os de baixo só oferecem o que cabe nele; trocar um nível de cima limpa a escolha de baixo que
+deixou de caber; nunca se oferece opção incompatível. É UX: o backend continua a autoridade (`OPERATING_UNIVERSE_LINK_CONFLICT`, escopo).
+Ramo `claude/filtros-hierarquia-8e9c03`, sem migration.
+
+**Regra única** em `frontend/src/lib/operating-universe/hierarchy.ts` (testada em `hierarchy.test.ts`): RECURSO pendente (base,
+agente, domínio… com universo nulo) cabe em qualquer universo (mesma regra do backend, `resource-universe.ts`); **Grupo/Subgrupo sem
+universo classificado NÃO aparece quando há universo escolhido** (`unitFitsUniverse`; regra decidida em 17/11 na sessão de Alinhamentos);
+o Grupo tem o próprio universo; o Subgrupo traz o **efetivo** (o dele ou o do Grupo-pai) — um Grupo de outro universo aparece só pelo
+Subgrupo compatível, sem "grupo inteiro"; `PENDING` no filtro sozinho não restringe os de baixo (em Pessoas, "Pendente" marcado libera os
+Grupos, porque a pessoa pendente está em Grupo sem universo). Em EDIÇÃO, o vínculo já salvo e incompatível continua visível marcado "de outro universo" com aviso (nunca some em silêncio),
+mas nada novo incompatível é oferecido.
+
+**Backend (só leitura, campos novos opcionais):** `GET /admin/org-structure/teams` e `/teams/manageable` devolvem `operatingUniverse` no
+Grupo e o efetivo no Subgrupo; agentes, Orquestradores, domínios, indicadores (`/indicator-rules`) e argumentários devolvem
+`operatingUniverse`; essas listas e a de Workflows aceitam `?operatingUniverse=B2B,PENDING` (`operating-universe/application/
+universe-list-filter.ts`, mesmo formato das Pessoas e bases). `GET /diagnostics/memory/filter-options` devolve `teamId` no Subgrupo e
+`teamId`/`subteamId` na pessoa.
+
+**Peças compartilhadas:** `ListUniverseFilter` + `universeChoiceOf` e `ListOrgScopeFilter universe=…` (`admin/shared/list/list-filters.tsx`,
+teste `list-filters.test.tsx`); `OrgScopeSelect universe=…` + `orgScopeValueAfterUniverseChange` (`admin/shared/org-scope-select.tsx`);
+`orgScopeAfterUniverseChange`/`orgScopePatch`/`scopesFitOrgScope`/`filterByUniverse` para as telas.
+
+### Inventário
+
+| Tela (arquivo) | Filtro/campo | Níveis encadeados |
+|---|---|---|
+| Agentes — lista (`agents/agents-page.tsx`) | Universo, Grupo/Subgrupo, base | universo → Grupo/Subgrupo → base (universo e alcance da base) |
+| Agente — cadastro (`agents/agent-detail-page.tsx`) | universo (criação), alcance, bases, domínio | universo (do registro na edição) → alcance, bases, domínio; pré-seleção por Grupo só do universo |
+| Orquestradores — lista (`assistant/assistant-page.tsx`) | Universo, Grupo/Subgrupo, agente orquestrador, especialista | universo → Grupo → agentes (universo e alcance) |
+| Orquestrador — cadastro (`assistant/orchestrator-editor-page.tsx`) | universo, alcance, agente orquestrador, especialistas, domínios | universo → alcance, agentes, domínios (alcance × agente já filtrava: `scopesAreCompatible`) |
+| Bases — lista (`knowledge/knowledge-page.tsx`) | Universo, Grupo/Subgrupo | universo → Grupo/Subgrupo (assunto não tem universo) |
+| Base — cadastro/edição (`knowledge/knowledge-form-page.tsx`) | universo, alcance, produtos | universo → alcance, produtos (produtos já filtravam) |
+| Workflows — lista (`workflows/workflows-page.tsx`) | Universo, Grupo/Subgrupo | universo → Grupo/Subgrupo |
+| Workflow — criação e Configurações (`workflows-page.tsx`, `workflow-settings-sheet.tsx`) | universo, Abrangência, indicador do gatilho, pessoas da estrutura/população | universo → Abrangência → indicador, pessoas |
+| Editor de Workflow (`node-config/action-form.tsx`, `orchestrator-form.tsx`, `indicator-select.tsx`, `trigger-fields.tsx`) | agente, Orquestrador, indicador | universo do rascunho (`workflow-universe-context.tsx`) → opções; salvo de outro universo marcado |
+| Indicadores — lista (`indicators/indicators-page.tsx`) | Universo, Grupo/Subgrupo da regra | universo → Grupo/Subgrupo |
+| Indicador — regra de cálculo (`indicators-page.tsx`) | alcance da regra | universo do indicador → Grupo/Subgrupo |
+| Argumentários — lista (`argument-scripts/argument-scripts-page.tsx`) | Universo, Grupo/Subgrupo, área | universo → Grupo/Subgrupo, área |
+| Argumentário — cadastro (`argument-scripts/argument-script-editor.tsx`) | universo, área, escopo, base de origem, produtos | universo → área, escopo, base de origem, produtos |
+| Domínios — lista (`business-domains/business-domains-page.tsx`) | Universo | só o nível universo |
+| Pessoas — lista (`users/users-page.tsx`) | Universo (múltiplo), Grupo | universo → Grupo (Grupo com gente do universo, inclusive por Subgrupo) |
+| Diagnóstico (`diagnostics/diagnostics-page.tsx`) | Grupo, Subgrupo, pessoa | Grupo → Subgrupo → pessoa (antes nada encadeava) |
+| Equipe, Calendário da equipe, Conversas com a INIA, Indicadores de sucesso, Monitoria de usabilidade, Quem mais usa (IA) | Grupo, Subgrupo | já encadeavam Grupo → Subgrupo; sem nível de universo (o escopo do servidor já filtra as pessoas pelo universo) |
+
+### Fora deste trabalho (e por quê)
+
+- **Alinhamentos operacionais** (`operational-alignments/`): outra sessão faz o encadeamento dessa tela.
+- **Pessoas — cadastro**: o Grupo DEFINE o universo da pessoa e o campo de universo é só a exceção — encadear um pelo outro inverteria a
+  regra (204); fica como está.
+- **Reports — destinatários** (`reports/report-form/audience-fields.tsx`): Grupos, Subgrupos, níveis e cargos são critérios que se
+  somam para escolher destinatários, não uma hierarquia; não foram encadeados.
+- **Boas práticas — nova análise** e **Acessos da conta**: a lista de Subgrupos já vem do Grupo escolhido; sem nível de universo.
+- **Produto (catálogo)**: a categoria não tem universo; nada a encadear. **Políticas de acompanhamento**: sem nível de universo.
+
+### Selo de universo nas listas (17/11/2026, pedido do usuário)
+
+`UniverseBadge` (sem universo = "Universo pendente") em card e tabela de agentes, Orquestradores (na tabela, junto do nome — a coluna
+Grupo some em telas menores), indicadores, domínios, argumentários e no card de bases (antes só a tabela tinha); Workflows já tinham.
+Seletor de bases do agente (`knowledge-base-mover.tsx`): selo por linha e "De outro universo" na base já vinculada incompatível (prop
+`universe`; sem o dado na resposta, nenhum selo). Testes: `knowledge-base-mover.test.tsx`, `business-domains-page.test.tsx`.
+
+### QA completo (17/11/2026)
+
+Pilha isolada (banco `inia_qa_filtros`, clone do `inia_test` apagado no fim; API e frontend do worktree em 127.0.0.1, sem chave de IA),
+massa: Grupos B2B/B2C/sem universo, Subgrupo B2B dentro de Grupo B2C, recursos de cada universo. Roteiros Playwright (WebKit) fora do Git.
+- API: 66/66 (universo nos Grupos/Subgrupos, campo e filtro `operatingUniverse` nas 7 listas, valor inválido = 400, pickers sem paginação
+  continuam array, filter-options do Diagnóstico).
+- Navegador: listas (encadeamento universo → Grupo → base/agente/área, limpeza ao trocar, "Pendente" não restringe, selos em tabela e
+  cards), formulários (agente, Orquestrador gravado de verdade, base, argumentário, criação e Configurações de Workflow, regra de
+  indicador) e etapas do editor de Workflow — sem erro de console nem 4xx/5xx.
+- Achados corrigidos: (1) `OrgScopeSelect` deixava em BRANCO o Grupo/Subgrupo salvo que não cabe no universo (Workflow B2B salvo num
+  Grupo sem universo) — agora aparece selecionado e marcado "(sem universo classificado)" / "(de outro universo: X)"; (2) `AgentPicker`
+  só mostrava o motivo do agente salvo bloqueado (ex.: de outro universo) com a lista aberta — agora mostra também fechado.
+- Diagnóstico: a massa de QA só tem análises num Grupo; o encadeamento Grupo → Subgrupo → pessoa foi provado por teste de componente.
+
+### QA — segunda rodada, com dados próprios (17/11/2026)
+
+Massa criada no banco isolado (apagado no fim): análises de chamada em 4 Grupos/6 Subgrupos (inclusive o Subgrupo B2B dentro de Grupo
+B2C), base B2B com alcance salvo num Grupo B2C, argumentário B2C com área e escopo B2B, regra de indicador B2B num Grupo B2C,
+Orquestradores "Somente Workflow" B2B e B2C, Workflow B2B por agenda (para a população).
+- Diagnóstico Grupo → Subgrupo → pessoa no navegador: 9/9 (2.292 → 125 → 62 pessoas; trocar Grupo/Subgrupo limpa os de baixo).
+- Edições com vínculo salvo de outro universo: base (aviso + Grupo salvo marcado), argumentário (área marcada; escopo travado agora
+  com aviso — achado corrigido: antes nada indicava), regra de indicador (aviso + Grupo marcado): 21/21.
+- Editor de Workflow: etapa Orquestrador e Condição por indicador só do universo do Workflow, nos dois universos: 6/6.
+- Configurações (população por Equipe de Supervisor, Grupo e Subgrupo): só do universo; supervisor sem universo continua oferecido
+  (pendente cabe): 6/6. Pessoas: filtro B2B + Grupo B2C devolve só gente do Subgrupo B2B.
+- Fora do escopo, notado: os seletores de população das Configurações não têm nome acessível (sem rótulo associado) — anterior a este
+  trabalho.

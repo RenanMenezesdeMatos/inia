@@ -58,6 +58,7 @@ import { createDiagnosticStrategyRouter } from "../modules/indicator-diagnosis/p
 import { createEmployeePerformanceRouter } from "../modules/indicators/presentation/employee-performance-router.js"
 import { createCallExpectationRouter } from "../modules/call-expectations/presentation/call-expectation-router.js"
 import { createArgumentScriptRouter } from "../modules/argument-scripts/presentation/argument-script-router.js"
+import { createOperationalAlignmentRouter } from "../modules/operational-alignments/presentation/operational-alignment-router.js"
 import { createUserAccountRouter } from "../modules/users/presentation/user-account-router.js"
 import { createChannelFlagRouter } from "../modules/channel-flags/presentation/channel-flag-router.js"
 import { createWorkflowRouter } from "../modules/workflows/presentation/workflow-router.js"
@@ -212,7 +213,8 @@ const DEFAULT_RATE_LIMITS: RateLimitSettings = {
   voiceSessionsPerAccountHalfHour: 60,
   adminCostlyActionsPerAccount: 30,
   profileWritesPerAccount: 20,
-  communicationPublishesPerAccount: 6,
+  // Área editorial (220): salvar rascunho também grava — o teto cobre a escrita fluida sem deixar disparar publicações em massa.
+  communicationPublishesPerAccount: 30,
   knowledgePreviewsPerAccount: 30,
   heavyReadsPerAccount: 20,
   dataExplorerMetadataPerAccount: 120,
@@ -402,7 +404,10 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/me/view-layouts", requireAuth, onlyMethods(["PUT", "DELETE"], profileWrites), createMyViewLayoutRouter(database))
   // Comunicados da liderança (migration 199): publicar exige permissão própria (lida a cada request no módulo); ler é da própria pessoa.
   const communicationPublishes = limit({ name: "communication-publishes-account", windowMs: 60_000, max: "communicationPublishesPerAccount", key: accountKey, message: "Muitos comunicados publicados em pouco tempo. Aguarde um instante." })
-  app.use("/api/v1/communications", requireAuth, onlyMethods(["POST", "PATCH", "DELETE"], communicationPublishes), createCommunicationsRouter(createPostgresCommunicationStore(database)))
+  // Teto por conta só nas GRAVAÇÕES (criar, salvar, publicar, arquivar, retirar); a prévia do público é leitura.
+  const communicationWrites: express.RequestHandler = (request, response, next) =>
+    request.method === "POST" && request.path === "/audience-preview" ? next() : onlyMethods(["POST", "PATCH", "DELETE"], communicationPublishes)(request, response, next)
+  app.use("/api/v1/communications", requireAuth, communicationWrites, createCommunicationsRouter(createPostgresCommunicationStore(database)))
   // Cenário da INIA (fundo atrás do avatar): qualquer pessoa autenticada vê o que vale hoje; só o Administrador geral configura.
   app.use("/api/v1/inia-scenes", requireAuth, createIniaSceneRouter(database))
   app.use("/api/v1/supervision-cases", requireAuth, createCaseRouter(new PgCaseRepository(database), (request) => loadCaseVisibility(database, request.user!), (organizationId, caseId) => loadCaseAgentRecords(database, organizationId, caseId)))
@@ -432,6 +437,7 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/admin/employee-performance", can("configuration.manage"), createEmployeePerformanceRouter(database))
   // Argumentários (evolução das Regras de chamada): cadastro estruturado/versionado; a rota antiga fica só leitura (transição).
   app.use("/api/v1/admin/argument-scripts", can("configuration.manage"), createArgumentScriptRouter(database))
+  app.use("/api/v1/admin/operational-alignments", can("operational_alignments.manage"), createOperationalAlignmentRouter(database))
   app.use("/api/v1/admin/call-expectations", can("configuration.manage"), createCallExpectationRouter(database))
   app.use("/api/v1/admin/users", can("people.manage"), createUserAccountRouter(database))
   app.use("/api/v1/admin/channel-flags", can("configuration.manage"), orgWideWrites, createChannelFlagRouter(database))

@@ -1,6 +1,7 @@
 import { Router } from "express"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { applyUniverseListFilter, universeListParam } from "../../operating-universe/application/universe-list-filter.js"
 import { booleanParam, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
 import { getManageableScopes } from "../../auth/application/manageable-scopes.js"
 import {
@@ -30,6 +31,7 @@ const listSchema = z.object({
   search: searchParam,
   active: booleanParam,
   includeInactive: booleanParam,
+  operatingUniverse: universeListParam,
 })
 
 function actorOf(request: { user?: { organizationId: string; personId?: string | null } }): BusinessDomainActor {
@@ -45,6 +47,7 @@ export function createBusinessDomainRouter(db: Database) {
     const filter = new SqlFilter([organizationId]).search(input.search, ["q.name", "q.code"])
     if (input.active !== undefined) filter.equals("q.active", input.active)
     else if (!input.includeInactive) filter.equals("q.active", true)
+    applyUniverseListFilter(filter, 'q."operatingUniverse"', input.operatingUniverse)
     const data = await respondList(db, request.query, { select: BUSINESS_DOMAIN_LIST_SELECT, filter, orderBy: "q.name, q.code" })
     response.json({ data })
   })

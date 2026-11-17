@@ -1,3 +1,4 @@
+import type { UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
 import { pageResultSchema, toQueryString, type ListParams, type OrgScopeFilter, type PageResult } from "@/lib/admin/list-query"
 import {
@@ -22,6 +23,8 @@ export type ArgumentScriptListParams = ListParams &
     businessDomainId?: string
     conversion?: ArgumentScriptConversion
     hasDraft?: boolean
+    /** Universo de atuação; PENDING = sem classificação. */
+    operatingUniverse?: UniverseFilterValue
   }
 
 export async function fetchArgumentScriptsPage(params: ArgumentScriptListParams): Promise<PageResult<ArgumentScript>> {

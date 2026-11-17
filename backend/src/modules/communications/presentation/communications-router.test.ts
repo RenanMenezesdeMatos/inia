@@ -106,7 +106,10 @@ describe("POST /communications — publicar", () => {
     const empty = await request(app).post("/communications").send(body({ contentHtml: "<script>só isto</script>" }))
     expect(empty.status).toBe(422)
     expect(empty.body.error.code).toBe("COMMUNICATION_CONTENT_EMPTY")
-    expect((await request(app).post("/communications").send(body({ tags: [] }))).status).toBe(400)
+    // Publicar exige categoria (rascunho não): a conferência é do serviço (220).
+    const noTags = await request(app).post("/communications").send(body({ tags: [] }))
+    expect(noTags.status).toBe(422)
+    expect(noTags.body.error.code).toBe("COMMUNICATION_TAGS_REQUIRED")
     expect((await request(app).post("/communications").send(body({ tags: ["Outra"] }))).status).toBe(400)
     expect((await request(app).post("/communications").send(body({ title: "x" }))).status).toBe(400)
   })
@@ -196,7 +199,10 @@ describe("PATCH/DELETE /communications/:id — o autor edita ou retira", () => {
   it("autor edita: conteúdo saneado de novo, versão anterior guardada, público intocado; campo de público é recusado", async () => {
     const { store, id } = await setup()
     const app = appAs(user(P.supervisor), store)
-    expect((await request(app).patch(`/communications/${id}`).send({ title: "Versão 2", contentHtml: "<p>x</p>", tags: ["Aviso"], audience: "ORGANIZATION" })).status).toBe(400)
+    // Depois que saiu, o público não muda (220: o campo existe para rascunho/agendado; aqui é 409).
+    const locked = await request(app).patch(`/communications/${id}`).send({ title: "Versão 2", contentHtml: "<p>x</p>", tags: ["Aviso"], audience: "ORGANIZATION" })
+    expect(locked.status).toBe(409)
+    expect(locked.body.error.code).toBe("COMMUNICATION_AUDIENCE_LOCKED")
     const edited = await request(app).patch(`/communications/${id}`).send({ title: "Versão 2", contentHtml: `<p onclick="x">Novo<script>y</script></p>`, tags: ["Aviso", "Aviso"] })
     expect(edited.status).toBe(200)
     expect(edited.body.data).toMatchObject({ title: "Versão 2", contentHtml: "<p>Novo</p>", tags: ["Aviso"], editedAt: expect.any(String) })

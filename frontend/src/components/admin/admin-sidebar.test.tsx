@@ -49,10 +49,10 @@ describe("AdminSidebar — organização", () => {
   it("agrupa por área, sem Checkpoints e sem os atalhos de criação escondidos nas setas", () => {
     renderSidebar(everything)
     const groups = [...document.querySelectorAll('[data-sidebar="group-label"]')].map((label) => label.textContent)
-    expect(groups).toEqual(["Dados", "Atendimento com IA", "Automação", "Monitoramento", "Plataforma"])
+    expect(groups).toEqual(["Comunicação", "Dados", "Atendimento com IA", "Automação", "Monitoramento", "Plataforma"])
     expect(screen.queryByText(/Checkpoints/)).not.toBeInTheDocument()
     expect(screen.queryByText(/^Novo agente$|^Nova base$|^Nova fonte$/)).not.toBeInTheDocument()
-    for (const name of ["Central de Dados", "Indicadores", "Flags de canal", "Agentes", "Orquestrador da INIA", "Argumentários", "IA / Modelos", "Workflows", "QA Lab", "Usuários e acessos", "Cenário da INIA"]) {
+    for (const name of ["Publicações", "Central de Dados", "Indicadores", "Flags de canal", "Agentes", "Orquestrador da INIA", "Argumentários", "IA / Modelos", "Workflows", "QA Lab", "Usuários e acessos", "Cenário da INIA"]) {
       expect(link(name)).toBeInTheDocument()
     }
   })

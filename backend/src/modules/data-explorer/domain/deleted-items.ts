@@ -31,6 +31,7 @@ export const DELETED_ITEM_TYPES = [
   "DATA_FEED",
   "REPORT",
   "COMMUNICATION",
+  "OPERATIONAL_ALIGNMENT",
 ] as const
 export type DeletedItemType = (typeof DELETED_ITEM_TYPES)[number]
 
@@ -391,6 +392,20 @@ export const DELETED_ITEMS: readonly DeletedItemDefinition[] = [
     restoreSet: "",
     checks: [],
     notices: ["Volta a aparecer no Acompanhamento de quem o recebeu, com o público e o conteúdo da última versão."],
+  }),
+  // Alinhamento operacional (migrations 209–212). Excluir já encurtou a vigência para "até a exclusão": restaurar devolve à lista
+  // ENCERRADO — para valer de novo, alguém cria uma nova versão e publica, com as conferências de sempre. O rastro registra a volta.
+  owned("operational_alignments", {
+    type: "OPERATIONAL_ALIGNMENT",
+    label: "Alinhamento operacional",
+    access: { permissions: ["operational_alignments.manage"] },
+    nameSql: "(select v.title from operational_alignment_versions v where v.alignment_id = t.id order by v.version desc limit 1)",
+    restoreSet: "",
+    restoreChildrenSql: [
+      `insert into operational_alignment_events (organization_id, alignment_id, event_type, actor_person_id, details) select organization_id, id, 'RESTORED', null, jsonb_build_object('deletedAt', deleted_at, 'deletedBy', deleted_by_person_id, 'note', 'Quem restaurou está em audit_logs (Consultar dados › Itens excluídos).') from operational_alignments where id = $1`,
+    ],
+    checks: [],
+    notices: ["Volta encerrado: não vale para nenhum atendimento depois da exclusão. Para valer de novo, crie uma nova versão na tela de Alinhamentos operacionais e publique."],
   }),
 ]
 

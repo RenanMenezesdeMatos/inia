@@ -120,3 +120,17 @@ describe("Administração — Indicadores de sucesso da INIA", () => {
     expect(await redirectOf(IniaSuccessRoute)).toBe("/admin")
   })
 })
+
+describe("Administração — Publicações (área editorial dos comunicados)", () => {
+  it("quem só publica comunicados entra só em Publicações; o resto volta para ela", async () => {
+    for (const capabilities of [{ canPublishTeamCommunications: true }, { canPublishOrganizationCommunications: true }]) {
+      signIn(capabilities, "/admin/publicacoes/nova")
+      expect(await redirectOf(layoutAt)).toBeNull()
+      for (const pathname of ["/admin", "/admin/knowledge", "/admin/users"]) {
+        signIn(capabilities, pathname)
+        expect(await redirectOf(layoutAt)).toBe("/admin/publicacoes")
+      }
+    }
+  })
+})
+

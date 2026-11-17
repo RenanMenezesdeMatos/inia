@@ -319,7 +319,7 @@ async function runOrchestratedReplyInVersions(
   extraContext: string,
   operatorId: string,
   /** Sujeito da investigação dos especialistas (Workflow: interação/indicador do enrollment). */
-  specialistOptions: Pick<SpecialistToolOptions, "investigation" | "outputContract" | "collaboratorConversation" | "analyzeCall" | "excludedCapabilities" | "conversationFrame" | "askerQuestion"> = {},
+  specialistOptions: Pick<SpecialistToolOptions, "investigation" | "outputContract" | "collaboratorConversation" | "analyzeCall" | "excludedCapabilities" | "conversationFrame" | "askerQuestion" | "structureScope"> = {},
   fastPath: OrchestrationFastPath = {},
   conversation: OrchestrationConversationHooks = {},
 ): Promise<OrchestratedReply> {

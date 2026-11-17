@@ -39,3 +39,29 @@ describe("seletor de bases do agente (PEN-008, CA-WF008.5)", () => {
     expect(screen.queryByText(/Vale para/)).not.toBeInTheDocument()
   })
 })
+
+describe("seletor de bases do agente — selo do universo", () => {
+  const WITH_UNIVERSE = [
+    { id: "a", title: "Base B2B", inUseVersion: 1, operatingUniverse: "B2B" as const },
+    { id: "b", title: "Base pendente", inUseVersion: 1, operatingUniverse: null },
+    { id: "c", title: "Base B2C", inUseVersion: 1, operatingUniverse: "B2C" as const },
+  ]
+
+  it("cada linha mostra o universo da base; pendente mostra 'Universo pendente'", () => {
+    render(<KnowledgeBaseMover documents={WITH_UNIVERSE.slice(0, 2)} selectedIds={[]} onChange={vi.fn()} universe="B2B" />)
+    expect(within(screen.getByRole("button", { name: /Base B2B/ })).getByText("B2B")).toBeInTheDocument()
+    expect(within(screen.getByRole("button", { name: /Base pendente/ })).getByText("Universo pendente")).toBeInTheDocument()
+    expect(screen.queryByText("De outro universo")).not.toBeInTheDocument()
+  })
+
+  it("base já vinculada de outro universo fica marcada na própria linha", () => {
+    render(<KnowledgeBaseMover documents={WITH_UNIVERSE} selectedIds={["c"]} onChange={vi.fn()} universe="B2B" />)
+    expect(within(screen.getByRole("button", { name: /Base B2C/ })).getByText("De outro universo")).toBeInTheDocument()
+    expect(within(screen.getByRole("button", { name: /Base B2B/ })).queryByText("De outro universo")).not.toBeInTheDocument()
+  })
+
+  it("sem o dado do universo (resposta antiga), nenhum selo", () => {
+    render(<KnowledgeBaseMover documents={DOCUMENTS} selectedIds={[]} onChange={vi.fn()} universe="B2B" />)
+    expect(screen.queryByText("Universo pendente")).not.toBeInTheDocument()
+  })
+})

@@ -138,3 +138,22 @@ describe("Domínios de negócio — catálogo administrável", () => {
     await waitFor(() => expect(service.setBusinessDomainActive.mock.calls[0]?.slice(0, 2)).toEqual(["d1", false]))
   })
 })
+
+describe("Domínios de negócio — universo de atuação na lista", () => {
+  it("cada linha mostra o selo do universo; sem universo, 'Universo pendente'", async () => {
+    service.fetchBusinessDomainsPage.mockResolvedValue({ items: [{ ...FATURAMENTO, operatingUniverse: "B2B" }, { ...LOGISTICA, operatingUniverse: null }], total: 2, page: 1, pageSize: 10 })
+    renderWithQuery(<BusinessDomainsPage />)
+    await screen.findByText("Faturamento")
+    expect(within(screen.getByTestId("domain-row-FATURAMENTO")).getByText("B2B")).toBeInTheDocument()
+    expect(within(screen.getByTestId("domain-row-LOGISTICA")).getByText("Universo pendente")).toBeInTheDocument()
+  })
+
+  it("o filtro Universo vai para a consulta", async () => {
+    service.fetchBusinessDomainsPage.mockResolvedValue({ items: [FATURAMENTO], total: 1, page: 1, pageSize: 10 })
+    renderWithQuery(<BusinessDomainsPage />)
+    await screen.findByText("Faturamento")
+    fireEvent.click(screen.getByRole("combobox", { name: "Filtrar por universo de atuação" }))
+    fireEvent.click(screen.getByRole("option", { name: "B2C" }))
+    await waitFor(() => expect(service.fetchBusinessDomainsPage).toHaveBeenLastCalledWith(expect.objectContaining({ operatingUniverse: "B2C" })))
+  })
+})

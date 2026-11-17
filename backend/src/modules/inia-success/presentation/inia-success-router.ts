@@ -5,6 +5,7 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { AccessContext } from "../../access/domain/access-decision.js"
 import { createPostgresAccessRepository } from "../../access/infrastructure/postgres-access-repository.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { alignmentsSummary } from "../application/alignments-reader.js"
 import { complianceSummary } from "../application/compliance-reader.js"
 import { canSeeAnySection, canSeeSection, successContext, type SuccessSection } from "../application/context-reader.js"
 import { feedbackSummary } from "../application/feedback-reader.js"
@@ -21,7 +22,7 @@ import { periodBuckets, periodDays } from "../domain/success-metrics.js"
  * rota confere a do seu bloco (403 sem ela). O alcance concreto de cada bloco é o da tela de origem dos dados.
  *
  *   GET /context                 blocos visíveis + opções de Grupo/Subgrupo do alcance
- *   GET /response-time | /routes | /replies | /support | /feedback | /compliance   (?from&to[&teamId][&subteamId])
+ *   GET /response-time | /routes | /replies | /support | /feedback | /compliance | /alignments   (?from&to[&teamId][&subteamId])
  */
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe a data no formato AAAA-MM-DD.")
 const querySchema = z
@@ -30,7 +31,7 @@ const querySchema = z
 
 type AccessRequest = Request & { successAccess?: AccessContext }
 const forbidden = () => new DomainError("Você não tem permissão para este recurso.", "FORBIDDEN", 403)
-const viewerOf = (request: Request): SuccessViewer => ({ organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId! })
+const viewerOf = (request: Request): SuccessViewer => ({ organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId!, accountId: sessionUser<{ sub: string }>(request).sub })
 
 export function createIniaSuccessRouter(db: Database) {
   const router = Router()
@@ -69,5 +70,6 @@ export function createIniaSuccessRouter(db: Database) {
   section("support", supportSummary)
   section("feedback", feedbackSummary)
   section("compliance", complianceSummary)
+  section("alignments", alignmentsSummary)
   return router
 }

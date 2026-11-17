@@ -7,7 +7,7 @@ import { currentUserKeys } from "@/queries/auth/use-current-user"
 import { feedbackReviewKeys } from "@/queries/feedback-review/feedback-review-query-keys"
 
 import type { AccessStatus, AssignRoleInput } from "@/schemas/access/access.schema"
-import { assignAccessRole, disableUserAccess, enableUserAccess, fetchAccessAccount, fetchAccessRoles, fetchIdentifiedUsers, fetchScopeOptions, grantRoleToLeaders, issueTemporaryPassword, revokeAccessRole } from "@/services/access/access-service"
+import { assignAccessRole, disableUserAccess, enableUserAccess, fetchAccessAccount, fetchAccessRoles, fetchIdentifiedUsers, fetchScopeOptions, issueTemporaryPassword, revokeAccessRole } from "@/services/access/access-service"
 
 const keys = { all: ["admin-access"] as const, users: (params: object) => ["admin-access", "users", params] as const, account: (id: string) => ["admin-access", "account", id] as const, roles: ["admin-access", "roles"] as const, scopes: ["admin-access", "scopes"] as const }
 /** Raiz das queries de acesso — para quem muda contas fora daqui (ex.: vincular a pessoa da base) invalidar. */
@@ -59,7 +59,3 @@ export function useDisableUserAccessMutation() {
   return useMutation({ mutationFn: (accountId: string) => disableUserAccess(accountId), onSuccess: () => void invalidate() })
 }
 
-export function useGrantRoleToLeadersMutation() {
-  const invalidate = useInvalidateAccess()
-  return useMutation({ mutationFn: (roleCode: string) => grantRoleToLeaders(roleCode), onSuccess: () => void invalidate() })
-}

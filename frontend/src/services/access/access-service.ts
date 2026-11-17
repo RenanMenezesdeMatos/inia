@@ -19,7 +19,3 @@ export const disableUserAccess = (accountId: string) => adminSend<{ personId: st
 export const assignAccessRole = (accountId: string, input: AssignRoleInput) => adminSend<{ id: string }>(`${BASE}/accounts/${encodeURIComponent(accountId)}/roles`, "POST", input)
 export const revokeAccessRole = (accountId: string, assignmentId: string, reason?: string) => adminSend<void>(`${BASE}/accounts/${encodeURIComponent(accountId)}/roles/${encodeURIComponent(assignmentId)}`, "DELETE", reason ? { reason } : {})
 
-/** "Conceder aos gestores": o papel com escopo "Minha estrutura" para cada conta de quem lidera alguém no seu alcance (auditado, idempotente). */
-export async function grantRoleToLeaders(roleCode: string): Promise<{ leaders: number; granted: number; alreadyAssigned: number; skipped: number }> {
-  return adminSend(`/api/v1/admin/access/roles/${roleCode}/grant-to-leaders`, "POST")
-}

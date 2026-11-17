@@ -865,3 +865,40 @@ Aceitos ou já documentados: público "Toda a empresa" dos comunicados não segm
 Delta (RAG e revisão do universo): nenhuma fuga de escopo de base nem de universo; rotas `/units` com permissão de organização e filtro por organização; versões fixadas ou da data da chamada sem vetor caem para a busca por texto (limitação documentada).
 
 O que segurou: transferência de Anjo com trava e elegibilidade, leitura da sala só por participantes, presença e pausas, painel com cobertura e limites, comunicados com público calculado no servidor e edição só pelo autor, sanitização em duas camadas com CSP, disposição de tela só da própria pessoa, "Quem mais usa" no escopo, papéis novos delegáveis só pelo Administrador geral, migrations sem drift no banco de dev.
+
+## Oitava rodada (17/11/2026, run-5: skill da Cloudflare em modo delimitado, varredura AppSec do Conviso, QA e arquitetura)
+
+Passada sobre o diff `4f37ec2a..715d14c6` (entregas de 17/11: alinhamentos operacionais 209–213 e 221, área editorial de
+Publicações 220, filtros encadeados do universo, retirada de "Conceder aos gestores" do Leitor de conversas, aba Escopos do
+Anjo, `PROCESS_GROUP_RULE_V1`). Quatro revisões independentes (acesso/universo/Anjo; publicações/alinhamentos; arquitetura e
+padrão de código; QA pelas APIs do dev, sem IA paga) em `~/security-audit-skill/inia/run-5/agents/*/relatorio.md`, mais
+`npm run security:scan` (Semgrep, Gitleaks, OSV, Syft) e as provas de banco num banco descartável.
+
+Resultado: nenhum achado crítico; 1 alto e 3 médios corrigidos com teste que falha no código anterior.
+
+| # | Gravidade | Achado | Correção |
+|---|---|---|---|
+| R8-01 | Alta | Avaliação de processo pelo Orquestrador (Workflow, `PROCESS_ASSESSMENT`) aplicava os alinhamentos pela data de HOJE: chamada feita na vigência e avaliada depois do término era julgada pelo trecho oficial suspenso | `run-specialist-tool.ts` lê `interactions.started_at` e passa `alignmentReferenceDate` (como o motor de feedback e o gatilho `channel_flag`) |
+| R8-02 | Média | Alinhamento: bastava UMA versão no escopo para ler, editar, descartar, prever e publicar — o gestor do Grupo A, pela v1 dele, substituía a v2 do universo inteiro e descartava o rascunho do administrador | todas as versões que decidem (publicada/cancelada e rascunho) precisam estar no alcance; a lista usa a mesma regra |
+| R8-03 | Média | Alinhamento: universo não conferido em lista, detalhe, encerrar, excluir, descartar, monitorias afetadas e seletor de processos (o papel Gestor de alinhamentos não tem `operating_universes.all`) | universos de quem administra no alcance (`alignmentUniversesOf`); fora = 404 |
+| R8-04 | Média | Comunicado podia forjar no prompt um bloco "### Alinhamento operacional …" (título/resumo com quebra de linha, cabeçalhos no corpo), contornando papel, conflito, vigência e assunto proibido | `COMMUNICATION_CONVERSATION_V3`: título, resumo e autoria em uma linha, `#` do conteúdo neutralizado, conteúdo entre marcas com o id |
+| R8-05 | Baixa | Conferência de assunto proibido na publicação do alinhamento cobria só título + orientação | cobre também assunto, justificativa e títulos dos processos |
+
+Abertos (R-46 em `pendencias-e-riscos.md`): R8-N01 nova versão com início no passado encurta a anterior retroativamente
+(confirmar a regra de produto); R8-N02 "monitorias afetadas" usa o Grupo gravado na avaliação e aceita colaborador sem
+universo, enquanto o reprocessamento usa a regra única; R8-N03 Indicadores de sucesso escolhe a versão de maior número entre
+as do período; R8-N04 conflito sem precedência conferido fora da transação; R8-N05 histórico de alinhamentos no chat com
+`limit 200` antes do filtro de público e aviso de "alinhamento recente" sem público; R8-N06 alinhamento e histórico ainda
+entram no prompt com o texto do autor (papel restrito e conferência de assunto proibido reduzem o risco); R8-N07 parser JSON
+de 2,2 MB de `/communications` montado antes do `requireAuth`; R8-N08 `validReferences` não confere Subgrupo ∈ Grupo.
+
+Varredura AppSec (`security:scan`, 17/11 12:28, relatório bruto `output/appsec-2026-11-17-12-28`): Gitleaks 0 novo, OSV 0
+itens (as dependências de 11/11 zeraram a lista antiga), Semgrep 14 novos — todos falsos positivos triados um a um: HTML
+saneado antes do `innerHTML` do editor e link com `escapeHtml`; regex de atributo com nome fixo; HTML do comunicado refeito
+pelo servidor com `src` validado e `href` escapado; marcas `<<<comunicado>>>` do prompt; SQL com `'<img '`; e três arquivos
+de rodadas anteriores (`diagnostico-de-erros.ts`, `error-catalog.ts`, `publicar.mjs`). Linha de base regravada.
+
+O que segurou: retirada de "Conceder aos gestores" também no servidor (rota antiga 404; concessão só por `checkDelegation`);
+escopo do Anjo só com `human_support.manage` e organização da sessão; filtros de universo só estreitam listas já recortadas;
+comunicados com público, edição e leitura decididos no servidor e HTML malicioso limpo na criação e na edição (QA ao vivo);
+vigência por data civil com fim inclusivo e monitoria pela data do atendimento no motor de feedback.

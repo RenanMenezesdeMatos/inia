@@ -2,6 +2,7 @@
 
 import { UniverseBadge } from "@/components/operating-universe/universe-badge"
 import { UniverseSelect } from "@/components/operating-universe/universe-select"
+import { teamsForUniverse } from "@/lib/operating-universe/hierarchy"
 import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import { OPERATING_UNIVERSES, type OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import { useEffect, useId, useState, type ReactNode } from "react"
@@ -440,7 +441,11 @@ export function UsersPage({
 
   const list = useAdminListState({ storageKey: "users", defaultFilters: DEFAULT_FILTERS })
   const usersQuery = useUserAccountsPageQuery(list.params)
-  const teamOptions = (teamsQuery.data ?? []).map((team) => ({ value: team.id, label: team.name }))
+  // Hierarquia universo → Grupo: o filtro de Grupo só oferece Grupos com gente do universo escolhido (o próprio Grupo ou um Subgrupo
+  // dele); trocar o universo limpa o Grupo que deixou de caber.
+  // Com "Pendente" marcado, a pessoa pendente está num Grupo sem universo: aí o filtro de Grupo não restringe.
+  const teamsInUniverse = (universes: UserFilters["operatingUniverse"]) => teamsForUniverse(teamsQuery.data ?? [], universes?.includes("PENDING") ? undefined : universes)
+  const teamOptions = teamsInUniverse(list.filters.operatingUniverse).map((team) => ({ value: team.id, label: team.name }))
 
   const [autoOpen, setAutoOpen] = useAutoOpenFromQuery("new")
   const [tab, setTab] = useState<"list" | "form">("list")
@@ -569,8 +574,17 @@ export function UsersPage({
               onClearFilters={list.resetFilters}
             >
               <ListMultiSelectFilter label="Nível hierárquico" values={list.filters.role} onChange={(values) => list.setFilter("role", values)} options={ROLE_OPTIONS} />
+              <ListMultiSelectFilter
+                label="Universo"
+                values={list.filters.operatingUniverse ?? []}
+                onChange={(values) => {
+                  const operatingUniverse = values as UserFilters["operatingUniverse"]
+                  const teamId = list.filters.teamId && teamsInUniverse(operatingUniverse).some((team) => team.id === list.filters.teamId) ? list.filters.teamId : undefined
+                  list.patchFilters({ operatingUniverse, teamId })
+                }}
+                options={UNIVERSE_FILTER_OPTIONS}
+              />
               <ListSelectFilter value={list.filters.teamId} onChange={(value) => list.setFilter("teamId", value)} options={teamOptions} allLabel="Qualquer grupo" ariaLabel="Filtrar por grupo" />
-              <ListMultiSelectFilter label="Universo" values={list.filters.operatingUniverse ?? []} onChange={(values) => list.setFilter("operatingUniverse", values as UserFilters["operatingUniverse"])} options={UNIVERSE_FILTER_OPTIONS} />
               <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
               <ListBooleanFilter value={list.filters.hasAccount} onChange={(value) => list.setFilter("hasAccount", value)} allLabel="Com ou sem conta" trueLabel="Com conta de acesso" falseLabel="Sem conta de acesso" ariaLabel="Filtrar por conta de acesso" />
               <ListDateRangeFilter label="Último acesso" value={list.filters.lastLoginAt} onChange={(value) => list.setFilter("lastLoginAt", value)} />

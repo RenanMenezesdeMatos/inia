@@ -1,5 +1,6 @@
 "use client"
 
+import { UniverseBadge } from "@/components/operating-universe/universe-badge"
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -33,6 +34,8 @@ import {
   ListDateRangeFilter,
   ListMultiSelectFilter,
   ListOrgScopeFilter,
+  ListUniverseFilter,
+  universeChoiceOf,
   ListSearchInput,
   ListSelectFilter,
   ListToolbar,
@@ -43,6 +46,9 @@ import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
 import { formatScopeLabel } from "@/lib/admin/scope-compatibility"
 import { useAgentsQuery } from "@/queries/admin/use-agent-queries"
 import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
+import type { OrgScopeFilter } from "@/lib/admin/list-query"
+import { filterByUniverse, orgScopeAfterUniverseChange, orgScopePatch, scopesFitOrgScope } from "@/lib/operating-universe/hierarchy"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import {
   useDeleteOrchestratorMutation,
   useOrchestratorsPageQuery,
@@ -147,6 +153,7 @@ function OrchestratorCard({ orchestrator }: { orchestrator: Orchestrator }) {
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Orquestrador</span>
           <span aria-hidden>·</span>
           <span>{groupLabel(orchestrator)}</span>
+          <UniverseBadge universe={orchestrator.operatingUniverse} />
         </>
       }
       title={orchestrator.name}
@@ -210,6 +217,8 @@ function OrchestratorsTable({ orchestrators }: { orchestrators: Orchestrator[] }
                 <Link href={`/admin/assistant/${orchestrator.id}`} className="hover:underline" onClick={(event) => event.stopPropagation()}>
                   {orchestrator.name}
                 </Link>
+                {/* Selo junto do nome: a coluna Grupo some em telas menores, o universo não. */}
+                <UniverseBadge universe={orchestrator.operatingUniverse} className="ml-1.5 align-middle" />
               </TableCell>
               <TableCell className="text-sm whitespace-normal text-muted-foreground">{orchestrator.orchestratorAgentName}</TableCell>
               <TableCell>
@@ -251,8 +260,19 @@ export function AssistantPage() {
   const list = useAdminListState({ storageKey: "assistant-orchestrators", defaultFilters: DEFAULT_FILTERS })
   const pageQuery = useOrchestratorsPageQuery(list.params)
 
-  const orchestratorAgentOptions = (agentsQuery.data ?? []).filter((agent) => agent.agentType === "ORCHESTRATOR").map((agent) => ({ value: agent.id, label: agent.name }))
-  const specialistAgentOptions = (agentsQuery.data ?? []).filter((agent) => agent.agentType !== "ORCHESTRATOR").map((agent) => ({ value: agent.id, label: agent.name }))
+  // Hierarquia universo → Grupo/Subgrupo → agente: cada filtro só oferece o que cabe nos de cima; trocar um de cima limpa os de baixo.
+  const universeChoice = universeChoiceOf(list.filters.operatingUniverse)
+  const currentScope: OrgScopeFilter = { scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }
+  const agentsFor = (universe: OperatingUniverse | undefined, scope: OrgScopeFilter, orchestrator: boolean) =>
+    filterByUniverse(agentsQuery.data ?? [], universe).filter((agent) => (agent.agentType === "ORCHESTRATOR") === orchestrator && scopesFitOrgScope([agent], scope, teamsQuery.data))
+  const keepAgent = (id: string | undefined, universe: OperatingUniverse | undefined, scope: OrgScopeFilter, orchestrator: boolean) =>
+    id && agentsFor(universe, scope, orchestrator).some((agent) => agent.id === id) ? id : undefined
+  const dependentAgents = (universe: OperatingUniverse | undefined, scope: OrgScopeFilter) => ({
+    orchestratorAgentId: keepAgent(list.filters.orchestratorAgentId, universe, scope, true),
+    specialistAgentId: keepAgent(list.filters.specialistAgentId, universe, scope, false),
+  })
+  const orchestratorAgentOptions = agentsFor(universeChoice, currentScope, true).map((agent) => ({ value: agent.id, label: agent.name }))
+  const specialistAgentOptions = agentsFor(universeChoice, currentScope, false).map((agent) => ({ value: agent.id, label: agent.name }))
 
   // Compatibilidade com o atalho antigo "?new" — o cadastro agora tem rota própria, como Agentes e Base de conhecimento.
   useEffect(() => {
@@ -291,10 +311,19 @@ export function AssistantPage() {
           >
             <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
             <ListMultiSelectFilter label="Acionamento" values={list.filters.invocationMode} onChange={(values) => list.setFilter("invocationMode", values)} options={INVOCATION_MODE_OPTIONS} />
+            <ListUniverseFilter
+              value={list.filters.operatingUniverse}
+              onChange={(operatingUniverse) => {
+                const universe = universeChoiceOf(operatingUniverse)
+                const scope = orgScopeAfterUniverseChange(currentScope, teamsQuery.data, universe)
+                list.patchFilters({ operatingUniverse, ...orgScopePatch(scope), ...dependentAgents(universe, scope) })
+              }}
+            />
             <ListOrgScopeFilter
               teams={teamsQuery.data}
-              value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
-              onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
+              universe={universeChoice}
+              value={currentScope}
+              onChange={(scope) => list.patchFilters({ ...orgScopePatch(scope), ...dependentAgents(universeChoice, scope) })}
             />
             <ListSelectFilter
               value={list.filters.orchestratorAgentId}
