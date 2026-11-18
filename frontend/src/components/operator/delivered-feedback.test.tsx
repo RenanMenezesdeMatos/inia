@@ -152,3 +152,76 @@ describe("Feedback por Flag V2 — hierarquia no Acompanhamento (A–D, H)", () 
     expect(screen.queryByRole("button", { name: /Entenda este feedback/ })).not.toBeInTheDocument()
   })
 })
+
+describe("Acompanhamento do colaborador — filtro por tipo", () => {
+  const legacy = (id: string, kind: "monitoria_feedback" | "indicator_feedback", title: string) => ({
+    id, title, message: `Resumo ${title}`, timestamp: "28/09, 15:30", kind,
+    presentation: { label: "Feedback", iconKey: "clipboard-check" as const, tone: "warning" as const },
+    feedback: { recommendation: "Texto", supportMaterials: [] }, acknowledgedAt: null,
+  })
+  it("todos menos um, só um tipo (vazio próprio, a última caixa não desmarca) e volta a tudo; atendimento entregue conta como monitoria", async () => {
+    service.fetchMyDeliveredFeedback.mockResolvedValue([POSITIVE])
+    renderWithQuery(<OperatorDailyFeedbackFeed indicators={{ current: [], history: [legacy("fb-m", "monitoria_feedback", "Monitoria A"), legacy("fb-i", "indicator_feedback", "Indicador B")] }} />)
+    await screen.findByTestId("delivered-feedback")
+    expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(3)
+
+    fireEvent.click(screen.getByRole("button", { name: /Filtrar o Acompanhamento por tipo/ }))
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Feedbacks de indicador" }))
+    await waitFor(() => expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(2))
+    expect(screen.queryByText("Resumo Indicador B")).not.toBeInTheDocument()
+    expect(screen.getByTestId("delivered-feedback")).toBeInTheDocument()
+    expect(screen.getByTestId("follow-up-type-filter")).toHaveTextContent("2 de 3 tipos")
+    // Não existe "Leitura do dia" (feedback_kind só tem monitoria e indicador): a opção saiu do filtro.
+    expect(screen.queryByRole("checkbox", { name: "Leituras do dia" })).toBeNull()
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Feedbacks de monitoria" }))
+    expect(screen.getByRole("checkbox", { name: "Comunicados" })).toBeDisabled()
+    expect(await screen.findByText("Nada nos tipos escolhidos")).toBeInTheDocument()
+    expect(screen.getByTestId("follow-up-type-filter")).toHaveTextContent("Comunicados")
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Todos os tipos" }))
+    await waitFor(() => expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(3))
+    expect(screen.getByTestId("follow-up-type-filter")).toHaveTextContent("Tipos")
+  })
+})
+
+describe("Acompanhamento do colaborador — filtro de ciência", () => {
+  const published = (id: string, title: string, acknowledgedAt: string | null) => ({
+    id, title, message: `Resumo ${title}`, timestamp: "28/09, 15:30", kind: "monitoria_feedback" as const,
+    presentation: { label: "Feedback", iconKey: "clipboard-check" as const, tone: "warning" as const },
+    feedback: { recommendation: "Texto", supportMaterials: [] }, acknowledgedAt,
+  })
+  const choose = async (label: string) => {
+    fireEvent.keyDown(screen.getByRole("button", { name: /Filtrar os feedbacks pela ciência/ }), { key: "Enter" })
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: label }))
+  }
+  it("sem ciência × com ciência entre publicados e de atendimento; vazio próprio volta a tudo", async () => {
+    service.fetchMyDeliveredFeedback.mockResolvedValue([POSITIVE])
+    renderWithQuery(<OperatorDailyFeedbackFeed indicators={{ current: [], history: [published("fb-p", "Pendente A", null), published("fb-d", "Lido B", "2026-09-29T10:00:00.000Z")] }} />)
+    await screen.findByTestId("delivered-feedback")
+    expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(3)
+
+    await choose("Feedbacks sem ciência")
+    await waitFor(() => expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(2))
+    expect(screen.getByText("Resumo Pendente A")).toBeInTheDocument()
+    expect(screen.getByTestId("delivered-feedback")).toBeInTheDocument()
+    expect(screen.queryByText("Resumo Lido B")).not.toBeInTheDocument()
+    expect(screen.getByTestId("follow-up-ack-filter")).toHaveTextContent("Sem ciência")
+
+    await choose("Feedbacks com ciência")
+    await waitFor(() => expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(1))
+    expect(screen.getByText("Resumo Lido B")).toBeInTheDocument()
+
+    await choose("Tudo")
+    await waitFor(() => expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(3))
+  })
+  it("nenhum feedback sem ciência → vazio próprio com \"Ver tudo\"", async () => {
+    service.fetchMyDeliveredFeedback.mockResolvedValue([])
+    renderWithQuery(<OperatorDailyFeedbackFeed indicators={{ current: [], history: [published("fb-d", "Lido B", "2026-09-29T10:00:00.000Z")] }} />)
+    await screen.findByText("Resumo Lido B")
+    await choose("Feedbacks sem ciência")
+    expect(await screen.findByText("Nenhum feedback aguardando sua ciência")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Ver tudo" }))
+    expect(await screen.findByText("Resumo Lido B")).toBeInTheDocument()
+  })
+})

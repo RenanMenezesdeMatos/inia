@@ -23,6 +23,9 @@ import { useFeedbackWorkspace } from "./feedback-application/feedback-workspace-
 import { feedbackSourceKey, type FeedbackSourceRef } from "@/schemas/feedback-applications/feedback-application.schema"
 import { cn } from "@/lib/utils"
 import { MyFollowUpPlans } from "@/components/interventions/my-follow-up-plans"
+import { FollowUpTypeEmpty, FollowUpTypeFilter, OPERATOR_FOLLOW_UP_TYPES, type FollowUpType } from "@/components/follow-up/follow-up-type-filter"
+import { FollowUpAckEmpty, FollowUpAckFilter, type FollowUpAckFilterValue } from "@/components/follow-up/follow-up-ack-filter"
+import { useConfirmedReadings, type ConfirmedReading } from "@/queries/feedback-read-confirmations/use-feedback-read-confirmation"
 
 const PAGE_SIZE = 4
 /** Família do item quando o backend não mandou o motivo (feedback anterior ao campo) — o ícone cai no padrão da família. */
@@ -52,9 +55,25 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
   const [period, setPeriodState] = useState<FollowUpPeriod>({})
   const bounds = followUpPeriodBounds(period)
   const setPeriod = (next: FollowUpPeriod) => { setPeriodState(next); setVisibleCount(PAGE_SIZE) }
-  const timeline = bounds ? fullTimeline.filter((entry) => isWithinFollowUpPeriod(entry.at, bounds)) : fullTimeline
+  // Filtro "Tipo" (um ou vários; null = tudo): recorte no navegador sobre as fontes já juntas. Sem nenhum tipo que venha do
+  // histórico paginado (ex.: só comunicados), não busca páginas antigas à toa.
+  const [types, setTypesState] = useState<FollowUpType[] | null>(null)
+  const setTypes = (next: FollowUpType[] | null) => { setTypesState(next); setVisibleCount(PAGE_SIZE) }
+  // Filtro "Ciência" (null = tudo): só feedbacks, pela ciência do servidor ou confirmada nesta sessão. Em "Sem ciência", o que a
+  // pessoa confirma com o filtro aberto continua à vista (com a confirmação no rodapé) até o filtro mudar — não some no clique.
+  const confirmedReadings = useConfirmedReadings()
+  const [ack, setAckState] = useState<{ value: FollowUpAckFilterValue; since: number } | null>(null)
+  const setAck = (next: FollowUpAckFilterValue | null) => { setAckState(next ? { value: next, since: Date.now() } : null); setVisibleCount(PAGE_SIZE) }
+  const matchesAck = (entry: FollowUpEntry) => {
+    if (!ack) return true
+    const state = ackStateOf(entry, confirmedReadings)
+    if (state === null) return false
+    if (ack.value === "DONE") return state.acknowledgedAt !== null
+    return state.acknowledgedAt === null || (state.confirmedHere && Date.parse(state.acknowledgedAt) >= ack.since)
+  }
+  const timeline = fullTimeline.filter((entry) => (!bounds || isWithinFollowUpPeriod(entry.at, bounds)) && (!types || types.includes(followUpTypeOf(entry))) && matchesAck(entry))
   const oldestHistoryAt = fullTimeline.reduce((oldest, entry) => (entry.source === "history" && entry.at < oldest ? entry.at : oldest), Number.POSITIVE_INFINITY)
-  const canLoadMoreHistory = hasMoreHistory && (bounds === null || oldestHistoryAt >= bounds.since)
+  const canLoadMoreHistory = hasMoreHistory && (bounds === null || oldestHistoryAt >= bounds.since) && (types === null || types.some((type) => HISTORY_TYPES.has(type)))
   const hasMore = visibleCount < timeline.length || canLoadMoreHistory
   // Aplicação de feedback: o item aberto no painel da INIA fica destacado; "Ler feedback" (convite) leva ao item e o abre.
   const workspace = useFeedbackWorkspace()
@@ -64,8 +83,10 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
   const readTarget = workspace?.readTarget ?? null
   const readIndex = readTarget ? timeline.findIndex((entry) => entry.key === entryKeyOf(readTarget.key)) : -1
   const [handledRead, setHandledRead] = useState<number | null>(null)
-  // "Ler feedback" de um item fora do recorte do calendário: volta à visão inicial para o item poder aparecer.
+  // "Ler feedback" de um item fora do recorte do calendário ou do tipo: volta à visão inicial para o item poder aparecer.
   if (readTarget && bounds && readIndex < 0 && handledRead !== readTarget.nonce) setPeriodState({})
+  if (readTarget && types && readIndex < 0 && handledRead !== readTarget.nonce) setTypesState(null)
+  if (readTarget && ack && readIndex < 0 && handledRead !== readTarget.nonce) setAckState(null)
   if (readTarget && readIndex >= 0 && handledRead !== readTarget.nonce) {
     // Ajuste de estado durante o render (padrão do React para estado derivado): revela até o item e o abre.
     setHandledRead(readTarget.nonce)
@@ -135,13 +156,13 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
         </IniaFeedItem>
   }
 
-  return <div ref={rootRef} className="contents"><IniaFeed titleInToggle title="Acompanhamento" description="Feedbacks e monitorias da INIA" period={period} onPeriodChange={setPeriod}>
-      {/* O acompanhamento em execução com quem lidera (só formatos visíveis ao colaborador) — some quando não há nenhum. */}
-      <MyFollowUpPlans/>
+  return <div ref={rootRef} className="contents"><IniaFeed titleInToggle title="Acompanhamento" description="Feedbacks e monitorias da INIA" period={period} onPeriodChange={setPeriod} filter={<><FollowUpAckFilter value={ack?.value ?? null} onChange={setAck}/><FollowUpTypeFilter value={types} onChange={setTypes} types={OPERATOR_FOLLOW_UP_TYPES}/></>}>
+      {/* O acompanhamento em execução com quem lidera (só formatos visíveis ao colaborador) — some quando não há nenhum, e com o filtro de tipo ativo. */}
+      {types || ack ? null : <MyFollowUpPlans/>}
       {delivered.isPending ? <div className="flex gap-3 py-5" aria-busy="true" aria-label="Carregando feedbacks de atendimento"><Skeleton className="size-9 shrink-0 rounded-full"/><div className="flex-1 space-y-2"><Skeleton className="h-4 w-40"/><Skeleton className="h-4 w-full"/></div></div> : null}
       {notices.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os comunicados. <button type="button" className="underline" onClick={() => void notices.refetch()}>Tentar novamente</button></p> : null}
       {delivered.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os feedbacks de atendimento. <button type="button" className="underline" onClick={() => void delivered.refetch()}>Tentar novamente</button></p> : null}
-      {delivered.isSuccess && timeline.length === 0 && !hasMore ? (bounds ? <FollowUpPeriodEmpty onClear={() => setPeriod({})}/> : <p className="py-8 text-center text-sm text-muted-foreground">Nenhum feedback por enquanto.</p>) : null}
+      {delivered.isSuccess && timeline.length === 0 && !hasMore ? (ack ? <FollowUpAckEmpty value={ack.value} onClear={() => { setAck(null); setTypes(null) }}/> : types ? <FollowUpTypeEmpty onClear={() => setTypes(null)}/> : bounds ? <FollowUpPeriodEmpty onClear={() => setPeriod({})}/> : <p className="py-8 text-center text-sm text-muted-foreground">Nenhum feedback por enquanto.</p>) : null}
       {timeline.slice(0, visibleCount).map((entry, index, visible) => {
         const previous = visible[index - 1]
         const newDay = !previous || followUpDayKey(new Date(previous.at)) !== followUpDayKey(new Date(entry.at))
@@ -155,6 +176,31 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
       {loadMoreError ? <p role="alert" className="py-4 text-center text-sm text-muted-foreground">Não foi possível carregar feedbacks mais antigos. <button type="button" className="underline" onClick={loadMoreHistory}>Tentar novamente</button></p>
       : hasMore ? <div ref={loaderRef} className="space-y-3 py-5" aria-live="polite"><div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="size-2 animate-pulse rounded-full bg-primary"/>Carregando feedbacks...</div><div className="flex gap-3"><Skeleton className="size-9 shrink-0 rounded-full"/><div className="flex-1 space-y-2"><Skeleton className="h-4 w-32"/><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-3/4"/></div></div></div> : timeline.length > 0 ? <p className="py-5 text-center text-xs text-muted-foreground">{bounds ? "Fim das ações deste período." : "Fim dos feedbacks."}</p> : null}
   </IniaFeed></div>
+}
+
+/** Tipos que podem vir do histórico paginado (os demais chegam inteiros por outras leituras). */
+const HISTORY_TYPES = new Set<FollowUpType>(["MONITORING", "INDICATOR"])
+// "reading" é só o caso de reserva do mapeamento (`feedback_kind` só tem MONITORING e INDICATOR): sem tipo próprio no filtro, conta como
+// feedback de monitoria (o padrão "Feedback da INIA" do mapeamento).
+const typeOfHistoryKind: Record<OperatorIndicatorsHistoryKind, FollowUpType> = { reading: "MONITORING", monitoria_feedback: "MONITORING", indicator_feedback: "INDICATOR" }
+/** Tipo do item para o filtro: comunicado; feedback de atendimento entregue = monitoria; histórico pelo tipo do feedback. */
+function followUpTypeOf(entry: FollowUpEntry): FollowUpType {
+  if (entry.source === "notice") return "NOTICE"
+  if (entry.source === "delivered") return "MONITORING"
+  return typeOfHistoryKind[entry.item.kind]
+}
+
+/**
+ * Ciência do item para o filtro: `null` = item sem ciência possível (comunicado, alinhamento, leitura); senão a data (servidor ou esta
+ * sessão — `confirmedHere`) ou `null` se ainda não confirmada.
+ */
+function ackStateOf(entry: FollowUpEntry, confirmed: Readonly<Record<string, ConfirmedReading>>): { acknowledgedAt: string | null; confirmedHere: boolean } | null {
+  const source = sourceOfEntry(entry)
+  if (!source) return null
+  const server = entry.source === "delivered" ? entry.item.acknowledgedAt : entry.source === "history" ? (entry.item.acknowledgedAt ?? null) : null
+  if (server) return { acknowledgedAt: server, confirmedHere: false }
+  const here = confirmed[feedbackSourceKey(source)]?.acknowledgedAt ?? null
+  return { acknowledgedAt: here, confirmedHere: here !== null }
 }
 
 /** Fonte da aplicação de um item do feed (o tipo faz parte da identidade); `null` = item sem aplicação ("Leitura do dia"). */

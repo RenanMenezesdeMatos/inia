@@ -11,7 +11,7 @@ import { PgPendingActionsRepository } from "../../pending-actions/application/pe
 import { quartileSchema, type Quartile } from "../../indicators/domain/employee-performance-schema.js"
 import type { IndicatorDirection } from "../../indicators/domain/evaluate-attainment.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
-import type { EmploymentStatusView, FollowUpFeed, FollowUpItem, OperationalStructureSummary, OperationalTrendView, PersistedInsight } from "../domain/view-models.js"
+import type { EmploymentStatusView, FollowUpFeed, FollowUpItem, FollowUpType, OperationalStructureSummary, OperationalTrendView, PersistedInsight } from "../domain/view-models.js"
 import { EMPLOYMENT_STATUS_LABELS, STATUS_BASIS_LABELS } from "../../people/domain/employment-status.js"
 import { loadEmploymentStatusHistory, resolveEmployeeStatusAt } from "../../people/application/employment-status-service.js"
 import { loadWorkScheduleSummary } from "../../people/application/work-schedule-service.js"
@@ -102,6 +102,8 @@ export type FollowUpFeedQuery = {
   /** Recorte do calendário: só itens com instante em [since, until) — o mesmo instante que ordena e rotula o dia. Ausente = sem limite. */
   since?: string | null
   until?: string | null
+  /** Filtro "Tipo" (um ou vários); ausente/null = todos os tipos. */
+  types?: readonly FollowUpType[] | null
 }
 
 export interface AnalyticsReadRepository {
@@ -487,13 +489,15 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     // Recorte do calendário sobre o MESMO instante de cada ramo (o que ordena o feed e dá o rótulo do dia na tela).
     const inPeriod = (instant: string) => [query.since ? `and ${instant} >= $${params.push(query.since)}::timestamptz` : "", query.until ? `and ${instant} < $${params.push(query.until)}::timestamptz` : ""].join(" ")
     const period = { feedback: inPeriod("coalesce(f.published_at, f.created_at)"), alert: inPeriod("a.created_at"), report: inPeriod("r.created_at"), notice: inPeriod("n.published_at") }
+    // Filtro "Tipo": SQL fixo por ramo (o valor já passou pelo enum da rota); o ramo que não tem o tipo pedido sai inteiro.
+    const typed = followUpTypeSql(query.types ?? null)
     const result = await this.db.query<Record<string, unknown>>(
       `with feed as (
          select f.id, 'FEEDBACK' kind, coalesce(f.published_at, f.created_at) "createdAt"
          from feedbacks f
          where f.organization_id = $1 and f.status = 'PUBLISHED' and f.operator_id = any($2::uuid[])
            and (not $6::boolean or f.acknowledged_at is null)
-           and ${visibleInFollowUpSql("f")} ${before.feedback} ${period.feedback}
+           and ${visibleInFollowUpSql("f")} ${before.feedback} ${period.feedback} ${typed.feedback}
          union all
          select a.id, 'ALERT', a.created_at
          from alerts a
@@ -501,19 +505,19 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
            -- Intervenção: resolver a PENDÊNCIA (aceitar, aprovar) não apaga o registro do Acompanhamento — o aviso continua
            -- como histórico com o link para o caso. Os demais avisos saem do feed quando resolvidos.
            and (a.status in ('OPEN', 'SEEN', 'ACKNOWLEDGED') or (a.status = 'RESOLVED' and left(a.alert_type, 13) = 'INTERVENTION_'))
-           and not ${recadoAlertCoveredByFollowUpSql("a")} ${before.alert} ${period.alert}
+           and not ${recadoAlertCoveredByFollowUpSql("a")} ${before.alert} ${period.alert} ${typed.alert}
            -- Aviso de execução bloqueada é só do sino: Acompanhamento é conteúdo para ler (D1, docs/qa/workflows/propostas.md).
            and a.alert_type <> 'WORKFLOW_EXECUTION_BLOCKED'
          union all
          -- Reports recorrentes: entregas e avisos de "não encaminhado" endereçados a QUEM LÊ (cada um com a versão do escopo dele).
          select r.delivery_id, 'REPORT', r.created_at
          from report_delivery_recipients r
-         where $3::boolean and r.organization_id = $1 and r.recipient_person_id = $4 ${before.report} ${period.report}
+         where $3::boolean and r.organization_id = $1 and r.recipient_person_id = $4 ${before.report} ${period.report} ${typed.report}
          union all
          -- Comunicados da liderança (migration 199): os que QUEM LÊ publicou e os que recebeu (equipe de cima ou organização inteira).
          select n.id, 'NOTICE', n.published_at
          from communications n
-         where $3::boolean and n.organization_id = $1 and ${this.notices.visibleToSql("n", "$4")} ${before.notice} ${period.notice}
+         where $3::boolean and n.organization_id = $1 and ${this.notices.visibleToSql("n", "$4")} ${before.notice} ${period.notice} ${typed.notice}
        ), probe as (
          select id, kind, "createdAt" from feed order by "createdAt" desc, id desc limit $5 + 1
        ), page as (
@@ -582,6 +586,31 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
         ...(row.kind === "REPORT" && row.report ? { report: { ...(row.report as NonNullable<FollowUpItem["report"]>), lastCheckedAt: new Date(String((row.report as { lastCheckedAt: string }).lastCheckedAt)).toISOString() } } : {}),
       })),
     }
+  }
+}
+
+const WORKFLOW_ALERT_TYPES: Partial<Record<FollowUpType, string>> = { WORKFLOW_OUTPUT: "WORKFLOW_OUTPUT", HUMAN_REVIEW: "WORKFLOW_HUMAN_REVIEW", ESCALATION: "WORKFLOW_ESCALATION" }
+
+/**
+ * Condição de cada ramo do feed para o filtro "Tipo" (um ou vários) — texto fixo montado só a partir do enum, nunca o valor recebido.
+ * O ramo sem nenhum dos tipos pedidos sai inteiro; vazio/null = sem filtro.
+ */
+export function followUpTypeSql(types: readonly FollowUpType[] | null): { feedback: string; alert: string; report: string; notice: string } {
+  if (!types || types.length === 0) return { feedback: "", alert: "", report: "", notice: "" }
+  const none = "and false"
+  const has = (type: FollowUpType) => types.includes(type)
+  const feedbackKinds = (["MONITORING", "INDICATOR"] as const).filter(has)
+  const alertTypes = Object.entries(WORKFLOW_ALERT_TYPES).filter(([type]) => has(type as FollowUpType)).map(([, alertType]) => `'${alertType}'`)
+  const alertConditions = [
+    alertTypes.length ? `a.alert_type in (${alertTypes.join(", ")})` : null,
+    has("INTERVENTION") ? "left(a.alert_type, 13) = 'INTERVENTION_'" : null,
+    has("OTHER") ? "(a.alert_type not in ('WORKFLOW_OUTPUT', 'WORKFLOW_HUMAN_REVIEW', 'WORKFLOW_ESCALATION') and left(a.alert_type, 13) <> 'INTERVENTION_')" : null,
+  ].filter((condition): condition is string => condition !== null)
+  return {
+    feedback: feedbackKinds.length ? `and f.feedback_kind in (${feedbackKinds.map((kind) => `'${kind}'`).join(", ")})` : none,
+    alert: alertConditions.length ? `and (${alertConditions.join(" or ")})` : none,
+    report: has("REPORT") ? "" : none,
+    notice: has("NOTICE") ? "" : none,
   }
 }
 

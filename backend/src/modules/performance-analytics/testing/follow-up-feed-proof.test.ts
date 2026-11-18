@@ -5,6 +5,7 @@
  *  - um item novo publicado entre uma página e outra não desloca a paginação (com OFFSET, o último da página 1 se repetia);
  *  - feedbacks dos liderados e avisos endereçados ao líder no mesmo feed, cada um com os campos da própria origem;
  *  - o conteúdo (view/JSON) só vem para feedback; "aguardando ciência" tira os avisos e os já confirmados; oculto fica fora.
+ *  - o filtro "Tipo" recorta cada ramo (monitoria, aviso de workflow…), convive com a ciência e com o cursor.
  * Dados commitados e apagados no fim, pelos ids criados.
  *   INIA_DB_PROOF=1 NODE_ENV=test npx vitest run follow-up-feed-proof
  */
@@ -13,7 +14,8 @@ import pg from "pg"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { env } from "../../../config/env.js"
 import { decodeFollowUpCursor } from "../../feedbacks/domain/follow-up-cursor.js"
-import { PgAnalyticsReadRepository } from "../application/analytics-read-repository.js"
+import { PgAnalyticsReadRepository, type FollowUpFeedQuery } from "../application/analytics-read-repository.js"
+import type { FollowUpType } from "../domain/view-models.js"
 
 const ENABLED = process.env.INIA_DB_PROOF === "1"
 const ORG = "00000000-0000-4000-8000-000000000001"
@@ -111,6 +113,23 @@ describe.skipIf(!ENABLED)("Feed da estrutura — prova Postgres (migration 130, 
     const firstInPeriod = await repository.loadFollowUpFeed({ ...period, limit: 2, before: null })
     expect((await repository.loadFollowUpFeed({ ...period, limit: 50, before: decodeFollowUpCursor(firstInPeriod.nextCursor) })).items.map((item) => item.id)).toEqual([...ties].sort().reverse().slice(1))
     expect((await repository.loadFollowUpFeed({ ...base, since: "2026-08-01T00:00:00Z", until: "2026-09-01T00:00:00Z", limit: 50, before: null })).items).toEqual([])
+
+    // Filtro "Tipo": cada valor recorta o ramo certo e convive com o cursor; tipo sem item = feed vazio.
+    const ofType = async (type: FollowUpType | FollowUpType[], extra: Partial<FollowUpFeedQuery> = {}) => (await repository.loadFollowUpFeed({ ...base, limit: 50, before: null, types: Array.isArray(type) ? type : [type], ...extra })).items.map((item) => item.id)
+    expect(await ofType("MONITORING")).toEqual(expected.filter((id) => id !== alert))
+    expect(await ofType("WORKFLOW_OUTPUT")).toEqual([alert])
+    expect(await ofType("INDICATOR")).toEqual([])
+    expect(await ofType("HUMAN_REVIEW")).toEqual([])
+    expect(await ofType("INTERVENTION")).toEqual([])
+    expect(await ofType("OTHER")).toEqual([])
+    expect(await ofType("REPORT")).toEqual([])
+    // Vários tipos: "todos menos" — monitoria + aviso de workflow juntos, e tirar a monitoria deixa só o aviso.
+    expect(await ofType(["MONITORING", "WORKFLOW_OUTPUT"])).toEqual(expected)
+    expect(await ofType(["INDICATOR", "WORKFLOW_OUTPUT", "HUMAN_REVIEW", "ESCALATION", "INTERVENTION", "REPORT", "OTHER"])).toEqual([alert])
+    expect(await ofType("MONITORING", { unacknowledgedOnly: true })).toEqual([withView, ...[...ties].sort().reverse()])
+    const firstMonitoring = await repository.loadFollowUpFeed({ ...base, limit: 1, before: null, types: ["MONITORING"] })
+    expect(firstMonitoring.items.map((item) => item.id)).toEqual([withView])
+    expect((await repository.loadFollowUpFeed({ ...base, limit: 50, before: decodeFollowUpCursor(firstMonitoring.nextCursor), types: ["MONITORING"] })).items.map((item) => item.id)).toEqual(expected.slice(2))
 
     // Um feedback publicado depois da 1ª página não desloca as seguintes: nada repete, nada some (com OFFSET, o último item da
     // página 1 voltava no topo da página 2).

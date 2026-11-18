@@ -255,7 +255,7 @@ describe("Acompanhamento da estrutura — timeline", () => {
     expect(screen.getByText("Carregando feedbacks...")).toBeInTheDocument()
     await act(async () => intersect?.())
     expect(await screen.findByRole("heading", { name: "Feedback antigo" })).toBeInTheDocument()
-    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, "cursor-fb-7", 8, false, null)
+    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, "cursor-fb-7", 8, false, null, null)
     expect(screen.getAllByTestId("follow-up-day")).toHaveLength(2)
     expect(screen.getByText("Fim dos feedbacks.")).toBeInTheDocument()
     expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(9)
@@ -285,7 +285,7 @@ describe("Acompanhamento da estrutura — calendário filtra as ações", () => 
     expect(await screen.findByRole("heading", { name: "TMA acima da meta" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Filtrar o Acompanhamento por período" })).toHaveTextContent("Todo o período")
     expect(screen.queryByTestId("follow-up-period-bar")).toBeNull()
-    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, null, 8, false, null)
+    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, null, 8, false, null, null)
 
     // Recorte com resultados mistos: indicador, monitoria e comunicado de hoje.
     await pickPreset("Hoje")
@@ -314,6 +314,15 @@ describe("Acompanhamento da estrutura — calendário filtra as ações", () => 
     expect(await screen.findByRole("heading", { name: "TMA acima da meta" })).toBeInTheDocument()
     expect(screen.queryByTestId("follow-up-period-bar")).toBeNull()
     expect(screen.getByRole("button", { name: "Filtrar o Acompanhamento por período" })).toHaveTextContent("Todo o período")
-    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, null, 8, false, null)
+    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, null, 8, false, null, null)
+
+    // Filtro "Tipo": vai ao servidor (o feed é paginado lá) — "todos menos monitoria"; nada nesses tipos → vazio próprio que volta a tudo.
+    service.fetchFollowUpFeed.mockResolvedValueOnce({ items: [], nextCursor: null })
+    fireEvent.click(screen.getByRole("button", { name: /Filtrar o Acompanhamento por tipo/ }))
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Feedbacks de monitoria" }))
+    expect(await screen.findByText("Nada nos tipos escolhidos")).toBeInTheDocument()
+    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, null, 8, false, null, ["NOTICE", "INDICATOR", "WORKFLOW_OUTPUT", "HUMAN_REVIEW", "ESCALATION", "INTERVENTION", "REPORT", "OTHER"])
+    fireEvent.click(screen.getByRole("button", { name: "Ver todos os tipos" }))
+    expect(await screen.findByRole("heading", { name: "TMA acima da meta" })).toBeInTheDocument()
   })
 })

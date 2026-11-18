@@ -547,6 +547,11 @@ export type TeamOverview = z.infer<typeof teamOverviewSchema>
 export const teamMembersPageSchema = z.object({ items: z.array(teamMemberSummarySchema), total: z.number(), page: z.number(), pageSize: z.number() })
 export type TeamMembersPage = z.infer<typeof teamMembersPageSchema>
 
+/** Filtro "Tipo" do Acompanhamento (um ou vários). Os da estrutura vão ao servidor (`types` em `/follow-ups`). Não há "Leitura do dia":
+ * `feedback_kind` só tem INDICATOR e MONITORING (retirada do filtro em 18/11/2026). */
+export const followUpTypeSchema = z.enum(["NOTICE", "MONITORING", "INDICATOR", "WORKFLOW_OUTPUT", "HUMAN_REVIEW", "ESCALATION", "INTERVENTION", "REPORT", "OTHER"])
+export type FollowUpType = z.infer<typeof followUpTypeSchema>
+
 export const followUpItemSchema = z.object({
   id: z.string(),
   kind: z.enum(["FEEDBACK", "ALERT", "REPORT", "NOTICE"]),

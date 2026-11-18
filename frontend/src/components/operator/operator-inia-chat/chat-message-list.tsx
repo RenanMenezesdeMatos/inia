@@ -54,7 +54,6 @@ type ChatMessageListProps = {
   askSuggestion: (event: React.MouseEvent<HTMLButtonElement>) => void
   switchToGeneralConversation: (reason: FeedbackReturn["reason"]) => void
   /** Perguntas para começar, das prioridades do dia da liderança — só no estado vazio da conversa geral. */
-  starterSuggestions?: string[]
   /** Pergunta vinda de um cartão (ex.: "Perguntar à INIA" numa prioridade) — nada é enviado sozinho, só no clique. */
   askQuestion?: (question: string) => void
   /** Escolha (ou correção) de uma etapa do esclarecimento pelas bases — sempre pelo caminho de texto. */
@@ -71,7 +70,7 @@ type ChatMessageListProps = {
 const daySeparator = (label: string) => <div className="flex justify-center" role="separator" aria-label={label}><span className="rounded-full bg-muted px-3 py-0.5 text-[11px] font-medium text-muted-foreground">{label}</span></div>
 
 /** Mensagens da conversa exibida: a geral no painel; a da aplicação de feedback (e a complementar) na sessão. */
-export function ChatMessageList({ sessionApplication, messages, messagesContentRef, sessionOpen, loadState, readOnlyConversation, openPastConversation, loadCurrentConversation, olderCursor, loadOlderMessages, loadingOlder, olderError, operator, greeting, stageHiddenIds, feedbackCompleted, workflowConversation, rate, resumeMarkerId, conversationState, liveAssistantText, textReplyPending, liveTextReply, activityLabel = null, askSuggestion, switchToGeneralConversation, starterSuggestions = [], askQuestion, answerClarification, saveDislike, onRequestSupport, renderSupportSuggestion }: ChatMessageListProps) {
+export function ChatMessageList({ sessionApplication, messages, messagesContentRef, sessionOpen, loadState, readOnlyConversation, openPastConversation, loadCurrentConversation, olderCursor, loadOlderMessages, loadingOlder, olderError, operator, greeting, stageHiddenIds, feedbackCompleted, workflowConversation, rate, resumeMarkerId, conversationState, liveAssistantText, textReplyPending, liveTextReply, activityLabel = null, askSuggestion, switchToGeneralConversation, askQuestion, answerClarification, saveDislike, onRequestSupport, renderSupportSuggestion }: ChatMessageListProps) {
   const busy = textReplyPending || conversationState !== "idle"
   // Escolher no formulário enquanto a INIA FALA é como falar por cima dela (a fala é interrompida e a escolha segue): o formulário só
   // espera enquanto ela PENSA (uma consulta em andamento) ou uma resposta escrita está a caminho.
@@ -98,13 +97,6 @@ export function ChatMessageList({ sessionApplication, messages, messagesContentR
     ) : null}
     {emptyView ? (
       <TypingBubble align="start" name="INIA" avatarSrc={operator.assistantImage} muted><RichContent text={greeting}/></TypingBubble>
-    ) : null}
-    {emptyView && starterSuggestions.length > 0 ? (
-      <div className="flex flex-wrap gap-2 pl-10" data-testid="starter-suggestions" aria-label="Perguntas sugeridas">
-        {starterSuggestions.map((suggestion) => (
-          <Button key={suggestion} type="button" size="xs" variant="outline" className="h-auto max-w-full rounded-full py-1 text-left whitespace-normal" disabled={busy} data-suggestion={suggestion} onClick={askSuggestion}>{suggestion}</Button>
-        ))}
-      </div>
     ) : null}
     {loadState === "ready" ? messages.map((message, index) => {
       // Ainda no balão do palco: aparece quando a fala pousa nela.

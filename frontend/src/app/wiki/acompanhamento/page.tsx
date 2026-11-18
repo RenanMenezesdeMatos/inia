@@ -50,6 +50,11 @@ export default function FollowUpPage() {
           <li><strong className="font-medium text-foreground">Resumo / resultado de Workflow</strong> — para a gestão (ex.: resumo mensal da equipe, panorama de Qualidade).</li>
           <li><strong className="font-medium text-foreground">Escalonamento</strong> — um caso encaminhado a você com o conteúdo analisado.</li>
         </ul>
+        <p>
+          No topo do Acompanhamento, “Tipos” (ao lado do período) escolhe o que aparece — marque ou desmarque comunicados, feedbacks de monitoria ou de indicador
+          e, para quem lidera, também resultados de workflow, revisões pendentes, escalonamentos, intervenções e reports. “Todos os tipos” volta a mostrar tudo.
+          O colaborador tem também “Ciência”: só os feedbacks que ainda aguardam a confirmação de leitura, ou só os já confirmados.
+        </p>
         <WikiFlow
           compact
           steps={[

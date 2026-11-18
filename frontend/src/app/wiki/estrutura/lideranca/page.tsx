@@ -28,8 +28,8 @@ export default function LeadershipPage() {
         lead="Supervisor, Coordenador, Gerente e Gerente Sênior usam o mesmo Acompanhamento e a mesma INIA. O que muda é o escopo: a estrutura que cada um lidera, com os níveis abaixo como existem de verdade (inclusive quando falta um nível intermediário). Os números vêm sempre do sistema; a INIA explica e sugere, nunca inventa um dado."
       />
 
-      <WikiSection id="onde-atuar" title="Onde atuar hoje" eyebrow="Topo do Acompanhamento">
-        <p>Quem lidera vê, no topo do Acompanhamento, uma lista curta e ordenada do que pede atenção — calculada pelo sistema, sem IA:</p>
+      <WikiSection id="onde-atuar" title="Onde atuar hoje" eyebrow="Pergunte à INIA">
+        <p>Pergunte à INIA “onde devo atuar hoje?” (texto ou voz) e ela traz uma lista curta e ordenada do que pede atenção — calculada pelo sistema, sem IA:</p>
         <StepList
           steps={[
             { title: "Decisões que aguardam você", detail: "Revisões, intervenções e produção não identificada endereçadas a você; as atrasadas primeiro." },
@@ -38,7 +38,7 @@ export default function LeadershipPage() {
             { title: "Ciências pendentes e dados incompletos", detail: "Feedbacks publicados ainda sem a confirmação do colaborador e avisos de cobertura baixa." },
           ]}
         />
-        <p>Cada item tem um link para a tela que resolve (Pendências, caso, Indicadores, Equipe) e, quando faz sentido, “Perguntar à INIA”, que leva a pergunta ao painel ao lado — só no clique.</p>
+        <p>Cada item tem um link para a tela que resolve (Pendências, caso, Indicadores, Equipe) e, quando faz sentido, “Perguntar à INIA” para aprofundar na mesma conversa.</p>
       </WikiSection>
 
       <WikiSection id="perguntar" title="Perguntar à INIA" eyebrow="Chat e voz">

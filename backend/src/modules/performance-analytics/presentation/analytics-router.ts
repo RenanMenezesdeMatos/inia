@@ -1,7 +1,7 @@
 import { Router, type Request } from "express"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginationQuerySchema, searchParam } from "../../../shared/presentation/list-query.js"
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, listParam, paginationQuerySchema, searchParam } from "../../../shared/presentation/list-query.js"
 import { PgAnalyticsReadRepository, type AnalyticsReadRepository } from "../application/analytics-read-repository.js"
 import { buildAnalyticsContext } from "../application/build-analytics-context.js"
 import { buildEmployeeDashboard } from "../application/build-employee-dashboard.js"
@@ -15,6 +15,7 @@ import { ANALYTICS_SUBJECT_KINDS, buildAnalyticsSubject, isStructureSubject, typ
 import { isGroupingDimension } from "../domain/hierarchy-levels.js"
 import { DEFAULT_OPERATIONAL_COMPARISON, isOperationalComparison, type OperationalComparison } from "../domain/operational-comparison.js"
 import { parseReferencePeriod } from "../domain/reference-period.js"
+import { FOLLOW_UP_TYPES } from "../domain/view-models.js"
 import { resolveOfficialClosure, type OfficialClosureContext } from "../../indicators/application/official-closure.js"
 import { clampToClosedReferencePeriod } from "../../indicators/domain/official-closure-policy.js"
 import { decodeFollowUpCursor } from "../../feedbacks/domain/follow-up-cursor.js"
@@ -29,6 +30,8 @@ const followUpQuerySchema = z.object({
   /** Recorte do calendário do Acompanhamento: instantes [since, until) — o dia civil é o de quem lê, calculado no navegador. */
   since: z.string().datetime({ offset: true }).optional(),
   until: z.string().datetime({ offset: true }).optional(),
+  /** Filtro "Tipo" (um ou vários, `types=A,B`); ausente = todos. */
+  types: listParam(z.enum(FOLLOW_UP_TYPES)),
 }).refine((query) => !query.since || !query.until || Date.parse(query.since) < Date.parse(query.until), { message: "O início do período precisa ser antes do fim.", path: ["until"] })
 
 const subjectQuerySchema = z.object({
@@ -175,7 +178,7 @@ export function createAnalyticsRouter(
       const query = followUpQuerySchema.parse(request.query)
       const before = decodeFollowUpCursor(query.cursor)
       if (query.cursor && !before) throw new DomainError("Cursor de paginação inválido.", "INVALID_CURSOR", 400)
-      response.json({ data: await buildFollowUpFeed(repository, scope, subject, { limit: query.limit, before, unacknowledgedOnly: query.ack === "pending", since: query.since ?? null, until: query.until ?? null }) })
+      response.json({ data: await buildFollowUpFeed(repository, scope, subject, { limit: query.limit, before, unacknowledgedOnly: query.ack === "pending", since: query.since ?? null, until: query.until ?? null, types: query.types ?? null }) })
     } catch (error) {
       next(error)
     }

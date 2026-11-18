@@ -62,14 +62,10 @@ import { withoutLiveSourceMarkers, type ClarificationAnswer } from "@/schemas/kn
 import { PanelConversationBanners } from "./operator-inia-chat/panel-conversation-banners"
 import { MicConsentDialog } from "./operator-inia-chat/mic-consent-dialog"
 import { ChatComposer } from "./operator-inia-chat/chat-composer"
-import { useLeadershipHomeQuery } from "@/queries/leadership/use-leadership-home"
 import { publicAsset } from "@/lib/assets/public-asset"
 import { useBrowserIdle } from "@/lib/browser/use-browser-idle"
 
-// Mesma altura do palco do avatar em todos os estados (carregando, câmera desligada, avatar
-// desativado): trocar um pelo outro nunca empurra a conversa para baixo.
-const AVATAR_STAGE_HEIGHT = "h-64"
-// Tile compacto do painel do operador: o avatar num quadrado à esquerda, o estado e os controles ao lado.
+// Tile compacto do painel (operador e liderança): o avatar num quadrado à esquerda, o estado e os controles ao lado.
 const AVATAR_COMPACT_HEIGHT = "h-20 sm:h-24"
 const AVATAR_COMPACT_SLOT = "absolute inset-y-0 left-0 w-20 sm:w-24"
 const AVATAR_COMPACT_CONTROLS_OFFSET = "left-20 sm:left-24"
@@ -86,11 +82,10 @@ const avatarModelUrl = process.env.NEXT_PUBLIC_INIA_AVATAR_MODEL_URL ?? publicAs
 export function OperatorIniaChat({ indicators, operator, onCollapse, context = "operator", hidden = false }: { indicators: OperatorIndicatorsData; operator: OperatorProfile; onCollapse?: () => void; context?: "operator" | "team"; hidden?: boolean }) {
   // Espaço de trabalho do Acompanhamento: o motor de voz é UM só (acima do chat) — o clique no feed libera o áudio no gesto.
   const workspace = useFeedbackWorkspace()
-  // No painel do operador a INIA fica compacta (a conversa é o foco); ampliar é um pedido explícito e ela ganha uma área só dela,
-  // acima das mensagens. O tamanho muda só o lugar (o Canvas é o mesmo, nunca remonta); voz, microfone e câmera não dependem dele.
+  // No painel (operador e liderança, 18/11/2026) a INIA fica compacta (a conversa é o foco); ampliar é um pedido explícito e ela ganha
+  // uma área só dela, acima das mensagens. O tamanho muda só o lugar (o Canvas é o mesmo, nunca remonta); voz, microfone e câmera não dependem dele.
   const [avatarExpanded, setAvatarExpanded] = useState(false)
-  const avatarCollapsible = context === "operator"
-  const avatarCompact = avatarCollapsible && !avatarExpanded
+  const avatarCompact = !avatarExpanded
   // Navegação pedida pelo backend (aceite da oferta de report) — por ref: os callbacks da voz nascem uma vez por sessão.
   const router = useRouter()
   const routerRef = useRef(router)
@@ -142,11 +137,8 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   // do painel usa só o PRIMEIRO nome — a mesma regra da saudação dos feedbacks (decisão de produto de 05/10/2026).
   const addressName = operator.addressName ?? registeredFirstNameOf(operator.name)
   const greetingName = registeredFirstNameOf(addressName)
-  // Liderança: perguntas para começar derivadas das prioridades do dia (a mesma leitura do cartão "Onde atuar hoje").
-  const leadershipHome = useLeadershipHomeQuery(context === "team")
   const greeting = context === "team" ? `Olá, ${greetingName}. Posso mostrar onde atuar hoje, consultar os indicadores e as pessoas da sua estrutura ou explicar um processo.` : `Olá, ${greetingName}. Vi seus feedbacks de hoje. Quer conversar sobre algum deles?`
-  // Só a liderança recebe perguntas prontas: no painel do operador elas ocupavam espaço e tiravam a cara de chat (04/11/2026).
-  const starterSuggestions = context === "team" && leadershipHome.data?.enabled ? leadershipHome.data.suggestions : []
+  // Sem perguntas prontas no painel (operador desde 04/11/2026; liderança desde 18/11/2026): ocupavam espaço e tiravam a cara de chat.
   // Conversa persistida (backend). `null` = conversa nova ainda não iniciada: a primeira mensagem a cria.
   const [conversationId, setConversationId] = useState<string | null>(null)
   const conversationIdRef = useRef<string | null>(null)
@@ -1905,7 +1897,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     avatarPinToEndRef.current = viewport !== null && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 32
     setAvatarExpanded((value) => !value)
   }
-  const avatarToggle = avatarCollapsible && avatarModelUrl ? <IniaCallExpandToggle expanded={avatarExpanded} onToggle={toggleAvatarSize}/> : null
+  const avatarToggle = avatarModelUrl ? <IniaCallExpandToggle expanded={avatarExpanded} onToggle={toggleAvatarSize}/> : null
   // Compacta: o avatar à esquerda (em `AVATAR_COMPACT_SLOT`) e, ao lado, o estado e os mesmos controles. Ampliada: como numa chamada.
   const panelAvatarControls = !avatarModelUrl ? null : avatarCompact ? (
     <div className={`absolute inset-y-0 right-0 z-10 flex min-w-0 flex-col justify-center gap-1 py-1.5 pr-2 pl-1 ${AVATAR_COMPACT_CONTROLS_OFFSET}`}>
@@ -1982,7 +1974,6 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     liveTextReply={liveTextReply !== null && liveTextCitations ? withoutLiveSourceMarkers(liveTextReply) : liveTextReply}
     askSuggestion={askSuggestion}
     switchToGeneralConversation={switchToGeneralConversation}
-    starterSuggestions={starterSuggestions}
     askQuestion={askQuestion}
     answerClarification={answerClarification}
   />
@@ -2060,10 +2051,10 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       facing={sessionOpen && sessionSpeech.kind !== "say" ? "viewer" : "forward"}
       statusLabel={null}
       backdrop={sessionOpen || scene ? "none" : "studio"}
-      // No painel o nome e o estado dela vêm do tile da chamada. O crédito do modelo fica embaixo, no canto: no alto à direita, no painel
-      // do operador, fica o botão de ampliar (na equipe ele sobe, porque os controles da chamada ocupam a base).
+      // No painel o nome e o estado dela vêm do tile da chamada. O crédito do modelo fica embaixo, no canto: no alto à direita fica o
+      // botão de ampliar.
       showStatus={false}
-      attributionPlacement={sessionOpen || avatarCollapsible ? "bottom" : "top"}
+      attributionPlacement="bottom"
       className={sessionOpen ? "h-full rounded-none" : "h-full rounded-xl"}
     />
   ) : (
@@ -2123,7 +2114,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
 
   return <>
   <section className="flex h-full min-h-0 flex-col bg-card" data-usage-screen={hidden ? undefined : "followup.chat_panel"}>
-    <header className={cn("flex items-center gap-2 px-5", avatarCollapsible ? "py-3" : "py-4")}>
+    <header className="flex items-center gap-2 px-5 py-3">
       <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">INIA</h2>
       <Button type="button" variant="outline" size="sm" onClick={() => void newConversation()} disabled={startingNew || sessionOpen} className="rounded-full" data-usage-element="chat.new_conversation"><SquarePen/>Nova conversa</Button>
       <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => setHistoryOpen(true)} aria-label="Conversas anteriores" disabled={sessionOpen} data-usage-element="chat.history.open"><History/></Button></TooltipTrigger><TooltipContent side="bottom" className="inia-tooltip-genie">Conversas anteriores</TooltipContent></Tooltip>
@@ -2133,8 +2124,8 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     {/* Com a sala de apoio aberta (a voz já foi encerrada ao abrir), o avatar da INIA sai de cena e a conversa com o Anjo ocupa o
         painel — só por CSS: o Canvas continua montado (regra do Canvas do R3F no CLAUDE.md) e volta ao fechar a sala. */}
     {/* Ampliada, a INIA divide a altura com as mensagens, cada uma na sua área: nada fica por cima da conversa. */}
-    <div className={cn("shrink-0 px-4", avatarCollapsible ? "pt-3" : "pt-4", avatarCollapsible && avatarExpanded && "h-[45%] min-h-36", supportRoomOpen && "hidden")} data-testid="inia-avatar-stage" data-avatar-size={avatarCollapsible ? (avatarExpanded ? "expanded" : "compact") : undefined}>
-      <IniaCallTile speaking={!sessionOpen && callActive && conversationState === "speaking" && !voiceMuted} className={avatarCompact ? AVATAR_COMPACT_HEIGHT : avatarCollapsible ? "h-full" : AVATAR_STAGE_HEIGHT}>
+    <div className={cn("shrink-0 px-4 pt-3", avatarExpanded && "h-[45%] min-h-36", supportRoomOpen && "hidden")} data-testid="inia-avatar-stage" data-avatar-size={avatarExpanded ? "expanded" : "compact"}>
+      <IniaCallTile speaking={!sessionOpen && callActive && conversationState === "speaking" && !voiceMuted} className={avatarCompact ? AVATAR_COMPACT_HEIGHT : "h-full"}>
         {scene && !sessionOpen ? <IniaSceneBackdrop imageUrl={scene.imageUrl} blur={scene.blur} dim={scene.dim} variant="panel"/> : null}
         <AvatarSlot manager={avatarHost} priority={1} className={avatarCompact ? AVATAR_COMPACT_SLOT : "h-full"}/>
         {sessionOpen ? <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-muted/60 px-6 text-center text-xs text-muted-foreground">A INIA está na sessão de feedback.</div> : panelAvatarControls}
@@ -2147,7 +2138,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       </div>
     ) : <>
       {/* Avisos e convites nunca tomam o lugar das mensagens: em janelas baixas, rolam dentro de um teto próprio. */}
-      <div className={avatarCollapsible ? "max-h-[40%] shrink-0 overflow-y-auto empty:hidden" : "contents"}>
+      <div className="max-h-[40%] shrink-0 overflow-y-auto empty:hidden">
       {showFeedbackInvite && invite ? (
         <FeedbackInviteCard invite={invite} busy={inviteBusy} onListen={() => acceptInvite(invite)} onRead={() => readInvite(invite)} onLater={() => snoozeInvite(invite)}/>
       ) : null}

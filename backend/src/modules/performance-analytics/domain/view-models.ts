@@ -504,6 +504,13 @@ export type TeamMembersPage = {
   pageSize: number
 }
 
+/**
+ * Filtro "Tipo" do Acompanhamento da estrutura (um ou vários; ausente = tudo). Cada valor corresponde a um ramo do feed:
+ * feedbacks por `feedback_kind`, avisos por `alert_type`, reports e comunicados pelo ramo. OTHER = avisos fora dessas famílias.
+ */
+export const FOLLOW_UP_TYPES = ["NOTICE", "MONITORING", "INDICATOR", "WORKFLOW_OUTPUT", "HUMAN_REVIEW", "ESCALATION", "INTERVENTION", "REPORT", "OTHER"] as const
+export type FollowUpType = (typeof FOLLOW_UP_TYPES)[number]
+
 export type FollowUpItem = {
   id: string
   kind: "FEEDBACK" | "ALERT" | "REPORT" | "NOTICE"

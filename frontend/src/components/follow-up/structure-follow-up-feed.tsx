@@ -6,6 +6,7 @@ import { Clock3, MessageSquareText } from "lucide-react"
 import { AnalyticsEmptyState, AnalyticsErrorState } from "@/components/analytics/analytics-states"
 import { CommunicationEntry } from "@/components/communications/communication-entry"
 import { FollowUpEntry } from "@/components/follow-up/follow-up-entry"
+import { FollowUpTypeEmpty, FollowUpTypeFilter, STRUCTURE_FOLLOW_UP_TYPES, type FollowUpType } from "@/components/follow-up/follow-up-type-filter"
 import { followUpDayKey, followUpDayLabel, followUpPeriodBounds, type FollowUpPeriod } from "@/components/operator/follow-up-timeline"
 import { FollowUpPeriodEmpty } from "@/components/operator/follow-up-period"
 import { IniaFeed } from "@/components/operator/inia-feed"
@@ -32,11 +33,9 @@ export type StructureFollowUpFeedProps = {
   onUnacknowledgedOnlyChange?: (value: boolean) => void
   /** Item a destacar/rolar até (deep link `item=<id>` vindo do sino). */
   highlightItemId?: string | null
-  /** Bloco no topo do feed (Acompanhamento do líder: "Onde atuar hoje"). */
-  lead?: React.ReactNode
 }
 
-export function StructureFollowUpFeed({ subject, description, employeeHref, unacknowledgedOnly = false, onUnacknowledgedOnlyChange, highlightItemId = null, lead = null }: StructureFollowUpFeedProps) {
+export function StructureFollowUpFeed({ subject, description, employeeHref, unacknowledgedOnly = false, onUnacknowledgedOnlyChange, highlightItemId = null }: StructureFollowUpFeedProps) {
   // Calendário do cabeçalho: vazio = visão inicial (tudo). O recorte vai ao servidor no MESMO instante que rotula o dia do item.
   const [period, setPeriod] = useState<FollowUpPeriod>({})
   const bounds = followUpPeriodBounds(period)
@@ -44,7 +43,9 @@ export function StructureFollowUpFeed({ subject, description, employeeHref, unac
     const range = followUpPeriodBounds(period)
     return range ? { since: new Date(range.since).toISOString(), until: new Date(range.until).toISOString() } : null
   }, [period])
-  const query = useFollowUpFeedQuery(subject, PAGE_SIZE, unacknowledgedOnly, serverPeriod)
+  // Filtro "Tipo" (um ou vários): vai ao servidor junto com o período (o feed é paginado lá); null = tudo.
+  const [types, setTypes] = useState<FollowUpType[] | null>(null)
+  const query = useFollowUpFeedQuery(subject, PAGE_SIZE, unacknowledgedOnly, serverPeriod, types)
   const clearPeriod = () => setPeriod({})
   const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = query
   const items = query.data?.pages.flatMap((page) => page.items) ?? []
@@ -64,7 +65,7 @@ export function StructureFollowUpFeed({ subject, description, employeeHref, unac
   }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage])
 
   return (
-    <IniaFeed title="Acompanhamento" description={description} period={period} onPeriodChange={setPeriod}>
+    <IniaFeed title="Acompanhamento" description={description} period={period} onPeriodChange={setPeriod} filter={<FollowUpTypeFilter value={types} onChange={setTypes} types={STRUCTURE_FOLLOW_UP_TYPES} />}>
       {onUnacknowledgedOnlyChange ? (
         <div className="flex flex-wrap items-center gap-2 pt-2 pb-1">
           <Button type="button" size="sm" variant={unacknowledgedOnly ? "default" : "outline"} aria-pressed={unacknowledgedOnly} onClick={() => onUnacknowledgedOnlyChange(!unacknowledgedOnly)}>
@@ -75,15 +76,15 @@ export function StructureFollowUpFeed({ subject, description, employeeHref, unac
         </div>
       ) : null}
 
-      {/* "Onde atuar hoje" não é uma ação datada: com recorte ativo, o feed mostra só o que é do período. */}
-      {bounds ? null : lead}
       {query.isPending ? <FeedSkeleton /> : null}
       {query.isError ? (
         <div className="py-4">
           <AnalyticsErrorState error={query.error} onRetry={() => void query.refetch()} />
         </div>
       ) : null}
-      {query.isSuccess && items.length === 0 && bounds ? (
+      {query.isSuccess && items.length === 0 && types ? (
+        <FollowUpTypeEmpty onClear={() => setTypes(null)} />
+      ) : query.isSuccess && items.length === 0 && bounds ? (
         <FollowUpPeriodEmpty onClear={clearPeriod} />
       ) : query.isSuccess && items.length === 0 ? (
         <div className="py-6">

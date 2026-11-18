@@ -25,6 +25,12 @@ export function useConfirmedReading(source: FeedbackSourceRef): ConfirmedReading
   return data[feedbackSourceKey(source)] ?? null
 }
 
+/** O mapa inteiro (chave da fonte → ciência confirmada nesta sessão) — para quem filtra uma lista pela ciência. */
+export function useConfirmedReadings(): Readonly<Record<string, ConfirmedReading>> {
+  const { data } = useQuery<ConfirmedReadings>({ queryKey: CONFIRMED_KEY, queryFn: () => ({}), initialData: {}, staleTime: Infinity, gcTime: Infinity })
+  return data
+}
+
 export function useConfirmedReadingAt(source: FeedbackSourceRef): string | null {
   return useConfirmedReading(source)?.acknowledgedAt ?? null
 }

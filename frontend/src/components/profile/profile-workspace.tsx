@@ -22,7 +22,6 @@ import type { MyProfile } from "@/schemas/profile/my-profile.schema"
 import type { AnalyticsContext } from "@/schemas/analytics/analytics.schema"
 import { NO_ACCESS_CAPABILITIES, profileLinksFor, type AccessCapabilities } from "@/schemas/auth/auth.schema"
 
-import { WhereToActCard } from "@/components/leadership/where-to-act-card"
 
 import { PublishButton } from "@/components/publications/publish-button"
 // Abas fora da entrada (Indicadores, Equipe, Calendário, Estrutura) chegam sob demanda; o Acompanhamento — aba de entrada, com o
@@ -109,14 +108,18 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
                   R3F ainda recebe uma remedição de tamanho e reconfigura um canvas prestes a
                   morrer (ver inia-humanoid-avatar-3d.tsx). No perfil do operador este painel fica vazio (a área dele é a de cima) e não
                   pode ocupar espaço: margem + respiro vazios somavam 48 px à faixa em branco no fim da página. */}
-              <TabsContent value="followup" className={cn("mt-4 pb-8", operatorSurface && "hidden")}>
+              <TabsContent value="followup" className={cn("mt-4", context.defaultSubject ? "pb-5" : "pb-8", operatorSurface && "hidden")}>
                 {activeTab !== "followup" || operatorSurface ? null : !context.defaultSubject ? (
                   <NoStructureState />
                 ) : (
+                  // Mesmo formato do Acompanhamento do operador (18/11/2026): área que para logo abaixo das abas, chat recolhível ao lado.
+                  <div className="h-[calc(100dvh-8.75rem)] min-h-[28rem]">
                   <FollowupWorkspaceShell
-                    feed={<StructureFollowUpFeed subject={null} description="Feedbacks, resultados de workflow e escalonamentos da sua estrutura" employeeHref={(personId) => employeeProfileHref(personId, "followup")} unacknowledgedOnly={state.ackPending} onUnacknowledgedOnlyChange={(value) => update({ ackPending: value })} highlightItemId={state.item} lead={state.ackPending ? null : <WhereToActCard />} />}
+                    docked
+                    feed={<StructureFollowUpFeed subject={null} description="Feedbacks, resultados de workflow e escalonamentos da sua estrutura" employeeHref={(personId) => employeeProfileHref(personId, "followup")} unacknowledgedOnly={state.ackPending} onUnacknowledgedOnlyChange={(value) => update({ ackPending: value })} highlightItemId={state.item} />}
                     renderChat={({ onCollapse, hidden }) => <OperatorIniaChat indicators={EMPTY_INDICATORS} operator={profile} context="team" onCollapse={onCollapse} hidden={hidden} />}
                   />
+                  </div>
                 )}
               </TabsContent>
               {isAnjo ? (
