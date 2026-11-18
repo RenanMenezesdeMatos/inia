@@ -242,6 +242,29 @@ export const simulationResultSchema = z.object({
 })
 export type SimulationResult = z.infer<typeof simulationResultSchema>
 
+/** Prévia de impacto (`INTERVENTION_IMPACT_PREVIEW_V1`): a soma das avaliações de uma versão sobre quem o usuário já enxerga. */
+const decisionStatusSchema = z.enum(["CREATED", "PENDING_APPROVAL", "RECOMMENDED", "NOTIFIED", "EXISTING", "SUPPRESSED", "CONFLICT"])
+export const impactPreviewSchema = z.object({
+  effects: z.literal("NONE"),
+  asOf: z.string(),
+  policyVersion: z.object({ id: z.string(), version: z.number() }),
+  draftIssues: z.array(configIssueSchema),
+  population: z.object({ inScope: z.number(), reachable: z.number(), requested: z.number(), evaluated: z.number(), truncated: z.boolean(), historyHidden: z.number() }),
+  summary: z.object({
+    evaluated: z.number(),
+    people: z.object({ withNewFollowUp: z.number(), onlyNotified: z.number(), alreadyFollowed: z.number(), suppressed: z.number(), inconclusive: z.number(), noMatch: z.number(), conflict: z.number(), notApplicable: z.number() }),
+    insufficientData: z.number(),
+    continuitySuggestions: z.number(),
+    unresolvedRecipients: z.number(),
+    rules: z.array(z.object({ key: z.string(), name: z.string(), priority: z.number(), met: z.number(), inconclusive: z.number(), notMet: z.number(), decided: z.number() })),
+    formats: z.array(z.object({ typeKey: z.string(), typeName: z.string(), sensitive: z.boolean(), created: z.number(), pendingApproval: z.number(), recommended: z.number(), notified: z.number(), existing: z.number(), suppressed: z.number(), conflict: z.number() })),
+    leaders: z.object({ distinct: z.number(), top: z.array(z.object({ personId: z.string(), name: z.string(), opened: z.number(), notified: z.number() })) }),
+    affected: z.object({ total: z.number(), items: z.array(z.object({ id: z.string(), name: z.string(), teamName: z.string().nullable(), outcome: evaluationOutcomeSchema, rules: z.array(z.string()), decisions: z.array(z.object({ typeName: z.string(), status: decisionStatusSchema })) })) }),
+  }),
+  comparison: z.object({ baselineVersion: z.number(), compared: z.number(), gained: z.number(), lost: z.number(), kept: z.number() }).nullable(),
+})
+export type ImpactPreview = z.infer<typeof impactPreviewSchema>
+
 export const auditEntrySchema = z.object({ id: z.string(), action: z.string(), entityType: z.string(), entityId: z.string(), payload: z.unknown(), createdAt: z.string(), actorName: z.string().nullable() })
 export type AuditEntry = z.infer<typeof auditEntrySchema>
 export const evaluationListItemSchema = z.object({ id: z.string(), person: z.object({ id: z.string(), name: z.string() }).nullable(), origin: z.string(), outcome: evaluationOutcomeSchema, evaluatedAt: z.string(), policyVersion: z.number().nullable(), supersedesEvaluationId: z.string().nullable() })

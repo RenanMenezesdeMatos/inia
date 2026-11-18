@@ -10,6 +10,7 @@ import {
   patternOptionSchema,
   policyViewSchema,
   publishedPolicySummarySchema,
+  impactPreviewSchema,
   simulationResultSchema,
   validationResultSchema,
   type CompetencyInput,
@@ -56,6 +57,7 @@ export const setPolicyActive = async (id: string, active: boolean) => adminSend<
 export const fetchPublishedPolicySummaries = async () => z.array(publishedPolicySummarySchema).parse(await adminGet<unknown>(`${BASE}/published-summary`))
 export const searchSimulationPeople = async (search: string) => z.array(z.object({ id: z.string(), name: z.string(), teamName: z.string().nullable() })).parse(await adminGet<unknown>(`${BASE}/simulation-people?search=${encodeURIComponent(search)}`))
 export const simulatePolicy = async (id: string, input: { personId: string; asOf: string | null; version: "DRAFT" | "IN_FORCE" | string; mode: "RECOMMEND_ONLY" | "APPLY_POLICY" }) => simulationResultSchema.parse(await adminSend<unknown>(`${BASE}/policies/${id}/simulate`, "POST", input))
+export const previewPolicyImpact = async (id: string, version: "DRAFT" | "IN_FORCE" | string) => impactPreviewSchema.parse(await adminSend<unknown>(`${BASE}/policies/${id}/impact-preview`, "POST", { version }))
 
 export const fetchPolicyAudit = async (entityId?: string) => z.array(auditEntrySchema).parse(await adminGet<unknown>(`${BASE}/audit${entityId ? `?entityId=${entityId}` : ""}`))
 export const fetchPolicyEvaluations = async (id: string) => z.array(evaluationListItemSchema).parse(await adminGet<unknown>(`${BASE}/policies/${id}/evaluations`))

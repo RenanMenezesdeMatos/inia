@@ -14,9 +14,10 @@ import { buildIntelligenceReport } from "../domain/intelligence-report.js"
 import { policyDefinitionSchema, validatePolicyDefinition } from "../domain/policy-definition.js"
 import { CAPABILITY_DEFINITIONS, EVIDENCE_KIND_LABELS, INTERVENTION_CAPABILITIES } from "../domain/capabilities.js"
 import { applyEvaluation } from "../application/apply-evaluation.js"
-import { loadPolicyHeader, loadPolicyVersion, loadValidationCatalog, type PolicyHeader, type PolicyVersion } from "../application/catalog.js"
+import { loadPolicyHeader, loadPolicyVersion, loadValidationCatalog, policyVersionInForceAt, type PolicyHeader, type PolicyVersion } from "../application/catalog.js"
 import * as config from "../application/config-service.js"
 import { evaluatePolicy, serializeEvaluation } from "../application/evaluate-policy.js"
+import { loadImpactPopulation, previewPolicyImpact } from "../application/impact-preview.js"
 import { canSeeInterventionsOf } from "../application/intervention-access.js"
 import { loadPolicyWorkflowUsage, type PolicyWorkflowUsage } from "../application/policy-references.js"
 import { protectStoredLeave } from "../domain/protected-leave.js"
@@ -83,6 +84,36 @@ async function canSimulateWith(db: Database, request: Request, personId: string)
   const scope = await loadViewerScope(new PgAnalyticsReadRepository(db), sessionUser(request), "indicators.view")
   return scope.nodes.has(personId)
 }
+
+/**
+ * Quem o usuário alcança DENTRO da população da política, de uma vez (os mesmos critérios de `canSimulateWith` e de
+ * `canSeeInterventionsOf`, sem uma consulta por pessoa): a prévia de impacto só soma pessoas que ele já enxerga.
+ */
+async function reachablePopulation(db: Database, request: Request, population: readonly { id: string; teamId: string | null; subteamId: string | null }[]) {
+  const access = accessOf(request)
+  const [structure, scope] = await Promise.all([
+    db.query<{ id: string }>(
+      `with recursive subordinates as (
+         select id from people where organization_id = $1 and reports_to_id = $2
+         union
+         select p.id from people p join subordinates s on p.reports_to_id = s.id
+       ) select id from subordinates`,
+      [access.organizationId, access.personId],
+    ),
+    loadViewerScope(new PgAnalyticsReadRepository(db), sessionUser(request), "indicators.view"),
+  ])
+  const led = new Set(structure.rows.map((row) => row.id))
+  const INTERVENTION_PERMISSIONS: Permission[] = ["interventions.view", "interventions.execute", "interventions.approve", "interventions.sensitive_decide"]
+  return population.flatMap((person) => {
+    if (person.id === access.personId) return []
+    const resource = { personId: person.id, teamId: person.teamId, subteamId: person.subteamId }
+    const inStructure = led.has(person.id)
+    if (!canOnCollaborator(access, "workflows.manage", resource, inStructure) && !scope.nodes.has(person.id)) return []
+    return [{ id: person.id, historyVisible: inStructure || INTERVENTION_PERMISSIONS.some((permission) => canOnCollaborator(access, permission, resource, inStructure)) }]
+  })
+}
+
+const versionChoiceSchema = z.union([z.literal("DRAFT"), z.literal("IN_FORCE"), z.string().uuid()])
 
 const simulateSchema = z
   .object({
@@ -292,6 +323,39 @@ export function createInterventionAdminRouter(db: Database) {
         })
       : null
     response.json({ data: { simulated: true, effects: "NONE", draftIssues, evaluation: serializeEvaluation(evaluation), report } })
+  })
+
+  /**
+   * PRÉVIA DE IMPACTO (sem efeito): o que a versão escolhida faria se rodasse agora sobre as pessoas ativas do escopo da
+   * política que o usuário JÁ enxerga — somado por regra, formato e líder. Rascunho é comparado com a versão em vigor.
+   */
+  router.post("/policies/:policyId/impact-preview", requireAny(["intervention_policies.simulate", "workflows.manage"]), async (request, response) => {
+    const policy = await policyForRead(db, request)
+    const body = z.object({ version: versionChoiceSchema.default("IN_FORCE") }).strict().parse(request.body ?? {})
+    const readOnly = createReadOnlyDatabase(db)
+    const asOf = new Date()
+    const inForce = await policyVersionInForceAt(readOnly, organizationOf(request), policy.id, asOf)
+    let version: PolicyVersion | null
+    let draftIssues: { path: string; code: string; message: string }[] = []
+    if (body.version === "DRAFT") {
+      const view = await config.getPolicy(readOnly, organizationOf(request), policy.id)
+      if (!view.draft) throw new DomainError("Não há rascunho para conferir.", "INTERVENTION_POLICY_DRAFT_NOT_FOUND", 409)
+      const parsed = policyDefinitionSchema.safeParse(view.draft.definition)
+      if (!parsed.success) throw new DomainError("O rascunho tem campos inválidos: salve-o de novo antes de conferir o impacto.", "INTERVENTION_POLICY_INVALID", 422)
+      draftIssues = validatePolicyDefinition(parsed.data, await loadValidationCatalog(readOnly, organizationOf(request)))
+      version = { id: view.draft.id, version: view.draft.version, effectiveFrom: asOf.toISOString(), definition: parsed.data }
+    } else if (body.version === "IN_FORCE") {
+      version = inForce
+    } else {
+      const loaded = await loadPolicyVersion(readOnly, organizationOf(request), body.version)
+      version = loaded && loaded.policyId === policy.id ? loaded : null
+    }
+    if (!version) throw new DomainError("Não há versão publicada para conferir.", "INTERVENTION_POLICY_VERSION_NOT_FOUND", 404)
+    const population = await loadImpactPopulation(readOnly, organizationOf(request), policy)
+    const people = await reachablePopulation(db, request, population)
+    const baseline = inForce && inForce.id !== version.id ? inForce : null
+    const preview = await previewPolicyImpact(readOnly, { organizationId: organizationOf(request), policy, version, baseline, people, asOf })
+    response.json({ data: { ...preview, effects: "NONE", draftIssues, population: { ...preview.population, inScope: population.length, reachable: people.length } } })
   })
 
   // ---- AUDITORIA ---------------------------------------------------------------------------------------------------------

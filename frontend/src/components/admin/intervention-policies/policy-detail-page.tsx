@@ -10,6 +10,7 @@ import { usePolicyQuery } from "@/queries/admin/use-intervention-policy-queries"
 
 import { PolicyEditor } from "./policy-editor"
 import { PolicyEvaluationsPanel } from "./policy-detail/policy-evaluations-panel"
+import { PolicyImpactPanel } from "./policy-detail/policy-impact-panel"
 import { PolicyHeaderCard } from "./policy-detail/policy-header-card"
 import { PolicySimulationPanel } from "./policy-detail/policy-simulation-panel"
 import { PolicySummaryCard } from "./policy-detail/policy-summary-card"
@@ -18,7 +19,7 @@ import { errorCode, errorMessage, latestPublishedVersion } from "./shared/helper
 
 /**
  * Uma política de acompanhamento: cabeçalho (nome, escopo, status), regras (rascunho editável / versão publicada só leitura),
- * simulação sem efeitos, histórico de versões e — com permissão de auditoria — as avaliações. As abas ficam montadas
+ * prévia de impacto e simulação sem efeitos, histórico de versões e — com permissão de auditoria — as avaliações. As abas ficam montadas
  * (escondidas quando inativas): trocar de aba nunca perde o rascunho que ainda não foi salvo.
  */
 export function PolicyDetailPage({ policyId }: { policyId: string }) {
@@ -62,6 +63,7 @@ export function PolicyDetailPage({ policyId }: { policyId: string }) {
           <Tabs defaultValue="rules">
             <TabsList>
               <TabsTrigger value="rules">Regras</TabsTrigger>
+              {policy.can.simulate ? <TabsTrigger value="impact">Impacto</TabsTrigger> : null}
               {policy.can.simulate ? <TabsTrigger value="simulate">Simular</TabsTrigger> : null}
               <TabsTrigger value="versions">Versões ({policy.versions.length})</TabsTrigger>
               {policy.can.audit ? <TabsTrigger value="evaluations">Avaliações</TabsTrigger> : null}
@@ -69,6 +71,11 @@ export function PolicyDetailPage({ policyId }: { policyId: string }) {
             <TabsContent value="rules" forceMount className={cn("mt-4", hidden)}>
               <PolicyEditor key={editorKey} policy={policy} />
             </TabsContent>
+            {policy.can.simulate ? (
+              <TabsContent value="impact" className="mt-4">
+                <PolicyImpactPanel policy={policy} />
+              </TabsContent>
+            ) : null}
             {policy.can.simulate ? (
               <TabsContent value="simulate" className="mt-4">
                 <PolicySimulationPanel policy={policy} />

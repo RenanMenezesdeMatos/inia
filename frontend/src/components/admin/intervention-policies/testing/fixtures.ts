@@ -30,6 +30,7 @@ export function createServiceMock() {
     fetchPublishedPolicySummaries: vi.fn(),
     searchSimulationPeople: vi.fn(),
     simulatePolicy: vi.fn(),
+    previewPolicyImpact: vi.fn(),
     fetchPolicyAudit: vi.fn(),
     fetchPolicyEvaluations: vi.fn(),
     reevaluate: vi.fn(),

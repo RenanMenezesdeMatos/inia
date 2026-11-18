@@ -6140,7 +6140,8 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       422
     ],
     "messages": [
-      "O rascunho tem campos inválidos: salve-o de novo antes de simular."
+      "O rascunho tem campos inválidos: salve-o de novo antes de simular.",
+      "O rascunho tem campos inválidos: salve-o de novo antes de conferir o impacto."
     ],
     "refs": [
       "backend/src/modules/interventions/application/config-service.ts",
@@ -6233,7 +6234,8 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       404
     ],
     "messages": [
-      "Versão não encontrada."
+      "Versão não encontrada.",
+      "Não há versão publicada para conferir."
     ],
     "refs": [
       "backend/src/modules/interventions/presentation/intervention-admin-router.ts"

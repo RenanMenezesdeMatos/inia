@@ -16,7 +16,7 @@ const TOC: WikiTocEntry[] = [
   { id: "regras", label: "Regras, prioridade e conflitos" },
   { id: "criterios", label: "Critérios disponíveis" },
   { id: "dados-insuficientes", label: "Dados insuficientes" },
-  { id: "publicar", label: "Validar, simular e publicar" },
+  { id: "publicar", label: "Validar, conferir o impacto, simular e publicar" },
   { id: "workflow", label: "No Workflow" },
   { id: "resultados", label: "Resultados da avaliação" },
   { id: "relatorio", label: "Relatório de inteligência" },
@@ -162,7 +162,7 @@ export default function InterventionPoliciesWikiPage() {
             { title: "Nova política", detail: "Chave estável, nome e escopo (organização, grupo ou subgrupo dentro do seu escopo de edição). Ela nasce como rascunho, sem regras." },
             { title: "Regras", detail: "Cada regra aparece com a frase do que ela faz (“Quando …, a INIA …”), que muda conforme você edita. Preencha o nome, o porquê da regra (aparece para quem lidera e na justificativa de cada avaliação), as condições em grupos “todas”/“qualquer uma” (até 3 níveis), o que a INIA faz quando a regra é atendida e o que faz quando faltam dados. A ordem na lista é a prioridade: mover a regra renumera todas. O número da prioridade e a chave ficam em “Avançado”. Em “Adicionar condição” há situações prontas (pior quartil em 3 fechamentos, atingimento abaixo de 100%, já recebeu feedback, sem evolução desde o feedback, já concluiu um acompanhamento sem evolução, tem diagnóstico) e “Outra condição”, para montar do zero." },
             { title: "Ações", detail: "Tipo (o cartão mostra quem será o responsável e se há aprovação, definidos no tipo) e efeito: abrir a ação, sugerir a ação ao responsável (ele aceita ou descarta) ou só avisar quem lidera, sem criar ação. Depois, o prazo (ou o padrão do tipo), o que fazer se já existe uma ativa (manter ou registrar o novo sinal) e a carência. No “só avisar” não há prazo, e a carência é o tempo sem repetir o mesmo aviso." },
-            { title: "Validar, simular e publicar", detail: "Veja abaixo. Depois, escolha a política no nó “Avaliar política de acompanhamento” de um Workflow." },
+            { title: "Validar, conferir o impacto, simular e publicar", detail: "Veja abaixo. Depois, escolha a política no nó “Avaliar política de acompanhamento” de um Workflow." },
           ]}
         />
       </WikiSection>
@@ -252,7 +252,7 @@ export default function InterventionPoliciesWikiPage() {
         </WarningCallout>
       </WikiSection>
 
-      <WikiSection id="publicar" title="Validar, simular e publicar" eyebrow="Rascunho → versão imutável">
+      <WikiSection id="publicar" title="Validar, conferir o impacto, simular e publicar" eyebrow="Rascunho → versão imutável">
         <ul className="list-disc space-y-1.5 pl-5">
           <li>
             <strong className="font-medium text-foreground">Validar</strong> lista cada pendência no ponto exato da regra (tipo não publicado, prioridade
@@ -261,6 +261,13 @@ export default function InterventionPoliciesWikiPage() {
           <li>
             <strong className="font-medium text-foreground">Simular</strong> aplica o rascunho, a versão em vigor ou uma versão antiga a um colaborador do
             seu escopo numa data — mostrando fatos, condições, regras e ações propostas, sem gravar nada.
+          </li>
+          <li>
+            <strong className="font-medium text-foreground">Impacto</strong> mostra o que o rascunho salvo ou a versão em vigor faria se rodasse agora,
+            somado: quantas pessoas ganhariam um acompanhamento, quantas só gerariam aviso ao líder, quantas ficam sem dado suficiente (contadas à
+            parte, nunca como desempenho ruim), o que nasceria por formato e quanto chegaria a cada líder. No rascunho, compara com a versão em
+            vigor. Nada é gravado e ninguém é avisado. Entram os colaboradores ativos do escopo da política que você já pode consultar; quem a
+            política alcança de verdade é a população do Workflow onde ela roda.
           </li>
           <li>
             <strong className="font-medium text-foreground">Publicar</strong> cria uma versão imutável, com vigência a partir de agora ou de uma data

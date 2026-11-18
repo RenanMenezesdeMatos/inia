@@ -258,6 +258,36 @@ describe.skipIf(!ENABLED)("Políticas de acompanhamento e intervenções — per
     expect({ evaluations: await count("intervention_policy_evaluations", ids.operator), interventions: await count("interventions", ids.operator) }).toEqual(before)
   })
 
+  it("prévia de impacto: a soma do que a política faria no Grupo, com dado insuficiente à parte — e nenhuma linha gravada", async () => {
+    const admin = await login(ADMIN_GERAL)
+    const rows = async () => (await pool.query<{ n: number }>(`select (select count(*) from intervention_policy_evaluations where policy_id = $1)::int + (select count(*) from interventions where organization_id = $2 and person_id = any($3::uuid[]))::int n`, [policyId, ORG, [ids.operator, ids.operatorNoData, ids.operatorRace]])).rows[0]!.n
+    const before = await rows()
+    const preview = await admin.post(`/api/v1/admin/intervention-policies/policies/${policyId}/impact-preview`).send({})
+    expect(preview.status, JSON.stringify(preview.body)).toBe(200)
+    const data = preview.body.data
+    expect(data.effects).toBe("NONE")
+    expect(data.population).toMatchObject({ inScope: 3, reachable: 3, evaluated: 3, truncated: false, historyHidden: 0 })
+    expect(data.policyVersion.version).toBe(1)
+    expect(data.comparison).toBeNull()
+    // As duas no Q4 ganham o plano (aguardando aprovação); a sem fechamento oficial não é classificada: só a revisão de dados.
+    expect(data.summary.people).toMatchObject({ withNewFollowUp: 3, noMatch: 0, inconclusive: 0 })
+    expect(data.summary.insufficientData).toBe(1)
+    expect(data.summary.rules.find((rule: { key: string }) => rule.key === "Q4_RECORRENTE")).toMatchObject({ met: 2, inconclusive: 1, notMet: 0, decided: 2 })
+    const format = (suffix: string) => data.summary.formats.find((row: { typeKey: string }) => row.typeKey === `${KEY}_${suffix}`)
+    expect(format("PLANO")).toMatchObject({ pendingApproval: 2, created: 0, sensitive: false })
+    expect(format("ORIENTAR")).toMatchObject({ recommended: 2 })
+    expect(format("OBSERVAR")).toMatchObject({ created: 3 })
+    expect(format("REVISAR_DADOS")).toMatchObject({ created: 1 })
+    expect(data.summary.continuitySuggestions).toBe(0)
+    expect(data.summary.unresolvedRecipients).toBe(0)
+    expect(data.summary.leaders).toMatchObject({ distinct: 1, top: [{ personId: ids.supervisor, opened: 8, notified: 0 }] })
+    expect(data.summary.affected.total).toBe(3)
+    expect(await rows()).toBe(before)
+    // Versão que não é desta política: recusada.
+    expect((await admin.post(`/api/v1/admin/intervention-policies/policies/${policyId}/impact-preview`).send({ version: "00000000-0000-4000-8000-0000000000aa" })).status).toBe(404)
+    expect((await admin.post(`/api/v1/admin/intervention-policies/policies/${policyId}/impact-preview`).send({ version: "DRAFT" })).status).toBe(409)
+  })
+
   it("dados insuficientes não viram classificação: sem fechamento oficial a regra é INCONCLUSIVA e só abre a revisão de dados", async () => {
     const policy = (await loadPolicyHeader(pool, ORG, policyId))!
     const evaluation = (await evaluatePolicy(pool, { organizationId: ORG, policy, personId: ids.operatorNoData, asOf: new Date(), recommendOnly: false }))!
@@ -565,6 +595,12 @@ describe.skipIf(!ENABLED)("Políticas de acompanhamento e intervenções — per
     expect(catalog.body.data.indicators.some((indicator: { code: string }) => indicator.code === `${KEY}_TMA`)).toBe(true)
     expect(catalog.body.data.documents.every((document: { title: string; published: boolean }) => typeof document.title === "string" && typeof document.published === "boolean")).toBe(true)
     expect((await editor.post("/api/v1/admin/intervention-policies/policies").send({ key: `${KEY}_ORG`, name: `Organização ${TAG}`, scopeType: "ORGANIZATION" })).status).toBe(403)
+    // Configurar não dá acesso a colaborador: a prévia de impacto dele não soma ninguém que ele não enxerga.
+    const blind = await editor.post(`/api/v1/admin/intervention-policies/policies/${policyId}/impact-preview`).send({})
+    expect(blind.status, JSON.stringify(blind.body)).toBe(200)
+    expect(blind.body.data.population).toMatchObject({ reachable: 0, evaluated: 0 })
+    expect(blind.body.data.population.inScope).toBeGreaterThanOrEqual(3)
+    expect(blind.body.data.summary.affected.items).toEqual([])
     expect((await editor.post("/api/v1/admin/intervention-policies/policies").send({ key: `${KEY}_GRUPO`, name: `Grupo ${TAG}`, scopeType: "GROUP", teamId: ids.team })).status).toBe(201)
   })
 
