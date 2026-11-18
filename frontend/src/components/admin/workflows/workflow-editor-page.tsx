@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
   Background,
+  BackgroundVariant,
   Controls,
   MarkerType,
   MiniMap,
@@ -480,15 +481,15 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
     // Coluna: canvas em cima, rodapé de ações FORA da área do React Flow (safe area real — nenhum
     // nó fica atrás de "Salvar rascunho"/"Publicar", e o fitView do canvas nunca precisa
     // compensar controle nenhum; ver rodada de hardening dos Workflows-modelo, 2026-09-16).
-    // 18rem = cabeçalho do admin + título/badges + abas (≈250px medidos) + respiro inferior: o
-    // rodapé de ações precisa caber SEM rolagem da página em 900px de altura (1440×900 / 1280×800
-    // / 1024×768 verificados) — com 13rem o conjunto estourava e os botões ficavam abaixo da dobra.
-    <div className="flex h-[calc(100vh-18rem)] min-h-[640px] flex-col md:min-h-[480px]">
+    // Altura (pedido de 18/11/2026: "pouco espaço para trabalhar"): o canvas tem altura própria, quase a tela inteira
+    // (viewport − 9rem, nunca menos de 560 px), e a página rola até o rodapé de ações — antes o conjunto inteiro cabia
+    // em viewport − 18rem e a orientação de fluxo vazio ainda comia parte disso.
+    <div className="flex flex-col">
       {/* Fora do canvas: sobre ele, a orientação cobria os cards Gatilho e Fim, e no telefone tomava o canvas inteiro. */}
       {emptyFlow ? (
-        <div className="mb-2 shrink-0 rounded-md border bg-card p-3 text-sm" data-testid="workflow-empty-hint">
-          <p className="font-medium">Comece adicionando uma etapa</p>
-          <p className="mt-1 text-xs text-muted-foreground">
+        <div className="mb-2 shrink-0 rounded-2xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm" data-testid="workflow-empty-hint">
+          <p className="text-xs text-foreground/75">
+            <span className="mr-1.5 text-sm font-medium text-foreground">Comece adicionando uma etapa.</span>
             Escolha uma etapa em &quot;Adicionar etapa&quot;, abra-a com um clique e, em &quot;Próximo passo&quot;, diga para onde o fluxo segue.{" "}
             <Link href="/wiki/workflows/criacao" className="underline underline-offset-2">
               Ver passo a passo
@@ -497,20 +498,22 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
         </div>
       ) : null}
       {/* Em tela estreita, paleta acima do canvas: lado a lado, sobravam 120 px de canvas num telefone. */}
-      <ResizablePanelGroup key={isNarrowScreen ? "vertical" : "horizontal"} orientation={isNarrowScreen ? "vertical" : "horizontal"} className="min-h-0 flex-1 rounded-lg border">
-        <ResizablePanel defaultSize={isNarrowScreen ? "130px" : "220px"} minSize={isNarrowScreen ? "80px" : "180px"} maxSize={isNarrowScreen ? "50%" : "320px"} className="overflow-y-auto p-3">
+      {/* A altura fica num invólucro: o ResizablePanelGroup grava `height: 100%` inline e ignoraria a classe. */}
+      <div className="h-[calc(100vh-9rem)] min-h-[560px] shrink-0">
+      <ResizablePanelGroup key={isNarrowScreen ? "vertical" : "horizontal"} orientation={isNarrowScreen ? "vertical" : "horizontal"} className="h-full overflow-hidden rounded-2xl border border-foreground/15 bg-card shadow-xs">
+        <ResizablePanel defaultSize={isNarrowScreen ? "130px" : "220px"} minSize={isNarrowScreen ? "80px" : "180px"} maxSize={isNarrowScreen ? "50%" : "320px"} className="overflow-y-auto bg-card p-3">
           <NodePalette isConsolidatedMode={Boolean(editable.consolidatedStructure)} onAddNode={addNodeAtDefaultPosition} />
         </ResizablePanel>
         <ResizableHandle withHandle />
 
         <ResizablePanel minSize="30">
-          <div className="h-full min-w-0" onDrop={handleDrop} onDragOver={handleDragOver}>
+          <div className="inia-flow-canvas h-full min-w-0" onDrop={handleDrop} onDragOver={handleDragOver}>
             <WorkflowEditorProvider value={editorContextValue}>
               <ReactFlow
                 colorMode={colorMode}
                 nodes={nodes}
                 edges={displayedEdges}
-                defaultEdgeOptions={{ markerEnd: { type: MarkerType.ArrowClosed } }}
+                defaultEdgeOptions={{ markerEnd: { type: MarkerType.ArrowClosed }, labelBgPadding: [6, 3], labelBgBorderRadius: 6 }}
                 ariaLabelConfig={REACT_FLOW_ARIA_LABELS_PT_BR}
                 onBeforeDelete={onBeforeDelete}
                 onNodesChange={onNodesChange}
@@ -528,8 +531,9 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
                 // canvas mesmo em 1024×768 (≈416px úteis) e o admin aproxima onde precisar.
                 minZoom={0.15}
               >
-                <Background />
-                <Controls />
+                {/* Canvas tingido com pontos visíveis: os cards brancos das etapas se destacam dele (18/11/2026). */}
+                <Background variant={BackgroundVariant.Dots} gap={20} size={1.6} color="var(--flow-canvas-dot)" />
+                <Controls className="overflow-hidden rounded-lg border border-foreground/15 shadow-md" />
                 {nodes.length >= 8 ? <MiniMap pannable zoomable /> : null}
               </ReactFlow>
             </WorkflowEditorProvider>
@@ -539,7 +543,7 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
         {configNode ? (
           <>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize="360px" minSize="280px" maxSize="50%" className="overflow-y-auto">
+            <ResizablePanel defaultSize="360px" minSize="280px" maxSize="50%" className="overflow-y-auto bg-card">
               <NodeConfigPanel
                 node={configNode}
                 graph={currentGraph}
@@ -559,6 +563,7 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
           </>
         ) : null}
       </ResizablePanelGroup>
+      </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2" data-testid="workflow-editor-footer">
         <WorkflowIssuesPanel issues={allIssues} status={publishValidation.status} emptyFlow={emptyFlow} nothingToPublish={nothingToPublish} nodeLabelById={(nodeId) => namedGraph.nodes.find((node) => node.id === nodeId)?.label} onSelectIssue={focusNode} onRevalidate={publishValidation.revalidate} />

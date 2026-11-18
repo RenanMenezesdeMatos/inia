@@ -574,7 +574,7 @@ describe("resolveSelectionCandidates", () => {
     ],
   }
   const structure = { kind: "TEAM", teamId: "team-1" } as never
-  const population = { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, populationFilter: null, operatingUniverse: null }
+  const population = { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, populationFilter: null, operatingUniverse: null, requireActiveAccess: false }
 
   it("primeira seleção (sem coleção anterior): Estrutura ∩ Abrangência/Filtro populacional — nunca uma 4ª interpretação de população", async () => {
     const db = {} as Database

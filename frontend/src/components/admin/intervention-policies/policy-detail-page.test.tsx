@@ -51,6 +51,55 @@ async function openEditor(definition: PolicyDefinition = EMPTY_DEFINITION) {
   return addRule
 }
 
+describe("O que a política faz e onde ela roda", () => {
+  const RULES: PolicyDefinition = {
+    ...EMPTY_DEFINITION,
+    rules: [
+      { key: "B", name: "Fora da meta nos últimos 30 dias", priority: 2, justification: "Observar antes de agir.", when: { operator: "ALL", items: [{ kind: "EMPLOYMENT", check: "CURRENTLY_ELIGIBLE", expected: true }] }, actions: [{ typeKey: "OBSERVAR", effect: "RECOMMEND", dueInDays: null, onActive: "KEEP", cooldownDays: 0 }], inconclusiveActions: [] },
+      { key: "A", name: "Pior quartil em 3 fechamentos", priority: 1, justification: "Recorrência no pior quartil.", when: { operator: "ALL", items: [{ kind: "EMPLOYMENT", check: "CURRENTLY_ELIGIBLE", expected: true }] }, actions: [{ typeKey: "OBSERVAR", effect: "OPEN", dueInDays: null, onActive: "KEEP", cooldownDays: 0 }], inconclusiveActions: [] },
+    ],
+  }
+
+  it("descreve cada regra em texto, na ordem de prioridade, com o que a INIA faz e para quem; avisa que política sem Workflow não roda", async () => {
+    mocked.fetchPolicy.mockResolvedValue(policyWithDraft({ ...RULES, indicatorCode: "TMA" }, { workflows: { items: [], outOfScope: 0, running: false } }))
+    renderWithQuery(<PolicyDetailPage policyId="p1" />)
+    const summary = within(await screen.findByTestId("policy-summary"))
+    expect(summary.getByText(/Rascunho: nada disto vale até publicar\./)).toBeInTheDocument()
+    // O assunto é o NOME do indicador no catálogo, nunca o código.
+    await waitFor(() => expect(summary.getByText(/Assunto: Tempo médio de atendimento\./)).toBeInTheDocument())
+    // Cada regra: o nome e a frase inteira — "Quando ‹condições›, a INIA ‹faz o quê, para quem›".
+    const items = await waitFor(() => {
+      const found = summary.getAllByRole("listitem")
+      expect(found[0]).toHaveTextContent("Quando está em produção hoje, a INIA abre “Observação” para o supervisor.")
+      return found
+    })
+    expect(items[0]).toHaveTextContent("Pior quartil em 3 fechamentos")
+    expect(items[1]).toHaveTextContent("Fora da meta nos últimos 30 dias")
+    expect(items[1]).toHaveTextContent("Quando está em produção hoje, a INIA sugere “Observação” ao supervisor, que aceita ou descarta.")
+    expect(summary.getByText("Se mais de uma regra for atendida, vale só a primeira desta lista.")).toBeInTheDocument()
+    const where = within(summary.getByTestId("policy-workflows"))
+    expect(where.getByText(/Esta política ainda não roda: nenhum Workflow passa por ela\./)).toBeInTheDocument()
+    expect(where.getByRole("link", { name: "Abrir Workflows" })).toHaveAttribute("href", "/admin/workflows")
+  })
+
+  it("lista os Workflows que passam pela política com o estado de cada um; os de fora do escopo só são contados", async () => {
+    mocked.fetchPolicy.mockResolvedValue(
+      policyWithDraft(RULES, {
+        workflows: { items: [{ id: "w1", name: "Acompanhamento mensal de TMA", active: true, published: true, inDraft: true }, { id: "w2", name: "Piloto", active: false, published: false, inDraft: true }], outOfScope: 2, running: true },
+      }),
+    )
+    renderWithQuery(<PolicyDetailPage policyId="p1" />)
+    const where = within(await screen.findByTestId("policy-workflows"))
+    expect(where.queryByText(/não roda|não está rodando/)).toBeNull()
+    const rows = where.getAllByRole("listitem")
+    expect(rows[0]).toHaveTextContent("Acompanhamento mensal de TMA")
+    expect(rows[0]).toHaveTextContent("Publicado e ligado")
+    expect(within(rows[0]!).getByRole("link", { name: "Acompanhamento mensal de TMA" })).toHaveAttribute("href", "/admin/workflows/w1")
+    expect(rows[1]).toHaveTextContent("Só no rascunho do editor")
+    expect(where.getByText("Mais 2 Workflow(s) fora do seu escopo de gestão.")).toBeInTheDocument()
+  })
+})
+
 describe("Editor da política de acompanhamento", () => {
   it("Adicionar regra cria a regra com condição e ação padrão válidas; Salvar rascunho envia INTERVENTION_POLICY_V1 com prioridades únicas", async () => {
     const addRule = await openEditor()

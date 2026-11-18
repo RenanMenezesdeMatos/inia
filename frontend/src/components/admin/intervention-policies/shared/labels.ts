@@ -12,17 +12,19 @@ export const MATCH_STRATEGY_LABELS: Record<PolicyDefinition["matchStrategy"], { 
   ALL_MATCHES: { title: "Valem todas as regras atendidas", description: "Cada regra atendida aplica as próprias ações (tipos incompatíveis entre si viram conflito, e nada é aplicado)." },
 }
 
-export const ACTION_EFFECT_LABELS: Record<PolicyAction["effect"], string> = { RECOMMEND: "Recomendar ao responsável", OPEN: "Abrir" }
+export const ACTION_EFFECT_LABELS: Record<PolicyAction["effect"], string> = { RECOMMEND: "Sugerir a ação ao responsável", OPEN: "Abrir a ação", NOTIFY: "Só avisar quem lidera (sem criar ação)" }
 export const ACTION_EFFECT_HINTS: Record<PolicyAction["effect"], string> = {
   RECOMMEND: "Nasce como proposta: o responsável aceita ou descarta.",
   OPEN: "Nasce pronta para execução (ou aguardando aprovação, quando o tipo exige).",
+  NOTIFY: "Nenhuma ação é criada: quem lidera recebe o resumo da INIA no Acompanhamento e decide o que fazer. A carência evita repetir o mesmo aviso.",
 }
 export const ON_ACTIVE_LABELS: Record<PolicyAction["onActive"], string> = { KEEP: "Manter a ativa", UPDATE: "Registrar novo sinal na ativa" }
 
 export type ConditionKind = PolicyCondition["kind"]
-export const CONDITION_KINDS: ConditionKind[] = ["INDICATOR", "INTERACTION_FLAG", "EMPLOYMENT", "PRIOR_INTERVENTIONS", "TIME_SINCE_INTERVENTION", "SUPPORTED_DIAGNOSIS", "PUBLISHED_FEEDBACK"]
+export const CONDITION_KINDS: ConditionKind[] = ["INDICATOR", "EVOLUTION", "INTERACTION_FLAG", "EMPLOYMENT", "PRIOR_INTERVENTIONS", "TIME_SINCE_INTERVENTION", "SUPPORTED_DIAGNOSIS", "PUBLISHED_FEEDBACK"]
 export const CONDITION_KIND_LABELS: Record<ConditionKind, string> = {
   INDICATOR: "Indicador",
+  EVOLUTION: "Evolução desde o último feedback",
   INTERACTION_FLAG: "Flag de atendimento",
   EMPLOYMENT: "Situação funcional e disponibilidade",
   PRIOR_INTERVENTIONS: "Intervenções anteriores",
@@ -91,3 +93,5 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   INTERVENTION_POLICY_DEACTIVATED: "Política desativada",
 }
 export const auditActionLabel = (action: string) => AUDIT_ACTION_LABELS[action] ?? "Alteração de configuração"
+
+export const EVOLUTION_EXPECTATION_LABELS: Record<"NOT_IMPROVED" | "IMPROVED", string> = { NOT_IMPROVED: "Não evoluiu", IMPROVED: "Evoluiu" }

@@ -156,6 +156,56 @@ describe("Acompanhamento da estrutura — o item tem a apresentação do Acompan
     expect(card()).not.toHaveTextContent(/ciência/i)
   })
 
+  it("intervenção aberta pela política: o resumo da INIA aparece direto — fala, situação, o que já foi feito, evolução, o que falta e o próximo passo", () => {
+    const lead = "Criei um acompanhamento para você fazer com Mariana Alves: “Plano de ação”, com prazo até 18/12/2026."
+    renderEntry(
+      alertItem({
+        category: "INTERVENTION",
+        title: "Nova intervenção: Plano de ação",
+        summary: lead,
+        caseId: "case-1",
+        intervention: {
+          interventionId: "int-1",
+          typeName: "Plano de ação",
+          sensitive: false,
+          lead,
+          situation: ["TMA: Q4 em 3 dos últimos 3 fechamentos oficiais"],
+          alreadyDone: {
+            windowDays: 180,
+            feedbackCount: 3,
+            feedbacks: [{ id: "f1", kind: "INDICATOR", title: "Tempo Médio de Atendimento", publishedAt: "2026-10-19T15:00:00.000Z", acknowledgedAt: null, recommendation: "Avise o cliente antes de cada espera." }],
+            interventions: [{ id: "int-0", typeName: "Orientar", status: "COMPLETED", openedAt: "2026-09-01T15:00:00.000Z", closedAt: "2026-09-20T15:00:00.000Z", operationalResult: "UNCHANGED" }],
+          },
+          evolution: { indicatorCode: "TMA", indicatorName: "Tempo Médio de Atendimento", status: "IMPROVED", statement: "Desde o feedback de 19/10/2026, Tempo Médio de Atendimento foi de 500 s para 450 s: melhorou 10%." },
+          unknowns: ["Não há diagnóstico sustentado no período."],
+          nextSteps: ["Cumprir as tarefas nos prazos definidos."],
+        },
+      }),
+    )
+    const brief = within(screen.getByTestId("intervention-brief"))
+    expect(brief.getByText(lead)).toBeInTheDocument()
+    expect(within(brief.getByRole("region", { name: "Situação" })).getByText("TMA: Q4 em 3 dos últimos 3 fechamentos oficiais")).toBeInTheDocument()
+    const done = within(brief.getByRole("region", { name: "O que já foi feito" }))
+    // O que já foi dito ao colaborador aparece como citação, com o estado da ciência; o resto do período só é contado.
+    expect(done.getByText("Avise o cliente antes de cada espera.").tagName).toBe("BLOCKQUOTE")
+    expect(done.getByText("Aguardando ciência do colaborador")).toBeInTheDocument()
+    expect(done.getByText("Mais 2 feedback(s) anteriores no período.")).toBeInTheDocument()
+    expect(done.getByText(/Orientar · Concluída em .* · resultado registrado: Sem mudança/)).toBeInTheDocument()
+    expect(within(brief.getByRole("region", { name: "Evolução medida" })).getByText(/melhorou 10%/)).toBeInTheDocument()
+    expect(within(brief.getByRole("region", { name: "O que ainda não sei" })).getByText("Não há diagnóstico sustentado no período.")).toBeInTheDocument()
+    expect(within(brief.getByRole("region", { name: "Próximo passo" })).getByText("Cumprir as tarefas nos prazos definidos.")).toBeInTheDocument()
+    // O resumo substitui o "Ver análise completa"; tarefas e decisões continuam no caso.
+    expect(screen.queryByRole("button", { name: "Ver análise completa" })).toBeNull()
+    expect(screen.getByRole("link", { name: "Abrir no caso de supervisão" })).toHaveAttribute("href", "/supervisor/cases/case-1")
+  })
+
+  it("intervenção sem resumo (aviso anterior, ou quem deixou de ser parte): continua o aviso curto com o caminho para o caso", () => {
+    renderEntry(alertItem({ category: "INTERVENTION", title: "Aprovada: Plano de ação", summary: "\"Plano de ação\" para Mariana Alves foi aprovada e está em execução.", caseId: "case-1" }))
+    expect(screen.queryByTestId("intervention-brief")).toBeNull()
+    expect(card()).toHaveTextContent("foi aprovada e está em execução")
+    expect(screen.getByRole("link", { name: "Abrir no caso de supervisão" })).toBeInTheDocument()
+  })
+
   it("material de apoio: título real, motivo e link para a página do material; indisponível vira aviso neutro sem título", () => {
     renderEntry(legacyFeedback({
       acknowledgedAt: "2026-09-16T10:00:00.000Z",

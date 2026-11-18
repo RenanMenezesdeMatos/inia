@@ -177,8 +177,10 @@ export async function loadEditorCatalog(db: Database, organizationId: string, sc
       `select code, name, unit, active, daily_supported "dailySupported", official_closure_supported "officialClosureSupported" from indicator_definitions where organization_id = $1 order by name`,
       [organizationId],
     ),
+    // Base só com rascunho não tem versão vigente: sem o coalesce "published" vinha NULL e o navegador recusava o catálogo inteiro
+    // (grupos, indicadores, flags e documentos do editor) — achado na conferência de 18/11/2026.
     db.query<EditorCatalog["documents"][number]>(
-      `select d.id, d.title, ${knowledgeAvailableSql("d.id")} published from knowledge_documents d where d.organization_id = $1 and d.deleted_at is null order by d.title`,
+      `select d.id, d.title, coalesce(${knowledgeAvailableSql("d.id")}, false) published from knowledge_documents d where d.organization_id = $1 and d.deleted_at is null order by d.title`,
       [organizationId],
     ),
     db.query<EditorCatalog["flags"][number]>(`select channel, flag_name "flagName", value_type "valueType", description, active from channel_flags where organization_id = $1 order by channel, flag_name`, [organizationId]),
@@ -233,7 +235,7 @@ export async function listCompetencies(db: Queryable | Database, organizationId:
   const documentIds = [...new Set(rows.rows.flatMap((row) => row.knowledge_document_ids))]
   const documents = documentIds.length
     ? new Map((await db.query<{ id: string; title: string; published: boolean }>(
-        `select d.id, d.title, ${knowledgeAvailableSql("d.id")} published from knowledge_documents d where d.organization_id = $1 and d.id = any($2::uuid[]) and d.deleted_at is null`,
+        `select d.id, d.title, coalesce(${knowledgeAvailableSql("d.id")}, false) published from knowledge_documents d where d.organization_id = $1 and d.id = any($2::uuid[]) and d.deleted_at is null`,
         [organizationId, documentIds],
       )).rows.map((row) => [row.id, row]))
     : new Map<string, { id: string; title: string; published: boolean }>()

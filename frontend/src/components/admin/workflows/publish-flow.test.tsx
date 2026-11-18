@@ -188,4 +188,54 @@ describe("publicação com impacto", () => {
     expect(screen.getByTestId("go-live-impact-inactive")).toHaveTextContent("está desativado: nada roda")
     expect(screen.queryByText(/próximas interações/)).not.toBeInTheDocument()
   })
+
+  describe('"Somente quem tem acesso ativo à INIA"', () => {
+    /** Piloto por Flag: Subgrupo de 300 pessoas, 15 com acesso. Por Flag não há impacto de agenda — o número só aparece aqui. */
+    const FLAG_IMPACT: GoLiveImpact = { ...INCIDENT_IMPACT, triggerKind: "channel_flag", configurationChanges: ["ANALYSIS"], schedule: null, requiresConfirmation: false, reasons: [] }
+    const show = (impact: GoLiveImpact, changes: ReturnType<typeof describeConfigurationChanges> = []) =>
+      render(<GoLiveImpactDialog open onOpenChange={() => {}} impact={impact} changes={changes} pending={false} onConfirm={() => {}} />)
+
+    it("opção ligada: mostra quantos entram hoje e não pede confirmação", () => {
+      show({ ...FLAG_IMPACT, access: { required: true, removed: false, population: 300, withAccess: 15, withoutAccess: 285 } })
+      expect(screen.getByTestId("go-live-impact-access")).toHaveTextContent("Somente quem tem acesso ativo à INIA: 15 de 300 colaboradores da população entram hoje")
+      expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Publicar" })).toBeEnabled()
+    })
+
+    it("ninguém com acesso: avisa que o workflow não roda até alguém receber acesso", () => {
+      show({ ...FLAG_IMPACT, access: { required: true, removed: false, population: 300, withAccess: 0, withoutAccess: 300 } })
+      expect(screen.getByTestId("go-live-impact-access-empty")).toHaveTextContent("Ninguém entra hoje")
+    })
+
+    it("desligar a opção no ar: diz quantas pessoas sem acesso passam a entrar e só publica com o 'entendi'", () => {
+      const onConfirm = vi.fn()
+      render(
+        <GoLiveImpactDialog
+          open
+          onOpenChange={() => {}}
+          impact={{ ...FLAG_IMPACT, requiresConfirmation: true, reasons: ["ACCESS_REQUIREMENT_REMOVED"], access: { required: false, removed: true, population: 300, withAccess: 15, withoutAccess: 285 } }}
+          pending={false}
+          onConfirm={onConfirm}
+        />,
+      )
+      expect(screen.getByTestId("go-live-impact-access-removed")).toHaveTextContent("285 colaboradores sem acesso passam a entrar")
+      expect(screen.getByTestId("go-live-impact-access-removed")).toHaveTextContent("Hoje entram 15 de 300 colaboradores")
+      expect(screen.getByRole("button", { name: "Publicar" })).toBeDisabled()
+      fireEvent.click(screen.getByRole("checkbox"))
+      fireEvent.click(screen.getByRole("button", { name: "Publicar" }))
+      expect(onConfirm).toHaveBeenCalledWith(INCIDENT_IMPACT.fingerprint)
+    })
+
+    it("a mudança aparece em 'Mudanças de configuração' com a população antes e depois", () => {
+      const workflow: Workflow = {
+        ...PUBLISHED_MANUAL,
+        configurationChanges: ["ANALYSIS"],
+        draftConfiguration: { ...PUBLISHED_MANUAL.draftConfiguration!, trigger: PUBLISHED_MANUAL.trigger, requireActiveAccess: true },
+      }
+      const changes = describeConfigurationChanges(workflow)
+      expect(changes).toEqual([
+        { change: "ANALYSIS", label: expect.any(String), published: "Individual · Todos os colaboradores elegíveis", draft: "Individual · Todos os colaboradores elegíveis · somente quem tem acesso ativo à INIA" },
+      ])
+    })
+  })
 })

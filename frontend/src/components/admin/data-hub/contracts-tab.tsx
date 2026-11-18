@@ -11,8 +11,10 @@ import { ListErrorState } from "@/components/admin/shared/list/list-states"
 import { useDataContractsQuery } from "@/queries/admin/use-data-hub-queries"
 import { CONTRACT_CATEGORY_LABELS, FIELD_TYPE_LABELS, WRITE_POLICY_LABELS, WRITE_SEMANTICS_LABELS, type DataContract } from "@/schemas/admin/data-hub.schema"
 import { cn } from "@/lib/utils"
+import { ContractExampleTable, ContractKeyChips, contractKeyMarks } from "./contract-example-table"
 
 export function ContractFieldsTable({ contract }: { contract: DataContract }) {
+  const marks = contractKeyMarks(contract)
   return (
     <div className={TABLE_FRAME}>
       <Table>
@@ -29,7 +31,10 @@ export function ContractFieldsTable({ contract }: { contract: DataContract }) {
           {contract.fields.map((field) => (
             <TableRow key={field.key}>
               <TableCell className="font-mono text-xs">
-                {field.key}
+                <span className="inline-flex items-center gap-1.5">
+                  <ContractKeyChips kinds={marks.get(field.key)} />
+                  {field.key}
+                </span>
                 {field.identity ? <span className="ml-1 text-muted-foreground">(identidade)</span> : null}
               </TableCell>
               <TableCell className="whitespace-nowrap text-xs">
@@ -127,6 +132,13 @@ export function ContractsTab() {
           <div className="space-y-2">
             <p className="text-sm font-medium">Campos</p>
             <ContractFieldsTable contract={selected} />
+          </div>
+          <div className="space-y-2">
+            <div>
+              <p className="text-sm font-medium">Exemplo da tabela na origem</p>
+              <p className="text-xs text-muted-foreground">Como o cliente estrutura a tabela que entrega este contrato: uma coluna por campo, uma linha por registro.</p>
+            </div>
+            <ContractExampleTable contract={selected} contracts={contracts} />
           </div>
           <div className="space-y-2">
             <p className="text-sm font-medium">Payload de exemplo (API Push)</p>

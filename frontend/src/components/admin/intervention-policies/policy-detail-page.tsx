@@ -12,6 +12,7 @@ import { PolicyEditor } from "./policy-editor"
 import { PolicyEvaluationsPanel } from "./policy-detail/policy-evaluations-panel"
 import { PolicyHeaderCard } from "./policy-detail/policy-header-card"
 import { PolicySimulationPanel } from "./policy-detail/policy-simulation-panel"
+import { PolicySummaryCard } from "./policy-detail/policy-summary-card"
 import { PolicyVersionsPanel } from "./policy-detail/policy-versions-panel"
 import { errorCode, errorMessage, latestPublishedVersion } from "./shared/helpers"
 
@@ -55,6 +56,7 @@ export function PolicyDetailPage({ policyId }: { policyId: string }) {
     <div className="space-y-4">
       {back}
       <PolicyHeaderCard key={`${policy.id}|${policy.name}|${policy.scopeType}|${policy.teamId}|${policy.subteamId}`} policy={policy} />
+      <PolicySummaryCard policy={policy} />
       <Card>
         <CardContent className="pt-6">
           <Tabs defaultValue="rules">

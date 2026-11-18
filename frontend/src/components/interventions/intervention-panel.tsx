@@ -11,9 +11,10 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatCivilDate, formatDateTime } from "@/lib/format/date"
 import { useInterventionQuery, useRetryNarrativeMutation } from "@/queries/interventions/use-intervention-queries"
-import type { InterventionDetail } from "@/schemas/interventions/intervention.schema"
+import { briefViewOf, type InterventionDetail } from "@/schemas/interventions/intervention.schema"
 
 import { IntelligenceReportView } from "./intelligence-report-view"
+import { InterventionBriefView } from "./intervention-brief-view"
 import { InterventionActions } from "./intervention-panel/intervention-actions"
 import { CompleteIntervention, InterventionHistory, InterventionItems, InterventionOutcome } from "./intervention-panel/intervention-items"
 import { InterventionPlanSection } from "./intervention-panel/intervention-plan"
@@ -58,6 +59,7 @@ export function InterventionPanel({ interventionId }: { interventionId: string }
   if (query.isPending) return <TableSkeleton rows={4} />
   if (query.isError) return <AnalyticsErrorState error={query.error} onRetry={() => void query.refetch()} />
   const detail = query.data
+  const brief = detail.report ? briefViewOf(detail.report.structured, detail.id) : null
   const origin = detail.origin === "WORKFLOW" ? `Aberta pela política "${detail.policy?.name ?? "—"}"${detail.policy?.version ? ` v${detail.policy.version}` : ""}` : "Aberta manualmente"
 
   return (
@@ -102,10 +104,18 @@ export function InterventionPanel({ interventionId }: { interventionId: string }
           <Fact icon={<FileText className="size-4" />} label="Responsável">{detail.responsible.name}{detail.approver ? <span className="block text-xs text-muted-foreground">Aprovação: {detail.approver.name}</span> : null}</Fact>
           <Fact icon={<CalendarClock className="size-4" />} label="Prazo">{formatCivilDate(detail.dueAt)}</Fact>
         </div>
-        <div>
-          <p className="text-xs text-muted-foreground">Por que foi aberta</p>
-          <p className="text-sm">{detail.reason}</p>
-        </div>
+        {brief ? (
+          // O resumo da INIA (situação, o que já foi feito, evolução medida) — o mesmo do cartão do Acompanhamento.
+          <div className="rounded-xl border bg-card p-4" data-testid="intervention-panel-brief">
+            <p className="mb-2 text-xs font-medium text-primary">Resumo da INIA</p>
+            <InterventionBriefView brief={brief} />
+          </div>
+        ) : (
+          <div>
+            <p className="text-xs text-muted-foreground">Por que foi aberta</p>
+            <p className="text-sm">{detail.reason}</p>
+          </div>
+        )}
         <InterventionActions detail={detail} />
 
         <Tabs defaultValue="work">

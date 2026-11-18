@@ -15,3 +15,24 @@ export async function loadPoliciesCiting(db: Pick<Database, "query">, organizati
   )
   return rows.rows.map((row) => row.name)
 }
+
+/**
+ * ONDE A POLÍTICA RODA: uma política só é avaliada quando um Workflow passa pelo nó "Avaliar política de acompanhamento" que a
+ * cita — publicada e sem Workflow, ela não faz nada. `published` = o nó está na versão ATIVA; `inDraft` = está no rascunho do
+ * editor (ainda não vale). A citação fica no grafo versionado, sem chave estrangeira.
+ */
+export type PolicyWorkflowUsage = { id: string; name: string; active: boolean; published: boolean; inDraft: boolean; scopeType: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; teamId: string | null; subteamId: string | null }
+
+export async function loadPolicyWorkflowUsage(db: Pick<Database, "query">, organizationId: string, policyId: string): Promise<PolicyWorkflowUsage[]> {
+  const rows = await db.query<{ id: string; name: string; active: boolean; published: boolean; in_draft: boolean; scope_type: PolicyWorkflowUsage["scopeType"]; team_id: string | null; subteam_id: string | null }>(
+    `select * from (
+       select w.id, w.name, w.active, w.scope_type, w.team_id, w.subteam_id,
+              exists (select 1 from workflow_versions v where v.id = w.active_version_id and jsonb_path_exists(v.graph, '$.** ? (@.policyId == $id)', jsonb_build_object('id', $2::text))) published,
+              (w.draft_graph is not null and jsonb_path_exists(w.draft_graph, '$.** ? (@.policyId == $id)', jsonb_build_object('id', $2::text))) in_draft
+         from workflows w where w.organization_id = $1) usage
+      where usage.published or usage.in_draft
+      order by usage.name`,
+    [organizationId, policyId],
+  )
+  return rows.rows.map((row) => ({ id: row.id, name: row.name, active: row.active, published: row.published, inDraft: row.in_draft, scopeType: row.scope_type, teamId: row.team_id, subteamId: row.subteam_id }))
+}

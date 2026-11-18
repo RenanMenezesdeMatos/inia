@@ -32,7 +32,10 @@ import {
   type InterventionCommand,
   type InterventionStatus,
 } from "../domain/intervention-state.js"
-import { isSensitiveType, type InterventionTypeDefinition } from "../domain/intervention-type.js"
+import { asksEffectiveness, EFFECTIVENESS_LABELS, EFFECTIVENESS_VALUES, OUTCOME_REASON_LABELS, OUTCOME_REASONS, type Effectiveness, type OutcomeReason } from "../domain/intervention-state.js"
+import type { Evolution } from "../domain/evolution.js"
+import { measureEvolution } from "./leader-context.js"
+import { isSensitiveType, scriptItemsOf, type InterventionTypeDefinition } from "../domain/intervention-type.js"
 import { recordInterventionEvent, type EvidenceItem } from "./apply-evaluation.js"
 import { loadPublishedTypes, loadTypeVersion } from "./catalog.js"
 import { sensitiveDecisionHolders } from "./evaluate-policy.js"
@@ -247,6 +250,8 @@ export type InterventionDetail = InterventionSummary & {
   form: InterventionTypeDefinition["form"]
   completion: InterventionTypeDefinition["completion"]
   approvalRequired: boolean
+  /** "Deu resultado?" na conclusão: obrigatório nos formatos que fazem algo com o colaborador; as opções e os motivos vêm daqui. */
+  effectiveness: { required: boolean; options: { value: Effectiveness; label: string }[]; reasons: { value: OutcomeReason; label: string }[] }
   aiDraftEnabled: boolean
   aiDraft: unknown
   outcome: Record<string, unknown> | null
@@ -297,6 +302,7 @@ export async function getInterventionDetail(db: Database, viewer: Viewer, interv
     form: definition.form,
     completion: definition.completion,
     approvalRequired: definition.approval.required,
+    effectiveness: { required: asksEffectiveness(definition), options: EFFECTIVENESS_VALUES.map((value) => ({ value, label: EFFECTIVENESS_LABELS[value] })), reasons: OUTCOME_REASONS.map((value) => ({ value, label: OUTCOME_REASON_LABELS[value] })) },
     aiDraftEnabled: definition.aiDraft,
     aiDraft: row.ai_draft,
     outcome: row.outcome,
@@ -381,6 +387,22 @@ export async function listPendingInterventions(db: Database, viewer: Pick<Viewer
 export async function countPendingInterventions(db: Queryable | Database, organizationId: string, personId: string, now: Date = new Date()): Promise<number> {
   const todayDate = await today(db, organizationId, now)
   return (await db.query<{ count: number }>(`select count(*)::int count from interventions i where i.organization_id = $1 and ${pendingInterventionsCondition("i", "$2::uuid", "$3")}`, [organizationId, personId, todayDate])).rows[0]?.count ?? 0
+}
+
+/**
+ * A medição da INIA desde o INÍCIO do acompanhamento (antes × depois, a mesma do resumo da liderança) — anexada aos
+ * checkpoints e ao fechamento. Intervenção sem indicador (assunto geral) não tem o que medir: null.
+ */
+async function measureSinceStart(db: Database, organizationId: string, interventionId: string, now: Date): Promise<Evolution | null> {
+  const row = (await db.query<{ person_id: string; indicator_code: string | null; indicator_name: string | null; started_at: Date | null; created_at: Date }>(
+    `select i.person_id, i.indicator_code, d.name indicator_name, i.started_at, i.created_at
+       from interventions i left join indicator_definitions d on d.organization_id = i.organization_id and d.code = i.indicator_code
+      where i.id = $1 and i.organization_id = $2`,
+    [interventionId, organizationId],
+  )).rows[0]
+  if (!row?.indicator_code) return null
+  const timeZone = await resolveOrganizationTimezone(db, organizationId)
+  return measureEvolution(db, { organizationId, personId: row.person_id, indicatorCode: row.indicator_code, indicatorName: row.indicator_name, asOf: now, timeZone }, { kind: "INTERVENTION", ref: interventionId, label: "o início do acompanhamento", at: (row.started_at ?? row.created_at).toISOString() })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -507,10 +529,13 @@ export async function completeIntervention(db: Database, viewer: Viewer, interve
     const issues = completionIssues(definition, input, counts)
     if (issues.length > 0) throw new DomainError(issues[0]!.message, "INTERVENTION_NOT_COMPLETABLE", 422, { issues })
     // TRÊS registros separados: atividades (contadas aqui), aprendizagem e evolução operacional (declaradas, com leitura).
-    const outcome = { activities: counts, learning: input.learning, operational: input.operational, note: input.note, completedBy: viewer.personId }
+    // QUATRO registros lado a lado: atividades (contadas aqui), aprendizagem e evolução operacional (declaradas, com leitura),
+    // "deu resultado?" com o motivo (a avaliação de quem conduziu) e a MEDIÇÃO da INIA desde o início (antes × depois).
+    const measured = await measureSinceStart(db, viewer.organizationId, row.id, new Date())
+    const outcome = { activities: counts, learning: input.learning, operational: input.operational, worked: input.worked, reasons: [...new Set(input.reasons)], measured, note: input.note, completedBy: viewer.personId }
     await bump(tx, row, `status = $3, outcome = $4, form_values = $5, completed_at = now()`, [to, JSON.stringify(outcome), JSON.stringify({ ...row.form_values, ...input.formValues })])
-    await recordInterventionEvent(tx, event(viewer, row, "COMPLETED", to, { operational: input.operational?.result ?? null, learning: input.learning?.result ?? null }))
-    await resolveOpenAlerts(tx, viewer.organizationId, row.id, ["ASSIGNED", "APPROVED", "SIGNAL", "FORWARDED"])
+    await recordInterventionEvent(tx, event(viewer, row, "COMPLETED", to, { operational: input.operational?.result ?? null, learning: input.learning?.result ?? null, worked: input.worked, measured: measured?.status ?? null }))
+    await resolveOpenAlerts(tx, viewer.organizationId, row.id, ["ASSIGNED", "APPROVED", "SIGNAL", "FORWARDED", "OVERDUE"])
   })
 }
 
@@ -521,7 +546,7 @@ export async function cancelIntervention(db: Database, viewer: Viewer, intervent
     const to = nextStatus("CANCEL", row, definition)
     await bump(tx, row, `status = $3, outcome = coalesce(outcome, '{}'::jsonb) || $4::jsonb, cancelled_at = now()`, [to, JSON.stringify({ cancellation: { reason, by: viewer.personId } })])
     await recordInterventionEvent(tx, event(viewer, row, "CANCELLED", to, { reason }))
-    await resolveOpenAlerts(tx, viewer.organizationId, row.id, ["ASSIGNED", "APPROVAL", "APPROVED", "SIGNAL", "RETURNED", "FORWARDED"])
+    await resolveOpenAlerts(tx, viewer.organizationId, row.id, ["ASSIGNED", "APPROVAL", "APPROVED", "SIGNAL", "RETURNED", "FORWARDED", "OVERDUE"])
   })
 }
 
@@ -599,7 +624,9 @@ export async function updateInterventionItem(db: Database, viewer: Viewer, inter
     if (row.status !== "IN_PROGRESS" && input.status !== "PENDING") throw new DomainError("Itens são concluídos durante a execução.", "INTERVENTION_NOT_IN_PROGRESS", 409)
     if (item.kind === "CHECKPOINT" && input.status === "DONE" && input.reading.length < 5) throw new DomainError("Registre a leitura do checkpoint (o que foi observado e o valor do indicador).", "CHECKPOINT_READING_REQUIRED", 422)
     if (input.status === "SKIPPED" && input.note.length < 5) throw new DomainError("Diga por que o item foi dispensado.", "INTERVENTION_ITEM_SKIP_REASON", 422)
-    const result = input.status === "PENDING" ? null : { note: input.note || null, reading: input.reading || null }
+    // No checkpoint concluído, a INIA anexa a própria medição do indicador desde o início — ao lado da leitura de quem conduz.
+    const measured = item.kind === "CHECKPOINT" && input.status === "DONE" ? await measureSinceStart(db, viewer.organizationId, row.id, new Date()) : null
+    const result = input.status === "PENDING" ? null : { note: input.note || null, reading: input.reading || null, ...(measured ? { measured: { status: measured.status, statement: measured.statement } } : {}) }
     await tx.query(`update intervention_items set status = $2, result = $3, completed_at = case when $2 = 'PENDING' then null else now() end, completed_by = case when $2 = 'PENDING' then null else $4::uuid end, updated_at = now() where id = $1`, [item.id, input.status, result ? JSON.stringify(result) : null, viewer.personId])
     await bump(tx, row, "", [])
     await recordInterventionEvent(tx, event(viewer, row, item.kind === "CHECKPOINT" ? "CHECKPOINT_RECORDED" : "ITEM_UPDATED", row.status, { itemId: item.id, kind: item.kind, title: item.title, status: input.status, reading: input.reading || null }))
@@ -734,6 +761,10 @@ export async function openManualIntervention(db: Database, viewer: Viewer, raw: 
       [interventionId, viewer.organizationId, input.personId, caseId, type.typeId, type.versionId, type.key, subjectKey, input.indicatorCode, viewer.personId, responsibleId, approverId, recipients.filter((recipient) => recipient !== viewer.personId), isSensitiveType(type.definition), input.reason, JSON.stringify({ asOf: now.toISOString(), openedManually: true }), dueAt, `manual:${viewer.personId}:${input.idempotencyKey}`],
     )
     if (inserted.rowCount === 0) throw new DomainError(`${person.name} já tem "${type.definition.name}" em andamento para este assunto.`, "INTERVENTION_ALREADY_ACTIVE", 409)
+    // Aberta à mão, a intervenção nasce com o mesmo roteiro do formato que a política usaria.
+    for (const [position, item] of scriptItemsOf(type.definition, { openedDay: todayDate, dueAt, responsibleId, personId: input.personId }).entries()) {
+      await tx.query(`insert into intervention_items (organization_id, intervention_id, kind, title, description, owner_id, due_at, position) values ($1,$2,$3,$4,$5,$6,$7,$8)`, [viewer.organizationId, interventionId, item.kind, item.title, item.description, item.ownerId, item.dueAt, position])
+    }
     await recordInterventionEvent(tx, { organizationId: viewer.organizationId, interventionId, caseId, eventType: "OPENED", actorKind: "HUMAN", actorId: viewer.personId, fromStatus: null, toStatus: "PROPOSED", payload: { manual: true, typeVersion: type.version } })
     if (responsibleId !== viewer.personId) await alert(tx, { organizationId: viewer.organizationId, caseId, interventionId, recipientIds: [responsibleId], event: "ASSIGNED", revision: 0, alertType: "INTERVENTION_ASSIGNED", title: `Nova intervenção: ${type.definition.name}`, description: `"${type.definition.name}" foi aberta para ${person.name}. Você é o responsável.` })
     return interventionId

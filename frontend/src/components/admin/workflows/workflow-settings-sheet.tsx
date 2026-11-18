@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
 
 import { OrgScopeSelect, orgScopeValueAfterUniverseChange, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import { TriggerConfigEditor } from "./trigger-fields"
@@ -40,6 +41,7 @@ import {
   type ConsolidatedStructureKind,
 } from "@/schemas/admin/consolidated-structure-schema"
 import {
+  ACTIVE_ACCESS_ONLY_TITLE,
   POPULATION_FILTER_ANCHOR_ROLE,
   POPULATION_FILTER_LABELS,
   type PopulationFilter,
@@ -205,10 +207,15 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
     currentFilter.kind === "EMPLOYEE" ? currentFilter.employeeId : structureGroupId(currentFilter.kind as ConsolidatedStructureKind, currentFilter as ConsolidatedStructure),
   )
 
+  // "Somente quem tem acesso ativo à INIA": opção do modo Individual, para qualquer gatilho (o Filtro Populacional só existe em Agenda).
+  const currentRequireAccess = editable.requireActiveAccess === true
+  const [requireAccess, setRequireAccess] = useState(currentRequireAccess)
+
   // Modo/estrutura/filtro do rascunho mudaram: o formulário recomeça deles (ajuste na renderização, sem render extra).
-  const [syncedAnalysis, setSyncedAnalysis] = useState({ structure: editable.consolidatedStructure, filter: editable.populationFilter })
-  if (syncedAnalysis.structure !== editable.consolidatedStructure || syncedAnalysis.filter !== editable.populationFilter) {
-    setSyncedAnalysis({ structure: editable.consolidatedStructure, filter: editable.populationFilter })
+  const [syncedAnalysis, setSyncedAnalysis] = useState({ structure: editable.consolidatedStructure, filter: editable.populationFilter, requireAccess: currentRequireAccess })
+  if (syncedAnalysis.structure !== editable.consolidatedStructure || syncedAnalysis.filter !== editable.populationFilter || syncedAnalysis.requireAccess !== currentRequireAccess) {
+    setSyncedAnalysis({ structure: editable.consolidatedStructure, filter: editable.populationFilter, requireAccess: currentRequireAccess })
+    setRequireAccess(currentRequireAccess)
     const structure = editable.consolidatedStructure ?? null
     setMode(structure ? "CONSOLIDATED" : "INDIVIDUAL")
     setStructureKind(structure?.kind ?? "SUPERVISOR_TEAM")
@@ -243,15 +250,24 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
     [manageableTeamsQuery.data, filterKind, editable.scopeType, editable.teamId, editable.operatingUniverse],
   )
 
+  // Consolidado só existe em Agenda de calendário; em qualquer outro gatilho a avaliação é sempre individual.
+  const consolidatedSelected = supportsConsolidatedMode && mode === "CONSOLIDATED"
   const nextStructure = buildConsolidatedStructure(structureKind, structureAnchorId)
-  const nextFilter = buildPopulationFilter(filterKind, filterAnchorId)
-  const analysisInput: AnalysisConfigInput | null =
-    mode === "CONSOLIDATED" ? (nextStructure ? { mode: "CONSOLIDATED", consolidatedStructure: nextStructure } : null) : nextFilter ? { mode: "INDIVIDUAL", populationFilter: nextFilter.kind === "ALL" ? null : nextFilter } : null
+  // Fora da Agenda não há Filtro Populacional: grava "todos" e só a opção de acesso.
+  const nextFilter = supportsPopulationFilter ? buildPopulationFilter(filterKind, filterAnchorId) : ({ kind: "ALL" } as const)
+  const analysisInput: AnalysisConfigInput | null = consolidatedSelected
+    ? nextStructure
+      ? { mode: "CONSOLIDATED", consolidatedStructure: nextStructure }
+      : null
+    : nextFilter
+      ? { mode: "INDIVIDUAL", populationFilter: nextFilter.kind === "ALL" ? null : nextFilter, requireActiveAccess: requireAccess }
+      : null
 
-  const analysisChanged =
-    mode === "CONSOLIDATED"
+  const analysisChanged = !isSchedule
+    ? requireAccess !== currentRequireAccess
+    : mode === "CONSOLIDATED"
       ? !currentStructure || structureKind !== currentStructure.kind || structureAnchorId !== structureGroupId(currentStructure.kind, currentStructure)
-      : Boolean(currentStructure) || filterKind !== currentFilter.kind || filterAnchorId !== (currentFilter.kind === "EMPLOYEE" ? currentFilter.employeeId : structureGroupId(currentFilter.kind as ConsolidatedStructureKind, currentFilter as ConsolidatedStructure))
+      : Boolean(currentStructure) || requireAccess !== currentRequireAccess || filterKind !== currentFilter.kind || filterAnchorId !== (currentFilter.kind === "EMPLOYEE" ? currentFilter.employeeId : structureGroupId(currentFilter.kind as ConsolidatedStructureKind, currentFilter as ConsolidatedStructure))
 
   async function handleSaveAnalysis() {
     if (!analysisInput) return
@@ -449,7 +465,23 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
             </>
           ) : null}
 
-          {supportsConsolidatedMode && mode === "CONSOLIDATED" ? (
+          {!consolidatedSelected ? (
+            <div className="space-y-2 rounded-lg border bg-card p-3" data-testid="workflow-require-active-access">
+              <div className="flex items-start justify-between gap-3">
+                <Label htmlFor="workflow-require-active-access" className="text-sm font-medium leading-snug">
+                  {ACTIVE_ACCESS_ONLY_TITLE}
+                </Label>
+                <Switch id="workflow-require-active-access" checked={requireAccess} onCheckedChange={setRequireAccess} />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Ligada, este workflow só cria execução para quem tem login ativo na INIA. Quem receber acesso depois passa a entrar
+                sozinho; quem perder o acesso deixa de entrar (o que já estava em andamento termina). Não muda com quem a pessoa é
+                comparada: quartil e ranking continuam sobre todos os colaboradores da população.
+              </p>
+            </div>
+          ) : null}
+
+          {consolidatedSelected ? (
             <>
               <p className="text-sm font-medium">Qual estrutura será analisada?</p>
               <Select value={structureKind} onValueChange={(value) => setStructureKind(value as ConsolidatedStructureKind)}>
@@ -504,11 +536,9 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
           ) : null}
 
           {updateAnalysisMutation.isError ? <p className="text-sm text-destructive">{(updateAnalysisMutation.error as Error).message}</p> : null}
-          {isSchedule ? (
-            <Button size="sm" disabled={!analysisChanged || !analysisInput || updateAnalysisMutation.isPending} onClick={handleSaveAnalysis}>
-              {updateAnalysisMutation.isPending ? "Salvando..." : "Salvar modo de avaliação"}
-            </Button>
-          ) : null}
+          <Button size="sm" disabled={!analysisChanged || !analysisInput || updateAnalysisMutation.isPending} onClick={handleSaveAnalysis}>
+            {updateAnalysisMutation.isPending ? "Salvando..." : isSchedule ? "Salvar modo de avaliação" : "Salvar população"}
+          </Button>
         </div>
 
         <Separator />

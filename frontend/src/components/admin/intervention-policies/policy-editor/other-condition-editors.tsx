@@ -5,15 +5,7 @@ import type { PolicyCondition } from "@/schemas/admin/intervention-policy.schema
 
 import { CheckboxList, ComparatorSelect, DecimalField, Note, NumberField, OptionSelect, ToggleField } from "../shared/fields"
 import { IndicatorCodeField } from "../shared/indicator-code-field"
-import {
-  DIAGNOSIS_EXPECTATION_LABELS,
-  FEEDBACK_KIND_LABELS,
-  FLAG_MEASURE_LABELS,
-  INTERVENTION_EVENT_LABELS,
-  OPERATIONAL_RESULT_LABELS,
-  PRIOR_STATUS_LABELS,
-  WHEN_NONE_LABELS,
-} from "../shared/labels"
+import { DIAGNOSIS_EXPECTATION_LABELS, FEEDBACK_KIND_LABELS, FLAG_MEASURE_LABELS, INTERVENTION_EVENT_LABELS, OPERATIONAL_RESULT_LABELS, PRIOR_STATUS_LABELS, WHEN_NONE_LABELS, EVOLUTION_EXPECTATION_LABELS } from "../shared/labels"
 import { usePolicyEditor } from "./editor-context"
 
 type Of<K extends PolicyCondition["kind"]> = Extract<PolicyCondition, { kind: K }>
@@ -122,6 +114,28 @@ export function SupportedDiagnosisConditionEditor({ condition, onChange }: Edito
         <NumberField label="Nos últimos (dias)" value={condition.withinDays} min={1} max={365} onChange={(withinDays) => onChange({ ...condition, withinDays: withinDays ?? 1 })} />
       </div>
       <Note>Diagnóstico sustentado = padrão verificado com evidência. É a condição que um treinamento exige: indicador abaixo da meta, sozinho, não basta.</Note>
+    </div>
+  )
+}
+
+/**
+ * Evolução desde o último feedback: a INIA compara a medição diária do indicador antes e depois do feedback. O mínimo de melhora
+ * é da regra (0 = qualquer melhora conta). Sem feedback no período a condição não é atendida; sem medição suficiente, fica
+ * inconclusiva — nunca "sem evolução".
+ */
+export function EvolutionConditionEditor({ condition, onChange }: EditorProps<Of<"EVOLUTION">>) {
+  const { readOnly } = usePolicyEditor()
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <IndicatorCodeField label="Indicador" value={condition.indicatorCode} clearLabel="o indicador da política" readOnly={readOnly} onChange={(indicatorCode) => onChange({ ...condition, indicatorCode })} />
+        <OptionSelect label="Desde o último feedback, o colaborador" value={condition.expectation} options={options(EVOLUTION_EXPECTATION_LABELS)} onChange={(expectation) => onChange({ ...condition, expectation })} />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <NumberField label="Melhora mínima para contar como evolução (%)" value={condition.minimumImprovementPercent} min={0} max={100} hint="0 = qualquer melhora conta." onChange={(minimumImprovementPercent) => onChange({ ...condition, minimumImprovementPercent: minimumImprovementPercent ?? 0 })} />
+        <NumberField label="Feedback publicado nos últimos (dias)" value={condition.withinDays} min={7} max={365} onChange={(withinDays) => onChange({ ...condition, withinDays: withinDays ?? 90 })} />
+      </div>
+      <Note>Compara a medição diária antes e depois do feedback, em janelas iguais (o dia do feedback fica fora). Com menos de 7 dias desde o feedback ou poucos dias medidos, a condição fica inconclusiva — dado ausente nunca é “sem evolução”. Sem feedback no período, a condição não é atendida.</Note>
     </div>
   )
 }

@@ -50,6 +50,21 @@ Primeira rodada (2026-11-10), pelas peças compartilhadas e pelas ferramentas:
   "Combinar" só com 2+ itens, grupo aninhado com borda roxa e rótulo "GRUPO", estado vazio que explica que sem condição vem tudo,
   rodapé com divisória (Aplicar · Limpar · contador à direita). Só apresentação (`filter-builder.tsx`, `data-explorer-tab.tsx`).
 
+- Editor de Workflow (2026-11-18, "difícil de ver o stage, tudo cinza"): canvas num tom abaixo do cartão com pontos visíveis
+  (`.inia-flow-canvas` em `globals.css`, compartilhado com o mapa de especialistas do Orquestrador); ligações e setas na cor do texto
+  secundário, roxas ao selecionar/passar o mouse, rótulo da ligação em pílula branca; card da etapa branco com contorno firme,
+  sombra, faixa da cor do tipo no topo (`NODE_COLORS[tipo].accent`), ícone maior e título em seminegrito; paleta e painel da etapa
+  em fundo de cartão (o canvas fica entre os dois), itens da paleta com contorno e grupos em caixa alta; cabeçalho do painel da
+  etapa tingido com divisória. Altura: o canvas tem altura própria (`100vh − 9rem`, mínimo 560 px, num invólucro — o
+  `ResizablePanelGroup` grava `height: 100%` inline) e a página rola até o rodapé de ações; a orientação de fluxo vazio virou
+  uma linha só. Só apresentação.
+- Mapa de especialistas do Orquestrador (2026-11-18): mesmo canvas `.inia-flow-canvas`, cards no padrão das etapas (o do
+  Orquestrador com faixa roxa e rótulo, o especialista com o tipo do agente), altura `100vh − 20rem` (mínimo 480 px; antes 420 fixos).
+- "Novo workflow" (2026-11-18, "sem graça, não casa com a aplicação"): diálogo largo (`sm:max-w-2xl`) com cabeçalho de ícone, corpo
+  tingido com três blocos numerados em cartão — O que é (nome, universo) · Quando começa (gatilho) · Onde vale (Abrangência) —,
+  rolagem só no corpo e rodapé fixo que diz o que falta ("Falta o nome e o gatilho."). Cartões de tipo de gatilho com ícone em
+  círculo e descrição legível (`trigger-fields.tsx`).
+
 Pendente: Calendário e Organograma em detalhe, feed do Acompanhamento, telas de detalhe (report, material) e a Administração —
 por último, porque a pasta principal tem o ramo `admin-list-standardization` com alterações nas listas. Capturas antes/depois
 de cada rodada ficam fora do Git (pasta temporária da sessão).

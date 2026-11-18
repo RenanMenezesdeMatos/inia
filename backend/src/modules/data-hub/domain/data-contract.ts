@@ -25,6 +25,16 @@ export type DataContractField = {
   identity?: boolean
 }
 
+/** Para onde um campo aponta: outro contrato da Central (campo da chave dele) ou um catálogo mantido na própria INIA. */
+export type DataFieldReference = { contract: string; field: string } | { catalog: string }
+
+/**
+ * Chave estrangeira de um contrato: o campo cujo valor precisa existir em outro lugar. Mais de uma referência = o
+ * campo aponta para um OU outro (ex.: meta de Grupo, Subgrupo ou colaborador). Explicativo — mostra a quem monta a
+ * tabela na origem como os contratos se ligam; quem resolve a referência de verdade é o writer.
+ */
+export type ContractForeignKey = { field: string; references: readonly DataFieldReference[] }
+
 export type ContractCategory = "MASTER" | "EVENT" | "PERFORMANCE"
 
 /**
@@ -57,6 +67,8 @@ export type DataContract = {
   atLeastOne?: readonly (readonly string[])[]
   /** Contratos que precisam existir antes (referências resolvidas contra o domínio). */
   dependencies: readonly string[]
+  /** Campos que são chave estrangeira (ver `ContractForeignKey`). */
+  foreignKeys: readonly ContractForeignKey[]
   writeSemantics: WriteSemantics
   writePolicy: WritePolicy
   /** Campo (DATETIME/DATE/MONTH) que representa o "tempo de negócio" — base do "último dado recebido". */

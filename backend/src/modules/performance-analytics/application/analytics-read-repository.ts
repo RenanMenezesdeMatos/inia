@@ -1,4 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { loadInterventionBriefsForAlerts } from "../../interventions/application/follow-up-briefs.js"
 import { loadPersonUniverseRule, type PersonUniverseRule } from "../../operating-universe/application/universe-access.js"
 import { resolveFeedbackViewsForViewer } from "../../reliable-feedback/application/feedback-view-access.js"
 import { loadLegacyFeedbackHeadings } from "../../feedbacks/infrastructure/legacy-feedback-headings.js"
@@ -556,6 +557,8 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     const origins = await loadFeedbackOrigins(this.db, { organizationId: query.organizationId, feedbackIds: rows.filter((row) => row.kind === "FEEDBACK").map((row) => String(row.id)) })
     // Comunicados: título, conteúdo saneado, autor e público — só dos itens da página, revalidando que quem lê os enxerga.
     const notices = await this.notices.loadViews(this.db, query.organizationId, query.viewerId, rows.filter((row) => row.kind === "NOTICE").map((row) => String(row.id)))
+    // Intervenção: o resumo da INIA (situação, o que já foi feito, evolução) gravado na avaliação, só para quem ainda é parte dela.
+    const interventionBriefs = await loadInterventionBriefsForAlerts(this.db, { organizationId: query.organizationId, viewerId: query.viewerId, alertIds: rows.filter((row) => row.kind === "ALERT" && String(row.category).startsWith("INTERVENTION_")).map((row) => String(row.id)) })
     return {
       nextCursor,
       items: rows.map((row, index) => ({
@@ -575,6 +578,7 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
         origin: row.kind === "FEEDBACK" ? (origins.get(String(row.id)) ?? null) : null,
         feedback: row.feedback ? { ...(row.feedback as NonNullable<FollowUpItem["feedback"]>), view: views[index] ?? null, supportMaterials: supportMaterials.get(String(row.id)) ?? [] } : null,
         ...(row.kind === "NOTICE" ? { notice: notices.get(String(row.id)) ?? null } : {}),
+        ...(interventionBriefs.has(String(row.id)) ? { intervention: interventionBriefs.get(String(row.id))! } : {}),
         ...(row.kind === "REPORT" && row.report ? { report: { ...(row.report as NonNullable<FollowUpItem["report"]>), lastCheckedAt: new Date(String((row.report as { lastCheckedAt: string }).lastCheckedAt)).toISOString() } } : {}),
       })),
     }

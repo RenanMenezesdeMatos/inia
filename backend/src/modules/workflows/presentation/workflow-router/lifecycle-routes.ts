@@ -26,7 +26,8 @@ const publishSchema = z.object({ confirmation: z.string().trim().min(1).max(64).
 // modo pra deixar a intenção clara na API, mas a persistência sempre grava os dois campos juntos
 // (um deles sempre null).
 const updateAnalysisConfigSchema = z.discriminatedUnion("mode", [
-  z.object({ mode: z.literal("INDIVIDUAL"), populationFilter: populationFilterSchema.nullable() }),
+  // `requireActiveAccess` ("Somente quem tem acesso ativo à INIA") só existe no Individual; omitido = fica como está.
+  z.object({ mode: z.literal("INDIVIDUAL"), populationFilter: populationFilterSchema.nullable(), requireActiveAccess: z.boolean().optional() }),
   z.object({ mode: z.literal("CONSOLIDATED"), consolidatedStructure: consolidatedStructureSchema }),
 ])
 
@@ -95,7 +96,7 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
         "WORKFLOW_CONSOLIDATED_STRUCTURE_OUT_OF_SCOPE",
         422,
       )
-      await writeDraftConfiguration(db, organizationId, request.params.id!, { analysis: { consolidatedStructure: input.consolidatedStructure, populationFilter: null } })
+      await writeDraftConfiguration(db, organizationId, request.params.id!, { analysis: { consolidatedStructure: input.consolidatedStructure, populationFilter: null, requireActiveAccess: false } })
     } else {
       if (input.populationFilter && input.populationFilter.kind !== "ALL" && !triggerAllowsPopulationFilter(current.triggerConfig)) {
         throw new DomainError("Filtro Populacional só está disponível para Agenda.", "WORKFLOW_POPULATION_FILTER_INVALID_TRIGGER", 422)
@@ -112,7 +113,9 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
           422,
         )
       }
-      await writeDraftConfiguration(db, organizationId, request.params.id!, { analysis: { consolidatedStructure: null, populationFilter: normalizedPopulationFilter(input.populationFilter) } })
+      await writeDraftConfiguration(db, organizationId, request.params.id!, {
+        analysis: { consolidatedStructure: null, populationFilter: normalizedPopulationFilter(input.populationFilter), ...(input.requireActiveAccess !== undefined ? { requireActiveAccess: input.requireActiveAccess } : {}) },
+      })
     }
 
     const result = await db.query(`${WORKFLOW_LIST_SELECT} and w.id = $2`, [organizationId, request.params.id])

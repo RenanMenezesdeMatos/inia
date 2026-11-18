@@ -115,6 +115,32 @@ describe("plano de decisões por ação", () => {
     expect(decisions.map((decision) => decision.status)).toEqual(["RECOMMENDED", "RECOMMENDED"])
   })
 
+  it("só avisar (NOTIFY): nenhuma intervenção nasce — a decisão é NOTIFIED, mesmo com tipo que exigiria aprovação ou nó em 'somente recomendar'", () => {
+    const definition = policy([rule("R1", 1, [action("PLANO", { effect: "NOTIFY" }), action("ORIENTAR")])])
+    const selection = selectRules(definition, [trace("R1", 1, "MET")])
+    const decisions = planDecisions({ ...base, selection })
+    expect(decisions.map((decision) => `${decision.typeKey}:${decision.status}`)).toEqual(["PLANO:NOTIFIED", "ORIENTAR:CREATED"])
+    expect(decisions[0]).toMatchObject({ existingInterventionId: null, effectiveEffect: "NOTIFY" })
+    // O que abriria vira proposta; o aviso continua aviso.
+    expect(planDecisions({ ...base, selection, recommendOnly: true }).map((decision) => decision.status)).toEqual(["NOTIFIED", "RECOMMENDED"])
+    // No agregado, trabalho novo vem antes do aviso; só aviso = "Liderança avisada".
+    expect(aggregateOutcome(selection, decisions)).toBe("CREATED")
+    const onlyNotice = selectRules(policy([rule("R1", 1, [action("PLANO", { effect: "NOTIFY" })])]), [trace("R1", 1, "MET")])
+    expect(aggregateOutcome(onlyNotice, planDecisions({ ...base, selection: onlyNotice }))).toBe("NOTIFIED")
+  })
+
+  it("só avisar: a carência vale para o aviso; com uma intervenção igual já ativa, registra a existente em vez de avisar", () => {
+    const selection = selectRules(policy([rule("R1", 1, [action("ORIENTAR", { effect: "NOTIFY", cooldownDays: 30 })])]), [trace("R1", 1, "MET")])
+    const notice = (at: string, subjectKey = "INDICATOR:TMA") => [{ typeKey: "ORIENTAR", subjectKey, at }]
+    expect(planDecisions({ ...base, selection, notices: notice("2026-10-01T12:00:00Z") })[0]).toMatchObject({ status: "SUPPRESSED", note: "O mesmo aviso foi enviado há menos de 30 dia(s) (carência da regra)." })
+    expect(planDecisions({ ...base, selection, notices: notice("2026-08-01T12:00:00Z") })[0]?.status).toBe("NOTIFIED")
+    // Aviso de outro assunto não conta; sem carência, avisa sempre que a regra bater.
+    expect(planDecisions({ ...base, selection, notices: notice("2026-10-01T12:00:00Z", "INDICATOR:FCR") })[0]?.status).toBe("NOTIFIED")
+    const always = selectRules(policy([rule("R1", 1, [action("ORIENTAR", { effect: "NOTIFY", cooldownDays: 0 })])]), [trace("R1", 1, "MET")])
+    expect(planDecisions({ ...base, selection: always, notices: notice("2026-10-13T11:00:00Z") })[0]?.status).toBe("NOTIFIED")
+    expect(planDecisions({ ...base, selection, active: [{ id: "ativa", typeKey: "ORIENTAR", subjectKey: "INDICATOR:TMA", status: "IN_PROGRESS" }] })[0]).toMatchObject({ status: "EXISTING", existingInterventionId: "ativa" })
+  })
+
   it("avaliação inconclusiva continua INCONCLUSIVA no agregado, mesmo abrindo a revisão de dados", () => {
     const definition = policy([rule("R1", 1, [action("TREINAR")], { inconclusiveActions: [action("ORIENTAR")] })])
     const selection = selectRules(definition, [trace("R1", 1, "INCONCLUSIVE")])

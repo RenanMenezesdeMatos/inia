@@ -207,6 +207,8 @@ export const workflowDraftConfigurationSchema = z.object({
   subteamName: z.string().nullable(),
   consolidatedStructure: consolidatedStructureSchema.nullable().optional(),
   populationFilter: populationFilterSchema.nullable().optional(),
+  /** "Somente quem tem acesso ativo à INIA" do RASCUNHO (ausente = desligada). */
+  requireActiveAccess: z.boolean().optional(),
   /** Universo de atuação do RASCUNHO (vale ao Publicar, como a Abrangência). */
   operatingUniverse: operatingUniverseSchema.nullable().default(null),
 })
@@ -235,6 +237,11 @@ export const workflowSchema = z.object({
   // Individual (ausente = todos os colaboradores elegíveis da Abrangência).
   consolidatedStructure: consolidatedStructureSchema.nullable().optional(),
   populationFilter: populationFilterSchema.nullable().optional(),
+  /**
+   * "Somente quem tem acesso ativo à INIA" PUBLICADA (ausente = desligada): no modo Individual, só nasce execução para quem
+   * tem conta de acesso ativa. Decide quem ENTRA no workflow, nunca com quem a pessoa é comparada (quartil, ranking).
+   */
+  requireActiveAccess: z.boolean().optional(),
   draftConfiguration: workflowDraftConfigurationSchema.optional(),
   configurationChanges: z.array(workflowConfigurationChangeSchema).default([]),
 })
@@ -257,6 +264,7 @@ export function withDraftConfiguration<T extends Workflow>(workflow: T): T {
     subteamName: draft.subteamName,
     consolidatedStructure: draft.consolidatedStructure ?? null,
     populationFilter: draft.populationFilter ?? null,
+    requireActiveAccess: draft.requireActiveAccess === true,
     operatingUniverse: draft.operatingUniverse ?? null,
   }
 }
@@ -280,8 +288,16 @@ export const goLiveImpactSchema = z.object({
       timezone: z.string(),
     })
     .nullable(),
+  /**
+   * "Somente quem tem acesso ativo à INIA" (modo Individual, qualquer gatilho): quantas pessoas da população entram hoje.
+   * Só vem quando a opção está ligada (`required`) ou esta publicação a desliga (`removed`).
+   */
+  access: z
+    .object({ required: z.boolean(), removed: z.boolean(), population: z.number(), withAccess: z.number(), withoutAccess: z.number() })
+    .nullable()
+    .optional(),
   requiresConfirmation: z.boolean(),
-  reasons: z.array(z.enum(["IMMEDIATE_CATCH_UP", "LARGE_POPULATION"])),
+  reasons: z.array(z.enum(["IMMEDIATE_CATCH_UP", "LARGE_POPULATION", "ACCESS_REQUIREMENT_REMOVED"])),
   threshold: z.number(),
   fingerprint: z.string(),
 })

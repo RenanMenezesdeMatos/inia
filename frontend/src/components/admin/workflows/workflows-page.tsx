@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Activity, CalendarClock, CircleAlert, Plus, Trash2, Workflow as WorkflowIcon, Zap } from "lucide-react"
+import { Activity, CalendarClock, CircleAlert, Plus, Tag, Trash2, UsersRound, Workflow as WorkflowIcon, Zap, type LucideIcon } from "lucide-react"
 
+import { cn } from "@/lib/utils"
 import { useAutoOpenFromQuery } from "@/hooks/use-auto-open-from-query"
 import { useAdminListState } from "@/hooks/use-admin-list-state"
 
@@ -20,7 +21,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { PageHeader } from "@/components/ui/surface"
+import { IconBadge, PageHeader, SURFACE_CARD, toneSurface } from "@/components/ui/surface"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -112,54 +113,98 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
     }
   }
 
-  const canCreate = name.trim().length > 1 && isTriggerComplete(trigger) && (!universeEnforced || universe !== null)
+  const nameOk = name.trim().length > 1
+  const triggerOk = isTriggerComplete(trigger)
+  const universeOk = !universeEnforced || universe !== null
+  const canCreate = nameOk && triggerOk && universeOk
+  // O botão desabilitado nunca fica mudo: o rodapé diz o que falta (nome, universo, gatilho).
+  const missing = [!nameOk ? "o nome" : null, !universeOk ? "o universo" : null, !triggerOk ? "o gatilho" : null].filter((item): item is string => item !== null)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Novo workflow</DialogTitle>
-          <DialogDescription>Escolha o nome, quando o fluxo começa e onde ele vale. Nada roda até você publicar.</DialogDescription>
+      {/* Visual do app (18/11/2026, "sem graça, não casa com a aplicação"): cabeçalho com ícone, corpo tingido com três
+        * blocos numerados em cartão (o que é · quando começa · onde vale) e rodapé fixo com o que falta para criar. */}
+      <DialogContent className="flex max-h-[calc(100vh-3rem)] flex-col gap-0 overflow-hidden rounded-2xl bg-card p-0 sm:max-w-2xl">
+        <DialogHeader className="flex-row items-start gap-3 space-y-0 border-b px-6 pt-5 pb-4 text-left">
+          <IconBadge tone="info" icon={WorkflowIcon} />
+          <div className="min-w-0 space-y-1 pr-8">
+            <DialogTitle className="text-lg">Novo workflow</DialogTitle>
+            <DialogDescription>Escolha o nome, quando o fluxo começa e onde ele vale. Ele nasce como rascunho: nada roda até você publicar.</DialogDescription>
+          </div>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="workflow-name">Nome</Label>
-            <Input id="workflow-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Nota URA baixa — Contas" />
-          </div>
-          {/* Universo antes do gatilho e da Abrangência: é o topo da hierarquia — Grupos/Subgrupos e indicadores abaixo só os dele. */}
-          <div className="space-y-1.5">
-            <Label htmlFor="workflow-universe">Universo de atuação</Label>
-            <UniverseSelect id="workflow-universe" value={universe} onChange={handleUniverseChange} allowPending={!universeEnforced} aria-describedby="workflow-universe-help" />
-            <p id="workflow-universe-help" className="text-xs text-muted-foreground">Só colaboradores deste universo entram nas execuções; agentes, Orquestradores e indicadores precisam ser do mesmo universo.</p>
-          </div>
-          <TriggerFields value={trigger} onChange={setTrigger} scope={orgScope} universe={universe} />
-          <div className="space-y-1.5">
-            <Label>Abrangência</Label>
-            <p className="text-xs text-muted-foreground">Em quais grupos este workflow pode atuar.</p>
-            {manageableTeamsQuery.data ? (
-              <OrgScopeSelect
-                teams={manageableTeamsQuery.data.teams}
-                value={orgScope}
-                onChange={setOrgScope}
-                allowAllTeams={manageableTeamsQuery.data.unrestricted}
-                universe={universe}
-              />
-            ) : (
-              <Skeleton className="h-10 w-full" />
-            )}
-          </div>
-          {createMutation.isError ? <p className="text-sm text-destructive">{(createMutation.error as Error).message}</p> : null}
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-muted/50 px-6 py-5">
+          <CreateStep number={1} icon={Tag} title="O que é" hint="Um nome que diga o objetivo e o universo das pessoas analisadas.">
+            <div className="space-y-1.5">
+              <Label htmlFor="workflow-name">Nome</Label>
+              <Input id="workflow-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Nota URA baixa — Contas" />
+            </div>
+            {/* Universo antes do gatilho e da Abrangência: é o topo da hierarquia — Grupos/Subgrupos e indicadores abaixo só os dele. */}
+            <div className="space-y-1.5">
+              <Label htmlFor="workflow-universe">Universo de atuação</Label>
+              <UniverseSelect id="workflow-universe" value={universe} onChange={handleUniverseChange} allowPending={!universeEnforced} aria-describedby="workflow-universe-help" />
+              <p id="workflow-universe-help" className="text-xs text-foreground/70">Só colaboradores deste universo entram nas execuções; agentes, Orquestradores e indicadores precisam ser do mesmo universo.</p>
+            </div>
+          </CreateStep>
+          <CreateStep number={2} icon={Zap} title="Quando começa" hint="O que dispara uma execução deste fluxo.">
+            <TriggerFields value={trigger} onChange={setTrigger} scope={orgScope} universe={universe} />
+          </CreateStep>
+          <CreateStep number={3} icon={UsersRound} title="Onde vale" hint="Abrangência: em quais grupos este workflow pode atuar.">
+            <div className="space-y-1.5">
+              {manageableTeamsQuery.data ? (
+                <OrgScopeSelect
+                  teams={manageableTeamsQuery.data.teams}
+                  value={orgScope}
+                  onChange={setOrgScope}
+                  allowAllTeams={manageableTeamsQuery.data.unrestricted}
+                  universe={universe}
+                />
+              ) : (
+                <Skeleton className="h-10 w-full" />
+              )}
+            </div>
+          </CreateStep>
+          {createMutation.isError ? (
+            <p role="alert" className={cn(toneSurface("danger"), "px-3 py-2 text-sm")}>
+              {(createMutation.error as Error).message}
+            </p>
+          ) : null}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button disabled={!canCreate || createMutation.isPending} onClick={handleCreate}>
-            {createMutation.isPending ? "Criando..." : "Criar e abrir editor"}
-          </Button>
+        <DialogFooter className="flex-col items-stretch gap-3 border-t bg-card px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="min-w-0 text-xs text-foreground/70" role="status" data-testid="create-workflow-missing">
+            {missing.length > 0 ? `Falta ${missing.join(", ").replace(/, ([^,]*)$/, " e $1")}.` : "Pronto para criar como rascunho."}
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button disabled={!canCreate || createMutation.isPending} onClick={handleCreate}>
+              {createMutation.isPending ? "Criando..." : "Criar e abrir editor"}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** Bloco numerado do "Novo workflow": cartão branco sobre o corpo tingido, com número, ícone, título e uma linha de ajuda. */
+function CreateStep({ number, icon: Icon, title, hint, children }: { number: number; icon: LucideIcon; title: string; hint: string; children: ReactNode }) {
+  return (
+    <section aria-label={title} className={cn(SURFACE_CARD, "space-y-4 p-4")}>
+      <header className="flex items-start gap-3">
+        <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+          {number}
+        </span>
+        <div className="min-w-0">
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+            <Icon className="size-4 text-primary" aria-hidden />
+            {title}
+          </h3>
+          <p className="text-xs text-foreground/70">{hint}</p>
+        </div>
+      </header>
+      {children}
+    </section>
   )
 }
 

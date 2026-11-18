@@ -383,6 +383,12 @@ export const contractFieldSchema = z.object({
 })
 export type ContractField = z.infer<typeof contractFieldSchema>
 
+/** Para onde aponta uma chave estrangeira: outro contrato (campo da chave dele) ou um catálogo mantido na INIA. */
+export const contractFieldReferenceSchema = z.union([z.object({ contract: z.string(), field: z.string() }), z.object({ catalog: z.string() })])
+export type ContractFieldReference = z.infer<typeof contractFieldReferenceSchema>
+export const contractForeignKeySchema = z.object({ field: z.string(), references: z.array(contractFieldReferenceSchema) })
+export type ContractForeignKey = z.infer<typeof contractForeignKeySchema>
+
 export const contractSchema = z.object({
   key: z.string(),
   version: z.number(),
@@ -394,6 +400,7 @@ export const contractSchema = z.object({
   naturalKey: z.array(z.string()),
   atLeastOne: z.array(z.array(z.string())).optional(),
   dependencies: z.array(z.string()),
+  foreignKeys: z.array(contractForeignKeySchema).default([]),
   writeSemantics: z.enum(["UPSERT", "IDEMPOTENT_EVENT"]),
   writePolicy: z.enum(["PARTIAL_ALLOWED", "ATOMIC"]),
   businessTimeField: z.string().nullable(),

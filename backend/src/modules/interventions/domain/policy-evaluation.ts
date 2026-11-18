@@ -96,11 +96,18 @@ export function selectRules(definition: PolicyDefinition, results: readonly Rule
 // DECISÕES
 // ---------------------------------------------------------------------------------------------
 
-export type DecisionStatus = "CREATED" | "PENDING_APPROVAL" | "RECOMMENDED" | "EXISTING" | "SUPPRESSED" | "CONFLICT"
+/** NOTIFIED = a regra só AVISA quem lidera (efeito NOTIFY): o resumo vai ao Acompanhamento e nenhuma intervenção é criada. */
+export type DecisionStatus = "CREATED" | "PENDING_APPROVAL" | "RECOMMENDED" | "NOTIFIED" | "EXISTING" | "SUPPRESSED" | "CONFLICT"
+/** Decisões que ABREM uma intervenção (pronta, aguardando aprovação ou proposta). */
+export const OPENING_STATUSES: readonly DecisionStatus[] = ["CREATED", "PENDING_APPROVAL", "RECOMMENDED"]
+/** Decisões que precisam de um destinatário resolvido na cadeia do colaborador (quem executa ou quem é avisado). */
+export const ADDRESSED_STATUSES: readonly DecisionStatus[] = [...OPENING_STATUSES, "NOTIFIED"]
 
 export type CatalogType = { typeId: string; versionId: string; key: string; definition: InterventionTypeDefinition }
 export type ActiveIntervention = { id: string; typeKey: string; subjectKey: string; status: string }
 export type ClosedIntervention = { id: string; typeKey: string; subjectKey: string; closedAt: string }
+/** Aviso (NOTIFIED) já enviado numa avaliação anterior — a carência do aviso é contada a partir dele. */
+export type SentNotice = { typeKey: string; subjectKey: string; at: string }
 
 export type PlannedDecision = {
   typeKey: string
@@ -120,7 +127,7 @@ export type PlannedDecision = {
   note: string | null
 }
 
-export type EvaluationOutcome = "RECOMMENDED" | "EXISTING" | "CREATED" | "PENDING_APPROVAL" | "NO_MATCH" | "INCONCLUSIVE" | "CONFLICT" | "SUPPRESSED" | "NOT_APPLICABLE"
+export type EvaluationOutcome = "RECOMMENDED" | "EXISTING" | "CREATED" | "PENDING_APPROVAL" | "NOTIFIED" | "NO_MATCH" | "INCONCLUSIVE" | "CONFLICT" | "SUPPRESSED" | "NOT_APPLICABLE"
 
 export type DecisionPlanInput = {
   selection: RuleSelection
@@ -128,6 +135,8 @@ export type DecisionPlanInput = {
   types: ReadonlyMap<string, CatalogType>
   active: readonly ActiveIntervention[]
   closed: readonly ClosedIntervention[]
+  /** Avisos já enviados (efeito NOTIFY) — ausente = nenhum. */
+  notices?: readonly SentNotice[]
   now: Date
   /** Nó em "Somente recomendar": toda ação que abriria nasce como PROPOSTA (o responsável aceita). Nunca o contrário. */
   recommendOnly: boolean
@@ -154,7 +163,7 @@ export function planDecisions(input: DecisionPlanInput): PlannedDecision[] {
         continue
       }
       const type = input.types.get(action.typeKey)
-      planned.set(action.typeKey, { typeKey: action.typeKey, typeName: type?.definition.name ?? action.typeKey, ruleKey: rule.key, alsoRequestedBy: [], mode, action, effectiveEffect: input.recommendOnly ? "RECOMMEND" : action.effect, status: "CREATED", existingInterventionId: null, updated: false, note: null })
+      planned.set(action.typeKey, { typeKey: action.typeKey, typeName: type?.definition.name ?? action.typeKey, ruleKey: rule.key, alsoRequestedBy: [], mode, action, effectiveEffect: input.recommendOnly && action.effect === "OPEN" ? "RECOMMEND" : action.effect, status: "CREATED", existingInterventionId: null, updated: false, note: null })
     }
   }
   const decisions = [...planned.values()]
@@ -190,6 +199,12 @@ export function planDecisions(input: DecisionPlanInput): PlannedDecision[] {
       .filter((item) => item.typeKey === decision.typeKey && item.subjectKey === input.subjectKey)
       .find((item) => cooldownMs > 0 && input.now.getTime() - new Date(item.closedAt).getTime() < cooldownMs)
     if (recent) return { ...decision, status: "SUPPRESSED" as const, note: `Uma intervenção igual foi encerrada há menos de ${decision.action.cooldownDays} dia(s) (carência da regra).` }
+    if (decision.effectiveEffect === "NOTIFY") {
+      // Só avisar: a carência evita repetir o MESMO aviso a cada avaliação (0 = avisa sempre que a regra bater).
+      const noticed = (input.notices ?? []).find((item) => item.typeKey === decision.typeKey && item.subjectKey === input.subjectKey && cooldownMs > 0 && input.now.getTime() - new Date(item.at).getTime() < cooldownMs)
+      if (noticed) return { ...decision, status: "SUPPRESSED" as const, note: `O mesmo aviso foi enviado há menos de ${decision.action.cooldownDays} dia(s) (carência da regra).` }
+      return { ...decision, status: "NOTIFIED" as const }
+    }
     if (decision.effectiveEffect === "RECOMMEND") return { ...decision, status: "RECOMMENDED" as const }
     return { ...decision, status: type.definition.approval.required ? ("PENDING_APPROVAL" as const) : ("CREATED" as const) }
   })
@@ -204,7 +219,7 @@ export function aggregateOutcome(selection: RuleSelection, decisions: readonly P
   if (selection.status === "NO_MATCH") return "NO_MATCH"
   if (selection.status === "INCONCLUSIVE") return "INCONCLUSIVE"
   if (decisions.some((decision) => decision.status === "CONFLICT")) return "CONFLICT"
-  for (const status of ["CREATED", "PENDING_APPROVAL", "RECOMMENDED", "EXISTING", "SUPPRESSED"] as const) {
+  for (const status of ["CREATED", "PENDING_APPROVAL", "RECOMMENDED", "NOTIFIED", "EXISTING", "SUPPRESSED"] as const) {
     if (decisions.some((decision) => decision.status === status && decision.mode === "MATCHED")) return status
   }
   return "NO_MATCH"
@@ -219,6 +234,7 @@ export const DECISION_STATUS_TEXT: Record<DecisionStatus, string> = {
   CREATED: "aberta",
   PENDING_APPROVAL: "aberta aguardando aprovação",
   RECOMMENDED: "recomendada ao responsável",
+  NOTIFIED: "só avisada a quem lidera (nenhuma ação criada)",
   EXISTING: "já existia ativa",
   SUPPRESSED: "não reaberta (carência)",
   CONFLICT: "não aplicada (conflito)",
@@ -228,6 +244,7 @@ export const OUTCOME_TEXT: Record<EvaluationOutcome, string> = {
   EXISTING: "Intervenção já existente",
   CREATED: "Intervenção criada",
   PENDING_APPROVAL: "Aprovação pendente",
+  NOTIFIED: "Liderança avisada",
   NO_MATCH: "Nenhuma regra atendida",
   INCONCLUSIVE: "Avaliação inconclusiva",
   CONFLICT: "Conflito entre intervenções",

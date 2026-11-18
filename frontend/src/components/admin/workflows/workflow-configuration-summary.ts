@@ -1,6 +1,6 @@
 import { formatScopeLabel } from "@/lib/admin/scope-compatibility"
 import { CONSOLIDATED_STRUCTURE_LABELS } from "@/schemas/admin/consolidated-structure-schema"
-import { POPULATION_FILTER_LABELS } from "@/schemas/admin/population-filter-schema"
+import { ACTIVE_ACCESS_ONLY_LABEL, POPULATION_FILTER_LABELS } from "@/schemas/admin/population-filter-schema"
 import {
   triggerBadgeText,
   WORKFLOW_CONFIGURATION_CHANGE_LABELS,
@@ -11,10 +11,11 @@ import {
 
 export type ConfigurationChangeSummary = { change: WorkflowConfigurationChange; label: string; published: string; draft: string }
 
-function describeAnalysis(workflow: Pick<Workflow, "consolidatedStructure" | "populationFilter">): string {
+function describeAnalysis(workflow: Pick<Workflow, "consolidatedStructure" | "populationFilter" | "requireActiveAccess">): string {
   if (workflow.consolidatedStructure) return `Consolidado · ${CONSOLIDATED_STRUCTURE_LABELS[workflow.consolidatedStructure.kind]}`
   const filter = workflow.populationFilter
-  return `Individual · ${filter && filter.kind !== "ALL" ? POPULATION_FILTER_LABELS[filter.kind] : POPULATION_FILTER_LABELS.ALL}`
+  const population = `Individual · ${filter && filter.kind !== "ALL" ? POPULATION_FILTER_LABELS[filter.kind] : POPULATION_FILTER_LABELS.ALL}`
+  return workflow.requireActiveAccess ? `${population} · ${ACTIVE_ACCESS_ONLY_LABEL}` : population
 }
 
 /**

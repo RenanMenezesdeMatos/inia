@@ -67,12 +67,25 @@ describe("resolveScopeOperatorIds — todo operador ativo elegível pela Abrang�
       expect(sql).toContain("role = 'OPERATOR' and active")
       return { rows: [{ id: "op-1" }, { id: "op-2" }] }
     })
-    expect(await resolveScopeOperatorIds(db, "org-1", { scopeType: "ALL_TEAMS", teamId: null, operatingUniverse: null })).toEqual(["op-1", "op-2"])
+    expect(await resolveScopeOperatorIds(db, "org-1", { scopeType: "ALL_TEAMS", teamId: null, operatingUniverse: null, requireActiveAccess: false })).toEqual(["op-1", "op-2"])
+  })
+
+  it('"Somente quem tem acesso ativo à INIA" exige conta de acesso ativa — e só quando o chamador pede', async () => {
+    const seen: unknown[][] = []
+    const db = fakeDb((sql, params) => {
+      // A exigência é condicional ao parâmetro: desligada, a consulta devolve a população inteira.
+      expect(sql).toContain("not $6::boolean or exists (select 1 from user_accounts ua where ua.person_id = people.id and ua.organization_id = people.organization_id and ua.active)")
+      seen.push(params ?? [])
+      return { rows: [{ id: "op-1" }] }
+    })
+    await resolveScopeOperatorIds(db, "org-1", { scopeType: "TEAM", teamId: "team-1", operatingUniverse: null, requireActiveAccess: true })
+    await resolveScopeOperatorIds(db, "org-1", { scopeType: "TEAM", teamId: "team-1", operatingUniverse: null, requireActiveAccess: false })
+    expect(seen.map((params) => params[5])).toEqual([true, false])
   })
 })
 
 describe("resolvePopulationFilterOperatorIds — Filtro Populacional (modo Individual)", () => {
-  const scope = { scopeType: "TEAM", teamId: "team-1", operatingUniverse: null }
+  const scope = { scopeType: "TEAM", teamId: "team-1", operatingUniverse: null, requireActiveAccess: false }
 
   it("ausente (null) = ALL — todo operador ativo elegível pela Abrangência", async () => {
     const db = fakeDb((sql) => {
@@ -106,9 +119,9 @@ describe("resolvePopulationFilterOperatorIds — Filtro Populacional (modo Indiv
   it("SUBTEAM casa por subteam_id (nunca pelo Grupo inteiro)", async () => {
     const db = fakeDb((sql, params) => {
       expect(sql).toContain("$2 = 'SUBTEAM' and subteam_id = $4")
-      expect(params).toEqual(["org-1", "SUBTEAM", null, "sub-1", null])
+      expect(params).toEqual(["org-1", "SUBTEAM", null, "sub-1", null, false])
       return { rows: [{ id: "op-1" }] }
     })
-    expect(await resolveScopeOperatorIds(db, "org-1", { scopeType: "SUBTEAM", teamId: null, subteamId: "sub-1", operatingUniverse: null })).toEqual(["op-1"])
+    expect(await resolveScopeOperatorIds(db, "org-1", { scopeType: "SUBTEAM", teamId: null, subteamId: "sub-1", operatingUniverse: null, requireActiveAccess: false })).toEqual(["op-1"])
   })
 })

@@ -20,6 +20,8 @@ export type WorkflowConfigurationRow = {
   consolidatedStructure: ConsolidatedStructure | null
   populationFilter: PopulationFilter | null
   operatingUniverse: string | null
+  /** "Somente quem tem acesso ativo à INIA" (rascunho). */
+  requireActiveAccess: boolean
   draftGraph: unknown
   live: WorkflowConfiguration
   active: boolean
@@ -42,6 +44,8 @@ type RawRow = {
   livePopulationFilter?: PopulationFilter | null
   liveOperatingUniverse?: string | null
   operatingUniverse?: string | null
+  requireActiveAccess?: boolean
+  liveRequireActiveAccess?: boolean
   active?: boolean
   activeVersionId?: string | null
 }
@@ -50,6 +54,7 @@ const CONFIGURATION_SELECT = `
   select scope_type "liveScopeType", team_id "liveTeamId", subteam_id "liveSubteamId", trigger_config "liveTriggerConfig",
          consolidated_structure "liveConsolidatedStructure", population_filter "livePopulationFilter", operating_universe "liveOperatingUniverse",
          draft_operating_universe "operatingUniverse",
+         require_active_access "liveRequireActiveAccess", draft_require_active_access "requireActiveAccess",
          draft_scope_type "scopeType", draft_team_id "teamId", draft_subteam_id "subteamId", draft_trigger_config "triggerConfig",
          draft_consolidated_structure "consolidatedStructure", draft_population_filter "populationFilter",
          draft_graph "draftGraph", active, active_version_id "activeVersionId"
@@ -67,6 +72,7 @@ export async function loadWorkflowConfigurationRow(db: Queryable, organizationId
     consolidatedStructure: row.consolidatedStructure ?? null,
     populationFilter: row.populationFilter ?? null,
     operatingUniverse: row.operatingUniverse ?? null,
+    requireActiveAccess: row.requireActiveAccess === true,
   }
   // Linhas sem as colunas vivas só existem em dublês de teste antigos — tratadas como nunca publicadas.
   const live: WorkflowConfiguration =
@@ -80,15 +86,17 @@ export async function loadWorkflowConfigurationRow(db: Queryable, organizationId
           consolidatedStructure: row.liveConsolidatedStructure ?? null,
           populationFilter: row.livePopulationFilter ?? null,
           operatingUniverse: row.liveOperatingUniverse ?? null,
+          requireActiveAccess: row.liveRequireActiveAccess === true,
         }
-  return { ...draft, draftGraph: row.draftGraph, live, active: row.active === true, published: Boolean(row.activeVersionId) }
+  return { ...draft, requireActiveAccess: draft.requireActiveAccess === true, draftGraph: row.draftGraph, live, active: row.active === true, published: Boolean(row.activeVersionId) }
 }
 
 /** Grupos de campos que cada tela grava — um grupo omitido nunca é tocado (duas telas abertas não se sobrescrevem). */
 export type DraftConfigurationPatch = {
   trigger?: TriggerConfig
   scope?: { scopeType: string; teamId: string | null; subteamId: string | null }
-  analysis?: { consolidatedStructure: ConsolidatedStructure | null; populationFilter: PopulationFilter | null }
+  /** `requireActiveAccess` omitido = a opção fica como está (quem grava só a estrutura/o filtro não a apaga). */
+  analysis?: { consolidatedStructure: ConsolidatedStructure | null; populationFilter: PopulationFilter | null; requireActiveAccess?: boolean }
   /** Universo de atuação (parte da Abrangência). */
   universe?: { operatingUniverse: string | null }
 }
@@ -116,6 +124,8 @@ export async function writeDraftConfiguration(db: Queryable, organizationId: str
        population_filter = case when active_version_id is null and $7::boolean then $9::jsonb else population_filter end,
        draft_operating_universe = case when $12::boolean then $13::text else draft_operating_universe end,
        operating_universe = case when active_version_id is null and $12::boolean then $13::text else operating_universe end,
+       draft_require_active_access = case when $7::boolean and $14::boolean is not null then $14::boolean else draft_require_active_access end,
+       require_active_access = case when active_version_id is null and $7::boolean and $14::boolean is not null then $14::boolean else require_active_access end,
        updated_at = now()
      where id = $10 and organization_id = $11
      returning id`,
@@ -133,6 +143,7 @@ export async function writeDraftConfiguration(db: Queryable, organizationId: str
       organizationId,
       patch.universe !== undefined,
       patch.universe?.operatingUniverse ?? null,
+      patch.analysis?.requireActiveAccess ?? null,
     ],
   )
   return (result.rowCount ?? 0) > 0
@@ -143,7 +154,8 @@ export async function discardDraftConfiguration(db: Queryable, organizationId: s
   const result = await db.query(
     `update workflows set
        draft_trigger_config = trigger_config, draft_scope_type = scope_type, draft_team_id = team_id, draft_subteam_id = subteam_id,
-       draft_consolidated_structure = consolidated_structure, draft_population_filter = population_filter, draft_operating_universe = operating_universe, updated_at = now()
+       draft_consolidated_structure = consolidated_structure, draft_population_filter = population_filter, draft_operating_universe = operating_universe,
+       draft_require_active_access = require_active_access, updated_at = now()
      where id = $1 and organization_id = $2 and active_version_id is not null
      returning id`,
     [workflowId, organizationId],

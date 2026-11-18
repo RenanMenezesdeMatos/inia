@@ -52,10 +52,10 @@ export type InteractionEvidence = {
 type ChannelFlagRow = { id: string; channel: string; flag_name: string; value_type: string }
 
 /** Só o que a elegibilidade precisa ler do Workflow (linha atual ou reconstruída do snapshot). */
-export type QaWorkflowRowForEligibility = Pick<QaWorkflowRow, "scope_type" | "team_id" | "subteam_id" | "population_filter" | "operating_universe">
+export type QaWorkflowRowForEligibility = Pick<QaWorkflowRow, "scope_type" | "team_id" | "subteam_id" | "population_filter" | "operating_universe" | "require_active_access">
 
 function populationOf(row: QaWorkflowRowForEligibility): WorkflowPopulation {
-  return { scopeType: row.scope_type, teamId: row.team_id, subteamId: row.subteam_id, populationFilter: row.population_filter, operatingUniverse: row.operating_universe ?? null }
+  return { scopeType: row.scope_type, teamId: row.team_id, subteamId: row.subteam_id, populationFilter: row.population_filter, operatingUniverse: row.operating_universe ?? null, requireActiveAccess: row.require_active_access === true }
 }
 
 async function loadChannelFlag(db: Database, organizationId: string, channelFlagId: string): Promise<ChannelFlagRow | null> {

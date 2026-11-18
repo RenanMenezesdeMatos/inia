@@ -2775,6 +2775,17 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
+    "code": "CONTINUITY_REVIEW_NO_NOTIFY",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A avaliação de continuidade não pode ser só um aviso: ela sempre abre a solicitação, que é decidida por uma pessoa autorizada."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
     "code": "CONTINUITY_REVIEW_NOT_ON_INCONCLUSIVE",
     "module": "interventions",
     "statuses": [],
@@ -2782,6 +2793,29 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "A avaliação de continuidade nunca é aberta com dados insuficientes."
     ],
     "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "CONTINUITY_REVIEW_NOT_VISIBLE",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A avaliação de continuidade nunca aparece para o colaborador."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "CONTINUITY_REVIEW_PRIOR_FOLLOW_UP",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/interventions/application/apply-evaluation.ts",
       "backend/src/modules/interventions/domain/policy-definition.ts"
     ]
   },
@@ -5729,6 +5763,17 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
+    "code": "INTERVENTION_EFFECTIVENESS_REQUIRED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Diga se o acompanhamento deu resultado."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-state.ts"
+    ]
+  },
+  {
     "code": "INTERVENTION_EVALUATION_NOT_FOUND",
     "module": "interventions",
     "statuses": [
@@ -5904,9 +5949,11 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       404
     ],
     "messages": [
+      "Acompanhamento não encontrado.",
       "Intervenção não encontrada."
     ],
     "refs": [
+      "backend/src/modules/interventions/application/collaborator-view.ts",
       "backend/src/modules/interventions/application/intervention-service.ts"
     ]
   },
@@ -5975,6 +6022,28 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     "statuses": [],
     "messages": [
       "Registre a leitura da evolução operacional (o indicador depois da intervenção)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-state.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_OUTCOME_REASON_NOTE",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Com o motivo “Outro”, explique no resultado o que aconteceu."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-state.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_OUTCOME_REASON_REQUIRED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Marque pelo menos um motivo do resultado."
     ],
     "refs": [
       "backend/src/modules/interventions/domain/intervention-state.ts"
@@ -6197,6 +6266,32 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     "refs": [
       "backend/src/modules/interventions/application/report-narrative.ts",
       "backend/src/modules/interventions/presentation/intervention-router.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_STEP_NOT_YOURS",
+    "module": "interventions",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Este passo é de quem conduz o acompanhamento."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/collaborator-view.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_STEP_SKIPPED",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Este passo foi dispensado por quem conduz."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/collaborator-view.ts"
     ]
   },
   {
@@ -8297,6 +8392,28 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
+    "code": "POLICY_EVOLUTION_INDICATOR_REQUIRED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Evolução desde o feedback: escolha o indicador (a política não tem um indicador principal)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_EVOLUTION_NEEDS_DAILY",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Evolução desde o feedback compara a medição diária, e o indicador ${code} não tem medição diária habilitada."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
     "code": "POLICY_FLAG_INACTIVE",
     "module": "interventions",
     "statuses": [],
@@ -10374,6 +10491,50 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
+    "code": "TYPE_SCRIPT_DUE_AFTER_DEADLINE",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "O passo \"${step.title}\" vence depois do prazo padrão do tipo (${definition.defaultDueDays} dias)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "TYPE_SCRIPT_NEEDS_CHECKPOINTS",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "O passo \"${step.title}\" é um checkpoint: marque a capacidade Checkpoints (ou Plano de ação)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "TYPE_SCRIPT_NEEDS_TASKS",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "O passo \"${step.title}\" é uma tarefa: marque a capacidade Tarefas (ou Plano de ação)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "TYPE_SCRIPT_STEP_DUPLICATED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "O passo \"${step.title}\" aparece mais de uma vez no roteiro."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
     "code": "UNAUTHENTICATED",
     "module": "auth",
     "statuses": [
@@ -10724,6 +10885,19 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "refs": [
       "backend/src/modules/people/application/workday-classification-service.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_ACCESS_REQUIREMENT_INVALID_MODE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A opção \"Somente quem tem acesso ativo à INIA\" só vale no modo Individual — desligue-a ou troque o Alvo da avaliação para Individual antes de publicar."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/trigger-context.ts"
     ]
   },
   {

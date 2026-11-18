@@ -1,5 +1,5 @@
 import { CONSOLIDATED_STRUCTURE_LABELS } from "@/schemas/admin/consolidated-structure-schema"
-import { POPULATION_FILTER_LABELS } from "@/schemas/admin/population-filter-schema"
+import { ACTIVE_ACCESS_ONLY_LABEL, POPULATION_FILTER_LABELS } from "@/schemas/admin/population-filter-schema"
 import {
   ESCALATION_ROLE_LABELS,
   nodeBranches,
@@ -48,10 +48,12 @@ function describeAudience(workflow: Workflow): string {
   const scope = formatScopeLabel(workflow)
   if (workflow.consolidatedStructure) return `${CONSOLIDATED_STRUCTURE_LABELS[workflow.consolidatedStructure.kind]} como uma única análise — ${scope}`
   // Manual roda para uma pessoa por vez, escolhida no diálogo: "todos os elegíveis" faria parecer que publicar dispara em massa.
-  if (workflow.trigger.kind === "manual") return `Uma execução por clique, para o colaborador escolhido em Executar agora — ${scope}`
+  // "Somente quem tem acesso ativo à INIA": quem não tem login ativo não entra (nem pode ser escolhido em Executar agora).
+  const access = workflow.requireActiveAccess ? `, ${ACTIVE_ACCESS_ONLY_LABEL}` : ""
+  if (workflow.trigger.kind === "manual") return `Uma execução por clique, para o colaborador escolhido em Executar agora${access} — ${scope}`
   const filter = workflow.populationFilter
   const population = filter && filter.kind !== "ALL" ? POPULATION_FILTER_LABELS[filter.kind] : "todos os colaboradores elegíveis"
-  return `Uma execução por colaborador: ${population.toLowerCase()} — ${scope}`
+  return `Uma execução por colaborador: ${population.toLowerCase()}${access} — ${scope}`
 }
 
 function describeSteps(nodes: FlowNode[]): string {

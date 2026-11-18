@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
@@ -193,6 +193,71 @@ const REPORT: IntelligenceReport = {
     },
   ],
 }
+
+describe("Fechamento: deu resultado? e por quê", () => {
+  const EFFECTIVENESS = {
+    required: true,
+    options: [{ value: "YES" as const, label: "Deu resultado" }, { value: "PARTIAL" as const, label: "Deu resultado em parte" }, { value: "NO" as const, label: "Não deu resultado" }],
+    reasons: [{ value: "APPLIED_AGREEMENT", label: "O colaborador aplicou o que foi combinado" }, { value: "NOT_APPLIED", label: "O colaborador não aplicou o que foi combinado" }],
+  }
+
+  it("a conclusão registrada mostra a avaliação de quem conduziu, os motivos e a medição da INIA lado a lado", async () => {
+    service.fetchIntervention.mockResolvedValue({
+      ...DETAIL,
+      status: "COMPLETED",
+      statusLabel: "Concluída",
+      availableActions: [],
+      effectiveness: EFFECTIVENESS,
+      outcome: { worked: "NO", reasons: ["NOT_APPLIED"], measured: { status: "WORSENED", statement: "Desde o início do acompanhamento de 20/10/2026, TMA foi de 450 s para 470 s: piorou 4,4%." }, operational: { result: "UNCHANGED", reading: "TMA 465 s antes e 466 s depois." }, note: "As sessões aconteceram." },
+    })
+    renderWithQuery(<InterventionPanel interventionId="int-1" />)
+    expect(await screen.findByText("Não deu resultado")).toBeInTheDocument()
+    expect(screen.getByText(/O colaborador não aplicou o que foi combinado/)).toBeInTheDocument()
+    expect(screen.getByText(/Medição da INIA: Desde o início do acompanhamento de 20\/10\/2026/)).toBeInTheDocument()
+    expect(screen.getByText(/Evolução operacional: Sem mudança/)).toBeInTheDocument()
+  })
+
+  it("ao concluir, o formulário pergunta se deu resultado e envia a resposta e os motivos", async () => {
+    const running = { ...DETAIL, status: "IN_PROGRESS" as const, statusLabel: "Em execução", availableActions: ["COMPLETE"], effectiveness: EFFECTIVENESS, readiness: [] }
+    service.fetchIntervention.mockResolvedValue(running)
+    service.completeIntervention.mockResolvedValue({ ...running, status: "COMPLETED", availableActions: [] })
+    renderWithQuery(<InterventionPanel interventionId="int-1" />)
+    fireEvent.click(await screen.findByRole("button", { name: "Registrar resultado e concluir" }))
+    const question = within(screen.getByTestId("completion-effectiveness"))
+    expect(question.getByText("O acompanhamento deu resultado? (obrigatório)")).toBeInTheDocument()
+    // Os motivos só aparecem depois da resposta.
+    expect(question.queryByRole("checkbox")).toBeNull()
+  })
+})
+
+describe("Resumo da INIA no caso", () => {
+  it("intervenção aberta pela política: o resumo (fala em 3ª pessoa, o que já foi feito, evolução) fica no topo, no lugar do motivo solto", async () => {
+    const brief = {
+      situation: ["TMA médio de 412 s, acima da meta de 360 s"],
+      alreadyDone: { windowDays: 180, feedbackCount: 1, feedbacks: [{ id: "f1", kind: "INDICATOR" as const, title: "Tempo médio de atendimento", publishedAt: "2026-09-10T12:00:00.000Z", acknowledgedAt: "2026-09-11T12:00:00.000Z", recommendation: "Avise o cliente antes de cada espera." }] },
+      evolution: { indicatorCode: "TMA", indicatorName: "Tempo médio de atendimento", status: "WORSENED" as const, statement: "Desde o feedback de 10/09/2026, Tempo médio de atendimento foi de 400 s para 412 s: piorou 3%." },
+      unknowns: ["Sem diagnóstico sustentado no período"],
+      actions: [{ handle: "A1", typeName: "Observar", sensitive: false, interventionId: "int-1", lead: { toResponsible: "Sugiro “Observar” para Karoline. Você decide se aceita até 28/10/2026.", toOthers: "Sugeri “Observar” para Karoline. Vanessa decide se aceita até 28/10/2026." } }],
+    }
+    service.fetchIntervention.mockResolvedValue({ ...DETAIL, report: { id: "rep-1", evaluationId: "ev-1", createdAt: "2026-10-13T12:00:00.000Z", structured: { ...REPORT, brief }, narrative: { status: "NONE", attempts: 0, current: null, lastError: null, generatedAt: null } } })
+    renderWithQuery(<InterventionPanel interventionId="int-1" />)
+    const panel = within(await screen.findByTestId("intervention-panel-brief"))
+    expect(panel.getByText("Resumo da INIA")).toBeInTheDocument()
+    expect(panel.getByText("Sugeri “Observar” para Karoline. Vanessa decide se aceita até 28/10/2026.")).toBeInTheDocument()
+    expect(panel.getByText("Avise o cliente antes de cada espera.")).toBeInTheDocument()
+    expect(panel.getByText(/Ciência em/)).toBeInTheDocument()
+    expect(panel.getByText(/piorou 3%/)).toBeInTheDocument()
+    expect(panel.getByText("Acompanhar duas chamadas")).toBeInTheDocument()
+    expect(screen.queryByText("Por que foi aberta")).toBeNull()
+  })
+
+  it("sem resumo no relatório (intervenção manual ou anterior), o motivo continua aparecendo", async () => {
+    service.fetchIntervention.mockResolvedValue(DETAIL)
+    renderWithQuery(<InterventionPanel interventionId="int-1" />)
+    expect(await screen.findByText("Por que foi aberta")).toBeInTheDocument()
+    expect(screen.queryByTestId("intervention-panel-brief")).toBeNull()
+  })
+})
 
 describe("Relatório de inteligência", () => {
   it("separa fatos de incertezas e mostra cada ação com a própria justificativa", () => {

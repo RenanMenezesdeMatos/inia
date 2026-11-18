@@ -26,6 +26,8 @@ function ItemRow({ detail, item }: { detail: InterventionDetail; item: Intervent
   const Icon = item.status === "DONE" ? CheckCircle2 : item.status === "SKIPPED" ? CircleSlash : Circle
   const reading = typeof item.result?.reading === "string" ? item.result.reading : null
   const note = typeof item.result?.note === "string" ? item.result.note : null
+  // A medição da própria INIA no momento do checkpoint (antes × depois do início) — ao lado da leitura de quem conduz.
+  const measured = (item.result?.measured as { statement?: unknown } | undefined)?.statement
   return (
     <li className="flex items-start justify-between gap-3 py-2">
       <div className="flex min-w-0 gap-2">
@@ -41,6 +43,7 @@ function ItemRow({ detail, item }: { detail: InterventionDetail; item: Intervent
             {item.overdue ? <Badge variant="outline" className="ml-1 border-amber-500/40 text-amber-700">vencido</Badge> : null}
           </p>
           {reading ? <p className="text-xs">Leitura: {reading}</p> : null}
+          {typeof measured === "string" ? <p className="text-xs text-muted-foreground">Medição da INIA: {measured}</p> : null}
           {note ? <p className="text-xs text-muted-foreground">Nota: {note}</p> : null}
           {item.completedAt ? <p className="text-xs text-muted-foreground">Registrado em {formatDateTime(item.completedAt)}{item.completedByName ? ` por ${item.completedByName}` : ""}</p> : null}
         </div>
@@ -138,7 +141,10 @@ export function CompleteIntervention({ detail }: { detail: InterventionDetail })
   const [learning, setLearning] = useState<"ACHIEVED" | "PARTIAL" | "NOT_ACHIEVED" | "">("")
   const [operational, setOperational] = useState<"IMPROVED" | "UNCHANGED" | "WORSENED" | "NOT_MEASURED" | "">("")
   const [reading, setReading] = useState("")
-  const complete = useInterventionCommand(() => completeIntervention(detail.id, { expectedRevision: detail.revision, note: note.trim(), learning: learning ? { result: learning, note: "" } : null, operational: operational ? { result: operational, reading: reading.trim() } : null }), "Intervenção concluída.")
+  const [worked, setWorked] = useState<"YES" | "PARTIAL" | "NO" | "">("")
+  const [reasons, setReasons] = useState<string[]>([])
+  const effectiveness = detail.effectiveness
+  const complete = useInterventionCommand(() => completeIntervention(detail.id, { expectedRevision: detail.revision, note: note.trim(), worked: worked || null, reasons, learning: learning ? { result: learning, note: "" } : null, operational: operational ? { result: operational, reading: reading.trim() } : null }), "Intervenção concluída.")
   if (!detail.availableActions.includes("COMPLETE")) return null
   const issues = (complete.error as { details?: { issues?: { message: string }[] } } | null)?.details?.issues ?? []
   if (!open) return <Button size="sm" onClick={() => setOpen(true)}>Registrar resultado e concluir</Button>
@@ -165,6 +171,26 @@ export function CompleteIntervention({ detail }: { detail: InterventionDetail })
         </Select>
         {operational && operational !== "NOT_MEASURED" ? <Textarea value={reading} onChange={(event) => setReading(event.target.value)} rows={2} placeholder="Leitura do indicador: período, valor antes e depois" aria-label="Leitura do indicador" /> : null}
       </div>
+      {effectiveness ? (
+        <fieldset className="space-y-2" data-testid="completion-effectiveness">
+          <legend className="text-sm font-medium">O acompanhamento deu resultado?{effectiveness.required ? " (obrigatório)" : ""}</legend>
+          <Select value={worked || undefined} onValueChange={(value) => setWorked(value as typeof worked)}>
+            <SelectTrigger className="w-full" aria-label="O acompanhamento deu resultado?"><SelectValue placeholder="Escolha" /></SelectTrigger>
+            <SelectContent>{effectiveness.options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+          </Select>
+          {worked ? (
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Por quê? Marque pelo menos um motivo.</p>
+              {effectiveness.reasons.map((reason) => (
+                <label key={reason.value} className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={reasons.includes(reason.value)} onChange={() => setReasons((current) => (current.includes(reason.value) ? current.filter((value) => value !== reason.value) : [...current, reason.value]))} />
+                  {reason.label}
+                </label>
+              ))}
+            </div>
+          ) : null}
+        </fieldset>
+      ) : null}
       <div className="space-y-1">
         <Label>O que aconteceu{detail.completion.requireOutcomeNote ? " (obrigatório)" : ""}</Label>
         <Textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} aria-label="Resultado" />
@@ -179,7 +205,8 @@ export function CompleteIntervention({ detail }: { detail: InterventionDetail })
 }
 
 export function InterventionOutcome({ detail }: { detail: InterventionDetail }) {
-  const outcome = detail.outcome as { activities?: { tasksDone: number; tasksTotal: number; activitiesDone: number; activitiesTotal: number }; learning?: { result: string } | null; operational?: { result: string; reading: string } | null; note?: string; continuity?: { label: string; justification: string }; cancellation?: { reason: string } } | null
+  const effectiveness = detail.effectiveness
+  const outcome = detail.outcome as { worked?: string | null; reasons?: string[]; measured?: { statement?: string } | null; activities?: { tasksDone: number; tasksTotal: number; activitiesDone: number; activitiesTotal: number }; learning?: { result: string } | null; operational?: { result: string; reading: string } | null; note?: string; continuity?: { label: string; justification: string }; cancellation?: { reason: string } } | null
   if (!outcome) return null
   return (
     <div className="space-y-1 rounded-md bg-muted/50 p-3 text-sm">
@@ -191,6 +218,13 @@ export function InterventionOutcome({ detail }: { detail: InterventionDetail }) 
         </>
       ) : null}
       {outcome.cancellation ? <p className="text-muted-foreground">Cancelada: {outcome.cancellation.reason}</p> : null}
+      {outcome.worked ? (
+        <p className="font-medium">
+          {effectiveness?.options.find((option) => option.value === outcome.worked)?.label ?? outcome.worked}
+          {outcome.reasons?.length ? <span className="font-normal text-muted-foreground"> — {outcome.reasons.map((reason) => effectiveness?.reasons.find((option) => option.value === reason)?.label ?? reason).join("; ")}</span> : null}
+        </p>
+      ) : null}
+      {outcome.measured?.statement ? <p>Medição da INIA: {outcome.measured.statement}</p> : null}
       {outcome.activities ? <p>Atividades: {outcome.activities.tasksDone}/{outcome.activities.tasksTotal} tarefas · {outcome.activities.activitiesDone}/{outcome.activities.activitiesTotal} atividades</p> : null}
       {outcome.learning ? <p>Aprendizagem: {LEARNING_RESULT_LABELS[outcome.learning.result] ?? outcome.learning.result}</p> : null}
       {outcome.operational ? <p>Evolução operacional: {OPERATIONAL_RESULT_LABELS[outcome.operational.result] ?? outcome.operational.result}{outcome.operational.reading ? ` — ${outcome.operational.reading}` : ""}</p> : null}

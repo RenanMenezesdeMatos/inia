@@ -4,6 +4,8 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { CONTINUITY_DECISIONS } from "../domain/intervention-state.js"
 import { loadAccess, canSeeInterventionsOf } from "../application/intervention-access.js"
+import { listMyFollowUps, markMyStep } from "../application/collaborator-view.js"
+import { loadTeamOverview } from "../application/team-overview.js"
 import * as interventions from "../application/intervention-service.js"
 import { generateReportNarrative, type NarrativeWriter } from "../application/report-narrative.js"
 import { applyAiDraft, draftInterventionWithAi } from "../application/ai-draft.js"
@@ -21,6 +23,14 @@ export function createInterventionRouter(db: Database, deps: { writer?: Narrativ
   const id = (request: Request) => String(request.params.interventionId)
 
   router.get("/pending", async (request, response) => response.json({ data: await interventions.listPendingInterventions(db, await viewerOf(request)) }))
+  // Visão da equipe: acompanhamentos em andamento da estrutura de quem vê + o resumão do que foi concluído (mesmo alcance de abrir uma intervenção).
+  // O lado do colaborador: os acompanhamentos em execução de formato visível a ele e a marcação dos PRÓPRIOS passos.
+  router.get("/mine", async (request, response) => response.json({ data: await listMyFollowUps(db, { organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId }) }))
+  router.patch("/mine/:interventionId/steps/:itemId", async (request, response) => {
+    const body = z.object({ done: z.boolean(), note: z.string().trim().max(2000).optional() }).strict().parse(request.body ?? {})
+    response.json({ data: await markMyStep(db, { organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId }, String(request.params.interventionId), String(request.params.itemId), body) })
+  })
+  router.get("/team", async (request, response) => response.json({ data: await loadTeamOverview(db, await viewerOf(request)) }))
   // Catálogo de competências para o treinamento (configuração da organização — nenhum dado de colaborador).
   router.get("/competencies", async (request, response) => response.json({ data: await interventions.listTrainingCompetencies(db, sessionUser(request).organizationId) }))
   router.get("/cases/:caseId", async (request, response) => response.json({ data: await interventions.listCaseInterventions(db, await viewerOf(request), String(request.params.caseId)) }))

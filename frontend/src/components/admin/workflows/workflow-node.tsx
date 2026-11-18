@@ -19,7 +19,7 @@ import { useWorkflowEditorContext } from "./workflow-editor-context"
  * (rodada de hardening dos Workflows-modelo, 2026-09-16: no Output a área de conexão ficava
  * parcialmente atrás do card e menor que nos demais nós).
  */
-const HANDLE_BASE_CLASS = "!h-2.5 !w-2.5 !border-2 !border-background z-10 after:absolute after:-inset-2.5 after:rounded-full after:content-['']"
+const HANDLE_BASE_CLASS = "!h-3 !w-3 !border-2 !border-card z-10 after:absolute after:-inset-2.5 after:rounded-full after:content-['']"
 const TARGET_HANDLE_CLASS = cn(HANDLE_BASE_CLASS, "!bg-muted-foreground")
 const SOURCE_HANDLE_CLASS = cn(HANDLE_BASE_CLASS, "!bg-primary")
 /** Handles laterais: entrada no terço superior, saída no terço inferior — mesma distância visual
@@ -45,8 +45,11 @@ export function WorkflowNode({ data, selected }: NodeProps<Node<RFNodeData>>) {
     <div
       title={issue}
       className={cn(
-        "w-56 rounded-lg border bg-card p-3 shadow-sm transition-colors",
-        issue ? "border-destructive ring-2 ring-destructive/30" : selected ? cn("ring-2", colors.ring) : "border-border",
+        // Contraste no canvas tingido (cobrança de 18/11/2026: "difícil de ver o stage, tudo cinza"): card branco com
+        // contorno mais firme, sombra e faixa da cor do tipo no topo; título em seminegrito na cor do texto.
+        "w-60 rounded-xl border border-t-4 bg-card p-3 shadow-md transition-[box-shadow,border-color]",
+        issue ? "border-destructive ring-2 ring-destructive/30" : selected ? cn("ring-4", colors.ring) : "border-foreground/20 hover:shadow-lg",
+        colors.accent,
       )}
     >
       {hasTarget ? (
@@ -58,12 +61,12 @@ export function WorkflowNode({ data, selected }: NodeProps<Node<RFNodeData>>) {
       ) : null}
 
       <div className="flex items-center gap-2">
-        <div className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded", colors.iconBg)}>
-          <Icon className={cn("h-3.5 w-3.5", colors.icon)} aria-hidden />
+        <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", colors.iconBg)}>
+          <Icon className={cn("h-4 w-4", colors.icon)} aria-hidden />
         </div>
         {/* O nome dado à etapa em destaque e o tipo como apoio. O id técnico nunca aparece: não ajuda a decidir nada. */}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium" title={nodeDisplayName(node)}>
+          <p className="truncate text-sm font-semibold text-foreground" title={nodeDisplayName(node)}>
             {nodeDisplayName(node)}
           </p>
           <p className="truncate text-xs text-muted-foreground">{nodeKindLabel(node)}</p>
@@ -82,7 +85,7 @@ export function WorkflowNode({ data, selected }: NodeProps<Node<RFNodeData>>) {
         ) : null}
         {issue ? <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" aria-label="Esta etapa tem um problema" role="img" /> : null}
       </div>
-      <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">{subtitle}</p>
+      <p className="mt-2 line-clamp-2 text-xs text-foreground/75">{subtitle}</p>
       {/* O card nunca cresce com a mensagem inteira: contagem + uma linha (tooltip/painel têm o
         * resto) — informação crítica visível, layout previsível. */}
       {nodeIssue ? (
@@ -93,7 +96,7 @@ export function WorkflowNode({ data, selected }: NodeProps<Node<RFNodeData>>) {
       ) : null}
 
       {branches.length > 0 ? (
-        <div className={cn("mt-2 flex border-t pt-2 text-xs text-muted-foreground", branches.length > 1 ? "justify-between" : "justify-end")}>
+        <div className={cn("mt-2 flex border-t pt-2 text-xs font-medium text-foreground/70", branches.length > 1 ? "justify-between" : "justify-end")}>
           {branches.map((branch) => (
             <span key={branch.id}>{branch.label}</span>
           ))}

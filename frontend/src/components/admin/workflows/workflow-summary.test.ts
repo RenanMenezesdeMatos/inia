@@ -84,6 +84,12 @@ describe("summarizeWorkflow", () => {
     expect(scheduled.recipients).toEqual([])
   })
 
+  it('"Somente quem tem acesso ativo à INIA" aparece em "para quem", por Flag e no Manual', () => {
+    expect(summarizeWorkflow({ ...workflow, requireActiveAccess: true }, graph).who).toBe("Uma execução por colaborador: todos os colaboradores elegíveis, somente quem tem acesso ativo à INIA — " + summary.who.split(" — ")[1])
+    expect(summarizeWorkflow({ ...workflow, requireActiveAccess: true, trigger: { kind: "manual", context: "INTERACTION" } }, graph).who).toContain("Executar agora, somente quem tem acesso ativo à INIA")
+    expect(summary.who).not.toContain("acesso ativo")
+  })
+
   it("Manual diz que roda para o colaborador escolhido, nunca para todos os elegíveis", () => {
     const manual = summarizeWorkflow({ ...workflow, trigger: { kind: "manual", context: "INTERACTION" } }, graph)
     expect(manual.starts).toContain("Executar agora")

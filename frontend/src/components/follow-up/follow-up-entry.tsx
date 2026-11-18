@@ -8,6 +8,7 @@ import { FeedbackCard, FeedbackEntryHeader, FeedbackEntryWhen, type FeedbackEntr
 import { FeedbackNarrativeView } from "@/components/feedbacks/feedback-narrative-view"
 import { PrvSupervisorDiagnosis } from "@/components/feedbacks/prv-supervisor-diagnosis"
 import { SupportMaterialsSection } from "@/components/feedbacks/support-materials-section"
+import { InterventionBriefView } from "@/components/interventions/intervention-brief-view"
 import { IniaFeedItem } from "@/components/operator/inia-feed"
 import { ReportDeliveryView } from "@/components/reports/report-delivery-view"
 import { RichContent } from "@/components/rich-content/rich-content"
@@ -107,10 +108,13 @@ export function FollowUpEntry({ item, showRecipient, employeeHref, highlighted =
                 {/* Indicator Diagnosis V1 — o diagnóstico técnico do fechamento, só para a liderança (o backend não o envia ao próprio colaborador). */}
                 {item.feedback?.supervisorView ? <PrvSupervisorDiagnosis view={item.feedback.supervisorView} /> : null}
               </>
+            ) : item.intervention ? (
+              // Intervenção aberta pela política: o resumo da INIA aparece direto (situação, o que já foi feito, evolução medida).
+              <InterventionBriefView brief={item.intervention} />
             ) : (
               <ExpandableContent item={item} open={open} onOpenChange={setOpen} />
             )}
-            {/* Intervenção: uma atualização curta com o caminho para o caso — tarefas e decisões ficam lá (e em Pendências), nunca aqui. */}
+            {/* Intervenção: o resumo fica aqui; tarefas e decisões ficam no caso (e em Pendências), nunca aqui. */}
             {item.kind === "ALERT" && item.category === "INTERVENTION" && item.caseId ? (
               <Link href={`/supervisor/cases/${encodeURIComponent(item.caseId)}`} className="inline-flex text-xs font-medium text-primary hover:underline">
                 Abrir no caso de supervisão

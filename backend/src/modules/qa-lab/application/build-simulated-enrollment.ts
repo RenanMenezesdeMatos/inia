@@ -25,6 +25,8 @@ export type QaWorkflowRow = {
   consolidated_structure: unknown
   population_filter: unknown
   operating_universe?: string | null
+  /** "Somente quem tem acesso ativo à INIA" — mesma regra da produção: a simulação só aceita quem o Workflow matricularia. */
+  require_active_access?: boolean
   active_version_id: string | null
   draft_graph: unknown
   published_graph: unknown
@@ -32,7 +34,7 @@ export type QaWorkflowRow = {
   published_configuration?: PublishedConfiguration | null
 }
 
-type PublishedConfiguration = Pick<QaWorkflowRow, "scope_type" | "team_id" | "subteam_id" | "trigger_config" | "consolidated_structure" | "population_filter">
+type PublishedConfiguration = Pick<QaWorkflowRow, "scope_type" | "team_id" | "subteam_id" | "trigger_config" | "consolidated_structure" | "population_filter" | "require_active_access">
 
 /**
  * Carrega o Workflow com a configuração do RASCUNHO nos campos de cima (Gatilho, Abrangência, Modo de
@@ -43,10 +45,11 @@ type PublishedConfiguration = Pick<QaWorkflowRow, "scope_type" | "team_id" | "su
 export async function loadWorkflowForSimulation(db: Database, organizationId: string, workflowId: string): Promise<QaWorkflowRow | null> {
   const result = await db.query<QaWorkflowRow>(
     `select w.id, w.name, w.draft_scope_type scope_type, w.draft_team_id team_id, w.draft_subteam_id subteam_id, w.draft_trigger_config trigger_config,
-            w.draft_consolidated_structure consolidated_structure, w.draft_population_filter population_filter, w.active_version_id, w.draft_graph,
+            w.draft_consolidated_structure consolidated_structure, w.draft_population_filter population_filter, w.draft_require_active_access require_active_access, w.active_version_id, w.draft_graph,
             (select graph from workflow_versions where id = w.active_version_id) published_graph,
             jsonb_build_object('scope_type', w.scope_type, 'team_id', w.team_id, 'subteam_id', w.subteam_id, 'trigger_config', w.trigger_config,
-                               'consolidated_structure', w.consolidated_structure, 'population_filter', w.population_filter) published_configuration
+                               'consolidated_structure', w.consolidated_structure, 'population_filter', w.population_filter,
+                               'require_active_access', w.require_active_access) published_configuration
      from workflows w where w.id = $1 and w.organization_id = $2`,
     [workflowId, organizationId],
   )
@@ -93,6 +96,7 @@ export function captureWorkflowSnapshot(row: QaWorkflowRow, graph: FlowGraph, st
     subteamId: row.subteam_id,
     consolidatedStructure: row.consolidated_structure ?? null,
     populationFilter: row.population_filter ?? null,
+    requireActiveAccess: row.require_active_access === true,
     capturedAt: capturedAt.toISOString(),
   }
 }
@@ -109,6 +113,7 @@ export function rowFromSnapshot(snapshot: WorkflowSnapshot): QaWorkflowRow {
     trigger_config: snapshot.triggerConfig,
     consolidated_structure: snapshot.consolidatedStructure,
     population_filter: snapshot.populationFilter,
+    require_active_access: snapshot.requireActiveAccess === true,
     active_version_id: snapshot.versionId,
     draft_graph: snapshot.workflowState === "DRAFT" ? snapshot.graph : null,
     published_graph: snapshot.workflowState === "PUBLISHED" ? snapshot.graph : null,

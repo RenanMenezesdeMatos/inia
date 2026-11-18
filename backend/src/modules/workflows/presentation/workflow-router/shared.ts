@@ -42,7 +42,7 @@ export const WORKFLOW_LIST_SELECT = `
     w.id, w.name, w.description, w.scope_type "scopeType", w.team_id "teamId", t.name "teamName",
     w.subteam_id "subteamId", st.name "subteamName", w.active, w.created_at "createdAt", w.operating_universe "operatingUniverse",
     (w.active_version_id is not null) "published",
-    w.consolidated_structure "consolidatedStructure", w.population_filter "populationFilter",
+    w.consolidated_structure "consolidatedStructure", w.population_filter "populationFilter", w.require_active_access "requireActiveAccess",
     ${triggerJsonSql("w.trigger_config", "cf", "idef")} "trigger",
     (select count(*) from workflow_enrollments we where we.workflow_id = w.id and we.status in ('active', 'waiting'))::int "activeEnrollments",
     (select count(*) from workflow_enrollments we where we.workflow_id = w.id and we.status = 'blocked')::int "blockedEnrollments",
@@ -53,13 +53,13 @@ export const WORKFLOW_LIST_SELECT = `
       'scopeType', w.draft_scope_type, 'teamId', w.draft_team_id, 'teamName', dt.name,
       'subteamId', w.draft_subteam_id, 'subteamName', dst.name,
       'consolidatedStructure', w.draft_consolidated_structure, 'populationFilter', w.draft_population_filter,
-      'operatingUniverse', w.draft_operating_universe
+      'operatingUniverse', w.draft_operating_universe, 'requireActiveAccess', w.draft_require_active_access
     ) "draftConfiguration",
     (select coalesce(jsonb_agg(c.change order by c.ord), '[]'::jsonb)
        from (values
          (1, 'TRIGGER', w.draft_trigger_config is distinct from w.trigger_config),
          (2, 'SCOPE', (w.draft_scope_type, w.draft_team_id, w.draft_subteam_id, w.draft_operating_universe) is distinct from (w.scope_type, w.team_id, w.subteam_id, w.operating_universe)),
-         (3, 'ANALYSIS', (w.draft_consolidated_structure, w.draft_population_filter) is distinct from (w.consolidated_structure, w.population_filter))
+         (3, 'ANALYSIS', (w.draft_consolidated_structure, w.draft_population_filter, w.draft_require_active_access) is distinct from (w.consolidated_structure, w.population_filter, w.require_active_access))
        ) as c(ord, change, differs)
       where c.differs and w.active_version_id is not null) "configurationChanges"
   from workflows w

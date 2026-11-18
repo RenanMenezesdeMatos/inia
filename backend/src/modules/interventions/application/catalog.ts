@@ -43,14 +43,14 @@ export async function loadValidationCatalog(db: Db, organizationId: string): Pro
     loadPublishedTypes(db, organizationId),
     db.query<{ key: string }>(`select key from intervention_types where organization_id = $1`, [organizationId]),
     db.query<{ key: string }>(`select key from competencies where organization_id = $1`, [organizationId]),
-    db.query<{ code: string; active: boolean }>(`select code, active from indicator_definitions where organization_id = $1`, [organizationId]),
+    db.query<{ code: string; active: boolean; daily_supported: boolean | null }>(`select code, active, daily_supported from indicator_definitions where organization_id = $1`, [organizationId]),
     db.query<{ channel: string; flag_name: string; value_type: "BOOLEAN" | "NUMERIC"; active: boolean }>(`select channel, flag_name, value_type, active from channel_flags where organization_id = $1`, [organizationId]),
   ])
   return {
     types: new Map([...types].map(([key, type]) => [key, { active: type.active, definition: type.definition }])),
     allTypeKeys: new Set(allTypes.rows.map((row) => row.key)),
     competencyKeys: new Set(competencies.rows.map((row) => row.key)),
-    indicators: new Map(indicators.rows.map((row) => [row.code, { active: row.active }])),
+    indicators: new Map(indicators.rows.map((row) => [row.code, { active: row.active, dailySupported: row.daily_supported === true }])),
     flags: new Map(flags.rows.map((row) => [flagCatalogKey(row.channel, row.flag_name), { valueType: row.value_type, active: row.active }])),
   }
 }

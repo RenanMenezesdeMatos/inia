@@ -28,6 +28,7 @@ vi.mock("@xyflow/react", () => ({
   ReactFlow: ({ children }: { children?: ReactNode }) => <div data-testid="specialists-map">{children}</div>,
   ReactFlowProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
   Background: () => null,
+  BackgroundVariant: { Dots: "dots" },
   Controls: () => null,
   Handle: () => null,
   Position: { Left: "left", Right: "right" },

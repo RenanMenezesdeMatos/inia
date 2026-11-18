@@ -36,6 +36,8 @@ export type ManualRunTarget = {
   subteamId: string | null
   populationFilter: unknown
   operatingUniverse?: string | null
+  /** "Somente quem tem acesso ativo à INIA" (publicado): só quem tem conta de acesso ativa pode ser escolhido. */
+  requireActiveAccess?: boolean
   consolidated: boolean
   trigger: ManualTrigger | null
   indicatorName: string | null
@@ -93,8 +95,9 @@ export async function loadManualRunTarget(db: Database, organizationId: string, 
     indicator_name: string | null
     indicator_unit: string | null
     operating_universe: string | null
+    require_active_access: boolean | null
   }>(
-    `select w.id, w.name, w.active, w.active_version_id, w.scope_type, w.team_id, w.subteam_id, w.population_filter, w.consolidated_structure, w.operating_universe,
+    `select w.id, w.name, w.active, w.active_version_id, w.scope_type, w.team_id, w.subteam_id, w.population_filter, w.consolidated_structure, w.operating_universe, w.require_active_access,
             w.trigger_config, idef.name indicator_name, idef.unit indicator_unit
        from workflows w
        left join indicator_definitions idef on idef.organization_id = w.organization_id and idef.code = w.trigger_config ->> 'indicatorCode'
@@ -115,6 +118,7 @@ export async function loadManualRunTarget(db: Database, organizationId: string, 
     subteamId: row.subteam_id,
     populationFilter: row.population_filter,
     operatingUniverse: row.operating_universe ?? null,
+    requireActiveAccess: row.require_active_access === true,
     consolidated: row.consolidated_structure !== null,
     trigger: parsed.success && parsed.data.kind === "manual" ? parsed.data : null,
     indicatorName: row.indicator_name,
@@ -159,7 +163,7 @@ export async function loadUnavailableReferences(db: Database, organizationId: st
 }
 
 function populationOf(target: ManualRunTarget): WorkflowPopulation {
-  return { scopeType: target.scopeType, teamId: target.teamId, subteamId: target.subteamId, populationFilter: target.populationFilter, operatingUniverse: target.operatingUniverse ?? null }
+  return { scopeType: target.scopeType, teamId: target.teamId, subteamId: target.subteamId, populationFilter: target.populationFilter, operatingUniverse: target.operatingUniverse ?? null, requireActiveAccess: target.requireActiveAccess === true }
 }
 
 export type ManualRunCollaborator = { id: string; name: string; matricula: string | null; jobTitle: string | null; teamName: string | null; subteamName: string | null }

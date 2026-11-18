@@ -260,7 +260,7 @@ try {
   // ── Workflows (rascunho do editor + gatilho + modo de avaliação; referências externas ao grafo pelo item/nome/matrícula) ──
   const workflows = await q<{
     id: string; name: string; description: string | null; scope_type: string; team_id: string | null; subteam_id: string | null; active: boolean; trigger_config: Record<string, unknown> | null
-    draft_graph: { nodes?: { id: string }[]; edges?: { id: string }[] }; active_version_id: string | null; population_filter: unknown; consolidated_structure: unknown
+    draft_graph: { nodes?: { id: string }[]; edges?: { id: string }[] }; active_version_id: string | null; population_filter: unknown; consolidated_structure: unknown; require_active_access: boolean | null
   }>(`select * from workflows where organization_id = $1 order by created_at`)
   const itemPorId = new Map(itens.map((item) => [item.idOrigem, item]))
   for (const row of workflows) {
@@ -279,7 +279,7 @@ try {
       opcionais: [],
       sugestao: sugerirInclusao(row.name, { alcances: [alcance], motivoFixo: referencias.find((ref) => ref.tipo === "NAO_TRANSFERIVEL") ? "usa algo que o pacote não leva" : null }),
       dados: {
-        name: row.name, description: row.description, alcance, gatilho: row.trigger_config ?? {}, flagGatilho, grafo: row.draft_graph, populationFilter: row.population_filter,
+        name: row.name, description: row.description, alcance, gatilho: row.trigger_config ?? {}, flagGatilho, grafo: row.draft_graph, populationFilter: row.population_filter, requireActiveAccess: row.require_active_access === true,
         consolidatedStructure: row.consolidated_structure, referencias, active: row.active, publicadoNaOrigem: row.active_version_id !== null,
       },
     })

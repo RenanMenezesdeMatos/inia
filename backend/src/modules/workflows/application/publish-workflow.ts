@@ -61,8 +61,8 @@ export async function publishWorkflow(db: Database, input: PublishWorkflowInput)
     assertGoLiveConfirmed(impact, input.confirmation)
 
     const version = await tx.query<{ id: string }>(
-      `insert into workflow_versions(workflow_id, graph, created_by, trigger_config, scope_type, team_id, subteam_id, consolidated_structure, population_filter, operating_universe)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
+      `insert into workflow_versions(workflow_id, graph, created_by, trigger_config, scope_type, team_id, subteam_id, consolidated_structure, population_filter, operating_universe, require_active_access)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning id`,
       [
         input.workflowId,
         JSON.stringify(graph),
@@ -74,6 +74,7 @@ export async function publishWorkflow(db: Database, input: PublishWorkflowInput)
         draft.consolidatedStructure ? JSON.stringify(draft.consolidatedStructure) : null,
         draft.populationFilter ? JSON.stringify(draft.populationFilter) : null,
         draft.operatingUniverse,
+        draft.requireActiveAccess === true,
       ],
     )
     const versionId = version.rows[0]!.id
@@ -88,6 +89,7 @@ export async function publishWorkflow(db: Database, input: PublishWorkflowInput)
          trigger_config = draft_trigger_config, scope_type = draft_scope_type, team_id = draft_team_id, subteam_id = draft_subteam_id,
          consolidated_structure = draft_consolidated_structure, population_filter = draft_population_filter,
          operating_universe = draft_operating_universe,
+         require_active_access = draft_require_active_access,
          updated_at = now()
        where id = $2 and organization_id = $3`,
       [versionId, input.workflowId, input.organizationId],
@@ -107,6 +109,8 @@ export async function publishWorkflow(db: Database, input: PublishWorkflowInput)
             impact: impact.schedule
               ? { population: impact.schedule.population, immediateEnrollments: impact.schedule.immediate.enrollments, firstFireAt: impact.schedule.firstFireAt }
               : null,
+            // "Somente quem tem acesso ativo à INIA": quantos entravam no momento da publicação (ligada ou sendo desligada).
+            access: impact.access,
             confirmedImpact: impact.requiresConfirmation ? { reasons: impact.reasons, fingerprint: impact.fingerprint } : null,
           }),
         ],
@@ -127,6 +131,7 @@ export function draftConfigurationOf(row: WorkflowConfigurationRow): WorkflowCon
     consolidatedStructure: row.consolidatedStructure,
     populationFilter: row.populationFilter,
     operatingUniverse: row.operatingUniverse,
+    requireActiveAccess: row.requireActiveAccess === true,
   }
 }
 

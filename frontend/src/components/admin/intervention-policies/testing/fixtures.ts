@@ -74,7 +74,7 @@ export const OBSERVE_TYPE: InterventionTypeView = {
     status: "PUBLISHED",
     updatedAt: NOW,
     publishedAt: NOW,
-    definition: { schemaVersion: "INTERVENTION_TYPE_V1", name: "Observação", description: "", capabilities: ["OBSERVATION"], responsibleRole: "SUPERVISOR", defaultDueDays: 15, approval: { required: false }, evidence: { minimumItems: 1, acceptedKinds: ["EVALUATION"] }, form: [], completion: { requireAllTasksDone: false, requireLearningAssessment: false, requireOperationalReading: false, requireOutcomeNote: true }, incompatibleWith: [], aiDraft: false },
+    definition: { schemaVersion: "INTERVENTION_TYPE_V1", name: "Observação", description: "", capabilities: ["OBSERVATION"], responsibleRole: "SUPERVISOR", defaultDueDays: 15, approval: { required: false }, evidence: { minimumItems: 1, acceptedKinds: ["EVALUATION"] }, form: [], completion: { requireAllTasksDone: false, requireLearningAssessment: false, requireOperationalReading: false, requireOutcomeNote: true }, incompatibleWith: [], aiDraft: false, script: [], collaboratorVisible: false },
   },
   draft: null,
   versions: [],

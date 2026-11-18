@@ -31,6 +31,10 @@ export const INDICATOR_MEASUREMENTS_CONTRACT: DataContract = {
   naturalKey: ["externalEmployeeId", "indicatorCode", "periodStart", "periodEnd", "source"],
   atLeastOne: [["date", "periodStart"]],
   dependencies: ["EMPLOYEES"],
+  foreignKeys: [
+    { field: "externalEmployeeId", references: [{ contract: "EMPLOYEES", field: "externalEmployeeId" }] },
+    { field: "indicatorCode", references: [{ catalog: "Catálogo de indicadores da INIA" }] },
+  ],
   writeSemantics: "IDEMPOTENT_EVENT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: "periodEnd",
@@ -48,6 +52,7 @@ export const INDICATOR_MEASUREMENTS_CONTRACT: DataContract = {
   examples: [
     { externalEmployeeId: "OP-10234", indicatorCode: "TMA", date: "2026-09-15", periodStart: null, periodEnd: null, granularity: "DAILY", value: 475, numerator: 9500, denominator: 20, sampleCount: 20 },
     { externalEmployeeId: "OP-10234", indicatorCode: "FCR", date: "2026-09-15", periodStart: null, periodEnd: null, granularity: "DAILY", value: 85, numerator: 17, denominator: 20, sampleCount: null },
+    { externalEmployeeId: "OP-20871", indicatorCode: "TMA", date: null, periodStart: "2026-09-01T00:00:00-03:00", periodEnd: "2026-10-01T00:00:00-03:00", granularity: "MONTHLY", value: 492, numerator: 398520, denominator: 810, sampleCount: 810 },
   ],
 }
 
@@ -60,6 +65,11 @@ const OFFICIAL_ENTITY = {
   targetEntity: "employee_indicator_performance",
   naturalKey: ["externalEmployeeId", "indicatorCode", "referencePeriod"],
   dependencies: ["EMPLOYEES"],
+  foreignKeys: [
+    { field: "externalEmployeeId", references: [{ contract: "EMPLOYEES", field: "externalEmployeeId" }] },
+    { field: "indicatorCode", references: [{ catalog: "Catálogo de indicadores da INIA" }] },
+    { field: "subgroupExternalCode", references: [{ contract: "SUBGROUPS", field: "externalCode" }] },
+  ],
   writeSemantics: "UPSERT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: "referencePeriod",
@@ -114,6 +124,7 @@ export const OFFICIAL_INDICATOR_PERFORMANCE_CONTRACT: DataContract = {
   examples: [
     { externalEmployeeId: "OP-10234", indicatorCode: "TMA", referencePeriod: "2026-08", value: 468, numerator: 380016, denominator: 812, targetValue: 480, achievementPercent: 102.5, weightPercent: 25, quartile: "Q2", subgroupExternalCode: null },
     { externalEmployeeId: "OP-10234", indicatorCode: "FCR", referencePeriod: "2026-08", value: 85, numerator: 690, denominator: 812, targetValue: 80, achievementPercent: 106.3, weightPercent: 25, quartile: "Q1", subgroupExternalCode: null },
+    { externalEmployeeId: "OP-20871", indicatorCode: "TMA", referencePeriod: "2026-08", value: 512, numerator: 404480, denominator: 790, targetValue: 480, achievementPercent: 93.8, weightPercent: 25, quartile: "Q3", subgroupExternalCode: "B2C_RETENCAO/PADRAO" },
   ],
 }
 
@@ -133,8 +144,16 @@ export const PRV_PERFORMANCE_CONTRACT: DataContract = {
   ],
   naturalKey: ["externalEmployeeId", "referencePeriod"],
   dependencies: ["EMPLOYEES"],
+  foreignKeys: [
+    { field: "externalEmployeeId", references: [{ contract: "EMPLOYEES", field: "externalEmployeeId" }] },
+    { field: "subgroupExternalCode", references: [{ contract: "SUBGROUPS", field: "externalCode" }] },
+  ],
   writeSemantics: "UPSERT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: "referencePeriod",
-  examples: [{ externalEmployeeId: "OP-10234", referencePeriod: "2026-08", achievementPercent: 97.8, quartile: "Q2", subgroupExternalCode: null }],
+  examples: [
+    { externalEmployeeId: "OP-10234", referencePeriod: "2026-08", achievementPercent: 97.8, quartile: "Q2", subgroupExternalCode: null },
+    { externalEmployeeId: "OP-10234", referencePeriod: "2026-07", achievementPercent: 101.2, quartile: "Q1", subgroupExternalCode: null },
+    { externalEmployeeId: "OP-20871", referencePeriod: "2026-08", achievementPercent: 88.4, quartile: "Q3", subgroupExternalCode: "B2C_RETENCAO/PADRAO" },
+  ],
 }

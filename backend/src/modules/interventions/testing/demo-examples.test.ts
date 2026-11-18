@@ -37,9 +37,21 @@ describe("seed de demonstração — exemplos de políticas de acompanhamento", 
 
   it("os tipos de exemplo publicam sem pendências (inclusive as regras fixas da avaliação de continuidade)", async () => {
     const types = await seedTypes()
-    expect(types.size).toBe(8)
+    expect(types.size).toBe(10)
     const keys = new Set(types.keys())
     for (const [key, definition] of types) expect(validateInterventionType(definition, key, keys), key).toEqual([])
+  })
+
+  it("os formatos com roteiro (lado a lado, atendimento assistido) nascem com passos do líder e do colaborador e um checkpoint", async () => {
+    const types = await seedTypes()
+    for (const key of ["LADO_A_LADO", "ATENDIMENTO_ASSISTIDO"]) {
+      const script = types.get(key)!.script
+      expect(script.length, key).toBeGreaterThanOrEqual(4)
+      expect(new Set(script.map((step) => step.owner)), key).toEqual(new Set(["RESPONSIBLE", "COLLABORATOR"]))
+      expect(script.filter((step) => step.kind === "CHECKPOINT"), key).toHaveLength(1)
+    }
+    // Os exemplos anteriores não têm roteiro: valem como roteiro vazio.
+    expect(types.get("ORIENTAR")!.script).toEqual([])
   })
 
   it("as políticas de exemplo publicariam sem pendências com os tipos publicados", async () => {

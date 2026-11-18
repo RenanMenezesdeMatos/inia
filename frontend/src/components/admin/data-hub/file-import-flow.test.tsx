@@ -30,7 +30,7 @@ beforeAll(() => {
 })
 
 function contract(key: string, label: string, fields: DataContract["fields"]): DataContract {
-  return { key, version: 1, label, description: `${label}.`, category: "EVENT", targetEntity: key.toLowerCase(), fields, naturalKey: [fields[0]!.key], dependencies: [], writeSemantics: "UPSERT", writePolicy: "PARTIAL_ALLOWED", businessTimeField: null, examples: [] }
+  return { key, version: 1, label, description: `${label}.`, category: "EVENT", targetEntity: key.toLowerCase(), fields, naturalKey: [fields[0]!.key], dependencies: [], foreignKeys: [], writeSemantics: "UPSERT", writePolicy: "PARTIAL_ALLOWED", businessTimeField: null, examples: [] }
 }
 const EMPLOYEES = contract("EMPLOYEES", "Colaboradores", [{ key: "externalEmployeeId", label: "Matrícula", type: "STRING", required: true, description: "Matrícula.", example: "OP-1" }])
 const INTERACTIONS = contract("INTERACTIONS", "Interações", [{ key: "externalInteractionId", label: "ID da interação", type: "STRING", required: true, description: "ID.", example: "INT-1" }])

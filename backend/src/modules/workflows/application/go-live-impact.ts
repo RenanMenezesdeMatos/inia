@@ -26,7 +26,10 @@ import { resolveEligibleOperatorIds } from "./workflow-eligibility.js"
  *     (calculado pela MESMA função que o checador usa — `planDueScheduleEnrollments` — descontando o
  *     que já existe pelo índice único do slot);
  *   - LARGE_POPULATION: cada ocorrência atinge mais de GO_LIVE_CONFIRMATION_POPULATION pessoas E a
- *     configuração é nova para o runtime (primeira publicação, configuração alterada, ou ativação).
+ *     configuração é nova para o runtime (primeira publicação, configuração alterada, ou ativação);
+ *   - ACCESS_REQUIREMENT_REMOVED: a publicação DESLIGA "Somente quem tem acesso ativo à INIA" num Workflow
+ *     no ar e há pessoas sem acesso na população — elas passam a entrar. Vale para QUALQUER gatilho (num
+ *     Workflow de Flag ou Indicador não há catch-up, mas o próximo evento de cada uma já cria execução).
  * Qualquer um dos dois exige confirmação explícita: o pedido precisa trazer o `fingerprint` do impacto
  * que a pessoa viu. Se o impacto mudou entre a prévia e o clique, o fingerprint não bate e a tela mostra
  * o impacto novo — nunca entra no ar com um número que ninguém viu.
@@ -34,7 +37,22 @@ import { resolveEligibleOperatorIds } from "./workflow-eligibility.js"
 export const GO_LIVE_CONFIRMATION_POPULATION = 50
 
 export type GoLiveReason = "PUBLISH" | "ACTIVATE"
-export type GoLiveConfirmationReason = "IMMEDIATE_CATCH_UP" | "LARGE_POPULATION"
+export type GoLiveConfirmationReason = "IMMEDIATE_CATCH_UP" | "LARGE_POPULATION" | "ACCESS_REQUIREMENT_REMOVED"
+
+/**
+ * "Somente quem tem acesso ativo à INIA" (modo Individual, qualquer gatilho): quantas pessoas da Abrangência ∩ Filtro
+ * entram HOJE. `required` = a opção na configuração que vai valer; `removed` = estava ligada na publicada e esta
+ * publicação a desliga. Só é calculado quando a opção está ligada ou sendo desligada (senão `null`).
+ */
+export type AccessRequirementImpact = {
+  required: boolean
+  removed: boolean
+  /** Pessoas da Abrangência ∩ Filtro, com ou sem acesso. */
+  population: number
+  /** Dessas, quantas têm conta de acesso ativa agora. */
+  withAccess: number
+  withoutAccess: number
+}
 
 export type ScheduleGoLiveImpact = {
   mode: "CALENDAR" | "RELATIVE_TO_SHIFT"
@@ -59,6 +77,7 @@ export type GoLiveImpact = {
   firstPublication: boolean
   configurationChanges: ConfigurationChange[]
   schedule: ScheduleGoLiveImpact | null
+  access: AccessRequirementImpact | null
   requiresConfirmation: boolean
   reasons: GoLiveConfirmationReason[]
   threshold: number
@@ -86,22 +105,28 @@ export function confirmationReasons(input: {
   population: number
   immediateEnrollments: number
   threshold?: number
+  /** Pessoas sem acesso que passam a entrar porque a publicação desliga a opção (0 = não se aplica). */
+  accessRequirementRemovedFor?: number
 }): GoLiveConfirmationReason[] {
-  if (!input.goesLive || !input.isSchedule) return []
-  const threshold = input.threshold ?? GO_LIVE_CONFIRMATION_POPULATION
+  if (!input.goesLive) return []
   const reasons: GoLiveConfirmationReason[] = []
-  if (input.immediateEnrollments > 0) reasons.push("IMMEDIATE_CATCH_UP")
-  const newToRuntime = input.reason === "ACTIVATE" || input.firstPublication || input.changes.length > 0
-  if (input.population > threshold && newToRuntime) reasons.push("LARGE_POPULATION")
+  if (input.isSchedule) {
+    const threshold = input.threshold ?? GO_LIVE_CONFIRMATION_POPULATION
+    if (input.immediateEnrollments > 0) reasons.push("IMMEDIATE_CATCH_UP")
+    const newToRuntime = input.reason === "ACTIVATE" || input.firstPublication || input.changes.length > 0
+    if (input.population > threshold && newToRuntime) reasons.push("LARGE_POPULATION")
+  }
+  if (input.reason === "PUBLISH" && (input.accessRequirementRemovedFor ?? 0) > 0) reasons.push("ACCESS_REQUIREMENT_REMOVED")
   return reasons
 }
 
-export function goLiveFingerprint(input: { workflowId: string; reason: GoLiveReason; configuration: WorkflowConfiguration; schedule: ScheduleGoLiveImpact | null }): string {
+export function goLiveFingerprint(input: { workflowId: string; reason: GoLiveReason; configuration: WorkflowConfiguration; schedule: ScheduleGoLiveImpact | null; access?: AccessRequirementImpact | null }): string {
   const schedule = input.schedule
     ? { population: input.schedule.population, immediate: input.schedule.immediate.enrollments, scheduledFor: input.schedule.immediate.scheduledFor, firstFireAt: input.schedule.firstFireAt }
     : null
   return createHash("sha256")
-    .update(stableJson({ workflowId: input.workflowId, reason: input.reason, configuration: input.configuration, schedule }))
+    // `access` só entra quando existe: o fingerprint de quem nunca usou a opção continua o mesmo de antes dela.
+    .update(stableJson({ workflowId: input.workflowId, reason: input.reason, configuration: input.configuration, schedule, ...(input.access ? { access: input.access } : {}) }))
     .digest("hex")
     .slice(0, 16)
 }
@@ -112,6 +137,7 @@ export async function computeGoLiveImpact(db: Database, organizationId: string, 
   const changes = input.published ? configurationChanges(input.configuration, input.published) : []
   // Inativo: nada passa a valer agora (a ativação recalcula o impacto da configuração publicada).
   const schedule = trigger.kind === "schedule" && input.active ? await scheduleImpact(db, organizationId, input) : null
+  const access = await accessRequirementImpact(db, organizationId, input)
   const reasons = confirmationReasons({
     reason: input.reason,
     goesLive: input.active,
@@ -120,6 +146,7 @@ export async function computeGoLiveImpact(db: Database, organizationId: string, 
     changes,
     population: schedule?.population ?? 0,
     immediateEnrollments: schedule?.immediate.enrollments ?? 0,
+    accessRequirementRemovedFor: access?.removed ? access.withoutAccess : 0,
   })
   return {
     reason: input.reason,
@@ -128,11 +155,31 @@ export async function computeGoLiveImpact(db: Database, organizationId: string, 
     firstPublication,
     configurationChanges: changes,
     schedule,
+    access,
     requiresConfirmation: reasons.length > 0,
     reasons,
     threshold: GO_LIVE_CONFIRMATION_POPULATION,
-    fingerprint: goLiveFingerprint({ workflowId: input.workflowId, reason: input.reason, configuration: input.configuration, schedule }),
+    fingerprint: goLiveFingerprint({ workflowId: input.workflowId, reason: input.reason, configuration: input.configuration, schedule, access }),
   }
+}
+
+/**
+ * Quantas pessoas a opção "Somente quem tem acesso ativo à INIA" deixa entrar hoje — contado pelas MESMAS funções que
+ * matriculam (`resolveEligibleOperatorIds`, com e sem o corte), para qualquer gatilho do modo Individual. Calculado mesmo com
+ * o Workflow inativo (é informação de quem vai participar, não de matrícula imediata).
+ */
+async function accessRequirementImpact(db: Database, organizationId: string, input: GoLiveImpactInput): Promise<AccessRequirementImpact | null> {
+  const config = input.configuration
+  if (config.consolidatedStructure) return null
+  const required = config.requireActiveAccess === true
+  const removed = input.reason === "PUBLISH" && !required && input.published?.requireActiveAccess === true
+  if (!required && !removed) return null
+  const population = { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse ?? null }
+  const [everyone, withAccess] = await Promise.all([
+    resolveEligibleOperatorIds(db, organizationId, { ...population, requireActiveAccess: false }),
+    resolveEligibleOperatorIds(db, organizationId, { ...population, requireActiveAccess: true }),
+  ])
+  return { required, removed, population: everyone.length, withAccess: withAccess.length, withoutAccess: everyone.length - withAccess.length }
 }
 
 function scheduleConfigurationFrom(configuration: WorkflowConfiguration): ScheduleConfiguration {
@@ -151,6 +198,7 @@ function scheduleConfigurationFrom(configuration: WorkflowConfiguration): Schedu
     consolidatedStructure: configuration.consolidatedStructure,
     populationFilter: configuration.populationFilter,
     operatingUniverse: configuration.operatingUniverse ?? null,
+    requireActiveAccess: configuration.requireActiveAccess === true,
   }
 }
 
@@ -162,7 +210,7 @@ async function scheduleImpact(db: Database, organizationId: string, input: GoLiv
 
   const population = structure
     ? (await resolveStructureAnchorOperatorIds(db, structure, consolidatedStructureAnchorId(structure))).length
-    : (await resolveEligibleOperatorIds(db, organizationId, { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse ?? null })).length
+    : (await resolveEligibleOperatorIds(db, organizationId, { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse ?? null, requireActiveAccess: config.requireActiveAccess })).length
 
   const due = await planDueScheduleEnrollments(db, organizationId, config, { now: input.now, timezone })
   const pending = await withoutExistingEnrollments(db, input.workflowId, due)
@@ -212,7 +260,7 @@ async function withoutExistingEnrollments(db: Database, workflowId: string, slot
 /** Próximo disparo da Agenda relativa: o primeiro instante FUTURO, entre os colaboradores com jornada, no próximo dia útil assumido. */
 async function nextRelativeFire(db: Database, organizationId: string, config: ScheduleConfiguration, now: Date, timezone: string): Promise<{ at: string | null; withShift: number }> {
   if (!config.relative) return { at: null, withShift: 0 }
-  const operatorIds = await resolveEligibleOperatorIds(db, organizationId, { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse ?? null })
+  const operatorIds = await resolveEligibleOperatorIds(db, organizationId, { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse ?? null, requireActiveAccess: config.requireActiveAccess })
   if (operatorIds.length === 0) return { at: null, withShift: 0 }
   let date = localDateParts(now, timezone).date
   for (let guard = 0; guard < 8; guard++, date = addDays(date, 1)) {
@@ -245,8 +293,9 @@ export function assertGoLiveConfirmed(impact: GoLiveImpact, confirmation: string
 /** Frase curta do impacto (mensagem do 409 e auditoria) — a tela monta a sua própria apresentação. */
 export function describeGoLiveImpact(impact: GoLiveImpact): string {
   const schedule = impact.schedule
-  if (!schedule) return "nenhuma execução é criada ao entrar no ar."
   const parts: string[] = []
+  if (impact.access?.removed && impact.access.withoutAccess > 0) parts.push(`${impact.access.withoutAccess} pessoa(s) sem acesso ativo à INIA passam a entrar`)
+  if (!schedule) return parts.length > 0 ? `${parts.join("; ")}.` : "nenhuma execução é criada ao entrar no ar."
   if (schedule.immediate.enrollments > 0) parts.push(`${schedule.immediate.enrollments} execução(ões) começam em até 1 minuto (horário de hoje que já passou)`)
   parts.push(`${schedule.population} pessoa(s) por ocorrência`)
   return `${parts.join("; ")}.`

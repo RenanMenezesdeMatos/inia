@@ -250,6 +250,8 @@ export type WorkflowSnapshot = {
   subteamId: string | null
   consolidatedStructure: unknown
   populationFilter: unknown
+  /** "Somente quem tem acesso ativo à INIA" no momento do "Executar" (ausente em execuções antigas = desligada). */
+  requireActiveAccess?: boolean
   capturedAt: string
 }
 

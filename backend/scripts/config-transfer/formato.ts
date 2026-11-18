@@ -171,6 +171,8 @@ export type DadosItem = {
     flagGatilho: string | null
     grafo: unknown
     populationFilter: unknown
+    /** "Somente quem tem acesso ativo à INIA" (ausente em pacotes antigos = desligada). */
+    requireActiveAccess?: boolean
     consolidatedStructure: unknown
     referencias: RefWorkflow[]
     active: boolean

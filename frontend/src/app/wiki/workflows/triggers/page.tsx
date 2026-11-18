@@ -74,7 +74,7 @@ export default function TriggersPage() {
         <FieldRow label="Operador" value="O colaborador da interação — sempre Individual; nem Modo de avaliação nem Filtro Populacional aparecem." />
         <FieldRow label="Canal" value="Hoje só VOICE existe; o catálogo de flags por canal é configurável e pensado para novos canais." />
         <FieldRow label="Flag" value={`Cadastrada em Admin › Flags de canal com Canal, Nome da flag, Tipo de valor (${FLAG_VALUE_TYPE_LABELS.BOOLEAN} ou ${FLAG_VALUE_TYPE_LABELS.NUMERIC}) e Descrição. Ex.: rechamada, nota_ura, tdna, tempo_silencio, cancelamento, contestacao, transferencia, detrator.`} />
-        <FieldRow label="Elegibilidade" value="Decisão pontual, por interação: só Workflows publicados cuja Abrangência (e Filtro Populacional, se houver) inclui o operador. A mesma semântica do agendador e do QA Lab." />
+        <FieldRow label="Elegibilidade" value='Decisão pontual, por interação: só Workflows publicados cuja Abrangência (e Filtro Populacional, se houver) inclui o operador — e, com a opção "Somente quem tem acesso ativo à INIA" ligada, só quem tem login ativo. A mesma semântica do agendador e do QA Lab.' />
         <FieldRow label="Transcrição" value="Fica disponível para Chamar agente/Orquestrador (evidência literal) e é obrigatória para Conformidade de processo e Avaliação de processo." />
         <WarningCallout title="Uma interação dispara TODOS os Workflows publicados com aquela flag">
           Cada Workflow publicado que usa a flag matricula o operador separadamente. Em ambientes de teste, uma ingestão real pode acionar vários

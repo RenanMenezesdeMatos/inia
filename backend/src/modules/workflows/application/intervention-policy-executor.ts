@@ -37,6 +37,8 @@ export type InterventionPolicyNodeOutput = {
     created: boolean
     pendingApproval: boolean
     recommended: boolean
+    /** Alguma regra só AVISOU quem lidera (nenhuma intervenção criada). */
+    notified: boolean
     existing: boolean
     suppressed: boolean
     conflict: boolean
@@ -54,7 +56,7 @@ export type InterventionPolicyNodeOutput = {
   text: string
 }
 
-const DECISION_STATUSES: DecisionStatus[] = ["CREATED", "PENDING_APPROVAL", "RECOMMENDED", "EXISTING", "SUPPRESSED", "CONFLICT"]
+const DECISION_STATUSES: DecisionStatus[] = ["CREATED", "PENDING_APPROVAL", "RECOMMENDED", "NOTIFIED", "EXISTING", "SUPPRESSED", "CONFLICT"]
 
 function buildOutput(node: InterventionPolicyNode, policy: { id: string; name: string }, version: { version: number; definition: { rules: { actions: { typeKey: string }[]; inconclusiveActions: { typeKey: string }[] }[] } } | null, result: ApplyEvaluationResult, text: string): InterventionPolicyNodeOutput {
   const counts = Object.fromEntries(DECISION_STATUSES.map((status) => [status, result.decisions.filter((decision) => decision.status === status).length])) as Record<DecisionStatus, number>
@@ -76,6 +78,7 @@ function buildOutput(node: InterventionPolicyNode, policy: { id: string; name: s
       created: counts.CREATED > 0,
       pendingApproval: counts.PENDING_APPROVAL > 0,
       recommended: counts.RECOMMENDED > 0,
+      notified: counts.NOTIFIED > 0,
       existing: counts.EXISTING > 0,
       suppressed: counts.SUPPRESSED > 0,
       conflict: counts.CONFLICT > 0,

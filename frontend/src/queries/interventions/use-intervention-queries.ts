@@ -5,7 +5,7 @@ import { toast } from "sonner"
 
 import { ApiError } from "@/lib/api/api-client"
 import type { InterventionDetail } from "@/schemas/interventions/intervention.schema"
-import { fetchCaseInterventions, fetchForwardTargets, fetchIntervention, fetchPersonInterventions, fetchTrainingCompetencies, retryReportNarrative } from "@/services/interventions/intervention-service"
+import { fetchCaseInterventions, fetchForwardTargets, fetchIntervention, fetchMyFollowUps, fetchPersonInterventions, fetchTeamOverview, fetchTrainingCompetencies, markMyStep, retryReportNarrative } from "@/services/interventions/intervention-service"
 
 import { notificationKeys } from "../notifications/notifications-query-keys"
 import { pendingActionKeys } from "../pending-actions/pending-actions-query-keys"
@@ -17,6 +17,27 @@ export const interventionKeys = {
   person: (personId: string) => ["interventions", "person", personId] as const,
   forwardTargets: (id: string) => ["interventions", "forward-targets", id] as const,
   competencies: () => ["interventions", "competencies"] as const,
+  team: () => ["interventions", "team"] as const,
+  mine: () => ["interventions", "mine"] as const,
+}
+
+/** Visão da equipe: acompanhamentos em andamento da estrutura de quem vê e o resumão do que foi concluído. */
+export function useTeamInterventionsQuery() {
+  return useQuery({ queryKey: interventionKeys.team(), queryFn: fetchTeamOverview })
+}
+
+/** O lado do colaborador: os acompanhamentos em execução de formato visível a ele. */
+export function useMyFollowUpsQuery() {
+  return useQuery({ queryKey: interventionKeys.mine(), queryFn: fetchMyFollowUps, staleTime: 30_000 })
+}
+
+export function useMarkMyStepMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { interventionId: string; stepId: string; done: boolean }) => markMyStep(input.interventionId, input.stepId, { done: input.done }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: interventionKeys.mine() }),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Não foi possível registrar o passo."),
+  })
 }
 
 export function useInterventionQuery(id: string | null) {
@@ -51,6 +72,7 @@ export function useInterventionCommand<TVariables>(mutationFn: (variables: TVari
       queryClient.setQueryData(interventionKeys.detail(detail.id), detail)
       void queryClient.invalidateQueries({ queryKey: interventionKeys.case(detail.caseId) })
       void queryClient.invalidateQueries({ queryKey: interventionKeys.person(detail.person.id) })
+      void queryClient.invalidateQueries({ queryKey: interventionKeys.team() })
       void queryClient.invalidateQueries({ queryKey: pendingActionKeys.list() })
       void queryClient.invalidateQueries({ queryKey: notificationKeys.summary() })
       void queryClient.invalidateQueries({ queryKey: ["analytics", "context"] })

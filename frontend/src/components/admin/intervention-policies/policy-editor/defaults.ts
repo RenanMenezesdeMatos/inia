@@ -59,8 +59,29 @@ export function defaultCondition(kind: ConditionKind, context: ConditionContext)
       return { kind: "PUBLISHED_FEEDBACK", feedbackKind: null, indicatorCode: null, withinDays: 30, comparator: "GTE", threshold: 1 }
     case "INTERACTION_FLAG":
       return defaultFlagCondition(context.flag)
+    case "EVOLUTION":
+      // 0% = qualquer melhora conta como evolução; o administrador sobe o mínimo se quiser.
+      return { kind: "EVOLUTION", indicatorCode: null, withinDays: 90, expectation: "NOT_IMPROVED", minimumImprovementPercent: 0 }
   }
 }
+
+/**
+ * SITUAÇÕES PRONTAS — as frases mais comuns de uma trilha de acompanhamento, já configuradas: escolher uma inclui a condição
+ * completa (que continua editável). O que a frase não cobre entra por "Outra condição".
+ */
+export type SituationPreset = { key: string; label: string; build: (context: ConditionContext) => PolicyCondition }
+export const SITUATION_PRESETS: SituationPreset[] = [
+  {
+    key: "WORST_QUARTILE_RECURRENT",
+    label: "No pior quartil (Q4) em 3 fechamentos seguidos",
+    build: (context) => ({ kind: "INDICATOR", criterion: { comparator: "GTE", thresholdNumeric: 3, performanceQuery: { kind: "EMPLOYEE_PERFORMANCE", metric: "INDICATOR_QUARTILE", ...(context.policyIndicatorCode ? { indicatorCode: context.policyIndicatorCode } : {}), recurrence: { periods: 3, matchQuartile: "Q4" } } } }),
+  },
+  { key: "BELOW_ACHIEVEMENT", label: "Atingimento oficial abaixo de 100% no último fechamento", build: (context) => ({ kind: "INDICATOR", criterion: defaultPerformanceCriterion(context.policyIndicatorCode) }) },
+  { key: "FEEDBACK_SENT", label: "Já recebeu feedback sobre o indicador (últimos 90 dias)", build: (context) => ({ kind: "PUBLISHED_FEEDBACK", feedbackKind: null, indicatorCode: context.policyIndicatorCode, withinDays: 90, comparator: "GTE", threshold: 1 }) },
+  { key: "NO_EVOLUTION", label: "Sem evolução desde o último feedback", build: (context) => defaultCondition("EVOLUTION", context) },
+  { key: "PRIOR_WITHOUT_RESULT", label: "Já concluiu um acompanhamento sem evolução", build: () => ({ kind: "PRIOR_INTERVENTIONS", typeKeys: [], statuses: ["COMPLETED"], operationalResults: ["UNCHANGED", "WORSENED"], sameSubject: true, withinDays: 180, comparator: "GTE", threshold: 1 }) },
+  { key: "DIAGNOSIS", label: "Tem diagnóstico sustentado da causa", build: () => ({ kind: "SUPPORTED_DIAGNOSIS", indicatorCode: null, competencyKeys: [], withinDays: 90, expectation: "EXISTS" }) },
+]
 
 /** Flag de atendimento: a primeira flag ativa do catálogo, contando atendimentos nos últimos 30 dias. */
 export function defaultFlagCondition(flag: FlagOption | undefined): Extract<PolicyCondition, { kind: "INTERACTION_FLAG" }> {

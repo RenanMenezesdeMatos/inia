@@ -18,6 +18,7 @@ import { loadPolicyHeader, loadPolicyVersion, loadValidationCatalog, type Policy
 import * as config from "../application/config-service.js"
 import { evaluatePolicy, serializeEvaluation } from "../application/evaluate-policy.js"
 import { canSeeInterventionsOf } from "../application/intervention-access.js"
+import { loadPolicyWorkflowUsage, type PolicyWorkflowUsage } from "../application/policy-references.js"
 import { protectStoredLeave } from "../domain/protected-leave.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 
@@ -195,7 +196,13 @@ export function createInterventionAdminRouter(db: Database) {
   router.get("/policies/:policyId", async (request, response) => {
     const policy = await policyForRead(db, request)
     const view = await config.getPolicy(db, organizationOf(request), policy.id)
-    response.json({ data: { ...view, can: { edit: coversPolicy(accessOf(request), "intervention_policies.edit", policy), publish: coversPolicy(accessOf(request), "intervention_policies.publish", policy), simulate: canAnywhere(accessOf(request), "intervention_policies.simulate") || canAnywhere(accessOf(request), "workflows.manage"), audit: canAnywhere(accessOf(request), "intervention_policies.audit") } } })
+    // Onde roda: pelo nome só os Workflows que quem consulta abriria (workflows.manage na Abrangência publicada); os demais só contam.
+    const usage = await loadPolicyWorkflowUsage(db, organizationOf(request), policy.id)
+    const manageable = scopesWithPermission(accessOf(request), "workflows.manage")
+    const opens = (workflow: PolicyWorkflowUsage) => manageable.some((scope) => scopeCovers(scope, workflow.scopeType === "ALL_TEAMS" ? { type: "ORGANIZATION" } : workflow.scopeType === "TEAM" ? { type: "GROUP", teamId: workflow.teamId! } : { type: "SUBGROUP", teamId: workflow.teamId!, subteamId: workflow.subteamId! }))
+    const visible = usage.filter(opens)
+    const workflows = { items: visible.map(({ id, name, active, published, inDraft }) => ({ id, name, active, published, inDraft })), outOfScope: usage.length - visible.length, running: usage.some((workflow) => workflow.published && workflow.active) }
+    response.json({ data: { ...view, workflows, can: { edit: coversPolicy(accessOf(request), "intervention_policies.edit", policy), publish: coversPolicy(accessOf(request), "intervention_policies.publish", policy), simulate: canAnywhere(accessOf(request), "intervention_policies.simulate") || canAnywhere(accessOf(request), "workflows.manage"), audit: canAnywhere(accessOf(request), "intervention_policies.audit") } } })
   })
   router.post("/policies", requireAny(["intervention_policies.edit"]), async (request, response) => {
     const body = z.object({ key: z.string(), name: z.string(), scopeType: z.enum(["ORGANIZATION", "GROUP", "SUBGROUP"]), teamId: z.string().uuid().nullable().default(null), subteamId: z.string().uuid().nullable().default(null) }).parse(request.body)

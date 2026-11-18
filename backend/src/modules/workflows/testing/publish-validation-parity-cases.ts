@@ -513,6 +513,13 @@ export const BACKEND_ONLY: BackendOnlyCase[] = [
     code: "WORKFLOW_POPULATION_FILTER_INVALID_TRIGGER",
     nodeId: "trigger",
   },
+  {
+    name: '"Somente quem tem acesso ativo à INIA" no modo Consolidado',
+    reason: "opção de acesso do rascunho: o editor só a oferece no Individual e as rotas do rascunho a desligam ao trocar o modo",
+    setup: consolidated(consolidatedGraph(), { requireActiveAccess: true }),
+    code: "WORKFLOW_ACCESS_REQUIREMENT_INVALID_MODE",
+    nodeId: "trigger",
+  },
   { name: "agente que não existe", reason: "catálogo de agentes", setup: withDb(VALID_AGENT_FLOW, { agent: () => null }), code: "WORKFLOW_AGENT_NOT_FOUND", nodeId: "agent" },
   { name: "agente inativo", reason: "catálogo de agentes", setup: withDb(VALID_AGENT_FLOW, { agent: agentRow({ active: false }) }), code: "WORKFLOW_AGENT_INACTIVE", nodeId: "agent" },
   { name: "agente de outro Grupo", reason: "abrangência do agente", setup: withDb(VALID_AGENT_FLOW, { agent: agentRow({ scope_type: "TEAM", team_id: PARITY_TEAM_ID, subteam_id: null }) }), code: "WORKFLOW_AGENT_SCOPE_FORBIDDEN", nodeId: "agent" },
@@ -602,6 +609,7 @@ export const BACKEND_ONLY_CODES = [
   "WORKFLOW_INTERVENTION_POLICY_UNPUBLISHED",
   "WORKFLOW_INTERVENTION_POLICY_SCOPE_MISMATCH",
   "WORKFLOW_POPULATION_FILTER_INVALID_TRIGGER",
+  "WORKFLOW_ACCESS_REQUIREMENT_INVALID_MODE",
 ]
 
 /** Mensagens do backend de regras "só backend" que compartilham código com regras espelhadas (varredura aleatória). */

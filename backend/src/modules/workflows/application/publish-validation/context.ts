@@ -44,6 +44,8 @@ export type PublishValidationRow = {
   consolidatedStructure: ConsolidatedStructure | null
   /** Filtro Populacional do rascunho (null/ausente = todos os elegíveis da Abrangência). */
   populationFilter?: PopulationFilter | null
+  /** "Somente quem tem acesso ativo à INIA" do rascunho (ausente = desligada). */
+  requireActiveAccess?: boolean
 }
 
 export type PublishValidationOptions = {

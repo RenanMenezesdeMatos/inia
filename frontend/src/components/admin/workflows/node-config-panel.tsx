@@ -71,9 +71,9 @@ export function NodeConfigPanel({
   return (
     <WorkflowUniverseProvider value={universe}>
     <aside className="h-full space-y-4 p-4">
-      <div className="flex items-start justify-between gap-2">
+      <div className="-mx-4 -mt-4 flex items-start justify-between gap-2 border-b bg-muted/60 px-4 pt-4 pb-3">
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{nodeKindLabel(node)}</p>
+          <p className="text-xs font-semibold tracking-wider text-foreground/70 uppercase">{nodeKindLabel(node)}</p>
           <Input
             aria-label="Nome da etapa"
             placeholder={nodeKindLabel(node)}

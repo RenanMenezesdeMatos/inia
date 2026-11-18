@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { emptyInterventionTypeDefinition, validateInterventionType, type InterventionTypeDefinition } from "./intervention-type.js"
+import { emptyInterventionTypeDefinition, interventionTypeDefinitionSchema, scriptItemsOf, validateInterventionType, type InterventionTypeDefinition } from "./intervention-type.js"
 import { groupRequires, INTERVENTION_POLICY_SCHEMA_VERSION, policyDefinitionSchema, validatePolicyDefinition, type PolicyCondition, type PolicyDefinition, type PolicyRule, type PolicyValidationCatalog } from "./policy-definition.js"
 
 const definitionOf = (name: string, extra: Partial<InterventionTypeDefinition> = {}): InterventionTypeDefinition => ({ ...emptyInterventionTypeDefinition(name), ...extra })
@@ -24,6 +24,32 @@ const TYPES = {
   RECONHECER: definitionOf("Reconhecer", { capabilities: ["RECOGNITION"], incompatibleWith: ["PLANO"] }),
   CONTINUIDADE: definitionOf("Avaliação de continuidade", { capabilities: ["CONTINUITY_REVIEW"], approval: { required: true, approverRole: "MANAGER" }, evidence: { minimumItems: 2, acceptedKinds: ["EVALUATION", "FEEDBACK"] }, completion: { requireAllTasksDone: false, requireLearningAssessment: false, requireOperationalReading: false, requireOutcomeNote: false } }),
 }
+
+describe("roteiro do formato (os passos com que a intervenção nasce)", () => {
+  const step = (extra: Partial<InterventionTypeDefinition["script"][number]> = {}): InterventionTypeDefinition["script"][number] => ({ kind: "TASK", title: "1ª sessão", description: "", owner: "RESPONSIBLE", dueInDays: 5, ...extra })
+
+  it("passo exige a capacidade correspondente, prazo dentro do prazo do tipo e título único", () => {
+    const keys = new Set(["LADO"])
+    expect(validateInterventionType(definitionOf("Lado a lado", { capabilities: ["TASKS", "CHECKPOINTS"], script: [step(), step({ kind: "CHECKPOINT", title: "Leitura", dueInDays: null })] }), "LADO", keys)).toEqual([])
+    expect(codes(validateInterventionType(definitionOf("Orientar", { capabilities: ["GUIDANCE"], completion: { requireAllTasksDone: false, requireLearningAssessment: false, requireOperationalReading: false, requireOutcomeNote: true }, script: [step(), step({ kind: "CHECKPOINT", title: "Leitura" })] }), "LADO", keys))).toEqual(["TYPE_SCRIPT_NEEDS_TASKS", "TYPE_SCRIPT_NEEDS_CHECKPOINTS"])
+    // Plano de ação implica tarefas e checkpoints.
+    expect(validateInterventionType(definitionOf("Plano", { capabilities: ["ACTION_PLAN"], script: [step(), step({ kind: "CHECKPOINT", title: "Leitura" })] }), "LADO", keys)).toEqual([])
+    expect(codes(validateInterventionType(definitionOf("Lado a lado", { defaultDueDays: 10, script: [step({ dueInDays: 11 }), step({ title: " 1ª SESSÃO " })] }), "LADO", keys))).toEqual(["TYPE_SCRIPT_DUE_AFTER_DEADLINE", "TYPE_SCRIPT_STEP_DUPLICATED"])
+  })
+
+  it("os itens nascem com dono e prazo; o prazo do passo nunca passa do prazo da intervenção; versão antiga vale como roteiro vazio", () => {
+    const definition = definitionOf("Lado a lado", { script: [step(), step({ title: "Aplicar", owner: "COLLABORATOR", dueInDays: 12 }), step({ kind: "CHECKPOINT", title: "Leitura", dueInDays: null })] })
+    expect(scriptItemsOf(definition, { openedDay: "2026-11-18", dueAt: "2026-11-28", responsibleId: "lider", personId: "operador" })).toEqual([
+      { kind: "TASK", title: "1ª sessão", description: "", ownerId: "lider", dueAt: "2026-11-23" },
+      // 12 dias depois seria 30/11: fica no prazo da intervenção (a política abriu com prazo menor que o do tipo).
+      { kind: "TASK", title: "Aplicar", description: "", ownerId: "operador", dueAt: "2026-11-28" },
+      { kind: "CHECKPOINT", title: "Leitura", description: "", ownerId: "lider", dueAt: "2026-11-28" },
+    ])
+    const { script: _script, ...stored } = definition
+    void _script
+    expect(interventionTypeDefinitionSchema.parse(stored).script).toEqual([])
+  })
+})
 
 describe("validação da política (o que torna o rascunho publicável)", () => {
   it("prioridade é única: empate é recusado (nunca decide em silêncio)", () => {
@@ -68,6 +94,28 @@ describe("validação da política (o que torna o rascunho publicável)", () => 
     expect(issues).toEqual(expect.arrayContaining(["CONTINUITY_REVIEW_EVIDENCE_CONDITION", "CONTINUITY_REVIEW_JUSTIFICATION", "CONTINUITY_REVIEW_NOT_ON_INCONCLUSIVE"]))
   })
 
+  it("avaliação de continuidade: resultado ruim sozinho nunca basta — exige acompanhamento anterior concluído sem evolução", () => {
+    const prior = (overrides: Partial<Extract<PolicyCondition, { kind: "PRIOR_INTERVENTIONS" }>> = {}): PolicyCondition => ({ kind: "PRIOR_INTERVENTIONS", typeKeys: [], statuses: ["COMPLETED"], operationalResults: ["UNCHANGED", "WORSENED"], sameSubject: true, withinDays: 180, comparator: "GTE", threshold: 1, ...overrides })
+    const justification = "Acompanhamento concluído sem evolução e resultado abaixo da meta: solicitar a avaliação a quem decide."
+    const continuity = (items: PolicyCondition[], operator: "ALL" | "ANY" = "ALL") => codes(validatePolicyDefinition(policy([rule({ when: { operator, items }, justification, actions: [action("CONTINUIDADE")] })]), catalog(TYPES)))
+    expect(continuity([below])).toContain("CONTINUITY_REVIEW_PRIOR_FOLLOW_UP")
+    expect(continuity([below, prior()])).toEqual([])
+    // Não vale: intervenção ainda ativa, resultado "melhorou"/"não medido", qualquer resultado, contagem que aceita zero, ou só num ramo do OU.
+    expect(continuity([below, prior({ statuses: ["ACTIVE", "COMPLETED"] })])).toContain("CONTINUITY_REVIEW_PRIOR_FOLLOW_UP")
+    expect(continuity([below, prior({ operationalResults: ["UNCHANGED", "NOT_MEASURED"] })])).toContain("CONTINUITY_REVIEW_PRIOR_FOLLOW_UP")
+    expect(continuity([below, prior({ operationalResults: [] })])).toContain("CONTINUITY_REVIEW_PRIOR_FOLLOW_UP")
+    expect(continuity([below, prior({ comparator: "GTE", threshold: 0 })])).toContain("CONTINUITY_REVIEW_PRIOR_FOLLOW_UP")
+    expect(continuity([below, prior()], "ANY")).toContain("CONTINUITY_REVIEW_PRIOR_FOLLOW_UP")
+  })
+
+  it("avaliação de continuidade nunca é 'só avisar': sempre abre a solicitação decidida por pessoa autorizada", () => {
+    const prior: PolicyCondition = { kind: "PRIOR_INTERVENTIONS", typeKeys: [], statuses: ["COMPLETED"], operationalResults: ["UNCHANGED"], sameSubject: true, withinDays: 180, comparator: "GTE", threshold: 1 }
+    const notify = policy([rule({ when: { operator: "ALL", items: [below, prior] }, justification: "Acompanhamento concluído sem evolução e resultado abaixo da meta.", actions: [{ ...action("CONTINUIDADE"), effect: "NOTIFY" }] })])
+    expect(codes(validatePolicyDefinition(notify, catalog(TYPES)))).toEqual(["CONTINUITY_REVIEW_NO_NOTIFY"])
+    // Para os outros tipos, só avisar é uma escolha válida da regra.
+    expect(validatePolicyDefinition(policy([rule({ actions: [{ ...action("OBSERVAR"), effect: "NOTIFY" }] })]), catalog(TYPES))).toEqual([])
+  })
+
   it("grupos: obrigatoriedade de uma condição respeita ALL/ANY", () => {
     expect(groupRequires({ operator: "ALL", items: [below, { operator: "ANY", items: [diagnosis, diagnosis] }] }, (condition) => condition.kind === "SUPPORTED_DIAGNOSIS")).toBe(true)
     expect(groupRequires({ operator: "ANY", items: [below, diagnosis] }, (condition) => condition.kind === "SUPPORTED_DIAGNOSIS")).toBe(false)
@@ -100,6 +148,17 @@ describe("condição de flag de atendimento", () => {
   it("flag do catálogo, com o tipo de valor certo, publica sem pendências", () => {
     expect(validatePolicyDefinition(withFlag(flag()), catalog(TYPES))).toEqual([])
     expect(validatePolicyDefinition(withFlag(flag({ flagName: "nota_ura", match: { type: "NUMERIC", comparator: "LTE", threshold: 2 }, measure: "PERCENT", threshold: 20 })), catalog(TYPES))).toEqual([])
+  })
+
+  it("evolução desde o feedback: precisa de indicador (o da condição ou o da política) com medição diária", () => {
+    const evolution = (extra: Partial<Extract<PolicyCondition, { kind: "EVOLUTION" }>> = {}): PolicyCondition => ({ kind: "EVOLUTION", indicatorCode: null, withinDays: 90, expectation: "NOT_IMPROVED", minimumImprovementPercent: 0, ...extra })
+    const withEvolution = (condition: PolicyCondition, indicatorCode: string | null = "TMA") => ({ ...policy([rule({ when: { operator: "ALL", items: [condition] }, actions: [action("OBSERVAR")] })]), indicatorCode })
+    expect(validatePolicyDefinition(withEvolution(evolution()), catalog(TYPES))).toEqual([])
+    expect(codes(validatePolicyDefinition(withEvolution(evolution(), null), catalog(TYPES)))).toEqual(["POLICY_EVOLUTION_INDICATOR_REQUIRED"])
+    expect(codes(validatePolicyDefinition(withEvolution(evolution({ indicatorCode: "NPS" })), catalog(TYPES)))).toEqual(["POLICY_INDICATOR_NOT_FOUND"])
+    const withoutDaily = { ...catalog(TYPES), indicators: new Map([["TMA", { active: true, dailySupported: false }]]) }
+    expect(codes(validatePolicyDefinition(withEvolution(evolution()), withoutDaily))).toEqual(["POLICY_EVOLUTION_NEEDS_DAILY"])
+    expect(policyDefinitionSchema.safeParse(withEvolution(evolution({ minimumImprovementPercent: 101 }))).success).toBe(false)
   })
 
   it("flag inexistente, desativada, com valor do tipo errado ou percentual acima de 100 é recusada", () => {

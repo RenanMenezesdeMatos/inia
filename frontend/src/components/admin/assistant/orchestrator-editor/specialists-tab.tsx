@@ -110,7 +110,7 @@ export function SpecialistsTab({
         <CardContent className="space-y-3">
           {specialistAgentIds.length === 0 ? <p className="py-2 text-sm text-muted-foreground">Nenhum especialista ainda — o orquestrador responde sozinho, sem tools.</p> : null}
           {specialistAgentIds.map((agentId, index) => (
-            <div key={index} className="flex items-start gap-2 rounded-md border p-2">
+            <div key={index} className="flex items-start gap-2 rounded-lg border border-foreground/15 bg-card p-2 shadow-xs">
               <div className="min-w-0 flex-1 space-y-1.5">
                 <AgentPicker agents={specialistAgents} value={agentId} onChange={(value) => updateSpecialist(index, value)} disabledReason={disabledReason} />
                 {agentId && renderAgentVersion ? renderAgentVersion(agentId) : null}

@@ -1,6 +1,6 @@
 "use client"
 
-import { Background, Controls, Handle, Position, ReactFlow, ReactFlowProvider, type Edge, type Node, type NodeProps } from "@xyflow/react"
+import { Background, BackgroundVariant, Controls, Handle, Position, ReactFlow, ReactFlowProvider, type Edge, type Node, type NodeProps } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { Bot, Sparkles, X } from "lucide-react"
 
@@ -14,6 +14,8 @@ import { useReactFlowColorMode } from "@/hooks/use-react-flow-color-mode"
 import { AGENT_TYPE_COLORS, AGENT_TYPE_LABELS, type Agent } from "@/schemas/admin/agent.schema"
 import { cn } from "@/lib/utils"
 
+const HANDLE_CLASS = "!h-3 !w-3 !border-2 !border-card"
+
 type OrchestratorNodeData = { name: string; agentName: string }
 type SpecialistNodeData = { agentName: string; agentType: Agent["agentType"] | null }
 
@@ -21,20 +23,22 @@ function OrchestratorNodeCard({ data, selected }: NodeProps & { data: Orchestrat
   return (
     <div
       className={cn(
-        "w-56 rounded-xl border-2 border-primary/50 bg-card p-3 shadow-sm ring-4 ring-primary/10",
-        selected && "border-primary ring-primary/40",
+        // Mesmo contraste das etapas do Workflow (18/11/2026): cartão branco, contorno firme, sombra e faixa no topo.
+        "w-64 rounded-xl border border-t-4 border-foreground/20 border-t-primary bg-card p-3 shadow-md",
+        selected && "border-primary ring-4 ring-primary/30",
       )}
     >
       <div className="flex items-center gap-2">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <Bot className="h-4 w-4" />
         </span>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{data.name || "Orquestrador"}</p>
-          <p className="truncate text-[11px] text-muted-foreground">{data.agentName || "Sem agente definido"}</p>
+          <p className="text-[11px] font-semibold tracking-wider text-primary uppercase">Orquestrador</p>
+          <p className="truncate text-sm font-semibold text-foreground" title={data.name}>{data.name || "Orquestrador"}</p>
+          <p className="truncate text-xs text-foreground/70" title={data.agentName}>{data.agentName || "Sem agente definido"}</p>
         </div>
       </div>
-      <Handle type="source" position={Position.Right} className="!bg-primary" />
+      <Handle type="source" position={Position.Right} className={cn(HANDLE_CLASS, "!bg-primary")} />
     </div>
   )
 }
@@ -43,13 +47,16 @@ function SpecialistNodeCard({ data, selected }: NodeProps & { data: SpecialistNo
   const Icon = data.agentType ? AGENT_TYPE_ICONS[data.agentType] : Sparkles
   const colors = data.agentType ? AGENT_TYPE_COLORS[data.agentType] : { icon: "text-muted-foreground", iconBg: "bg-muted" }
   return (
-    <div className={cn("w-52 rounded-xl border bg-card p-2.5 shadow-sm", selected && "border-primary ring-4 ring-primary/20")}>
-      <Handle type="target" position={Position.Left} className="!bg-muted-foreground" />
+    <div className={cn("w-60 rounded-xl border border-foreground/20 bg-card p-3 shadow-md", selected && "border-primary ring-4 ring-primary/20")}>
+      <Handle type="target" position={Position.Left} className={cn(HANDLE_CLASS, "!bg-muted-foreground")} />
       <div className="flex items-center gap-2">
-        <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", colors.iconBg)}>
-          <Icon className={cn("h-3.5 w-3.5", colors.icon)} />
+        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", colors.iconBg)}>
+          <Icon className={cn("h-4 w-4", colors.icon)} />
         </span>
-        <p className="min-w-0 truncate text-sm">{data.agentName || "Selecione um agente"}</p>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground" title={data.agentName}>{data.agentName || "Selecione um agente"}</p>
+          <p className="truncate text-xs text-foreground/70">{data.agentType ? AGENT_TYPE_LABELS[data.agentType] : "Especialista"}</p>
+        </div>
       </div>
     </div>
   )
@@ -63,13 +70,13 @@ export function buildSpecialistsGraph(
   specialists: { agentName: string; agentType: Agent["agentType"] | null }[],
   selectedNodeId: string | null,
 ) {
-  const specialistHeight = 84
+  const specialistHeight = 92
   const totalHeight = Math.max(specialists.length * specialistHeight, specialistHeight)
   const nodes: Node[] = [
     {
       id: "orchestrator",
       type: "orchestrator",
-      position: { x: 0, y: totalHeight / 2 - 34 },
+      position: { x: 0, y: totalHeight / 2 - 40 },
       data: { name, agentName: orchestratorAgentName },
       draggable: false,
       selected: selectedNodeId === "orchestrator",
@@ -77,7 +84,7 @@ export function buildSpecialistsGraph(
     ...specialists.map((specialist, index) => ({
       id: `specialist-${index}`,
       type: "specialist",
-      position: { x: 340, y: index * specialistHeight },
+      position: { x: 380, y: index * specialistHeight },
       data: specialist,
       draggable: false,
       selected: selectedNodeId === `specialist-${index}`,
@@ -106,7 +113,8 @@ export function SpecialistsMap({
 }) {
   const colorMode = useReactFlowColorMode()
   return (
-    <div className="h-[420px] min-w-0 rounded-lg border bg-muted/20">
+    // Altura (18/11/2026, "pouco espaço para trabalhar"): acompanha a tela, nunca menos de 480 px.
+    <div className="inia-flow-canvas h-[calc(100vh-20rem)] min-h-[480px] min-w-0 overflow-hidden rounded-2xl border border-foreground/15">
       <ReactFlowProvider>
         <ReactFlow
           colorMode={colorMode}
@@ -129,8 +137,8 @@ export function SpecialistsMap({
           }}
           onPaneClick={() => onSelect(null)}
         >
-          <Background />
-          <Controls />
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1.6} color="var(--flow-canvas-dot)" />
+          <Controls className="overflow-hidden rounded-lg border border-foreground/15 shadow-md" />
         </ReactFlow>
       </ReactFlowProvider>
     </div>

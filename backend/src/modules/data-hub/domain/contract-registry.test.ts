@@ -60,6 +60,33 @@ describe("registro de contratos", () => {
     }
   })
 
+  it("chave estrangeira aponta para campo existente de contrato existente e cobre exatamente as dependências", () => {
+    for (const contract of [...DATA_CONTRACTS, ...PREVIOUS_DATA_CONTRACT_VERSIONS]) {
+      const keys = new Set(contract.fields.map((field) => field.key))
+      const referenced = new Set<string>()
+      for (const foreignKey of contract.foreignKeys) {
+        expect(keys, `${contract.key}: campo da chave estrangeira`).toContain(foreignKey.field)
+        expect(foreignKey.references.length, `${contract.key}.${foreignKey.field}`).toBeGreaterThan(0)
+        for (const reference of foreignKey.references) {
+          if (!("contract" in reference)) continue
+          // Autorreferência (gestor na mesma tabela de colaboradores) não é dependência de outro contrato.
+          if (reference.contract !== contract.key) referenced.add(reference.contract)
+          const target = requireDataContract(reference.contract)
+          expect(target.fields.map((field) => field.key), `${contract.key}.${foreignKey.field} → ${reference.contract}.${reference.field}`).toContain(reference.field)
+          expect(target.naturalKey, `${reference.contract}.${reference.field} precisa ser a chave do contrato apontado`).toContain(reference.field)
+        }
+      }
+      // Toda dependência aparece como chave estrangeira; o contrário não vale: Subgrupo opcional do fechamento é referência
+      // sem ser dependência declarada (chega antes pela ordem de Colaboradores).
+      for (const dependency of contract.dependencies) expect([...referenced], `${contract.key}: dependência ${dependency} sem chave estrangeira`).toContain(dependency)
+      for (const target of referenced) expect(contractOrder(target), `${contract.key} → ${target}`).toBeLessThan(contractOrder(contract.key))
+    }
+  })
+
+  it("todo contrato atual traz ao menos 3 exemplos (a tabela de exemplo na tela precisa mostrar mais de um caso)", () => {
+    for (const contract of DATA_CONTRACTS) expect(contract.examples.length, contract.key).toBeGreaterThanOrEqual(3)
+  })
+
   it("chave natural e campo identidade existem entre os campos", () => {
     for (const contract of DATA_CONTRACTS) {
       const keys = new Set(contract.fields.map((field) => field.key))

@@ -184,7 +184,8 @@ export async function updateWorkflow(input: UpdateWorkflowInput): Promise<Workfl
   )
 }
 
-export type AnalysisConfigInput = { mode: "INDIVIDUAL"; populationFilter: PopulationFilter | null } | { mode: "CONSOLIDATED"; consolidatedStructure: ConsolidatedStructure }
+/** `requireActiveAccess` = "Somente quem tem acesso ativo à INIA" (só no Individual; omitido = fica como está). */
+export type AnalysisConfigInput = { mode: "INDIVIDUAL"; populationFilter: PopulationFilter | null; requireActiveAccess?: boolean } | { mode: "CONSOLIDATED"; consolidatedStructure: ConsolidatedStructure }
 
 /** Modo de avaliação (Individual x Consolidado) — configuração própria do workflow, endpoint
  * dedicado (backend valida a Abrangência de novo). */

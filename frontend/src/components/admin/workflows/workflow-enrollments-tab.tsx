@@ -165,8 +165,8 @@ function describeEscalateEvent(event: WorkflowEnrollmentEvent, graph: FlowGraph 
   return `De ${from} → ${targetLabel} · ${surfaces || "sem superfície"}${reasonText}`
 }
 
-const POLICY_OUTCOME_LABELS: Record<string, string> = { CREATED: "intervenção criada", PENDING_APPROVAL: "aprovação pendente", RECOMMENDED: "intervenção recomendada", EXISTING: "intervenção já existente", NO_MATCH: "nenhuma regra atendida", INCONCLUSIVE: "avaliação inconclusiva", CONFLICT: "conflito entre intervenções", SUPPRESSED: "suprimida pela carência", NOT_APPLICABLE: "política não aplicável" }
-const POLICY_DECISION_LABELS: Record<string, string> = { CREATED: "aberta", PENDING_APPROVAL: "aguardando aprovação", RECOMMENDED: "recomendada", EXISTING: "já existia", SUPPRESSED: "carência", CONFLICT: "conflito" }
+const POLICY_OUTCOME_LABELS: Record<string, string> = { CREATED: "intervenção criada", PENDING_APPROVAL: "aprovação pendente", RECOMMENDED: "intervenção recomendada", NOTIFIED: "liderança avisada", EXISTING: "intervenção já existente", NO_MATCH: "nenhuma regra atendida", INCONCLUSIVE: "avaliação inconclusiva", CONFLICT: "conflito entre intervenções", SUPPRESSED: "suprimida pela carência", NOT_APPLICABLE: "política não aplicável" }
+const POLICY_DECISION_LABELS: Record<string, string> = { CREATED: "aberta", PENDING_APPROVAL: "aguardando aprovação", RECOMMENDED: "recomendada", NOTIFIED: "só avisada a quem lidera", EXISTING: "já existia", SUPPRESSED: "carência", CONFLICT: "conflito" }
 
 /** "Avaliar política de acompanhamento": resultado geral + decisão POR AÇÃO e a versão usada — sem ids técnicos. */
 function describePolicyEvent(event: WorkflowEnrollmentEvent): string | null {

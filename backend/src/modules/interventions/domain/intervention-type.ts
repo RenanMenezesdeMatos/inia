@@ -42,6 +42,28 @@ const formFieldSchema = z
   .strict()
 export type FormField = z.infer<typeof formFieldSchema>
 
+/**
+ * ROTEIRO do formato — os passos com que a intervenção JÁ NASCE (ex.: lado a lado = três sessões e um checkpoint), para o líder
+ * receber o acompanhamento proposto em vez de montá-lo do zero. Cada passo vira um item (tarefa ou checkpoint) com dono e prazo;
+ * o líder ajusta, inclui e dispensa itens como sempre. Campo acrescentado em 18/11/2026: versões publicadas antes não o têm e
+ * valem como roteiro vazio.
+ */
+export const SCRIPT_STEP_KINDS = ["TASK", "CHECKPOINT"] as const
+export const SCRIPT_STEP_OWNERS = ["RESPONSIBLE", "COLLABORATOR"] as const
+export const MAX_SCRIPT_STEPS = 12
+const scriptStepSchema = z
+  .object({
+    kind: z.enum(SCRIPT_STEP_KINDS),
+    title: z.string().trim().min(1).max(200),
+    description: z.string().trim().max(2000),
+    /** Quem faz o passo: o responsável pela intervenção (quem lidera) ou o próprio colaborador. */
+    owner: z.enum(SCRIPT_STEP_OWNERS),
+    /** Prazo do passo, em dias depois da abertura. null = o prazo da própria intervenção. */
+    dueInDays: z.number().int().min(1).max(365).nullable(),
+  })
+  .strict()
+export type ScriptStep = z.infer<typeof scriptStepSchema>
+
 const approvalSchema = z.discriminatedUnion("required", [
   z.object({ required: z.literal(false) }).strict(),
   // Quem aprova é resolvido pela CADEIA do colaborador (reports_to), com o mesmo resolvedor do Escalonar/Revisão humana.
@@ -72,6 +94,14 @@ export const interventionTypeDefinitionSchema = z
     incompatibleWith: z.array(stableKeySchema).max(20),
     /** Permite pedir à IA um RASCUNHO (treinamento ou plano) com fontes; o rascunho passa pelas aprovações do tipo. */
     aiDraft: z.boolean(),
+    /** Roteiro de passos com que a intervenção nasce (vazio = sem roteiro). */
+    script: z.array(scriptStepSchema).max(MAX_SCRIPT_STEPS).default([]),
+    /**
+     * O colaborador VÊ o acompanhamento em execução no Acompanhamento dele (o combinado e os passos) e marca os próprios passos.
+     * Nunca vê o motivo, a análise, o relatório nem as anotações de quem conduz. Campo de 18/11/2026: versões anteriores valem
+     * como "não visível".
+     */
+    collaboratorVisible: z.boolean().default(false),
   })
   .strict()
 export type InterventionTypeDefinition = z.infer<typeof interventionTypeDefinitionSchema>
@@ -100,6 +130,17 @@ export function validateInterventionType(definition: InterventionTypeDefinition,
   if (definition.aiDraft && !has("TRAINING") && !has("ACTION_PLAN")) issues.push({ path: "aiDraft", code: "TYPE_AI_DRAFT_UNSUPPORTED", message: "Rascunho pela IA só existe para Treinamento ou Plano de ação." })
   if (has("TRAINING") && has("RECOGNITION")) issues.push({ path: "capabilities", code: "TYPE_CAPABILITIES_INCOMPATIBLE", message: "Treinamento (lacuna de habilidade) e Reconhecimento não convivem no mesmo tipo." })
 
+  const stepTitles = new Set<string>()
+  definition.script.forEach((step, index) => {
+    const path = `script.${index}`
+    if (step.kind === "TASK" && !has("TASKS")) issues.push({ path: `${path}.kind`, code: "TYPE_SCRIPT_NEEDS_TASKS", message: `O passo "${step.title}" é uma tarefa: marque a capacidade Tarefas (ou Plano de ação).` })
+    if (step.kind === "CHECKPOINT" && !has("CHECKPOINTS")) issues.push({ path: `${path}.kind`, code: "TYPE_SCRIPT_NEEDS_CHECKPOINTS", message: `O passo "${step.title}" é um checkpoint: marque a capacidade Checkpoints (ou Plano de ação).` })
+    if (step.dueInDays !== null && step.dueInDays > definition.defaultDueDays) issues.push({ path: `${path}.dueInDays`, code: "TYPE_SCRIPT_DUE_AFTER_DEADLINE", message: `O passo "${step.title}" vence depois do prazo padrão do tipo (${definition.defaultDueDays} dias).` })
+    const title = step.title.trim().toLowerCase()
+    if (stepTitles.has(title)) issues.push({ path: `${path}.title`, code: "TYPE_SCRIPT_STEP_DUPLICATED", message: `O passo "${step.title}" aparece mais de uma vez no roteiro.` })
+    stepTitles.add(title)
+  })
+
   const seen = new Set<string>()
   definition.incompatibleWith.forEach((key, index) => {
     if (key === ownKey) issues.push({ path: `incompatibleWith.${index}`, code: "TYPE_INCOMPATIBLE_SELF", message: "Um tipo não pode ser incompatível consigo mesmo." })
@@ -125,6 +166,7 @@ export function continuityReviewIssues(definition: InterventionTypeDefinition): 
   if (!definition.approval.required) issues.push({ path: "approval", code: "CONTINUITY_REVIEW_APPROVAL_REQUIRED", message: "A avaliação de continuidade sempre exige decisão humana; não é possível desligar." })
   if (definition.evidence.minimumItems < 1) issues.push({ path: "evidence.minimumItems", code: "CONTINUITY_REVIEW_EVIDENCE_REQUIRED", message: "A avaliação de continuidade exige pelo menos uma evidência verificável." })
   if (definition.aiDraft) issues.push({ path: "aiDraft", code: "CONTINUITY_REVIEW_NO_AI", message: "A IA nunca rascunha nem decide uma avaliação de continuidade." })
+  if (definition.collaboratorVisible) issues.push({ path: "collaboratorVisible", code: "CONTINUITY_REVIEW_NOT_VISIBLE", message: "A avaliação de continuidade nunca aparece para o colaborador." })
   return issues
 }
 
@@ -152,5 +194,23 @@ export function emptyInterventionTypeDefinition(name = "Nova intervenção"): In
     completion: { requireAllTasksDone: true, requireLearningAssessment: false, requireOperationalReading: false, requireOutcomeNote: true },
     incompatibleWith: [],
     aiDraft: false,
+    script: [],
+    collaboratorVisible: false,
   }
+}
+
+const DAY_MS = 86_400_000
+const addCivilDays = (day: string, days: number) => new Date(Date.parse(`${day}T12:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10)
+
+export type ScriptItem = { kind: "TASK" | "CHECKPOINT"; title: string; description: string; ownerId: string; dueAt: string }
+
+/**
+ * Os itens com que a intervenção nasce, a partir do roteiro do tipo — pura. O prazo de cada passo nunca passa do prazo da
+ * intervenção (a política pode abri-la com prazo menor que o padrão do tipo).
+ */
+export function scriptItemsOf(definition: Pick<InterventionTypeDefinition, "script">, input: { openedDay: string; dueAt: string; responsibleId: string; personId: string }): ScriptItem[] {
+  return definition.script.map((step) => {
+    const stepDue = step.dueInDays === null ? input.dueAt : addCivilDays(input.openedDay, step.dueInDays)
+    return { kind: step.kind, title: step.title, description: step.description, ownerId: step.owner === "COLLABORATOR" ? input.personId : input.responsibleId, dueAt: stepDue > input.dueAt ? input.dueAt : stepDue }
+  })
 }

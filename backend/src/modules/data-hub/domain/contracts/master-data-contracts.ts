@@ -70,6 +70,11 @@ export const EMPLOYEES_CONTRACT: DataContract = {
   ],
   naturalKey: ["externalEmployeeId"],
   dependencies: ["GROUPS", "SUBGROUPS"],
+  foreignKeys: [
+    { field: "groupExternalCode", references: [{ contract: "GROUPS", field: "externalCode" }] },
+    { field: "subgroupExternalCode", references: [{ contract: "SUBGROUPS", field: "externalCode" }] },
+    { field: "reportsToExternalId", references: [{ contract: "EMPLOYEES", field: "externalEmployeeId" }] },
+  ],
   writeSemantics: "UPSERT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: null,
@@ -77,6 +82,7 @@ export const EMPLOYEES_CONTRACT: DataContract = {
   examples: [
     { externalEmployeeId: "OP-10234", name: "Mariana Alves", role: "OPERATOR", jobTitle: "Analista de Atendimento I", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: "B2C_RETENCAO/PREMIUM", reportsToExternalId: "SUP-0042", hiredAt: "2024-03-11", active: true, email: null, currentStatus: "EM PRODUÇÃO", statusEffectiveFrom: null, sourceUpdatedAt: null, operationalCapitalCode: "FORTALEZA", operatingUniverse: null, operatingUniverseEffectiveFrom: null },
     { externalEmployeeId: "SUP-0042", name: "Carlos Menezes", role: "SUPERVISOR", jobTitle: "Supervisor de Atendimento", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: null, reportsToExternalId: "GER-0007", hiredAt: "2021-08-02", active: true, email: null, currentStatus: "FERIAS", statusEffectiveFrom: "2026-09-09", sourceUpdatedAt: "2026-09-15T08:00:00-03:00", operationalCapitalCode: "RECIFE", operatingUniverse: null, operatingUniverseEffectiveFrom: null },
+    { externalEmployeeId: "OP-20871", name: "Bruno Tavares", role: "OPERATOR", jobTitle: "Analista de Atendimento I", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: "B2C_RETENCAO/PADRAO", reportsToExternalId: "SUP-0042", hiredAt: "2025-02-03", active: true, email: null, currentStatus: "EM PRODUÇÃO", statusEffectiveFrom: null, sourceUpdatedAt: null, operationalCapitalCode: "FORTALEZA", operatingUniverse: null, operatingUniverseEffectiveFrom: null },
   ],
 }
 
@@ -95,10 +101,20 @@ export const ORGANIZATIONAL_STRUCTURE_CONTRACT: DataContract = {
   ],
   naturalKey: ["externalEmployeeId"],
   dependencies: ["EMPLOYEES", "GROUPS", "SUBGROUPS"],
+  foreignKeys: [
+    { field: "externalEmployeeId", references: [{ contract: "EMPLOYEES", field: "externalEmployeeId" }] },
+    { field: "reportsToExternalId", references: [{ contract: "EMPLOYEES", field: "externalEmployeeId" }] },
+    { field: "groupExternalCode", references: [{ contract: "GROUPS", field: "externalCode" }] },
+    { field: "subgroupExternalCode", references: [{ contract: "SUBGROUPS", field: "externalCode" }] },
+  ],
   writeSemantics: "UPSERT",
   writePolicy: "ATOMIC",
   businessTimeField: null,
-  examples: [{ externalEmployeeId: "OP-10234", reportsToExternalId: "SUP-0042", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: "B2C_RETENCAO/PREMIUM" }],
+  examples: [
+    { externalEmployeeId: "OP-10234", reportsToExternalId: "SUP-0042", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: "B2C_RETENCAO/PREMIUM" },
+    { externalEmployeeId: "OP-20871", reportsToExternalId: "SUP-0042", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: "B2C_RETENCAO/PADRAO" },
+    { externalEmployeeId: "SUP-0042", reportsToExternalId: "GER-0007", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: null },
+  ],
 }
 
 export const GROUPS_CONTRACT: DataContract = {
@@ -117,10 +133,15 @@ export const GROUPS_CONTRACT: DataContract = {
   ],
   naturalKey: ["externalCode"],
   dependencies: [],
+  foreignKeys: [],
   writeSemantics: "UPSERT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: null,
-  examples: [{ externalCode: "B2C_RETENCAO", name: "B2C · Retenção", operationName: "Atendimento B2C", operatingUniverse: "B2C", operatingUniverseEffectiveFrom: null }],
+  examples: [
+    { externalCode: "B2C_RETENCAO", name: "B2C · Retenção", operationName: "Atendimento B2C", operatingUniverse: "B2C", operatingUniverseEffectiveFrom: null },
+    { externalCode: "B2C_SUPORTE", name: "B2C · Suporte técnico", operationName: "Atendimento B2C", operatingUniverse: "B2C", operatingUniverseEffectiveFrom: null },
+    { externalCode: "B2B_EMPRESAS", name: "B2B · Empresas", operationName: "Atendimento B2B", operatingUniverse: "B2B", operatingUniverseEffectiveFrom: "2026-03-01" },
+  ],
 }
 
 export const SUBGROUPS_CONTRACT: DataContract = {
@@ -139,10 +160,17 @@ export const SUBGROUPS_CONTRACT: DataContract = {
   ],
   naturalKey: ["externalCode"],
   dependencies: ["GROUPS"],
+  foreignKeys: [
+    { field: "groupExternalCode", references: [{ contract: "GROUPS", field: "externalCode" }] },
+  ],
   writeSemantics: "UPSERT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: null,
-  examples: [{ externalCode: "B2C_RETENCAO/PREMIUM", groupExternalCode: "B2C_RETENCAO", name: "Premium", operatingUniverse: null, operatingUniverseEffectiveFrom: null }],
+  examples: [
+    { externalCode: "B2C_RETENCAO/PREMIUM", groupExternalCode: "B2C_RETENCAO", name: "Premium", operatingUniverse: null, operatingUniverseEffectiveFrom: null },
+    { externalCode: "B2C_RETENCAO/PADRAO", groupExternalCode: "B2C_RETENCAO", name: "Padrão", operatingUniverse: null, operatingUniverseEffectiveFrom: null },
+    { externalCode: "B2C_SUPORTE/EMPRESARIAL", groupExternalCode: "B2C_SUPORTE", name: "Suporte empresarial", operatingUniverse: "B2X", operatingUniverseEffectiveFrom: "2026-06-01" },
+  ],
 }
 
 export const WORK_SCHEDULES_CONTRACT: DataContract = {
@@ -162,6 +190,9 @@ export const WORK_SCHEDULES_CONTRACT: DataContract = {
   ],
   naturalKey: ["externalEmployeeId", "effectiveFrom"],
   dependencies: ["EMPLOYEES"],
+  foreignKeys: [
+    { field: "externalEmployeeId", references: [{ contract: "EMPLOYEES", field: "externalEmployeeId" }] },
+  ],
   writeSemantics: "UPSERT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: null,
@@ -178,7 +209,12 @@ export const WORK_SCHEDULES_CONTRACT: DataContract = {
     }
     return errors
   },
-  examples: [{ externalEmployeeId: "OP-10234", startTime: "08:00", workMinutes: 360, effectiveFrom: "2026-01-01", effectiveTo: null, scheduleType: "6x1" }],
+  examples: [
+    { externalEmployeeId: "OP-10234", startTime: "08:00", workMinutes: 360, effectiveFrom: "2026-01-01", effectiveTo: null, scheduleType: "6x1" },
+    { externalEmployeeId: "OP-20871", startTime: "14:00", workMinutes: 360, effectiveFrom: "2026-01-01", effectiveTo: "2026-09-30", scheduleType: "6x1" },
+    { externalEmployeeId: "OP-20871", startTime: "16:00", workMinutes: 360, effectiveFrom: "2026-10-01", effectiveTo: null, scheduleType: "6x1" },
+    { externalEmployeeId: "SUP-0042", startTime: "08:00", workMinutes: 480, effectiveFrom: "2026-01-01", effectiveTo: null, scheduleType: "5x2" },
+  ],
 }
 
 /**
@@ -207,6 +243,9 @@ export const WORK_SCHEDULE_DAYS_CONTRACT: DataContract = {
   ],
   naturalKey: ["externalEmployeeId", "scheduleDate"],
   dependencies: ["EMPLOYEES"],
+  foreignKeys: [
+    { field: "externalEmployeeId", references: [{ contract: "EMPLOYEES", field: "externalEmployeeId" }] },
+  ],
   writeSemantics: "UPSERT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: "scheduleDate",
@@ -224,6 +263,7 @@ export const WORK_SCHEDULE_DAYS_CONTRACT: DataContract = {
   examples: [
     { externalEmployeeId: "OP-10234", scheduleDate: "2026-09-16", scheduledToWork: false, shiftStart: null, shiftEnd: null, scheduleType: "6x1", sourceUpdatedAt: null, externalScheduleId: "WS-2026-09-16-10234" },
     { externalEmployeeId: "OP-10234", scheduleDate: "2026-09-19", scheduledToWork: true, shiftStart: "08:00", shiftEnd: "14:20", scheduleType: "6x1", sourceUpdatedAt: null, externalScheduleId: "WS-2026-09-19-10234" },
+    { externalEmployeeId: "OP-20871", scheduleDate: "2026-09-19", scheduledToWork: true, shiftStart: "14:00", shiftEnd: "20:20", scheduleType: "6x1", sourceUpdatedAt: "2026-09-18T17:30:00-03:00", externalScheduleId: "WS-2026-09-19-20871" },
   ],
 }
 
@@ -251,6 +291,9 @@ export const WORK_SCHEDULE_EXCEPTIONS_CONTRACT: DataContract = {
   ],
   naturalKey: ["externalEmployeeId", "date", "exceptionCode"],
   dependencies: ["EMPLOYEES"],
+  foreignKeys: [
+    { field: "externalEmployeeId", references: [{ contract: "EMPLOYEES", field: "externalEmployeeId" }] },
+  ],
   writeSemantics: "UPSERT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: "date",
@@ -265,6 +308,7 @@ export const WORK_SCHEDULE_EXCEPTIONS_CONTRACT: DataContract = {
   examples: [
     { externalEmployeeId: "OP-10234", date: "2026-09-16", exceptionCode: "DAY_OFF", reason: "Day off concedido pela supervisão", active: true, sourceUpdatedAt: null, externalExceptionId: "EXC-2026-09-16-10234" },
     { externalEmployeeId: "OP-10234", date: "2026-09-23", exceptionCode: "BANCO_HORAS", reason: "Compensação de horas do sábado 12/09", active: true, sourceUpdatedAt: null, externalExceptionId: "EXC-2026-09-23-10234" },
+    { externalEmployeeId: "OP-20871", date: "2026-09-25", exceptionCode: "FOLGA_EXTRAORDINARIA", reason: "Folga extraordinária por convocação eleitoral", active: true, sourceUpdatedAt: "2026-09-20T10:00:00-03:00", externalExceptionId: "EXC-2026-09-25-20871" },
   ],
 }
 
@@ -294,6 +338,9 @@ export const WORK_SCHEDULE_ACTIVITIES_CONTRACT: DataContract = {
   ],
   naturalKey: ["externalEmployeeId", "scheduleDate", "startTime", "activityName"],
   dependencies: ["EMPLOYEES"],
+  foreignKeys: [
+    { field: "externalEmployeeId", references: [{ contract: "EMPLOYEES", field: "externalEmployeeId" }] },
+  ],
   writeSemantics: "UPSERT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: "scheduleDate",
@@ -313,6 +360,7 @@ export const WORK_SCHEDULE_ACTIVITIES_CONTRACT: DataContract = {
     { externalEmployeeId: "OP-10234", scheduleDate: "2026-11-17", activityName: "Pausa NR17", activityType: "PAUSA", startTime: "10:20", endTime: "10:30", sourceUpdatedAt: null, externalActivityId: null },
     { externalEmployeeId: "OP-10234", scheduleDate: "2026-11-17", activityName: "Lanche", activityType: "PAUSA", startTime: "11:40", endTime: "12:00", sourceUpdatedAt: null, externalActivityId: null },
     { externalEmployeeId: "OP-10234", scheduleDate: "2026-11-17", activityName: "Feedback", activityType: "OUTRA", startTime: "13:00", endTime: "13:20", sourceUpdatedAt: null, externalActivityId: null },
+    { externalEmployeeId: "OP-20871", scheduleDate: "2026-11-17", activityName: "Treinamento de produto", activityType: "OUTRA", startTime: "22:30", endTime: "00:30", sourceUpdatedAt: "2026-11-16T18:00:00-03:00", externalActivityId: "ATV-2026-11-17-20871-2" },
   ],
 }
 
@@ -335,6 +383,10 @@ export const GOALS_CONTRACT: DataContract = {
   ],
   naturalKey: ["indicatorCode", "subjectType", "subjectExternalCode", "validFrom"],
   dependencies: ["GROUPS", "SUBGROUPS", "EMPLOYEES"],
+  foreignKeys: [
+    { field: "indicatorCode", references: [{ catalog: "Catálogo de indicadores da INIA" }] },
+    { field: "subjectExternalCode", references: [{ contract: "GROUPS", field: "externalCode" }, { contract: "SUBGROUPS", field: "externalCode" }, { contract: "EMPLOYEES", field: "externalEmployeeId" }] },
+  ],
   writeSemantics: "UPSERT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: null,
@@ -344,7 +396,11 @@ export const GOALS_CONTRACT: DataContract = {
     }
     return []
   },
-  examples: [{ indicatorCode: "TMA", subjectType: "GROUP", subjectExternalCode: "B2C_RETENCAO", targetValue: 480, validFrom: "2026-01-01", validUntil: null }],
+  examples: [
+    { indicatorCode: "TMA", subjectType: "GROUP", subjectExternalCode: "B2C_RETENCAO", targetValue: 480, validFrom: "2026-01-01", validUntil: null },
+    { indicatorCode: "TMA", subjectType: "SUBGROUP", subjectExternalCode: "B2C_RETENCAO/PREMIUM", targetValue: 460, validFrom: "2026-01-01", validUntil: null },
+    { indicatorCode: "FCR", subjectType: "EMPLOYEE", subjectExternalCode: "OP-20871", targetValue: 78, validFrom: "2026-09-01", validUntil: "2026-12-31" },
+  ],
 }
 
 export const ABSENCE_TYPES_HELP = "Tipo como a fonte entrega, normalizado para uma situação TEMPORAL real: FÉRIAS, INSS, MATERNIDADE, PATERNIDADE ou ATIVIDADE OFF (EM PRODUÇÃO não é ausência). Valores próprios da fonte (FER, LIC…) entram por 'Mapear códigos'; desconhecido vai para a quarentena."
@@ -356,6 +412,9 @@ const ABSENCE_ENTITY = {
   targetEntity: "employee_status_periods",
   naturalKey: ["externalEmployeeId", "type", "startDate"],
   dependencies: ["EMPLOYEES"],
+  foreignKeys: [
+    { field: "externalEmployeeId", references: [{ contract: "EMPLOYEES", field: "externalEmployeeId" }] },
+  ],
   writeSemantics: "UPSERT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: "startDate",
@@ -402,5 +461,6 @@ export const EMPLOYEE_ABSENCES_CONTRACT: DataContract = {
   examples: [
     { externalEmployeeId: "OP-10234", type: "FERIAS", startDate: "2026-09-09", endDate: "2026-09-20", active: true, sourceUpdatedAt: null },
     { externalEmployeeId: "OP-10234", type: "FERIAS", startDate: "2026-10-05", endDate: "2026-10-14", active: false, sourceUpdatedAt: "2026-09-30T18:00:00-03:00" },
+    { externalEmployeeId: "OP-20871", type: "INSS", startDate: "2026-10-20", endDate: null, active: true, sourceUpdatedAt: "2026-10-20T09:15:00-03:00" },
   ],
 }

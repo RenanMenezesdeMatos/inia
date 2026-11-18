@@ -9,6 +9,8 @@ import { isOperationallyEligibleStatus } from "../../people/domain/employment-st
 import { isSensitiveLeave } from "../../org-structure/domain/management-metrics.js"
 import { PROTECTED_LEAVE_TEXT, protectLeave } from "../domain/protected-leave.js"
 import { visibleInFollowUpSql } from "../../feedbacks/application/follow-up-visibility.js"
+import { feedbackAboutIndicatorSql, loadEvolution, loadFeedbackHistory } from "./leader-context.js"
+import { judgeEvolution } from "../domain/evolution.js"
 import { NUMERIC_COMPARATOR_TEXT, numericComparatorMatches, type PolicyCondition } from "../domain/policy-definition.js"
 import type { ConditionOutcome, ConditionResolver, FactReference } from "../domain/policy-evaluation.js"
 
@@ -257,7 +259,7 @@ async function resolveFeedback(db: Db, subject: PolicySubject, condition: Extrac
        from feedbacks f join supervision_cases c on c.id = f.case_id and c.organization_id = f.organization_id
       where f.organization_id = $1 and f.operator_id = $2 and f.status in ('PUBLISHED', 'ACKNOWLEDGED')
         and f.published_at >= $3 and f.published_at <= $4 and ($5::text is null or f.feedback_kind::text = $5)
-        and ($6::text is null or c.indicator_code = $6 or f.impacted_indicator = $6) and ${visibleInFollowUpSql("f")}
+        and ${feedbackAboutIndicatorSql("f", "c", "$6")} and ${visibleInFollowUpSql("f")}
         -- Feedback sem citação conferida (síntese de IA, achado AI-02) não é evidência verificável.
         and coalesce(f.context_snapshot->>'evidenceVerified', 'true') <> 'false'
       order by f.published_at desc limit 50`,
@@ -269,6 +271,35 @@ async function resolveFeedback(db: Db, subject: PolicySubject, condition: Extrac
     summary: `Feedbacks publicados (${condition.feedbackKind === "INDICATOR" ? "de indicador" : condition.feedbackKind === "MONITORING" ? "de monitoria" : "todos"}${condition.indicatorCode ? `, ${condition.indicatorCode}` : ""}, ${condition.withinDays} dias): ${rows.rows.length} ${NUMERIC_COMPARATOR_TEXT[condition.comparator]} ${condition.threshold}`,
     facts: { count: rows.rows.length, feedbacks: rows.rows.map((row) => ({ id: row.id, kind: row.kind, indicator: row.indicator, publishedAt: row.published_at.toISOString() })) },
     references: rows.rows.map((row) => ({ kind: "FEEDBACK" as const, ref: row.id, label: `Feedback ${row.kind === "MONITORING" ? "de monitoria" : "de indicador"}${row.indicator ? ` (${row.indicator})` : ""}`, occurredAt: row.published_at.toISOString() })),
+  }
+}
+
+/**
+ * Evolução desde o último feedback sobre o indicador — a MESMA medição do resumo da liderança (`loadEvolution`), agora com o
+ * limiar explícito da regra. Sem feedback no período: não atendida (ausência de registro da própria INIA é fato). Sem
+ * comparação possível: INCONCLUSIVA.
+ */
+async function resolveEvolution(db: Db, subject: PolicySubject, condition: Extract<PolicyCondition, { kind: "EVOLUTION" }>): Promise<ConditionOutcome> {
+  const indicatorCode = condition.indicatorCode ?? subject.policyIndicatorCode
+  const wanted = condition.expectation === "NOT_IMPROVED" ? "sem evolução" : "com evolução"
+  if (!indicatorCode) return { status: "INCONCLUSIVE", summary: "Evolução desde o feedback: a condição não tem indicador.", facts: { kind: "evolution" }, reasonCode: "EVOLUTION_NO_INDICATOR", references: [] }
+  const indicatorName = (await db.query<{ name: string }>(`select name from indicator_definitions where organization_id = $1 and code = $2`, [subject.organizationId, indicatorCode])).rows[0]?.name ?? indicatorCode
+  const input = { organizationId: subject.organizationId, personId: subject.personId, indicatorCode, indicatorName, asOf: subject.asOf, timeZone: subject.timeZone }
+  const history = await loadFeedbackHistory(db as Database, input, condition.withinDays)
+  const evolution = await loadEvolution(db as Database, input, history.feedbacks)
+  if (!evolution) {
+    return { status: "NOT_MET", summary: `Evolução de ${indicatorName} desde o último feedback: nenhum feedback publicado sobre o indicador nos últimos ${condition.withinDays} dias.`, facts: { kind: "evolution", reason: "NO_FEEDBACK", withinDays: condition.withinDays }, references: [] }
+  }
+  const references: FactReference[] = [{ kind: "FEEDBACK", ref: evolution.reference.ref, label: `Feedback de referência da evolução (${indicatorCode})`, occurredAt: evolution.reference.at }]
+  const facts = { kind: "evolution", status: evolution.status, windowDays: evolution.windowDays, before: evolution.before, after: evolution.after, change: evolution.change, minimumImprovementPercent: condition.minimumImprovementPercent, referenceFeedbackId: evolution.reference.ref }
+  const judgement = judgeEvolution(evolution, condition.minimumImprovementPercent)
+  if (!judgement.conclusive) return { status: "INCONCLUSIVE", summary: evolution.statement, facts, reasonCode: judgement.reasonCode, references }
+  const minimum = condition.minimumImprovementPercent > 0 ? `melhora mínima de ${condition.minimumImprovementPercent.toLocaleString("pt-BR")}%` : "qualquer melhora conta"
+  return {
+    status: judgement.improved === (condition.expectation === "IMPROVED") ? "MET" : "NOT_MET",
+    summary: `${evolution.statement} Regra: ${wanted} (${minimum}) — ${judgement.improved ? "houve evolução" : "não houve evolução"}.`,
+    facts: { ...facts, improvementPercent: judgement.improvementPercent, improved: judgement.improved },
+    references,
   }
 }
 
@@ -339,6 +370,8 @@ function createUnprotectedResolver(db: Db, subject: PolicySubject): ConditionRes
         return resolveFeedback(db, subject, condition)
       case "INTERACTION_FLAG":
         return resolveInteractionFlag(db, subject, condition)
+      case "EVOLUTION":
+        return resolveEvolution(db, subject, condition)
     }
   }
 }

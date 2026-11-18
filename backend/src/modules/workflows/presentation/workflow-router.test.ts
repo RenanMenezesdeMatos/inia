@@ -2030,6 +2030,64 @@ describe("workflow-router", () => {
       expect(response.status).toBe(200)
     })
 
+    describe('"Somente quem tem acesso ativo à INIA" — opção do modo Individual, em qualquer gatilho', () => {
+      /** Captura o que a rota grava no rascunho: $9 = Filtro Populacional, $14 = a opção de acesso (null = não toca). */
+      const capture = (row: Parameters<typeof fakeDatabaseForAnalysisConfig>[0]) => {
+        const writes: unknown[][] = []
+        const factory = fakeDatabaseForAnalysisConfig(row, (sql, params) => {
+          if (sql.includes("draft_require_active_access = case")) {
+            writes.push(params ?? [])
+            return { rows: [{ id: "wf-2" }], rowCount: 1 }
+          }
+          if (sql.includes("from workflows w") && sql.includes("w.id = $2")) return { rows: [WORKFLOW_TEAM_A], rowCount: 1 }
+          return undefined
+        })
+        return { factory, writes }
+      }
+      const flagWorkflow = { scopeType: "TEAM", teamId: TEAM_A, triggerConfig: { kind: "channel_flag", channelFlagId: "flag-1" } }
+
+      it("gatilho por Flag aceita a opção (o Filtro Populacional não existe ali) e grava só no rascunho", async () => {
+        const passwordHash = await hashPassword("Inia@123")
+        const { factory, writes } = capture(flagWorkflow)
+        const agent = request.agent(createApp(factory(passwordHash)))
+        await agent.post("/api/v1/auth/login").send({ email: ACCOUNT.email, password: "Inia@123" })
+        const response = await agent.put("/api/v1/admin/workflows/wf-2/analysis-config").send({ mode: "INDIVIDUAL", populationFilter: null, requireActiveAccess: true })
+        expect(response.status).toBe(200)
+        expect(writes).toHaveLength(1)
+        expect(writes[0]![8]).toBeNull()
+        expect(writes[0]![13]).toBe(true)
+      })
+
+      it("omitida, a opção fica como está; no Consolidado é sempre desligada", async () => {
+        const passwordHash = await hashPassword("Inia@123")
+        const individual = capture(calendarWorkflow)
+        const agent = request.agent(createApp(individual.factory(passwordHash)))
+        await agent.post("/api/v1/auth/login").send({ email: ACCOUNT.email, password: "Inia@123" })
+        expect((await agent.put("/api/v1/admin/workflows/wf-2/analysis-config").send({ mode: "INDIVIDUAL", populationFilter: null })).status).toBe(200)
+        expect(individual.writes[0]![13]).toBeNull()
+
+        const consolidated = capture(calendarWorkflow)
+        const other = request.agent(createApp(consolidated.factory(passwordHash)))
+        await other.post("/api/v1/auth/login").send({ email: ACCOUNT.email, password: "Inia@123" })
+        const response = await other.put("/api/v1/admin/workflows/wf-2/analysis-config").send({ mode: "CONSOLIDATED", consolidatedStructure: { kind: "SUPERVISOR_TEAM", supervisorId: supervisorInScope } })
+        expect(response.status).toBe(200)
+        expect(consolidated.writes[0]![13]).toBe(false)
+      })
+
+      it("a opção não é aceita no corpo do modo Consolidado", async () => {
+        const passwordHash = await hashPassword("Inia@123")
+        const { factory, writes } = capture(calendarWorkflow)
+        const agent = request.agent(createApp(factory(passwordHash)))
+        await agent.post("/api/v1/auth/login").send({ email: ACCOUNT.email, password: "Inia@123" })
+        const response = await agent
+          .put("/api/v1/admin/workflows/wf-2/analysis-config")
+          .send({ mode: "CONSOLIDATED", consolidatedStructure: { kind: "SUPERVISOR_TEAM", supervisorId: supervisorInScope }, requireActiveAccess: true })
+        // O esquema ignora o campo desconhecido do Consolidado e a rota grava a opção desligada — nunca ligada.
+        expect(response.status).toBe(200)
+        expect(writes[0]![13]).toBe(false)
+      })
+    })
+
     it("modo Individual: rejeita Filtro Populacional quando o gatilho é Flag/Indicador — não existe filtro pra esses casos", async () => {
       const passwordHash = await hashPassword("Inia@123")
       const database = fakeDatabaseForAnalysisConfig({ scopeType: "TEAM", teamId: TEAM_A, triggerConfig: { kind: "channel_flag", channelFlagId: "flag-1" } })(passwordHash)

@@ -447,6 +447,41 @@
 }
 
 /*
+ * Canvas dos editores de fluxo — Workflow e mapa de especialistas do Orquestrador (18/11/2026, "difícil de ver o stage,
+ * tudo cinza"): fundo um tom abaixo do cartão, pontos visíveis, ligações e setas na cor do texto secundário (o cinza claro
+ * padrão do React Flow sumia) e rótulo da ligação em pílula branca com contorno. Os outros React Flow (organograma, Wiki)
+ * mantêm o próprio visual.
+ */
+.inia-flow-canvas {
+  --flow-canvas-dot: color-mix(in oklab, var(--foreground) 22%, transparent);
+  background: color-mix(in oklab, var(--card), var(--foreground) 8%);
+}
+.dark .inia-flow-canvas {
+  background: var(--canvas);
+}
+.inia-flow-canvas .react-flow__edge-path {
+  stroke: color-mix(in oklab, var(--foreground) 50%, transparent);
+  stroke-width: 1.75;
+}
+.inia-flow-canvas .react-flow__edge.selected .react-flow__edge-path,
+.inia-flow-canvas .react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--primary);
+  stroke-width: 2.25;
+}
+.inia-flow-canvas .react-flow__arrowhead polyline {
+  stroke: color-mix(in oklab, var(--foreground) 50%, transparent) !important;
+  fill: color-mix(in oklab, var(--foreground) 50%, transparent) !important;
+}
+.inia-flow-canvas .react-flow__edge-textbg {
+  fill: var(--card);
+  stroke: color-mix(in oklab, var(--foreground) 20%, transparent);
+}
+.inia-flow-canvas .react-flow__edge-text {
+  fill: var(--foreground);
+  font-weight: 600;
+}
+
+/*
  * Sinal de percurso em edges do React Flow (components/flow/flow-travel-signal.ts): a edge em
  * viagem usa o `animated` nativo da biblioteca — a MESMA marcha de traços da conexão
  * Orquestrador → Agente — em cor de destaque; `reverse` inverte o sentido da marcha. O editor de

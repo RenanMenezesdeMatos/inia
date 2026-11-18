@@ -6,10 +6,14 @@ import type { Queryable } from "../../people/application/schedule-exception-serv
 import { dispatchAlert } from "../../workflows/application/dispatch-alert.js"
 import { effectiveCapabilities } from "../domain/capabilities.js"
 import { buildIntelligenceReport, INTELLIGENCE_REPORT_CONTRACT, type IntelligenceReport } from "../domain/intelligence-report.js"
-import { isSensitiveType } from "../domain/intervention-type.js"
+import { isSensitiveType, scriptItemsOf } from "../domain/intervention-type.js"
+import { briefLead } from "../domain/leader-brief.js"
+import { continuityRuleRequiresPriorFollowUp, CONTINUITY_PRIOR_FOLLOW_UP_MESSAGE } from "../domain/policy-definition.js"
 import type { InterventionPlan } from "../domain/intervention-plan.js"
-import { aggregateOutcome, INTERVENTION_POLICY_EVALUATOR_VERSION, referencesOf, type DecisionStatus, type PlannedDecision } from "../domain/policy-evaluation.js"
+import { ADDRESSED_STATUSES, aggregateOutcome, INTERVENTION_POLICY_EVALUATOR_VERSION, OPENING_STATUSES, referencesOf, type DecisionStatus, type GroupTrace, type PlannedDecision } from "../domain/policy-evaluation.js"
+import { localDateOf } from "../../workflows/application/time-window.js"
 import { serializeEvaluation, type PolicyEvaluation } from "./evaluate-policy.js"
+import { loadLeaderContext } from "./leader-context.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
@@ -41,7 +45,7 @@ export type ApplyEvaluationInput = {
 export type AppliedDecision = { typeKey: string; typeName: string; status: DecisionStatus; ruleKey: string; interventionId: string | null; updated: boolean; note: string | null }
 export type ApplyEvaluationResult = { evaluationId: string; reportId: string | null; caseId: string | null; outcome: PolicyEvaluation["outcome"]; decisions: AppliedDecision[]; reused: boolean }
 
-const CREATING: readonly DecisionStatus[] = ["CREATED", "PENDING_APPROVAL", "RECOMMENDED"]
+const CREATING: readonly DecisionStatus[] = OPENING_STATUSES
 const INITIAL_STATUS: Partial<Record<DecisionStatus, string>> = { CREATED: "IN_PROGRESS", PENDING_APPROVAL: "AWAITING_APPROVAL", RECOMMENDED: "PROPOSED" }
 const EVIDENCE_KIND_OF: Record<string, string | null> = { FEEDBACK: "FEEDBACK", DIAGNOSIS: "DIAGNOSIS", INDICATOR_RESULT: "INDICATOR_RESULT", INTERACTION: "INTERACTION", CASE_EVIDENCE: "CASE_EVIDENCE", INTERVENTION: null, EMPLOYMENT: null }
 
@@ -56,7 +60,7 @@ export async function loadRecordedEvaluation(db: Queryable | Database, organizat
   return { evaluationId: row.id, reportId: report?.id ?? null, caseId: report?.case_id ?? null, outcome: row.outcome, decisions: row.decisions.map((decision) => ({ typeKey: decision.typeKey, typeName: decision.typeName, status: decision.status, ruleKey: decision.ruleKey, interventionId: decision.interventionId ?? null, updated: Boolean(decision.updated), note: decision.note ?? null })), reused: true }
 }
 
-async function resolveCase(tx: Queryable, input: ApplyEvaluationInput, report: { indicatorValue: string; indicatorTarget: string }): Promise<string> {
+async function resolveCase(tx: Queryable, input: ApplyEvaluationInput, report: { indicatorValue: string; indicatorTarget: string; actionPending: boolean }): Promise<string> {
   const { evaluation } = input
   const organizationId = evaluation.organizationId
   const personId = evaluation.person.id
@@ -84,22 +88,27 @@ async function resolveCase(tx: Queryable, input: ApplyEvaluationInput, report: {
   const summary = `${evaluation.person.name}${evaluation.indicatorName ? ` — ${evaluation.indicatorName}` : ""}: caso aberto pela política "${evaluation.policy.name}". As ações e os motivos ficam nas intervenções do colaborador.`
   const created = (await tx.query<{ id: string }>(
     `insert into supervision_cases (organization_id, operator_id, team_id, title, summary, status, priority, indicator_code, indicator_value, indicator_target)
-     values ($1, $2, $3, $4, $5, 'ACTION_PENDING', 'P2', $6, $7, $8) returning id`,
-    [organizationId, personId, teamId, title, summary, evaluation.indicatorCode ?? `POLICY:${evaluation.policy.key}`, report.indicatorValue, report.indicatorTarget],
+     values ($1, $2, $3, $4, $5, $9, 'P2', $6, $7, $8) returning id`,
+    // Só aviso (nenhuma intervenção aberta): o caso nasce como sinal DETECTADO, sem ação pendente de ninguém.
+    [organizationId, personId, teamId, title, summary, evaluation.indicatorCode ?? `POLICY:${evaluation.policy.key}`, report.indicatorValue, report.indicatorTarget, report.actionPending ? "ACTION_PENDING" : "DETECTED"],
   )).rows[0]!
   await tx.query(`insert into case_timeline_events (organization_id, case_id, event_type, payload) values ($1, $2, 'CASE_OPENED_BY_POLICY', $3)`, [organizationId, created.id, JSON.stringify({ policyId: evaluation.policy.id, policyVersion: evaluation.version?.version ?? null })])
   return created.id
 }
 
 /** Conteúdo inicial determinístico conforme as capacidades — o que a política e o diagnóstico já sabem; o resto é do líder. */
-async function initialContent(tx: Queryable, evaluation: PolicyEvaluation, decision: PlannedDecision, dueAt: string): Promise<{ plan: InterventionPlan; items: { kind: "TASK" | "CHECKPOINT" | "ACTIVITY"; title: string; description: string; dueAt: string | null }[] }> {
+type InitialItem = { kind: "TASK" | "CHECKPOINT" | "ACTIVITY"; title: string; description: string; dueAt: string | null; ownerId: string | null }
+
+async function initialContent(tx: Queryable, evaluation: PolicyEvaluation, decision: PlannedDecision, dueAt: string, responsibleId: string): Promise<{ plan: InterventionPlan; items: InitialItem[] }> {
   const type = evaluation.types.get(decision.typeKey)!
   const capabilities = new Set(effectiveCapabilities(type.definition.capabilities))
   const plan: InterventionPlan = {}
-  const items: { kind: "TASK" | "CHECKPOINT" | "ACTIVITY"; title: string; description: string; dueAt: string | null }[] = []
+  // O roteiro do formato vem primeiro: é o acompanhamento que a INIA propõe (passos com dono e prazo), para o líder ajustar.
+  const items: InitialItem[] = scriptItemsOf(type.definition, { openedDay: localDateOf(evaluation.asOf, evaluation.timeZone), dueAt, responsibleId, personId: evaluation.person.id })
   const rule = evaluation.version!.definition.rules.find((item) => item.key === decision.ruleKey)
   if (capabilities.has("OBSERVATION")) plan.observation = { focus: `${rule?.name ?? "Observação"}${evaluation.indicatorName ? ` — ${evaluation.indicatorName}` : ""}`, until: dueAt }
-  if (capabilities.has("CHECKPOINTS")) items.push({ kind: "CHECKPOINT", title: "Checkpoint de acompanhamento", description: "Registrar a leitura do indicador e do que foi feito até aqui.", dueAt })
+  // Sem checkpoint no roteiro, o tipo que usa checkpoints nasce com um genérico (como sempre foi).
+  if (capabilities.has("CHECKPOINTS") && !items.some((item) => item.kind === "CHECKPOINT")) items.push({ kind: "CHECKPOINT", title: "Checkpoint de acompanhamento", description: "Registrar a leitura do indicador e do que foi feito até aqui.", dueAt, ownerId: null })
   if (capabilities.has("TRAINING")) {
     // Indicador → diagnóstico sustentado → competência → conteúdo APROVADO → atividade: só pelo vínculo explícito da competência.
     const patternKeys = [...new Set(evaluation.diagnoses.flatMap((diagnosis) => diagnosis.patterns.map((pattern) => pattern.key)))]
@@ -117,14 +126,25 @@ async function initialContent(tx: Queryable, evaluation: PolicyEvaluation, decis
         : []
       plan.competencyKeys = competencies.rows.map((row) => row.key)
       plan.contents = published.map((row) => ({ documentId: row.id, title: row.title }))
-      for (const row of competencies.rows) for (const activity of row.activities) items.push({ kind: "ACTIVITY", title: activity.title, description: activity.description, dueAt })
+      // Atividade de treinamento é feita pelo colaborador.
+      for (const row of competencies.rows) for (const activity of row.activities) items.push({ kind: "ACTIVITY", title: activity.title, description: activity.description, dueAt, ownerId: evaluation.person.id })
     }
   }
   if (capabilities.has("ACTION_PLAN")) {
     const goal = evaluation.rules.flatMap((rule) => rule.trace.items).find((item) => item.type === "CONDITION" && item.kind === "INDICATOR" && item.outcome.facts.referenceKind === "GOAL")
     if (goal && goal.type === "CONDITION") plan.measurableObjective = { indicatorCode: evaluation.indicatorCode, target: `Atingir a meta vigente (${String(goal.outcome.facts.reference ?? "—")})`, by: dueAt }
+    // Situação inicial proposta: os fatos atendidos da regra que decidiu, como estão na avaliação — o líder revisa e completa.
+    const facts = decision.mode === "MATCHED" ? referencesOfStatements(evaluation.rules.find((item) => item.key === decision.ruleKey)?.trace) : []
+    if (facts.length > 0) plan.initialSituation = facts.join("; ").slice(0, 2000)
   }
   return { plan, items }
+}
+
+/** Frases dos fatos ATENDIDOS de uma regra (sem repetição), na ordem em que aparecem. */
+function referencesOfStatements(trace: GroupTrace | undefined): string[] {
+  if (!trace) return []
+  const walk = (group: GroupTrace): string[] => group.items.flatMap((item) => (item.type === "GROUP" ? walk(item) : item.outcome.status === "MET" ? [item.outcome.summary] : []))
+  return [...new Set(walk(trace))]
 }
 
 function evidenceOf(evaluation: PolicyEvaluation, decision: PlannedDecision, evaluationId: string, extra: readonly ExtraSource[]): EvidenceItem[] {
@@ -140,9 +160,14 @@ function evidenceOf(evaluation: PolicyEvaluation, decision: PlannedDecision, eva
   return evidence
 }
 
+/**
+ * Avisos da abertura. Para o RESPONSÁVEL a descrição é a fala da INIA (`briefLead`, o mesmo texto do resumo no Acompanhamento);
+ * o resumo completo (o que já foi feito, a evolução, o que falta saber) vem do relatório da avaliação, lido pelo feed.
+ */
 const ALERT_TEXT = {
-  ASSIGNED: (type: string, person: string) => ({ title: `Nova intervenção: ${type}`, description: `Uma política de acompanhamento abriu "${type}" para ${person}. Você é o responsável: veja o relatório e as próximas ações no caso.` }),
-  PROPOSED: (type: string, person: string) => ({ title: `Intervenção recomendada: ${type}`, description: `A política de acompanhamento recomenda "${type}" para ${person}. Aceite ou descarte com justificativa — veja o relatório no caso.` }),
+  ASSIGNED: (type: string) => ({ title: `Nova intervenção: ${type}` }),
+  PROPOSED: (type: string) => ({ title: `Intervenção recomendada: ${type}` }),
+  CONTINUITY: () => ({ title: "Sugestão de avaliação de continuidade" }),
   APPROVAL: (type: string, person: string) => ({ title: `Aprovação pendente: ${type}`, description: `"${type}" para ${person} aguarda sua aprovação. O relatório, as evidências e o plano estão no caso.` }),
   DECISION: (person: string) => ({ title: "Solicitação de avaliação de continuidade", description: `Foi registrada uma solicitação de avaliação de continuidade de ${person}. Ela aguarda uma decisão humana, com justificativa — a abertura não é uma decisão. O fundamento está no caso.` }),
   SIGNAL: (type: string, person: string) => ({ title: `Novo sinal: ${type}`, description: `Uma nova avaliação reforçou a intervenção "${type}" de ${person}, que continua em andamento. O novo relatório está no caso.` }),
@@ -203,10 +228,16 @@ export async function applyEvaluation(db: Database, input: ApplyEvaluationInput)
   const apply = input.applyDecisions !== false
   if (apply) {
     for (const decision of evaluation.decisions) {
-      const problem = CREATING.includes(decision.status) ? evaluation.assignments.get(decision.typeKey)?.problem : null
+      const problem = ADDRESSED_STATUSES.includes(decision.status) ? evaluation.assignments.get(decision.typeKey)?.problem : null
       if (problem) throw new DomainError(problem, "INTERVENTION_ASSIGNMENT_UNRESOLVED", 422)
+      // Regra FIXA, de novo na abertura (versão publicada antes dela): resultado ruim sozinho nunca leva à avaliação de continuidade.
+      const type = evaluation.types.get(decision.typeKey)
+      const rule = evaluation.version?.definition.rules.find((item) => item.key === decision.ruleKey)
+      if (CREATING.includes(decision.status) && type && isSensitiveType(type.definition) && rule && !continuityRuleRequiresPriorFollowUp(rule)) throw new DomainError(CONTINUITY_PRIOR_FOLLOW_UP_MESSAGE, "CONTINUITY_REVIEW_PRIOR_FOLLOW_UP", 422)
     }
   }
+  // Resumo da liderança: lido ANTES da transação (só leitura) e só quando a avaliação decidiu algo (é o que gera relatório).
+  const leaderContext = evaluation.decisions.length > 0 ? await loadLeaderContext(db, { organizationId, personId: evaluation.person.id, indicatorCode: evaluation.indicatorCode, indicatorName: evaluation.indicatorName, asOf: evaluation.asOf, timeZone: evaluation.timeZone }) : undefined
   const actorKind = input.origin === "WORKFLOW" ? "WORKFLOW" : input.requestedBy ? "HUMAN" : "SYSTEM"
   const actorId = actorKind === "HUMAN" ? (input.requestedBy ?? null) : null
   try {
@@ -220,7 +251,7 @@ export async function applyEvaluation(db: Database, input: ApplyEvaluationInput)
         caseId = input.origin === "REEVALUATION" && input.supersedesEvaluationId
           ? ((await tx.query<{ case_id: string }>(`select case_id from intervention_reports where evaluation_id = $1`, [input.supersedesEvaluationId])).rows[0]?.case_id ?? null)
           : null
-        caseId ??= await resolveCase(tx, input, { indicatorValue: facts.value, indicatorTarget: facts.target })
+        caseId ??= await resolveCase(tx, input, { indicatorValue: facts.value, indicatorTarget: facts.target, actionPending: evaluation.decisions.some((decision) => CREATING.includes(decision.status)) })
       }
 
       const applied: AppliedDecision[] = []
@@ -234,7 +265,7 @@ export async function applyEvaluation(db: Database, input: ApplyEvaluationInput)
         if (apply && CREATING.includes(decision.status) && type && caseId) {
           const assignment = evaluation.assignments.get(decision.typeKey)!
           const sensitive = isSensitiveType(type.definition)
-          const content = await initialContent(tx, evaluation, decision, assignment.dueAt)
+          const content = await initialContent(tx, evaluation, decision, assignment.dueAt, assignment.responsible!.personId)
           const initialStatus = INITIAL_STATUS[decision.status]!
           const rule = evaluation.version!.definition.rules.find((item) => item.key === decision.ruleKey)
           const inserted = (await tx.query<{ id: string }>(
@@ -256,15 +287,15 @@ export async function applyEvaluation(db: Database, input: ApplyEvaluationInput)
           if (inserted) {
             interventionId = inserted.id
             for (const [position, item] of content.items.entries()) {
-              // Atividade de treinamento é feita pelo colaborador; checkpoint e tarefa ficam com o responsável definir.
-              await tx.query(`insert into intervention_items (organization_id, intervention_id, kind, title, description, owner_id, due_at, position) values ($1,$2,$3,$4,$5,$6,$7,$8)`, [organizationId, inserted.id, item.kind, item.title, item.description, item.kind === "ACTIVITY" ? evaluation.person.id : null, item.dueAt, position])
+              await tx.query(`insert into intervention_items (organization_id, intervention_id, kind, title, description, owner_id, due_at, position) values ($1,$2,$3,$4,$5,$6,$7,$8)`, [organizationId, inserted.id, item.kind, item.title, item.description, item.ownerId, item.dueAt, position])
             }
             await recordInterventionEvent(tx, { organizationId, interventionId: inserted.id, caseId, eventType: "OPENED", actorKind, actorId, fromStatus: null, toStatus: initialStatus, payload: { evaluationId, reportId, ruleKey: decision.ruleKey, decision: decision.status, typeVersion: type.version, policyVersion: evaluation.version!.version } })
             const id = inserted.id
             const person = evaluation.person.name
             notifications.push(async () => {
-              const text = decision.status === "RECOMMENDED" ? ALERT_TEXT.PROPOSED(type.definition.name, person) : ALERT_TEXT.ASSIGNED(type.definition.name, person)
-              await notify(tx, { organizationId, caseId: caseId!, recipientIds: [assignment.responsible!.personId], interventionId: id, event: "ASSIGNED", revision: 0, alertType: "INTERVENTION_ASSIGNED", ...text })
+              const lead = briefLead({ handle: "", typeKey: type.key, typeName: type.definition.name, sensitive, status: decision.status, interventionId: id, responsible: assignment.responsible, approver: assignment.approver, dueAt: assignment.dueAt }, { personName: person, policyName: evaluation.policy.name })
+              const text = sensitive ? ALERT_TEXT.CONTINUITY() : decision.status === "RECOMMENDED" ? ALERT_TEXT.PROPOSED(type.definition.name) : ALERT_TEXT.ASSIGNED(type.definition.name)
+              await notify(tx, { organizationId, caseId: caseId!, recipientIds: [assignment.responsible!.personId], interventionId: id, event: "ASSIGNED", revision: 0, alertType: "INTERVENTION_ASSIGNED", ...text, description: lead.toResponsible })
               if (decision.status === "PENDING_APPROVAL") {
                 const approvalText = sensitive ? ALERT_TEXT.DECISION(person) : ALERT_TEXT.APPROVAL(type.definition.name, person)
                 await notify(tx, { organizationId, caseId: caseId!, recipientIds: assignment.approvalRecipientIds, interventionId: id, event: "APPROVAL", revision: 0, alertType: sensitive ? "INTERVENTION_DECISION_REQUESTED" : "INTERVENTION_APPROVAL_REQUESTED", severity: "HIGH", ...approvalText })
@@ -277,6 +308,15 @@ export async function applyEvaluation(db: Database, input: ApplyEvaluationInput)
             interventionId = winner?.id ?? null
             note = "Uma intervenção igual foi aberta ao mesmo tempo por outra avaliação: esta registrou a existente."
           }
+        } else if (apply && decision.status === "NOTIFIED" && type && caseId && reportId) {
+          // SÓ AVISAR: nenhuma intervenção nasce — quem lidera recebe o resumo da INIA no Acompanhamento (o aviso aponta o relatório).
+          const responsibleId = evaluation.assignments.get(decision.typeKey)!.responsible!.personId
+          const noticeCaseId = caseId
+          notifications.push(async () => {
+            const lead = briefLead({ handle: "", typeKey: type.key, typeName: type.definition.name, sensitive: false, status: "NOTIFIED", interventionId: null, responsible: evaluation.assignments.get(decision.typeKey)!.responsible, approver: null, dueAt: null }, { personName: evaluation.person.name, policyName: evaluation.policy.name })
+            await dispatchAlert((tx satisfies Queryable) as unknown as Database, { organizationId, caseId: noticeCaseId, recipientId: responsibleId, title: `Para acompanhar: ${type.definition.name}`, description: lead.toResponsible, severity: "INFO", alertType: "INTERVENTION_NOTICE", dedupeKey: `intervention-notice:${reportId}:${type.key}:${responsibleId}` })
+            await tx.query(`insert into case_timeline_events (organization_id, case_id, event_type, actor_id, payload) values ($1,$2,'POLICY_NOTICE_SENT',$3,$4)`, [organizationId, noticeCaseId, actorId, JSON.stringify({ evaluationId, reportId, typeKey: type.key, ruleKey: decision.ruleKey, recipientId: responsibleId })])
+          })
         } else if (apply && decision.status === "EXISTING" && decision.updated && decision.existingInterventionId && caseId) {
           const current = (await tx.query<{ id: string; case_id: string; status: string; revision: number; responsible_id: string; evidence: EvidenceItem[] }>(
             `select id, case_id, status, revision, responsible_id, evidence from interventions where id = $1 and organization_id = $2 for update`,
@@ -335,6 +375,7 @@ export async function applyEvaluation(db: Database, input: ApplyEvaluationInput)
           priorInterventions: evaluation.priorInterventions,
           diagnoses: evaluation.diagnoses,
           extraSources: input.extraSources ?? [],
+          ...(leaderContext ? { leaderContext } : {}),
         })
         await tx.query(`insert into intervention_reports (id, organization_id, evaluation_id, case_id, person_id, contract_version, structured) values ($1,$2,$3,$4,$5,$6,$7)`, [reportId, organizationId, evaluationId, caseId, evaluation.person.id, INTELLIGENCE_REPORT_CONTRACT, JSON.stringify(report)])
         await tx.query(`insert into case_timeline_events (organization_id, case_id, event_type, actor_id, payload) values ($1,$2,'INTERVENTION_REPORT_CREATED',$3,$4)`, [organizationId, caseId, actorId, JSON.stringify({ reportId, evaluationId, outcome: finalOutcome })])

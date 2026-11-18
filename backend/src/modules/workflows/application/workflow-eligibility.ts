@@ -1,7 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { populationFilterAnchorId, populationFilterSchema, type PopulationFilter } from "../domain/population-filter-schema.js"
 import type { StructureAnchor } from "../domain/structure-anchor-schema.js"
-import { resolvePopulationFilterOperatorIds, resolveStructureAnchorOperatorIds } from "./hierarchy-subjects.js"
+import { activeAccessSql, resolvePopulationFilterOperatorIds, resolveStructureAnchorOperatorIds } from "./hierarchy-subjects.js"
 
 /**
  * UMA semântica de elegibilidade organizacional pra Workflows em modo Individual:
@@ -9,7 +9,8 @@ import { resolvePopulationFilterOperatorIds, resolveStructureAnchorOperatorIds }
  *   Workflow (Abrangência + Filtro Populacional) + Operador → ELEGÍVEL ou NÃO.
  *
  * Abrangência (ALL_TEAMS / TEAM / SUBTEAM) E Filtro Populacional (ausente = todos) — nunca
- * alternativas. Quem consome:
+ * alternativas — E, quando o Workflow liga "Somente quem tem acesso ativo à INIA" (migration 225),
+ * conta de acesso ativa. Quem consome:
  *   - ingestão por Flag (ingestion-router.ts → flag-enrollment.ts): decisão pontual, um operador
  *     por interação (`isOperatorEligibleForWorkflow`) — nunca carrega a população inteira;
  *   - checador de agenda (schedule-check.ts): o conjunto elegível (`resolveEligibleOperatorIds`);
@@ -29,6 +30,20 @@ export type WorkflowPopulation = {
   populationFilter: unknown
   /** Universo do Workflow (publicado). Com a exigência ativa na organização, só operadores do MESMO universo; null (pendente) = ninguém. */
   operatingUniverse: string | null
+  /**
+   * "Somente quem tem acesso ativo à INIA" (publicado; migration 225). Obrigatório para cada chamador decidir: quem resolve
+   * QUEM ENTRA passa a opção do Workflow; quem resolve a população de COMPARAÇÃO usa `comparisonPopulationOf`.
+   */
+  requireActiveAccess: boolean
+}
+
+/**
+ * População de COMPARAÇÃO do Workflow (quartil operacional, ranking, "Selecionar colaboradores"): a mesma Abrangência e o
+ * mesmo Filtro, SEM o corte de acesso. A opção decide quem recebe uma execução, nunca com quem a pessoa é comparada — com
+ * 15 pessoas com acesso num Subgrupo de 300, o quartil continua sendo sobre as 300.
+ */
+export function comparisonPopulationOf(population: Omit<WorkflowPopulation, "requireActiveAccess">): WorkflowPopulation {
+  return { ...population, requireActiveAccess: false }
 }
 
 /** `population_filter` vem do jsonb já validado na escrita (workflow-router.ts) — aqui só se
@@ -47,10 +62,11 @@ export async function resolveEligibleOperatorIds(db: Database, organizationId: s
     teamId: population.teamId,
     subteamId: population.subteamId,
     operatingUniverse: population.operatingUniverse,
+    requireActiveAccess: population.requireActiveAccess,
   })
 }
 
-export type EligibleOperatorRow = { id: string; team_id: string | null; subteam_id: string | null; reports_to_id: string | null; operating_universe?: string | null; universe_enforced?: boolean }
+export type EligibleOperatorRow = { id: string; team_id: string | null; subteam_id: string | null; reports_to_id: string | null; operating_universe?: string | null; universe_enforced?: boolean; /** Conta de acesso ativa (mesma definição de `activeAccessSql`). */ has_active_access?: boolean }
 
 /** Membros (operadores) da estrutura de um Filtro Populacional — a mesma resposta de `resolveStructureAnchorOperatorIds`, quando
  * quem chama já a tem lembrada (matrícula em lote, ver enrollment-lookups.ts). */
@@ -61,7 +77,8 @@ export type StructureMembersResolver = (filter: StructureAnchor) => Promise<Read
  * evento (ingestão por Flag/Indicador) carregar o operador uma vez e reaproveitar. */
 export async function loadEligibleOperator(db: Database, organizationId: string, operatorId: string): Promise<EligibleOperatorRow | null> {
   const result = await db.query<EligibleOperatorRow>(
-    `select p.id, p.team_id, p.subteam_id, p.reports_to_id, p.operating_universe, o.operating_universe_enforced_at is not null universe_enforced
+    `select p.id, p.team_id, p.subteam_id, p.reports_to_id, p.operating_universe, o.operating_universe_enforced_at is not null universe_enforced,
+            ${activeAccessSql("p")} has_active_access
        from people p join organizations o on o.id = p.organization_id where p.id = $1 and p.organization_id = $2 and p.role = 'OPERATOR' and p.active`,
     [operatorId, organizationId],
   )
@@ -93,6 +110,8 @@ async function isLoadedOperatorEligible(db: Database, population: WorkflowPopula
   if (!matchesScope(population, operator)) return false
   // Universos não se misturam: com a exigência ativa, o operador precisa ser do universo do Workflow (pendente de qualquer lado = fora).
   if (operator.universe_enforced && (population.operatingUniverse === null || operator.operating_universe !== population.operatingUniverse)) return false
+  // "Somente quem tem acesso ativo à INIA": sem conta de acesso ativa a pessoa não entra (linha sem a informação = sem acesso).
+  if (population.requireActiveAccess && operator.has_active_access !== true) return false
 
   const filter = parsePopulationFilter(population.populationFilter)
   if (!filter || filter.kind === "ALL") return true

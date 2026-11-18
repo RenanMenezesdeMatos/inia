@@ -56,6 +56,7 @@ const CONDITIONS: { name: string; what: string }[] = [
   { name: "Tempo desde a última intervenção", what: "Dias desde a última aberta ou concluída; a regra diz explicitamente o que vale quando não há nenhuma." },
   { name: "Diagnóstico sustentado", what: "Existe (ou não) um diagnóstico com padrão verificado e evidência no período, opcionalmente ligado a competências." },
   { name: "Feedback publicado", what: "Quantidade de feedbacks publicados (de indicador ou de monitoria) no período." },
+  { name: "Evolução desde o último feedback", what: "A INIA compara a medição diária do indicador antes e depois do último feedback publicado sobre ele. A regra define a melhora mínima, em %, para contar como evolução (0 = qualquer melhora). Sem feedback no período, não é atendida; sem medição suficiente (menos de 7 dias desde o feedback, poucos dias medidos, indicador sem medição diária), fica inconclusiva — nunca “sem evolução”." },
 ]
 
 const CRITERIA_COVERAGE: { source: string; available: string; notAvailable: string }[] = [
@@ -70,6 +71,7 @@ const OUTCOMES: { outcome: string; meaning: string }[] = [
   { outcome: "Intervenção criada", meaning: "Ao menos uma intervenção nova foi aberta pronta para execução." },
   { outcome: "Aprovação pendente", meaning: "Foi aberta, mas o tipo exige aprovação antes da execução." },
   { outcome: "Intervenção recomendada", meaning: "Nasceu como proposta: o responsável aceita (e completa o plano) ou descarta." },
+  { outcome: "Liderança avisada", meaning: "A regra só avisa: quem lidera recebeu o resumo da INIA no Acompanhamento e nenhuma intervenção foi criada." },
   { outcome: "Intervenção já existente", meaning: "Já havia uma ativa com a mesma identidade (colaborador + tipo + assunto). Nada duplica; com “registrar o novo sinal”, ela recebe o sinal no histórico." },
   { outcome: "Suprimida pela carência", meaning: "Uma igual foi encerrada há menos dias que a carência da ação." },
   { outcome: "Conflito entre intervenções", meaning: "As ações escolhidas são incompatíveis entre si ou com uma intervenção ativa. Nenhuma é aplicada e o conflito fica registrado — a INIA nunca escolhe sozinha “a mais grave”." },
@@ -155,11 +157,11 @@ export default function InterventionPoliciesWikiPage() {
       <WikiSection id="configurar" title="Como configurar" eyebrow="Administração › Automação › Políticas de acompanhamento">
         <StepList
           steps={[
-            { title: "Tipos de intervenção", detail: "Crie os tipos que a operação usa (os de demonstração são só exemplos: edite, inative ou crie outros). Para cada um: capacidades, quem executa (o líder direto do colaborador ou o primeiro na cadeia com o nível escolhido), prazo padrão, evidências mínimas e aceitas, aprovação (e por qual nível), formulário próprio, critérios de conclusão, tipos incompatíveis e se a INIA pode rascunhar o plano. Publique: a versão publicada não muda mais." },
+            { title: "Tipos de intervenção", detail: "Crie os tipos que a operação usa (os de demonstração são só exemplos: edite, inative ou crie outros). Para cada um: capacidades, quem executa (o líder direto do colaborador ou o primeiro na cadeia com o nível escolhido), prazo padrão, evidências mínimas e aceitas, aprovação (e por qual nível), formulário próprio, critérios de conclusão, tipos incompatíveis e se a INIA pode rascunhar o plano. Publique: a versão publicada não muda mais. Em “Roteiro de passos”, defina os passos com que a intervenção já nasce (tarefas e checkpoints, cada um com quem faz — quem conduz ou o colaborador — e o prazo em dias após a abertura): quem lidera recebe o acompanhamento proposto e ajusta o que precisar. Os exemplos “Lado a lado” e “Atendimento assistido” mostram o formato." },
             { title: "Competências", detail: "Ligam o diagnóstico ao treinamento: indicadores, práticas e critérios da base (buscados pelo nome, nunca pela chave técnica), documentos APROVADOS da base de conhecimento e atividades (estudo, prática, acompanhar um colega, simulação, avaliação). Os vínculos são escolhidos por uma pessoa; nada é deduzido do nome do indicador." },
             { title: "Nova política", detail: "Chave estável, nome e escopo (organização, grupo ou subgrupo dentro do seu escopo de edição). Ela nasce como rascunho, sem regras." },
-            { title: "Regras", detail: "Para cada regra: nome, prioridade única, justificativa (entra na justificativa de cada avaliação), condições em grupos “todas”/“qualquer uma” (até 3 níveis), as ações quando a regra bate e as ações quando ela é inconclusiva." },
-            { title: "Ações", detail: "Tipo (o cartão mostra quem será o responsável e se há aprovação, definidos no tipo), efeito (recomendar ao responsável ou abrir), prazo (ou o padrão do tipo), o que fazer se já existe uma ativa (manter ou registrar o novo sinal) e carência após o encerramento." },
+            { title: "Regras", detail: "Cada regra aparece com a frase do que ela faz (“Quando …, a INIA …”), que muda conforme você edita. Preencha o nome, o porquê da regra (aparece para quem lidera e na justificativa de cada avaliação), as condições em grupos “todas”/“qualquer uma” (até 3 níveis), o que a INIA faz quando a regra é atendida e o que faz quando faltam dados. A ordem na lista é a prioridade: mover a regra renumera todas. O número da prioridade e a chave ficam em “Avançado”. Em “Adicionar condição” há situações prontas (pior quartil em 3 fechamentos, atingimento abaixo de 100%, já recebeu feedback, sem evolução desde o feedback, já concluiu um acompanhamento sem evolução, tem diagnóstico) e “Outra condição”, para montar do zero." },
+            { title: "Ações", detail: "Tipo (o cartão mostra quem será o responsável e se há aprovação, definidos no tipo) e efeito: abrir a ação, sugerir a ação ao responsável (ele aceita ou descarta) ou só avisar quem lidera, sem criar ação. Depois, o prazo (ou o padrão do tipo), o que fazer se já existe uma ativa (manter ou registrar o novo sinal) e a carência. No “só avisar” não há prazo, e a carência é o tempo sem repetir o mesmo aviso." },
             { title: "Validar, simular e publicar", detail: "Veja abaixo. Depois, escolha a política no nó “Avaliar política de acompanhamento” de um Workflow." },
           ]}
         />
@@ -201,6 +203,12 @@ export default function InterventionPoliciesWikiPage() {
           <li>
             <strong className="font-medium text-foreground">Duplicidade:</strong> a identidade é colaborador + tipo + assunto (o indicador da política).
             Duas avaliações ao mesmo tempo abrem uma intervenção só; a outra registra “já existente”.
+          </li>
+          <li>
+            <strong className="font-medium text-foreground">Só avisar:</strong> a regra pode avisar quem lidera sem criar a ação. O responsável
+            do tipo recebe no Acompanhamento o resumo da INIA (“Para você acompanhar: …”), nada entra em Pendências e nenhuma intervenção nasce —
+            abrir uma fica a critério de quem lidera. Se já existe uma intervenção igual ativa, a avaliação registra a existente em vez de avisar; o
+            mesmo aviso não se repete antes da carência (0 = avisa toda vez). A avaliação de continuidade nunca é só um aviso.
           </li>
           <li>
             <strong className="font-medium text-foreground">Treinamento exige diagnóstico:</strong> um tipo com a capacidade Treinamento só entra numa
@@ -270,6 +278,14 @@ export default function InterventionPoliciesWikiPage() {
           <WikiLink href="/wiki/workflows/nodes">catálogo de nodes</WikiLink>) escolhe uma política publicada e mostra o resumo dela, com link para a
           configuração. O nó não tem critérios próprios: prazos, responsáveis e aprovações são da política.
         </p>
+        <p>
+          Uma política só é avaliada quando um Workflow chega a esse nó: é o Workflow que diz <em>quando olhar e para quem</em> (gatilho, agenda,
+          população); a política diz <em>o que cabe para cada pessoa</em>. Publicada e sem Workflow, a política não faz nada. Por isso a página da
+          política mostra, em texto, <strong className="font-medium text-foreground">o que ela faz</strong> (cada regra, na ordem de prioridade, com
+          o que a INIA faz, para quem vai e se pede aprovação) e <strong className="font-medium text-foreground">onde ela roda</strong>: os
+          Workflows com o nó que a cita e o estado de cada um (publicado e ligado, publicado mas desligado ou só no rascunho do editor), com aviso
+          quando nenhum Workflow publicado e ligado passa por ela. Workflows fora do seu escopo de gestão entram só na contagem.
+        </p>
         <ul className="list-disc space-y-1.5 pl-5">
           <li>
             <strong className="font-medium text-foreground">Modo:</strong> “Somente recomendar” (tudo nasce como proposta) ou “Abrir intervenções
@@ -328,23 +344,48 @@ export default function InterventionPoliciesWikiPage() {
           falha fica registrada, o relatório continua válido e é possível tentar de novo sem abrir nada em duplicidade. O relatório é lido na própria
           INIA (não há exportação).
         </p>
+        <p>
+          Quando a avaliação abre ou sugere uma ação, o relatório guarda também o <strong className="font-medium text-foreground">resumo da INIA
+          para a liderança</strong>, montado só com os fatos da avaliação (não depende de IA): a situação que levou à ação; o que já foi feito — os
+          feedbacks publicados ao colaborador nos últimos 180 dias sobre o mesmo indicador (até os cinco mais recentes, com a data, o que foi
+          recomendado e se ele já confirmou a ciência) e as intervenções anteriores com o resultado registrado; a evolução medida; o que ainda não
+          se sabe; e o próximo passo. O texto dos feedbacks é histórico do que já foi dito ao colaborador, nunca evidência.
+        </p>
+        <p>
+          A <strong className="font-medium text-foreground">evolução medida</strong> compara a medição diária do indicador antes e depois do último
+          feedback: duas janelas do mesmo tamanho (os dias desde o feedback, no máximo 60), com o dia do feedback fora das duas. A frase traz os dois
+          valores, a variação e quantos dias tinham medição; “melhorou” ou “piorou” só diz para que lado o valor andou, pela direção do indicador —
+          não há limiar escondido. Com menos de 7 dias desde o feedback, menos de 3 dias medidos em um dos lados ou indicador sem medição diária, o
+          resumo diz o que falta e não classifica: dado ausente não é desempenho ruim.
+        </p>
       </WikiSection>
 
       <WikiSection id="lider" title="A experiência do líder" eyebrow="Receber aviso → entender → agir → acompanhar">
         <StepList
           steps={[
-            { title: "Receber o aviso", detail: <>O <WikiLink href="/wiki/notificacoes">sino</WikiLink> avisa que algo novo aconteceu e leva direto à intervenção no caso.</> },
+            { title: "Receber o aviso", detail: <>O <WikiLink href="/wiki/notificacoes">sino</WikiLink> avisa que algo novo aconteceu e leva direto à intervenção no caso. No Acompanhamento, o aviso de abertura já traz o resumo da INIA: a fala dela (“Criei um acompanhamento para você fazer com…”, “Sugiro…”), a situação, o que já foi feito, a evolução medida e o próximo passo.</> },
             { title: "Abrir a pendência", detail: <>Em <WikiLink href="/wiki/pendencias">Pendências</WikiLink> aparecem as intervenções que esperam você: aceitar, aprovar, decidir ou executar — com prazo e atraso.</> },
-            { title: "Entender o relatório", detail: "No caso de supervisão: o que fazer agora, colaborador, indicador, responsável, prazo, por que foi aberta, o relatório, as evidências e o histórico." },
+            { title: "Entender o relatório", detail: "No caso de supervisão: o que fazer agora, colaborador, indicador, responsável, prazo, o resumo da INIA (ou o motivo, nas intervenções abertas à mão), o relatório, as evidências e o histórico." },
             { title: "Executar ou decidir", detail: "Aceitar e completar o plano (o painel lista de uma vez o que ainda falta para aceitar), aprovar ou devolver, descartar, encaminhar à liderança — os botões aparecem só para quem pode e no estado certo. No treinamento, o líder pode escolher a competência: entram os conteúdos publicados dela e as atividades viram itens com prazo, sem IA." },
-            { title: "Acompanhar a evolução", detail: "Tarefas, atividades e checkpoints com a leitura registrada em cada um. Atrasada é uma marca derivada do prazo, nunca um status." },
-            { title: "Registrar o resultado", detail: "A conclusão exige o que o tipo pede: tarefas concluídas, avaliação de aprendizagem, leitura da evolução operacional e o registro do resultado." },
+            { title: "Acompanhar a evolução", detail: "Tarefas, atividades e checkpoints com a leitura registrada em cada um. Em cada checkpoint concluído, a INIA anexa a própria medição do indicador desde o início do acompanhamento, ao lado da leitura de quem conduz. Atrasada é uma marca derivada do prazo, nunca um status; com prazo ou passo vencido, quem conduz recebe um lembrete por semana." },
+            { title: "Registrar o resultado", detail: "A conclusão exige o que o tipo pede: tarefas concluídas, avaliação de aprendizagem, leitura da evolução operacional e o registro do resultado. Nos formatos que fazem algo com o colaborador (tarefas, treinamento, plano de ação ou orientação), também “O acompanhamento deu resultado?” (sim, em parte ou não) e pelo menos um motivo. A medição da INIA (antes × depois do início) fica registrada ao lado, sem substituir a avaliação de quem conduziu." },
+            { title: "Ver a equipe e o que funciona", detail: "No fim da aba Equipe: os acompanhamentos em andamento da sua estrutura (com o próximo passo e o atraso) e, dos concluídos nos últimos 180 dias, por formato e indicador: quantos, se deram resultado, a medição da INIA e os motivos mais citados. A gestão acima vê o mesmo para a estrutura dela." },
           ]}
         />
         <p>
           A ficha do colaborador lista as intervenções dele, e o <WikiLink href="/wiki/acompanhamento">Acompanhamento</WikiLink> recebe o aviso com
           link para o caso — sem duplicar tarefas nem criar outro feed. Resolver a pendência (aceitar, aprovar) não apaga esse registro do
           Acompanhamento: ele continua como caminho de volta ao caso.
+        </p>
+        <p>
+          <strong className="font-medium text-foreground">O colaborador</strong> só vê um acompanhamento quando o formato está marcado como
+          “O colaborador vê este acompanhamento” e a intervenção está em execução. No Acompanhamento dele aparecem o formato, quem conduz, o prazo
+          e os passos; ele marca os passos que são dele. Nunca vê o motivo, a análise, o relatório nem as anotações de quem conduz, e a avaliação de
+          continuidade nunca aparece.
+        </p>
+        <p>
+          O resumo aparece só para quem ainda é parte da intervenção (responsável, quem aprova ou quem decide). Quem encaminhou a responsabilidade a
+          outra pessoa continua vendo o aviso curto, sem o resumo. Avisos de intervenções abertas antes de 18/11/2026 também aparecem sem ele.
         </p>
       </WikiSection>
 
@@ -357,6 +398,15 @@ export default function InterventionPoliciesWikiPage() {
         <ul className="list-disc space-y-1.5 pl-5">
           <li>O tipo com essa capacidade sempre exige decisão humana e evidência, não aceita rascunho por IA e não se combina com outras capacidades.</li>
           <li>Nunca é aberto com dados insuficientes; a regra precisa de uma condição com evidência verificável e de justificativa.</li>
+          <li>
+            Resultado ruim, sozinho, nunca leva à solicitação: a regra precisa exigir pelo menos uma intervenção anterior <em>concluída</em> com
+            resultado “sem mudança” ou “piorou” (“não medido” não conta). Sem essa condição a política não publica, e uma versão publicada antes
+            desta regra não consegue abrir a solicitação.
+          </li>
+          <li>
+            O aviso tem texto fixo: a INIA <em>sugere</em> a avaliação, diz que a decisão é de quem está autorizado e que nada muda na situação
+            funcional. A IA não redige esse texto.
+          </li>
           <li>
             Decisões possíveis: continuidade confirmada, desenvolvimento continua, encaminhado ao processo formal da organização (fora da INIA) ou mais
             evidência necessária.

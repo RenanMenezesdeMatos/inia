@@ -40,3 +40,10 @@ export function populationFilterGroupId(filter: PopulationFilter): string {
   if (filter.kind === "ALL" || filter.kind === "EMPLOYEE") return ""
   return structureAnchorGroupId(filter as StructureAnchor)
 }
+
+/**
+ * "Somente quem tem acesso ativo à INIA" — opção do Workflow no modo Individual, independente do Filtro Populacional (vale
+ * para qualquer gatilho). Rótulo curto usado nos resumos de população; o nome da opção na tela é ACTIVE_ACCESS_ONLY_TITLE.
+ */
+export const ACTIVE_ACCESS_ONLY_TITLE = "Somente quem tem acesso ativo à INIA"
+export const ACTIVE_ACCESS_ONLY_LABEL = "somente quem tem acesso ativo à INIA"

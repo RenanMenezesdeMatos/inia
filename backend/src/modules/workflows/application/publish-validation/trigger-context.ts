@@ -100,6 +100,16 @@ export function validateDraftConfigurationModes(context: PublishTriggerContext):
       details,
     )
   }
+  // "Somente quem tem acesso ativo à INIA" decide quem ENTRA numa execução individual. No Consolidado a execução é uma só,
+  // da estrutura inteira — a opção não teria o que cortar (as rotas já a desligam ao trocar o modo; aqui barra a escrita direta).
+  if (row.consolidatedStructure && row.requireActiveAccess === true) {
+    throw new DomainError(
+      'A opção "Somente quem tem acesso ativo à INIA" só vale no modo Individual — desligue-a ou troque o Alvo da avaliação para Individual antes de publicar.',
+      "WORKFLOW_ACCESS_REQUIREMENT_INVALID_MODE",
+      422,
+      details,
+    )
+  }
 }
 
 /** Exatamente um nó Gatilho e ao menos um nó Fim. */

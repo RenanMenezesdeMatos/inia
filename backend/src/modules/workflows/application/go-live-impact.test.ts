@@ -11,11 +11,15 @@ function operators(count: number): string[] {
 }
 
 /** Dublê mínimo: fuso da organização (America/Fortaleza, UTC-3), operadores elegíveis e matrículas de agenda já existentes. */
-function fakeDb(input: { operatorIds: string[]; existing?: { subjectId: string; scheduledFor: string }[] }): Database {
+function fakeDb(input: { operatorIds: string[]; existing?: { subjectId: string; scheduledFor: string }[]; /** Quem tem conta de acesso ativa (ausente = todos). */ withAccessIds?: string[] }): Database {
   return {
-    query: async (sql: string) => {
+    query: async (sql: string, params: unknown[] = []) => {
       if (sql.includes("from operations")) return { rows: [{ timezone: "America/Fortaleza" }], rowCount: 1 }
-      if (sql.includes("from people") && sql.includes("role = 'OPERATOR'")) return { rows: input.operatorIds.map((id) => ({ id })), rowCount: input.operatorIds.length }
+      if (sql.includes("from people") && sql.includes("role = 'OPERATOR'")) {
+        // $6 = "Somente quem tem acesso ativo à INIA" (hierarchy-subjects.ts › resolveScopeOperatorIds).
+        const ids = params[5] === true && input.withAccessIds ? input.operatorIds.filter((id) => input.withAccessIds!.includes(id)) : input.operatorIds
+        return { rows: ids.map((id) => ({ id })), rowCount: ids.length }
+      }
       if (sql.includes("from workflow_enrollments")) {
         const rows = (input.existing ?? []).map((slot) => ({ subject_id: slot.subjectId, scheduled_for: slot.scheduledFor }))
         return { rows, rowCount: rows.length }
@@ -52,6 +56,16 @@ describe("confirmationReasons — regra pura", () => {
     expect(confirmationReasons({ ...large, firstPublication: true })).toEqual(["LARGE_POPULATION"])
     expect(confirmationReasons({ ...large, reason: "ACTIVATE" })).toEqual(["LARGE_POPULATION"])
     expect(confirmationReasons({ ...base, population: GO_LIVE_CONFIRMATION_POPULATION, changes: ["TRIGGER"] })).toEqual([]) // limite é "mais de"
+  })
+
+  it("desligar 'Somente quem tem acesso ativo' com gente sem acesso exige confirmação em QUALQUER gatilho — só ao publicar", () => {
+    const flag = { ...base, isSchedule: false, changes: ["ANALYSIS" as const] }
+    expect(confirmationReasons({ ...flag, accessRequirementRemovedFor: 285 })).toEqual(["ACCESS_REQUIREMENT_REMOVED"])
+    expect(confirmationReasons({ ...flag, accessRequirementRemovedFor: 0 })).toEqual([])
+    expect(confirmationReasons({ ...flag, reason: "ACTIVATE", accessRequirementRemovedFor: 285 })).toEqual([])
+    expect(confirmationReasons({ ...flag, goesLive: false, accessRequirementRemovedFor: 285 })).toEqual([])
+    // Em Agenda soma-se às razões de sempre.
+    expect(confirmationReasons({ ...base, changes: ["ANALYSIS"], population: 300, accessRequirementRemovedFor: 285 })).toEqual(["LARGE_POPULATION", "ACCESS_REQUIREMENT_REMOVED"])
   })
 
   it("Workflow inativo ou gatilho que não é Agenda nunca pede confirmação", () => {
@@ -144,5 +158,63 @@ describe("computeGoLiveImpact — o incidente de 2026-10-05", () => {
     const c = await computeGoLiveImpact(fakeDb({ operatorIds: operators(61) }), ORG, input)
     expect(a.fingerprint).toBe(b.fingerprint)
     expect(c.fingerprint).not.toBe(a.fingerprint)
+  })
+})
+
+describe('computeGoLiveImpact — "Somente quem tem acesso ativo à INIA"', () => {
+  /** Piloto: Subgrupo de 300 pessoas, 15 com conta de acesso ativa. Gatilho por Flag (monitoria): o Filtro Populacional não existe aqui. */
+  const everyone = operators(300)
+  const pilot = everyone.slice(0, 15)
+  const FLAG: WorkflowConfiguration = { ...MANUAL, triggerConfig: { kind: "channel_flag", channelFlagId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" } as WorkflowConfiguration["triggerConfig"], scopeType: "SUBTEAM", subteamId: "22222222-2222-4222-8222-222222222221" }
+  const FLAG_ONLY_ACCESS: WorkflowConfiguration = { ...FLAG, requireActiveAccess: true }
+  const db = () => fakeDb({ operatorIds: everyone, withAccessIds: pilot })
+
+  it("opção ligada: o impacto diz quantos entram hoje (15 de 300), em qualquer gatilho, sem exigir confirmação", async () => {
+    const impact = await computeGoLiveImpact(db(), ORG, { workflowId: "wf", reason: "PUBLISH", configuration: FLAG_ONLY_ACCESS, published: null, active: true, now: NOW_AFTER })
+    expect(impact.schedule).toBeNull()
+    expect(impact.access).toEqual({ required: true, removed: false, population: 300, withAccess: 15, withoutAccess: 285 })
+    expect(impact.requiresConfirmation).toBe(false)
+  })
+
+  it("opção nunca usada: nenhum cálculo extra e o mesmo fingerprint de antes da opção existir", async () => {
+    const impact = await computeGoLiveImpact(db(), ORG, { workflowId: "wf", reason: "PUBLISH", configuration: FLAG, published: FLAG, active: true, now: NOW_AFTER })
+    expect(impact.access).toBeNull()
+    expect(impact.requiresConfirmation).toBe(false)
+    const explicitOff = await computeGoLiveImpact(db(), ORG, { workflowId: "wf", reason: "PUBLISH", configuration: { ...FLAG, requireActiveAccess: false }, published: FLAG, active: true, now: NOW_AFTER })
+    expect(explicitOff.access).toBeNull()
+  })
+
+  it("desligar a opção num Workflow no ar: 285 pessoas sem acesso passam a entrar — exige confirmação com o fingerprint visto", async () => {
+    const impact = await computeGoLiveImpact(db(), ORG, { workflowId: "wf", reason: "PUBLISH", configuration: FLAG, published: FLAG_ONLY_ACCESS, active: true, now: NOW_AFTER })
+    expect(impact.configurationChanges).toEqual(["ANALYSIS"])
+    expect(impact.access).toEqual({ required: false, removed: true, population: 300, withAccess: 15, withoutAccess: 285 })
+    expect(impact.reasons).toEqual(["ACCESS_REQUIREMENT_REMOVED"])
+    expect(() => assertGoLiveConfirmed(impact, undefined)).toThrow(expect.objectContaining({ code: "WORKFLOW_PUBLISH_CONFIRMATION_REQUIRED", message: expect.stringContaining("285 pessoa(s) sem acesso ativo") }))
+    expect(() => assertGoLiveConfirmed(impact, impact.fingerprint)).not.toThrow()
+    // O número mudou entre a prévia e o clique (alguém recebeu acesso): o fingerprint antigo não vale mais.
+    const later = await computeGoLiveImpact(fakeDb({ operatorIds: everyone, withAccessIds: everyone.slice(0, 16) }), ORG, { workflowId: "wf", reason: "PUBLISH", configuration: FLAG, published: FLAG_ONLY_ACCESS, active: true, now: NOW_AFTER })
+    expect(later.fingerprint).not.toBe(impact.fingerprint)
+  })
+
+  it("desligar a opção quando todos já têm acesso, ou com o Workflow inativo, não pede confirmação", async () => {
+    const allWithAccess = await computeGoLiveImpact(fakeDb({ operatorIds: pilot, withAccessIds: pilot }), ORG, { workflowId: "wf", reason: "PUBLISH", configuration: FLAG, published: FLAG_ONLY_ACCESS, active: true, now: NOW_AFTER })
+    expect(allWithAccess.access).toMatchObject({ removed: true, withoutAccess: 0 })
+    expect(allWithAccess.requiresConfirmation).toBe(false)
+    const inactive = await computeGoLiveImpact(db(), ORG, { workflowId: "wf", reason: "PUBLISH", configuration: FLAG, published: FLAG_ONLY_ACCESS, active: false, now: NOW_AFTER })
+    expect(inactive.requiresConfirmation).toBe(false)
+  })
+
+  it("Agenda com a opção ligada: a população da ocorrência e o catch-up contam só quem tem acesso", async () => {
+    const impact = await computeGoLiveImpact(db(), ORG, { workflowId: "wf", reason: "PUBLISH", configuration: { ...MONTHLY_DAY_5, requireActiveAccess: true }, published: MANUAL, active: true, now: NOW_AFTER })
+    expect(impact.schedule).toMatchObject({ population: 15, enrollmentsPerOccurrence: 15, immediate: { enrollments: 15 } })
+    expect(impact.access).toMatchObject({ required: true, population: 300, withAccess: 15 })
+    // 15 por ocorrência fica abaixo do limite de população grande; só o catch-up de hoje pede confirmação.
+    expect(impact.reasons).toEqual(["IMMEDIATE_CATCH_UP"])
+  })
+
+  it("modo Consolidado não tem a opção: nada é calculado", async () => {
+    const consolidated: WorkflowConfiguration = { ...MONTHLY_DAY_5, consolidatedStructure: { kind: "SUBTEAM", subteamId: "22222222-2222-4222-8222-222222222221" }, requireActiveAccess: true }
+    const impact = await computeGoLiveImpact(db(), ORG, { workflowId: "wf", reason: "PUBLISH", configuration: consolidated, published: null, active: true, now: NOW_AFTER })
+    expect(impact.access).toBeNull()
   })
 })

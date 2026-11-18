@@ -31,6 +31,7 @@ const CONTRACT: DataContract = {
   ],
   naturalKey: ["externalEmployeeId"],
   dependencies: ["GROUPS"],
+  foreignKeys: [],
   writeSemantics: "UPSERT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: null,

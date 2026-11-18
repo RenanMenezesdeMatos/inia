@@ -6,9 +6,9 @@ import { z } from "zod"
  */
 export const interventionStatusSchema = z.enum(["PROPOSED", "AWAITING_APPROVAL", "IN_PROGRESS", "COMPLETED", "CANCELLED"])
 export type InterventionStatus = z.infer<typeof interventionStatusSchema>
-export const decisionStatusSchema = z.enum(["CREATED", "PENDING_APPROVAL", "RECOMMENDED", "EXISTING", "SUPPRESSED", "CONFLICT"])
+export const decisionStatusSchema = z.enum(["CREATED", "PENDING_APPROVAL", "RECOMMENDED", "NOTIFIED", "EXISTING", "SUPPRESSED", "CONFLICT"])
 export type DecisionStatus = z.infer<typeof decisionStatusSchema>
-export const evaluationOutcomeSchema = z.enum(["RECOMMENDED", "EXISTING", "CREATED", "PENDING_APPROVAL", "NO_MATCH", "INCONCLUSIVE", "CONFLICT", "SUPPRESSED", "NOT_APPLICABLE"])
+export const evaluationOutcomeSchema = z.enum(["RECOMMENDED", "EXISTING", "CREATED", "PENDING_APPROVAL", "NOTIFIED", "NO_MATCH", "INCONCLUSIVE", "CONFLICT", "SUPPRESSED", "NOT_APPLICABLE"])
 export type EvaluationOutcome = z.infer<typeof evaluationOutcomeSchema>
 export const conditionStatusSchema = z.enum(["MET", "NOT_MET", "INCONCLUSIVE"])
 export type ConditionStatus = z.infer<typeof conditionStatusSchema>
@@ -38,6 +38,46 @@ export const interventionSummarySchema = z.object({
   signalCount: z.number(),
 })
 export type InterventionSummary = z.infer<typeof interventionSummarySchema>
+
+/** Evolução MEDIDA pela INIA (antes × depois do último feedback) — `INTERVENTION_EVOLUTION_V1`. A frase já vem pronta. */
+export const evolutionSchema = z.object({
+  indicatorCode: z.string(),
+  indicatorName: z.string(),
+  status: z.enum(["IMPROVED", "WORSENED", "UNCHANGED", "CHANGED", "TOO_RECENT", "INSUFFICIENT_DATA", "NOT_AVAILABLE"]),
+  statement: z.string(),
+})
+export type Evolution = z.infer<typeof evolutionSchema>
+
+/** Feedback já publicado ao colaborador — histórico do que foi dito a ele (nunca evidência). */
+export const briefFeedbackSchema = z.object({ id: z.string(), kind: z.enum(["INDICATOR", "MONITORING"]).nullable(), title: z.string().nullable(), publishedAt: z.string(), acknowledgedAt: z.string().nullable(), recommendation: z.string() })
+export type BriefFeedback = z.infer<typeof briefFeedbackSchema>
+
+/** Resumo da INIA para a liderança gravado no relatório (`INTERVENTION_LEADER_BRIEF_V1`). */
+export const leaderBriefSchema = z.object({
+  situation: z.array(z.string()),
+  alreadyDone: z.object({ windowDays: z.number(), feedbacks: z.array(briefFeedbackSchema), feedbackCount: z.number() }),
+  evolution: evolutionSchema.nullable(),
+  unknowns: z.array(z.string()),
+  actions: z.array(z.object({ handle: z.string(), typeName: z.string(), sensitive: z.boolean(), interventionId: z.string().nullable(), lead: z.object({ toResponsible: z.string(), toOthers: z.string() }) })),
+})
+export type LeaderBrief = z.infer<typeof leaderBriefSchema>
+
+const briefPriorInterventionSchema = z.object({ id: z.string(), typeName: z.string(), status: z.string(), openedAt: z.string(), closedAt: z.string().nullable(), operationalResult: z.string().nullable() })
+
+/** O resumo já resolvido para QUEM LÊ — é o que o cartão do Acompanhamento e o painel do caso mostram. */
+export const interventionBriefViewSchema = z.object({
+  /** null = a política só avisou quem lidera (nenhuma intervenção foi criada). */
+  interventionId: z.string().nullable(),
+  typeName: z.string(),
+  sensitive: z.boolean(),
+  lead: z.string(),
+  situation: z.array(z.string()),
+  alreadyDone: z.object({ windowDays: z.number(), feedbacks: z.array(briefFeedbackSchema), feedbackCount: z.number(), interventions: z.array(briefPriorInterventionSchema) }),
+  evolution: evolutionSchema.nullable(),
+  unknowns: z.array(z.string()),
+  nextSteps: z.array(z.string()),
+})
+export type InterventionBriefView = z.infer<typeof interventionBriefViewSchema>
 
 export const intelligenceReportSchema = z.object({
   contract: z.string(),
@@ -82,8 +122,27 @@ export const intelligenceReportSchema = z.object({
       interventionId: z.string().nullable(),
     }),
   ),
+  /** Resumo da INIA para a liderança — ausente nos relatórios anteriores a 18/11/2026. */
+  brief: leaderBriefSchema.optional(),
 })
 export type IntelligenceReport = z.infer<typeof intelligenceReportSchema>
+
+/** O resumo de UMA intervenção a partir do relatório dela (painel do caso): a fala para os demais leitores, em 3ª pessoa. */
+export function briefViewOf(report: IntelligenceReport, interventionId: string): InterventionBriefView | null {
+  const action = report.brief?.actions.find((item) => item.interventionId === interventionId)
+  if (!report.brief || !action) return null
+  return {
+    interventionId,
+    typeName: action.typeName,
+    sensitive: action.sensitive,
+    lead: action.lead.toOthers,
+    situation: report.brief.situation,
+    alreadyDone: { ...report.brief.alreadyDone, interventions: report.priorInterventions.filter((prior) => prior.id !== interventionId) },
+    evolution: report.brief.evolution,
+    unknowns: report.brief.unknowns,
+    nextSteps: report.actions.find((item) => item.handle === action.handle)?.nextSteps ?? [],
+  }
+}
 
 const refs = z.array(z.string())
 export const reportNarrativeSchema = z.object({
@@ -167,6 +226,8 @@ export const interventionDetailSchema = interventionSummarySchema.extend({
   form: z.array(formFieldSchema),
   completion: z.object({ requireAllTasksDone: z.boolean(), requireLearningAssessment: z.boolean(), requireOperationalReading: z.boolean(), requireOutcomeNote: z.boolean() }),
   approvalRequired: z.boolean(),
+  /** "Deu resultado?" na conclusão — opções e motivos vêm do servidor; `required` nos formatos que fazem algo com o colaborador. */
+  effectiveness: z.object({ required: z.boolean(), options: z.array(z.object({ value: z.enum(["YES", "PARTIAL", "NO"]), label: z.string() })), reasons: z.array(z.object({ value: z.string(), label: z.string() })) }).optional(),
   aiDraftEnabled: z.boolean(),
   aiDraft: aiDraftSchema,
   outcome: z.record(z.string(), z.unknown()).nullable(),
@@ -228,3 +289,51 @@ export const EVENT_LABELS: Record<string, string> = {
   AI_DRAFT_APPLIED: "Rascunho aplicado ao plano",
   COMPETENCY_APPLIED: "Competência aplicada ao treinamento",
 }
+
+// ---- Visão da equipe e lado do colaborador (18/11/2026) ---------------------------------------------------------------------
+/** Um acompanhamento em andamento da estrutura de quem vê, com o próximo passo. */
+export const teamInterventionSchema = z.object({
+  id: z.string(),
+  caseId: z.string(),
+  person: z.object({ id: z.string(), name: z.string(), teamName: z.string().nullable() }),
+  typeName: z.string(),
+  sensitive: z.boolean(),
+  indicatorName: z.string().nullable(),
+  status: z.string(),
+  statusLabel: z.string(),
+  dueAt: z.string(),
+  overdue: z.boolean(),
+  responsible: z.object({ id: z.string(), name: z.string() }),
+  createdAt: z.string(),
+  progress: z.object({ done: z.number(), total: z.number() }),
+  nextStep: z.object({ title: z.string(), dueAt: z.string().nullable(), overdue: z.boolean(), ownerName: z.string().nullable() }).nullable(),
+})
+export type TeamIntervention = z.infer<typeof teamInterventionSchema>
+
+/** O resumão por formato e indicador: concluídas, "deu resultado?", a medição da INIA e os motivos. */
+export const formatResultSchema = z.object({
+  typeKey: z.string(),
+  typeName: z.string(),
+  indicatorName: z.string().nullable(),
+  completed: z.number(),
+  worked: z.object({ yes: z.number(), partial: z.number(), no: z.number(), unanswered: z.number() }),
+  measured: z.object({ improved: z.number(), unchanged: z.number(), worsened: z.number(), notComparable: z.number() }),
+  reasons: z.array(z.object({ reason: z.string(), label: z.string(), worked: z.enum(["YES", "PARTIAL", "NO"]), count: z.number() })),
+})
+export type FormatResult = z.infer<typeof formatResultSchema>
+export const teamOverviewSchema = z.object({ active: z.array(teamInterventionSchema), results: z.array(formatResultSchema), windowDays: z.number() })
+export type TeamOverview = z.infer<typeof teamOverviewSchema>
+
+/** O acompanhamento como o COLABORADOR o vê: o combinado e os passos — nunca o motivo, a análise ou as anotações de quem conduz. */
+export const myFollowUpSchema = z.object({
+  id: z.string(),
+  typeName: z.string(),
+  description: z.string(),
+  responsibleName: z.string(),
+  startedAt: z.string(),
+  dueAt: z.string(),
+  objective: z.string().nullable(),
+  revision: z.number(),
+  steps: z.array(z.object({ id: z.string(), kind: z.enum(["TASK", "CHECKPOINT", "ACTIVITY"]), title: z.string(), description: z.string(), mine: z.boolean(), ownerName: z.string().nullable(), dueAt: z.string().nullable(), done: z.boolean(), overdue: z.boolean() })),
+})
+export type MyFollowUp = z.infer<typeof myFollowUpSchema>

@@ -477,13 +477,15 @@ export function TriggerFields({
                   else onChange({ kind: "schedule", mode: "CALENDAR", times: [], intervalDays: 1, frequency: { type: "DAILY" } })
                 }}
                 className={cn(
-                  "flex flex-col items-center gap-1.5 rounded-md border px-2 py-3 text-center transition-colors",
-                  selected ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:bg-muted",
+                  "flex flex-col items-center gap-1.5 rounded-xl border bg-card px-2 py-3 text-center shadow-xs transition-colors",
+                  selected ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-foreground/15 hover:border-primary/50 hover:bg-primary/5",
                 )}
               >
-                <Icon className={cn("h-4 w-4", selected ? "text-primary" : "text-muted-foreground")} />
-                <span className="text-xs font-medium">{option.label}</span>
-                <span className="text-[10px] text-muted-foreground">{option.description}</span>
+                <span className={cn("flex size-8 items-center justify-center rounded-full", selected ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary")}>
+                  <Icon className="h-4 w-4" aria-hidden />
+                </span>
+                <span className="text-xs font-semibold text-foreground">{option.label}</span>
+                <span className="text-[11px] leading-snug text-foreground/70">{option.description}</span>
               </button>
             )
           })}

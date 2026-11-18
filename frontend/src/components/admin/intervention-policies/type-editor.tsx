@@ -18,6 +18,7 @@ import { errorMessage, issuesFromError } from "./shared/helpers"
 import { useInterventionCapabilities } from "./shared/use-intervention-capabilities"
 import { CapabilitiesSection } from "./type-editor/capabilities-section"
 import { FormFieldsSection } from "./type-editor/form-fields-section"
+import { ScriptSection } from "./type-editor/script-section"
 import { CompletionSection, EvidenceSection, IdentitySection, IncompatibilitySection, ResponsibilitySection } from "./type-editor/settings-sections"
 import { enforceTypeRules } from "./type-editor/type-rules"
 
@@ -189,6 +190,7 @@ export function TypeEditor({ type, types }: { type: InterventionTypeView; types:
           <IdentitySection definition={definition} disabled={!editable} onChange={update} />
           <CapabilitiesSection definition={definition} catalog={catalogQuery.data} disabled={!editable} onChange={(capabilities) => update({ ...definition, capabilities })} />
           <ResponsibilitySection definition={definition} disabled={!editable} onChange={update} />
+          <ScriptSection definition={definition} disabled={!editable} onChange={(script) => update({ ...definition, script })} onVisibilityChange={(collaboratorVisible) => update({ ...definition, collaboratorVisible })} />
           <EvidenceSection definition={definition} catalog={catalogQuery.data} disabled={!editable} onChange={update} />
           <FormFieldsSection fields={definition.form} disabled={!editable} onChange={(form) => update({ ...definition, form })} />
           <CompletionSection definition={definition} catalog={catalogQuery.data} disabled={!editable} onChange={update} />

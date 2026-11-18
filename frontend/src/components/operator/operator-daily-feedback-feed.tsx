@@ -22,6 +22,7 @@ import { FeedbackApplicationButton } from "./feedback-application/feedback-appli
 import { useFeedbackWorkspace } from "./feedback-application/feedback-workspace-context"
 import { feedbackSourceKey, type FeedbackSourceRef } from "@/schemas/feedback-applications/feedback-application.schema"
 import { cn } from "@/lib/utils"
+import { MyFollowUpPlans } from "@/components/interventions/my-follow-up-plans"
 
 const PAGE_SIZE = 4
 /** Família do item quando o backend não mandou o motivo (feedback anterior ao campo) — o ícone cai no padrão da família. */
@@ -135,6 +136,8 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
   }
 
   return <div ref={rootRef} className="contents"><IniaFeed titleInToggle title="Acompanhamento" description="Feedbacks e monitorias da INIA" period={period} onPeriodChange={setPeriod}>
+      {/* O acompanhamento em execução com quem lidera (só formatos visíveis ao colaborador) — some quando não há nenhum. */}
+      <MyFollowUpPlans/>
       {delivered.isPending ? <div className="flex gap-3 py-5" aria-busy="true" aria-label="Carregando feedbacks de atendimento"><Skeleton className="size-9 shrink-0 rounded-full"/><div className="flex-1 space-y-2"><Skeleton className="h-4 w-40"/><Skeleton className="h-4 w-full"/></div></div> : null}
       {notices.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os comunicados. <button type="button" className="underline" onClick={() => void notices.refetch()}>Tentar novamente</button></p> : null}
       {delivered.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os feedbacks de atendimento. <button type="button" className="underline" onClick={() => void delivered.refetch()}>Tentar novamente</button></p> : null}

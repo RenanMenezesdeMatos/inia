@@ -2,6 +2,7 @@ import { z } from "zod"
 import { communicationSchema } from "@/schemas/communications/communication.schema"
 
 import { feedbackSupportMaterialSchema } from "@/schemas/feedbacks/support-material.schema"
+import { interventionBriefViewSchema } from "@/schemas/interventions/intervention.schema"
 import { feedbackViewSchema } from "@/schemas/feedbacks/feedback-view.schema"
 import { feedbackOriginSchema } from "@/schemas/feedbacks/feedback-origin.schema"
 import { prvSupervisorViewSchema } from "@/schemas/feedbacks/prv-supervisor-view.schema"
@@ -581,6 +582,8 @@ export const followUpItemSchema = z.object({
   report: z.unknown().optional(),
   /** Comunicado da liderança (kind = NOTICE): publicado por quem lê ou recebido por ele. */
   notice: communicationSchema.nullish(),
+  /** Resumo da INIA de uma intervenção aberta pela política — só nos avisos de abertura, para quem ainda é parte dela. */
+  intervention: interventionBriefViewSchema.nullish(),
 })
 export type FollowUpItem = z.infer<typeof followUpItemSchema>
 

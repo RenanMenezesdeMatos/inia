@@ -3,7 +3,7 @@ import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { emptyInterventionTypeDefinition } from "./intervention-type.js"
 import { planReadinessIssues } from "./intervention-plan.js"
-import { authorizeCommand, canViewIntervention, completionIssues, CONTINUITY_DECISIONS, isOverdue, transition, type ActorRelation } from "./intervention-state.js"
+import { authorizeCommand, canViewIntervention, completionIssues, CONTINUITY_DECISIONS, isOverdue, transition, type ActorRelation, asksEffectiveness } from "./intervention-state.js"
 
 const relation = (extra: Omit<Partial<ActorRelation>, "can"> & { can?: Partial<ActorRelation["can"]> } = {}): ActorRelation => ({ human: true, isResponsible: false, isApprover: false, isOpener: false, isSubject: false, leadsSubject: false, ...extra, can: { view: false, execute: false, approve: false, sensitiveDecide: false, ...extra.can } })
 
@@ -74,12 +74,25 @@ describe("conclusão: atividades, aprendizagem e evolução operacional são reg
   const definition = { ...emptyInterventionTypeDefinition("Treinar"), capabilities: ["TRAINING" as const, "TASKS" as const], completion: { requireAllTasksDone: true, requireLearningAssessment: true, requireOperationalReading: true, requireOutcomeNote: true } }
   const counts = { tasksTotal: 2, tasksDone: 2, tasksSkipped: 0, checkpointsTotal: 0, checkpointsDone: 0, activitiesTotal: 1, activitiesDone: 1 }
   it("tarefas concluídas não dispensam a avaliação de aprendizagem nem a leitura do indicador", () => {
-    const issues = completionIssues(definition, { note: "Feito.", learning: null, operational: null, formValues: {} }, counts).map((issue) => issue.code)
+    const issues = completionIssues(definition, { note: "Feito.", worked: "YES", reasons: ["APPLIED_AGREEMENT"], learning: null, operational: null, formValues: {} }, counts).map((issue) => issue.code)
     expect(issues).toEqual(expect.arrayContaining(["INTERVENTION_LEARNING_REQUIRED", "INTERVENTION_OPERATIONAL_REQUIRED"]))
   })
   it("'melhorou' exige a leitura que sustenta", () => {
-    const issues = completionIssues(definition, { note: "Feito.", learning: { result: "ACHIEVED", note: "" }, operational: { result: "IMPROVED", reading: "" }, formValues: {} }, counts).map((issue) => issue.code)
+    const issues = completionIssues(definition, { note: "Feito.", worked: "YES", reasons: ["APPLIED_AGREEMENT"], learning: { result: "ACHIEVED", note: "" }, operational: { result: "IMPROVED", reading: "" }, formValues: {} }, counts).map((issue) => issue.code)
     expect(issues).toContain("INTERVENTION_OPERATIONAL_READING")
+  })
+  it("'deu resultado?' e o motivo são obrigatórios nos formatos que fazem algo com o colaborador — e só neles", () => {
+    const done = { learning: { result: "ACHIEVED" as const, note: "" }, operational: { result: "UNCHANGED" as const, reading: "TMA 465 s antes e 466 s depois." }, formValues: {} }
+    const codes = (input: Parameters<typeof completionIssues>[1], type: Parameters<typeof completionIssues>[0] = definition) => completionIssues(type, input, counts).map((issue) => issue.code)
+    expect(codes({ ...done, note: "Feito.", worked: null, reasons: [] })).toEqual(["INTERVENTION_EFFECTIVENESS_REQUIRED"])
+    expect(codes({ ...done, note: "Feito.", worked: "NO", reasons: [] })).toEqual(["INTERVENTION_OUTCOME_REASON_REQUIRED"])
+    expect(codes({ ...done, note: "Feito.", worked: "NO", reasons: ["OTHER"] })).toEqual(["INTERVENTION_OUTCOME_REASON_NOTE"])
+    expect(codes({ ...done, note: "A escala mudou no meio do período.", worked: "PARTIAL", reasons: ["OTHER", "NOT_ENOUGH_FOLLOW_UP"] })).toEqual([])
+    // Observação, revisão de dados e reconhecimento não perguntam se "deu resultado".
+    const observe = { ...emptyInterventionTypeDefinition("Observar"), capabilities: ["OBSERVATION" as const, "CHECKPOINTS" as const], completion: { requireAllTasksDone: false, requireLearningAssessment: false, requireOperationalReading: false, requireOutcomeNote: true } }
+    expect(asksEffectiveness(observe)).toBe(false)
+    expect(codes({ note: "Observado por 15 dias.", worked: null, reasons: [], learning: null, operational: null, formValues: {} }, observe)).toEqual([])
+    expect(asksEffectiveness({ capabilities: ["ACTION_PLAN"] })).toBe(true)
   })
   it("treinamento só sai de 'proposta' com objetivo, conteúdo aprovado, atividade e avaliação", () => {
     const issues = planReadinessIssues(definition, {}, { tasks: 1, tasksWithOwnerAndDue: 1, checkpoints: 0, activities: 0 }, 1).map((issue) => issue.code)

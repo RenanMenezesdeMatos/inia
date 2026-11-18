@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { AlertTriangle, CalendarClock, Users } from "lucide-react"
+import { AlertTriangle, CalendarClock, KeyRound, Users } from "lucide-react"
 
 import {
   AlertDialog,
@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { ACTIVE_ACCESS_ONLY_TITLE } from "@/schemas/admin/population-filter-schema"
 import type { GoLiveImpact } from "@/schemas/admin/workflow.schema"
 
 import type { ConfigurationChangeSummary } from "./workflow-configuration-summary"
@@ -102,6 +103,46 @@ function ImpactSummary({ impact }: { impact: GoLiveImpact }) {
 }
 
 /**
+ * "Somente quem tem acesso ativo à INIA": quantas pessoas da população entram hoje — para qualquer gatilho (num workflow de
+ * Flag ou Indicador não há outro lugar que mostre esse número). Desligar a opção com gente sem acesso é o caso que exige
+ * confirmação: essas pessoas passam a entrar.
+ */
+function AccessSummary({ access }: { access: NonNullable<GoLiveImpact["access"]> }) {
+  const everyone = plural(access.population, "colaborador", "colaboradores")
+  if (access.removed) {
+    if (access.withoutAccess === 0) return null
+    return (
+      <p className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive" data-testid="go-live-impact-access-removed">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+        <span>
+          <strong>&quot;{ACTIVE_ACCESS_ONLY_TITLE}&quot; será desligada:</strong> {plural(access.withoutAccess, "colaborador sem acesso passa", "colaboradores sem acesso passam")} a entrar
+          neste workflow. Hoje entram {access.withAccess.toLocaleString("pt-BR")} de {everyone}.
+        </span>
+      </p>
+    )
+  }
+  if (access.withAccess === 0) {
+    return (
+      <p className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-sm" data-testid="go-live-impact-access-empty">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+        <span>
+          <strong>Ninguém entra hoje:</strong> nenhum dos {everyone} da população tem acesso ativo à INIA. O workflow só começa a rodar quando alguém receber acesso.
+        </span>
+      </p>
+    )
+  }
+  return (
+    <p className="flex items-start gap-2 text-sm" data-testid="go-live-impact-access">
+      <KeyRound className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <span>
+        {ACTIVE_ACCESS_ONLY_TITLE}: <strong>{access.withAccess.toLocaleString("pt-BR")} de {everyone}</strong> da população {access.withAccess === 1 ? "entra" : "entram"} hoje. Quem receber
+        acesso depois passa a entrar; quem perder o acesso deixa de entrar.
+      </span>
+    </p>
+  )
+}
+
+/**
  * Confirmação de pôr uma configuração no ar — Publicar (o rascunho passa a valer) ou Ativar (a publicada volta a
  * valer). Mostra o que muda na configuração e, para Agenda, a população e o primeiro disparo. Quando o backend exige
  * confirmação (catch-up de hoje ou população grande), o botão só libera com o "entendi" marcado, e o pedido leva o
@@ -171,6 +212,7 @@ export function GoLiveImpactDialog({
             <div className="space-y-1.5">
               <p className="text-sm font-medium">O que acontece ao {verb.toLowerCase()}</p>
               <ImpactSummary impact={impact} />
+              {impact.access ? <AccessSummary access={impact.access} /> : null}
             </div>
             {needsAck ? (
               <label className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-sm">

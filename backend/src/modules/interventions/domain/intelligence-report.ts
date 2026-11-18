@@ -1,16 +1,23 @@
 import { z } from "zod"
 import { CAPABILITY_DEFINITIONS, effectiveCapabilities, type InterventionCapability } from "./capabilities.js"
 import type { InterventionTypeDefinition } from "./intervention-type.js"
+import type { Evolution } from "./evolution.js"
+import { buildLeaderBrief, type BriefFeedback, type LeaderBrief } from "./leader-brief.js"
 import type { PolicyDefinition } from "./policy-definition.js"
 import { CONDITION_STATUS_TEXT, DECISION_STATUS_TEXT, OUTCOME_TEXT, type ConditionStatus, type EvaluationOutcome, type GroupTrace, type PlannedDecision, type RuleSelection, type RuleTrace } from "./policy-evaluation.js"
 
 /**
- * RELATÓRIO DE INTELIGÊNCIA (`INTERVENTION_INTELLIGENCE_REPORT_V1`) — o fundamento de uma avaliação que levou a ações. A parte
+ * RELATÓRIO DE INTELIGÊNCIA (`INTERVENTION_INTELLIGENCE_REPORT_V2`) — o fundamento de uma avaliação que levou a ações. A parte
  * ESTRUTURADA é montada só por código a partir do rastro da avaliação (fatos, fontes, critérios, decisões): é a fonte da
  * verdade e existe mesmo sem IA. A narrativa (opcional) é redigida pela IA a partir dela, sempre citando os marcadores (F, S,
  * D, A) e nunca podendo mudar resultado de regra, causa, fato ou evidência.
  */
-export const INTELLIGENCE_REPORT_CONTRACT = "INTERVENTION_INTELLIGENCE_REPORT_V1"
+/**
+ * V2 (18/11/2026) = V1 + `brief`: o resumo da INIA para a liderança (o que já foi feito, a evolução medida e a fala de cada ação).
+ * Relatórios V1 já gravados continuam válidos e não são reescritos: neles `brief` está ausente.
+ */
+export const INTELLIGENCE_REPORT_CONTRACT = "INTERVENTION_INTELLIGENCE_REPORT_V2"
+export const INTELLIGENCE_REPORT_CONTRACT_V1 = "INTERVENTION_INTELLIGENCE_REPORT_V1"
 
 export type ReportFact = { handle: string; kind: string; statement: string; status: ConditionStatus; ruleKey: string; values: Record<string, unknown> }
 export type ReportSource = { handle: string; kind: string; ref: string; label: string; occurredAt: string | null }
@@ -38,7 +45,7 @@ export type ReportAction = {
 }
 
 export type IntelligenceReport = {
-  contract: typeof INTELLIGENCE_REPORT_CONTRACT
+  contract: typeof INTELLIGENCE_REPORT_CONTRACT | typeof INTELLIGENCE_REPORT_CONTRACT_V1
   asOf: string
   subject: { personId: string; personName: string; teamName: string | null; indicatorCode: string | null; indicatorName: string | null }
   situation: { summary: string; period: string | null }
@@ -63,7 +70,12 @@ export type IntelligenceReport = {
     rules: { key: string; name: string; priority: number; status: ConditionStatus; statusLabel: string; conditions: { statement: string; status: ConditionStatus }[] }[]
   }
   actions: ReportAction[]
+  /** Resumo da INIA para a liderança (V2). Ausente em relatórios V1. */
+  brief?: LeaderBrief
 }
+
+/** O que a aplicação leu para o resumo da liderança: feedbacks publicados no período e a evolução medida desde o último. */
+export type LeaderContext = { feedbacks: readonly BriefFeedback[]; feedbackCount: number; evolution: Evolution | null }
 
 export type ReportInput = {
   asOf: Date
@@ -81,6 +93,8 @@ export type ReportInput = {
   diagnoses: readonly { ref: string; indicatorCode: string; period: string; patterns: { key: string; title: string }[]; competencies?: string[] }[]
   /** Referências extras (gatilho, nós de análise do Workflow) — também consultáveis. */
   extraSources: readonly { kind: string; ref: string; label: string; occurredAt?: string | null }[]
+  /** Ausente = sem resumo (quem chama não leu o histórico). */
+  leaderContext?: LeaderContext
 }
 
 function flattenConditions(trace: GroupTrace): { statement: string; status: ConditionStatus; kind: string; facts: Record<string, unknown>; reasonCode: string | null; references: { kind: string; ref: string; label: string; occurredAt?: string | null }[] }[] {
@@ -125,6 +139,8 @@ function nextStepsOf(decision: PlannedDecision, definition: InterventionTypeDefi
       })
       return [`${assignment?.responsible?.name ?? "O responsável"} executa${due}.`, ...steps.filter((step): step is string => Boolean(step))]
     }
+    case "NOTIFIED":
+      return [`${assignment?.responsible?.name ?? "Quem lidera"} foi avisado(a). Nenhuma ação foi aberta: abrir uma intervenção fica a critério de quem lidera.`]
     case "EXISTING":
       return [decision.updated ? "Já havia uma intervenção ativa igual: o novo sinal foi registrado nela, sem trocar as versões dela." : "Já havia uma intervenção ativa igual: nada muda."]
     case "SUPPRESSED":
@@ -215,7 +231,8 @@ export function buildIntelligenceReport(input: ReportInput): IntelligenceReport 
       supportingFacts,
       responsible: assignment?.responsible ?? null,
       approver: assignment?.approver ?? null,
-      dueAt: assignment?.dueAt ?? null,
+      // Aviso não é ação: não tem prazo.
+      dueAt: decision.status === "NOTIFIED" ? null : (assignment?.dueAt ?? null),
       nextSteps: nextStepsOf(decision, type, assignment),
       resultCriteria: resultCriteriaOf(type),
       interventionId: input.interventionIds.get(decision.typeKey) ?? decision.existingInterventionId ?? null,
@@ -232,6 +249,21 @@ export function buildIntelligenceReport(input: ReportInput): IntelligenceReport 
   ]
     .filter((part): part is string => Boolean(part))
     .join(" ")
+
+  // Resumo da liderança: os fatos ATENDIDOS das regras que decidiram, sem marcador, + o histórico e a evolução lidos pela aplicação.
+  const decidingRules = new Set(input.decisions.filter((decision) => decision.mode === "MATCHED").flatMap((decision) => [decision.ruleKey, ...decision.alsoRequestedBy]))
+  const brief = input.leaderContext
+    ? buildLeaderBrief({
+        personName: input.subject.personName,
+        policyName: input.policy.name,
+        situation: ordered.filter((rule) => decidingRules.has(rule.key)).flatMap((rule) => flattenConditions(rule.trace).filter((condition) => condition.status === "MET").map((condition) => condition.statement)),
+        feedbacks: input.leaderContext.feedbacks,
+        feedbackCount: input.leaderContext.feedbackCount,
+        evolution: input.leaderContext.evolution,
+        unknowns: missingData,
+        actions: actions.map((action) => ({ handle: action.handle, typeKey: action.typeKey, typeName: action.typeName, sensitive: input.types.get(action.typeKey)?.definition.capabilities.includes("CONTINUITY_REVIEW") ?? false, status: action.status, interventionId: action.interventionId, responsible: action.responsible, approver: action.approver, dueAt: action.dueAt })),
+      })
+    : undefined
 
   return {
     contract: INTELLIGENCE_REPORT_CONTRACT,
@@ -252,6 +284,7 @@ export function buildIntelligenceReport(input: ReportInput): IntelligenceReport 
       rules: ordered.map((rule) => ({ key: rule.key, name: rule.name, priority: rule.priority, status: rule.status, statusLabel: CONDITION_STATUS_TEXT[rule.status], conditions: flattenConditions(rule.trace).map((condition) => ({ statement: condition.statement, status: condition.status })) })),
     },
     actions,
+    ...(brief ? { brief } : {}),
   }
 }
 

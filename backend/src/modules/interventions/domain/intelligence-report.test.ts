@@ -48,4 +48,23 @@ describe("relatório de inteligência — parte estruturada", () => {
   it("é determinístico: a mesma entrada gera o mesmo relatório", () => {
     expect(buildIntelligenceReport(input())).toEqual(buildIntelligenceReport(input()))
   })
+
+  it("sem o histórico lido pela aplicação não há resumo (simulação): o relatório é o de sempre", () => {
+    const report = buildIntelligenceReport(input())
+    expect(report.contract).toBe("INTERVENTION_INTELLIGENCE_REPORT_V2")
+    expect(report.brief).toBeUndefined()
+  })
+
+  it("resumo da liderança: só os fatos ATENDIDOS da regra que decidiu, o histórico de feedbacks, o que falta saber e a fala da ação", () => {
+    const feedback = { id: "f1", kind: "INDICATOR" as const, title: "Tempo médio de atendimento", publishedAt: "2026-10-01T12:00:00.000Z", acknowledgedAt: null, recommendation: "Avise o cliente antes de cada espera." }
+    const report = buildIntelligenceReport({ ...input(), leaderContext: { feedbacks: [feedback], feedbackCount: 1, evolution: null } })
+    const brief = report.brief!
+    // R1 não decidiu (não atendida): o fato "não atendido" dela e o inconclusivo de R2 ficam fora da situação.
+    expect(brief.situation).toEqual([QUARTILE])
+    expect(brief.alreadyDone).toMatchObject({ feedbackCount: 1, feedbacks: [feedback] })
+    expect(brief.unknowns).toEqual(report.missingData)
+    expect(brief.actions).toEqual([
+      { handle: "A1", typeKey: "PLANO", typeName: "Plano de ação", sensitive: false, status: "CREATED", interventionId: "int-1", lead: { toResponsible: "Criei um acompanhamento para você fazer com Karoline: “Plano de ação”, com prazo até 12/11/2026.", toOthers: "Criei um acompanhamento para Vanessa fazer com Karoline: “Plano de ação”, com prazo até 12/11/2026." } },
+    ])
+  })
 })

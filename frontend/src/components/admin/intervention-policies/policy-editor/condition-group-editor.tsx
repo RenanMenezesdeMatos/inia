@@ -3,15 +3,16 @@
 import { FolderPlus, Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { isConditionGroup, type PolicyCondition, type PolicyConditionGroup } from "@/schemas/admin/intervention-policy.schema"
 
 import { OptionSelect } from "../shared/fields"
 import { CONDITION_KIND_LABELS, CONDITION_KINDS, GROUP_OPERATOR_LABELS, type ConditionKind } from "../shared/labels"
-import { defaultCondition, MAX_GROUP_DEPTH, MAX_GROUP_ITEMS } from "./defaults"
+import { defaultCondition, MAX_GROUP_DEPTH, MAX_GROUP_ITEMS, SITUATION_PRESETS } from "./defaults"
 import { usePolicyEditor } from "./editor-context"
 import { IndicatorConditionEditor } from "./indicator-condition-editor"
-import { EmploymentConditionEditor, InteractionFlagConditionEditor, PriorInterventionsConditionEditor, PublishedFeedbackConditionEditor, SupportedDiagnosisConditionEditor, TimeSinceInterventionConditionEditor } from "./other-condition-editors"
+import { EmploymentConditionEditor, EvolutionConditionEditor, InteractionFlagConditionEditor, PriorInterventionsConditionEditor, PublishedFeedbackConditionEditor, SupportedDiagnosisConditionEditor, TimeSinceInterventionConditionEditor } from "./other-condition-editors"
 
 /**
  * "Quando" de uma regra: grupo de condições (todas / qualquer uma), com grupos aninhados até 3 níveis. Um grupo nunca fica
@@ -47,9 +48,24 @@ export function ConditionGroupEditor({ group, depth, canAddCondition, onChange, 
       </ol>
       {readOnly ? null : (
         <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" variant="outline" disabled={full || !canAddCondition} onClick={() => onChange({ ...group, items: [...group.items, defaultCondition("INDICATOR", context)] })}>
-            <Plus /> Adicionar condição
-          </Button>
+          {/* Situações prontas: as frases mais comuns já configuradas; o resto entra por "Outra condição". */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" size="sm" variant="outline" disabled={full || !canAddCondition}>
+                <Plus /> Adicionar condição
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-80">
+              <DropdownMenuLabel>Situações prontas</DropdownMenuLabel>
+              {SITUATION_PRESETS.map((preset) => (
+                <DropdownMenuItem key={preset.key} onSelect={() => onChange({ ...group, items: [...group.items, preset.build(context)] })}>
+                  {preset.label}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => onChange({ ...group, items: [...group.items, defaultCondition("INDICATOR", context)] })}>Outra condição…</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {depth < MAX_GROUP_DEPTH ? (
             <Button type="button" size="sm" variant="ghost" disabled={full || !canAddCondition} onClick={() => onChange({ ...group, items: [...group.items, { operator: group.operator === "ALL" ? "ANY" : "ALL", items: [defaultCondition("INDICATOR", context)] }] })}>
               <FolderPlus /> Adicionar grupo
@@ -102,5 +118,7 @@ function ConditionFields({ condition, onChange }: { condition: PolicyCondition; 
       return <PublishedFeedbackConditionEditor condition={condition} onChange={onChange} />
     case "INTERACTION_FLAG":
       return <InteractionFlagConditionEditor condition={condition} onChange={onChange} />
+    case "EVOLUTION":
+      return <EvolutionConditionEditor condition={condition} onChange={onChange} />
   }
 }

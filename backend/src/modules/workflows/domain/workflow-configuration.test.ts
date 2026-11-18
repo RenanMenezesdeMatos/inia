@@ -33,6 +33,13 @@ describe("configurationChanges — rascunho × publicada", () => {
     expect(configurationChanges(draft, PUBLISHED)).toEqual(["SCOPE", "ANALYSIS"])
   })
 
+  it('ligar ou desligar "Somente quem tem acesso ativo à INIA" é mudança de população; ausente e desligada são a mesma coisa', () => {
+    expect(configurationChanges({ ...PUBLISHED, requireActiveAccess: true }, PUBLISHED)).toEqual(["ANALYSIS"])
+    expect(configurationChanges(PUBLISHED, { ...PUBLISHED, requireActiveAccess: true })).toEqual(["ANALYSIS"])
+    expect(configurationChanges({ ...PUBLISHED, requireActiveAccess: false }, PUBLISHED)).toEqual([])
+    expect(configurationChanges({ ...PUBLISHED, requireActiveAccess: true }, { ...PUBLISHED, requireActiveAccess: true })).toEqual([])
+  })
+
   it('"Todos os colaboradores elegíveis" e filtro ausente são a mesma população', () => {
     expect(configurationChanges({ ...PUBLISHED, populationFilter: { kind: "ALL" } }, PUBLISHED)).toEqual([])
   })

@@ -18,6 +18,9 @@ import { applyEvaluation } from "../application/apply-evaluation.js"
 import { loadPolicyHeader, policyVersionInForceAt } from "../application/catalog.js"
 import * as config from "../application/config-service.js"
 import { evaluatePolicy } from "../application/evaluate-policy.js"
+import { loadInterventionBriefsForAlerts } from "../application/follow-up-briefs.js"
+import { listMyFollowUps } from "../application/collaborator-view.js"
+import { sendOverdueReminders } from "../application/team-overview.js"
 import { generateReportNarrative } from "../application/report-narrative.js"
 import type { InterventionPolicyNodeOutput } from "../../workflows/application/intervention-policy-executor.js"
 
@@ -38,7 +41,7 @@ const KEY = TAG.toUpperCase().replace(/[^A-Z0-9]/g, "")
 
 let pool: pg.Pool
 let app: ReturnType<typeof createApp>
-const ids = { team: "", manager: "", supervisor: "", operator: "", operatorNoData: "", operatorRace: "", policyEditor: "", managerAccount: "", supervisorAccount: "", indicator: "", grant: "" }
+const ids = { team: "", manager: "", supervisor: "", operator: "", operatorNoData: "", operatorRace: "", operatorBrief: "", operatorTrail: "", operatorNotice: "", policyEditor: "", managerAccount: "", supervisorAccount: "", indicator: "", grant: "" }
 const actor = { userAccountId: "", personId: "" }
 const typeIds: Record<string, string> = {}
 let policyId = ""
@@ -57,6 +60,8 @@ const typeDef = (name: string, extra: Partial<InterventionTypeDefinition>): Inte
   completion: { requireAllTasksDone: false, requireLearningAssessment: false, requireOperationalReading: false, requireOutcomeNote: true },
   incompatibleWith: [],
   aiDraft: false,
+  script: [],
+  collaboratorVisible: false,
   ...extra,
 })
 
@@ -67,7 +72,9 @@ async function purge() {
   try {
     await client.query("begin")
     await client.query(`set local inia.history_purge = 'on'`)
-    const people = [ids.manager, ids.supervisor, ids.operator, ids.operatorNoData, ids.operatorRace, ids.policyEditor].filter(Boolean)
+    const people = [ids.manager, ids.supervisor, ids.operator, ids.operatorNoData, ids.operatorRace, ids.operatorBrief, ids.operatorTrail, ids.operatorNotice, ids.policyEditor].filter(Boolean)
+    await client.query(`delete from feedbacks where operator_id = any($1::uuid[])`, [people])
+    await client.query(`delete from indicator_measurements_all where subject_id = any($1::uuid[])`, [people])
     await client.query(`delete from alerts where recipient_id = any($1::uuid[]) or case_id in (select id from supervision_cases where operator_id = any($1::uuid[]))`, [people])
     await client.query(`delete from intervention_events where intervention_id in (select id from interventions where person_id = any($1::uuid[]))`, [people])
     await client.query(`delete from intervention_items where intervention_id in (select id from interventions where person_id = any($1::uuid[]))`, [people])
@@ -353,7 +360,7 @@ describe.skipIf(!ENABLED)("Políticas de acompanhamento e intervenções — per
     // A pendência foi resolvida, a intervenção continua (no caso e na ficha) até a conclusão registrada.
     const caseView = await supervisor.get(`/api/v1/interventions/cases/${orientar.caseId}`)
     expect(caseView.body.data.interventions.find((item: { id: string }) => item.id === orientar.interventionId).status).toBe("IN_PROGRESS")
-    const completed = await supervisor.post(`/api/v1/interventions/${orientar.interventionId}/complete`).send({ note: "Orientação feita na reunião de 13/10 com o procedimento.", expectedRevision: accepted.body.data.revision })
+    const completed = await supervisor.post(`/api/v1/interventions/${orientar.interventionId}/complete`).send({ note: "Orientação feita na reunião de 13/10 com o procedimento.", worked: "YES", reasons: ["APPLIED_AGREEMENT"], expectedRevision: accepted.body.data.revision })
     expect(completed.body.data.status).toBe("COMPLETED")
 
     // Plano: só o aprovador designado aprova (a supervisora responsável não); o gerente vê na Pendências dele.
@@ -377,14 +384,14 @@ describe.skipIf(!ENABLED)("Políticas de acompanhamento e intervenções — per
     const recorded = await supervisor.patch(`/api/v1/interventions/${plano}/items/${checkpoint.id}`).send({ status: "DONE", reading: "TMA 470 s na semana (meta 400 s).", expectedRevision: revision })
     expect(recorded.status, JSON.stringify(recorded.body)).toBe(200)
     revision = recorded.body.data.revision
-    const early = await supervisor.post(`/api/v1/interventions/${plano}/complete`).send({ note: "Plano cumprido.", operational: { result: "IMPROVED", reading: "" }, expectedRevision: revision })
+    const early = await supervisor.post(`/api/v1/interventions/${plano}/complete`).send({ note: "Plano cumprido.", worked: "NO", reasons: ["NOT_APPLIED"], operational: { result: "IMPROVED", reading: "" }, expectedRevision: revision })
     expect(early.status).toBe(422)
     expect(early.body.error.details.issues.map((issue: { code: string }) => issue.code)).toEqual(expect.arrayContaining(["INTERVENTION_TASKS_PENDING", "INTERVENTION_OPERATIONAL_READING"]))
     const done = await supervisor.patch(`/api/v1/interventions/${plano}/items/${taskItem.id}`).send({ status: "DONE", note: "Feito.", expectedRevision: revision })
     revision = done.body.data.revision
     const stale = await supervisor.post(`/api/v1/interventions/${plano}/complete`).send({ note: "x", expectedRevision: revision - 1 })
     expect(stale.status).toBe(409)
-    const final = await supervisor.post(`/api/v1/interventions/${plano}/complete`).send({ note: "Plano cumprido.", operational: { result: "UNCHANGED", reading: "TMA de outubro 465 s × 520 s no fechamento de setembro; meta 400 s." }, expectedRevision: revision })
+    const final = await supervisor.post(`/api/v1/interventions/${plano}/complete`).send({ note: "Plano cumprido.", worked: "NO", reasons: ["NOT_APPLIED"], operational: { result: "UNCHANGED", reading: "TMA de outubro 465 s × 520 s no fechamento de setembro; meta 400 s." }, expectedRevision: revision })
     expect(final.status, JSON.stringify(final.body)).toBe(200)
     expect(final.body.data.outcome).toMatchObject({ activities: { tasksTotal: 1, tasksDone: 1 }, operational: { result: "UNCHANGED" } })
     expect(final.body.data.events.map((event: { eventType: string }) => event.eventType)).toEqual(expect.arrayContaining(["OPENED", "SIGNAL_RECEIVED", "APPROVED", "ITEM_ADDED", "CHECKPOINT_RECORDED", "COMPLETED"]))
@@ -402,6 +409,13 @@ describe.skipIf(!ENABLED)("Políticas de acompanhamento e intervenções — per
       report: { aiNarrative: false },
       rules: [{ key: "Q4_PERSISTENTE", name: "Q4 oficial persistente", priority: 1, justification: "Pior quartil oficial em fechamentos consecutivos, depois de plano de ação concluído.", when: { operator: "ALL", items: [quartileQ4(`${KEY}_TMA`)] }, actions: [{ typeKey: `${KEY}_CONTINUIDADE`, effect: "OPEN", dueInDays: 10, onActive: "KEEP", cooldownDays: 0 }], inconclusiveActions: [] }],
     }
+    // Regra fixa: resultado ruim sozinho nunca leva à solicitação — sem "acompanhamento anterior concluído sem evolução" não publica.
+    await admin.put(`/api/v1/admin/intervention-policies/policies/${continuityPolicyId}/draft`).send({ definition })
+    const withoutPrior = await admin.post(`/api/v1/admin/intervention-policies/policies/${continuityPolicyId}/publish`).send({})
+    expect(withoutPrior.status).toBe(422)
+    expect(withoutPrior.body.error.details.issues.map((issue: { code: string }) => issue.code)).toContain("CONTINUITY_REVIEW_PRIOR_FOLLOW_UP")
+    // O plano de ação do percurso anterior foi concluído com leitura "sem mudança": é ele que torna o degrau alcançável.
+    definition.rules[0]!.when.items.push({ kind: "PRIOR_INTERVENTIONS", typeKeys: [], statuses: ["COMPLETED"], operationalResults: ["UNCHANGED", "WORSENED"], sameSubject: true, withinDays: 180, comparator: "GTE", threshold: 1 })
     await admin.put(`/api/v1/admin/intervention-policies/policies/${continuityPolicyId}/draft`).send({ definition })
     expect((await admin.post(`/api/v1/admin/intervention-policies/policies/${continuityPolicyId}/publish`).send({})).status).toBe(200)
     const header = (await loadPolicyHeader(pool, ORG, continuityPolicyId))!
@@ -562,5 +576,274 @@ describe.skipIf(!ENABLED)("Políticas de acompanhamento e intervenções — per
     const operator = await login(`operadora.${TAG}@inia.local`)
     expect((await operator.get(`/api/v1/interventions/${plano}`)).status).toBe(404)
     expect((await operator.get("/api/v1/admin/intervention-policies/policies")).status).toBe(403)
+  })
+
+  it("resumo da INIA: o que já foi dito ao colaborador, a evolução medida e a fala para cada leitor chegam ao Acompanhamento de quem lidera", async () => {
+    const DAY = 86_400_000
+    const publishedAt = new Date(Date.now() - 30 * DAY)
+    ids.operatorBrief = await person("Operadora resumo", "OPERATOR", ids.supervisor)
+    for (const period of ["2026-08", "2026-09"]) await pool.query(`insert into employee_indicator_performance (organization_id, person_id, indicator_definition_id, reference_period, value, target_value, achievement_percent, quartile, source) values ($1,$2,$3,$4,520,400,76.9,'Q4','PROOF')`, [ORG, ids.operatorBrief, ids.indicator, period])
+    // Medição diária: 500 s nos 30 dias antes do feedback, 450 s depois (menor é melhor).
+    await pool.query(`update indicator_definitions_all set daily_supported = true, operational_aggregation = 'AVERAGE' where id = $1`, [ids.indicator])
+    await pool.query(
+      `insert into indicator_measurements (organization_id, indicator_definition_id, subject_type, subject_id, value, period_start, period_end, source, granularity)
+       select $1, $2, 'PERSON', $3, case when d < $4::timestamptz then 500 else 450 end, d, d + interval '1 day' - interval '1 second', 'PROOF', 'DAILY'
+         from generate_series(date_trunc('day', $4::timestamptz) - interval '31 days', date_trunc('day', now()) - interval '1 day', interval '1 day') d`,
+      [ORG, ids.indicator, ids.operatorBrief, publishedAt],
+    )
+    // O feedback foi gravado com o NOME do indicador (como os fluxos de feedback fazem), não com o código.
+    const feedbackCase = (await pool.query<{ id: string }>(`insert into supervision_cases (organization_id, operator_id, team_id, title, summary, status, priority, indicator_code, indicator_value, indicator_target) values ($1,$2,$3,'Feedback da prova','Caso do feedback da prova.','RESOLVED','P3','TMA da prova','520','400') returning id`, [ORG, ids.operatorBrief, ids.team])).rows[0]!.id
+    const recommendation = "Avise o cliente antes de cada espera e use o roteiro de consulta rápida ao sistema."
+    const feedbackId = (await pool.query<{ id: string }>(`insert into feedbacks (organization_id, case_id, operator_id, status, impacted_indicator, evidence_found, observed_behavior, related_procedure, recommendation, published_at, feedback_kind) values ($1,$2,$3,'PUBLISHED','TMA da prova','Fechamento oficial de setembro: 520 s.','Esperas longas sem aviso.','Procedimento de atendimento.',$4,$5,'INDICATOR') returning id`, [ORG, feedbackCase, ids.operatorBrief, recommendation, publishedAt])).rows[0]!.id
+
+    const header = (await loadPolicyHeader(pool, ORG, policyId))!
+    const applied = await applyEvaluation(pool, { evaluation: (await evaluatePolicy(pool, { organizationId: ORG, policy: header, personId: ids.operatorBrief, asOf: new Date(), recommendOnly: false }))!, origin: "MANUAL", idempotencyKey: `brief:${randomUUID()}`, requestedBy: null })
+    const opened = applied.decisions.filter((decision) => decision.interventionId && ["CREATED", "PENDING_APPROVAL", "RECOMMENDED"].includes(decision.status))
+    expect(opened.length).toBeGreaterThan(0)
+
+    // O relatório (V2) guarda o resumo: feedback encontrado pelo nome do indicador e evolução calculada da medição diária.
+    const report = (await pool.query<{ contract_version: string; structured: { brief: { alreadyDone: { feedbackCount: number; feedbacks: { id: string; recommendation: string; acknowledgedAt: string | null }[] }; evolution: { status: string; statement: string; before: { value: number }; after: { value: number }; change: { percent: number } } | null; actions: { interventionId: string; lead: { toResponsible: string; toOthers: string } }[] } } }>(`select contract_version, structured from intervention_reports where id = $1`, [applied.reportId])).rows[0]!
+    expect(report.contract_version).toBe("INTERVENTION_INTELLIGENCE_REPORT_V2")
+    const brief = report.structured.brief
+    expect(brief.alreadyDone).toMatchObject({ feedbackCount: 1, feedbacks: [{ id: feedbackId, recommendation, acknowledgedAt: null }] })
+    expect(brief.evolution, JSON.stringify(brief.evolution)).toMatchObject({ status: "IMPROVED", before: { value: 500 }, after: { value: 450 }, change: { percent: -10 } })
+    expect(brief.evolution!.statement).toContain("melhorou 10%")
+
+    // No Acompanhamento da supervisora (responsável): o resumo vem no item do aviso, em 2ª pessoa.
+    const supervisor = await login(`supervisora.${TAG}@inia.local`)
+    const feed = await supervisor.get("/api/v1/analytics/follow-ups?limit=50")
+    expect(feed.status, JSON.stringify(feed.body)).toBe(200)
+    const openedIds = new Set(opened.map((decision) => decision.interventionId))
+    const mine = feed.body.data.items.filter((item: { intervention?: { interventionId: string } }) => item.intervention && openedIds.has(item.intervention.interventionId))
+    expect(mine.length).toBeGreaterThan(0)
+    for (const item of mine) {
+      expect(item.category).toBe("INTERVENTION")
+      expect(item.intervention.lead).toMatch(/você/i)
+      expect(item.summary).toBe(item.intervention.lead)
+      expect(item.intervention.alreadyDone.feedbacks[0]).toMatchObject({ id: feedbackId, recommendation })
+      expect(item.intervention.evolution.status).toBe("IMPROVED")
+      expect(item.intervention.nextSteps.length).toBeGreaterThan(0)
+    }
+    // Quem aprova lê a mesma fala em 3ª pessoa; quem não é parte da intervenção não recebe o resumo de ninguém.
+    const manager = await login(`gerente.${TAG}@inia.local`)
+    const managerFeed = await manager.get("/api/v1/analytics/follow-ups?limit=50")
+    const approval = managerFeed.body.data.items.find((item: { intervention?: { interventionId: string } }) => item.intervention && openedIds.has(item.intervention.interventionId))
+    if (opened.some((decision) => decision.status === "PENDING_APPROVAL")) {
+      expect(approval.intervention.lead).toMatch(/Supervisora/)
+      expect(approval.intervention.lead).not.toMatch(/você/i)
+    }
+    // O aviso de outra pessoa nunca devolve resumo: só o destinatário que ainda é parte da intervenção.
+    const supervisorAlerts = (await pool.query<{ id: string }>(`select id from alerts where recipient_id = $1 and alert_type = 'INTERVENTION_ASSIGNED'`, [ids.supervisor])).rows.map((row) => row.id)
+    expect((await loadInterventionBriefsForAlerts(pool, { organizationId: ORG, viewerId: ids.manager, alertIds: supervisorAlerts })).size).toBe(0)
+    expect((await loadInterventionBriefsForAlerts(pool, { organizationId: "00000000-0000-4000-8000-0000000000e9", viewerId: ids.supervisor, alertIds: supervisorAlerts })).size).toBe(0)
+
+    // No caso: o detalhe da intervenção traz o mesmo resumo dentro do relatório.
+    const detail = await supervisor.get(`/api/v1/interventions/${opened[0]!.interventionId}`)
+    expect(detail.body.data.report.structured.brief.alreadyDone.feedbacks[0].id).toBe(feedbackId)
+
+    // Quem deixou de ser parte (encaminhou a responsabilidade) continua com o aviso curto, mas sem o resumo.
+    const forwarded = opened[0]!.interventionId!
+    const forward = await supervisor.post(`/api/v1/interventions/${forwarded}/forward`).send({ toPersonId: ids.manager, reason: "Encaminhado à gerência para acompanhar de perto.", expectedRevision: detail.body.data.revision })
+    expect(forward.status, JSON.stringify(forward.body)).toBe(200)
+    const after = await supervisor.get("/api/v1/analytics/follow-ups?limit=50")
+    expect(after.body.data.items.some((item: { intervention?: { interventionId: string } }) => item.intervention?.interventionId === forwarded)).toBe(false)
+  })
+  it("trilha: formato com roteiro nasce com os passos, 'sem evolução desde o feedback' decide com limiar explícito e 'só avisar' não cria intervenção", async () => {
+    const DAY = 86_400_000
+    const admin = await login(ADMIN_GERAL)
+    const publishedAt = new Date(Date.now() - 30 * DAY)
+    await pool.query(`update indicator_definitions_all set daily_supported = true, operational_aggregation = 'AVERAGE' where id = $1`, [ids.indicator])
+    ids.operatorTrail = await person("Operadora trilha", "OPERATOR", ids.supervisor)
+    ids.operatorNotice = await person("Operadora aviso", "OPERATOR", ids.supervisor)
+    for (const personId of [ids.operatorTrail, ids.operatorNotice]) {
+      for (const period of ["2026-08", "2026-09"]) await pool.query(`insert into employee_indicator_performance (organization_id, person_id, indicator_definition_id, reference_period, value, target_value, achievement_percent, quartile, source) values ($1,$2,$3,$4,520,400,76.9,'Q4','PROOF')`, [ORG, personId, ids.indicator, period])
+    }
+    // 500 s antes do feedback e 495 s depois: melhorou 1% — abaixo dos 5% que a regra exige para contar como evolução.
+    await pool.query(
+      `insert into indicator_measurements (organization_id, indicator_definition_id, subject_type, subject_id, value, period_start, period_end, source, granularity)
+       select $1, $2, 'PERSON', $3, case when d < $4::timestamptz then 500 else 495 end, d, d + interval '1 day' - interval '1 second', 'PROOF', 'DAILY'
+         from generate_series(date_trunc('day', $4::timestamptz) - interval '31 days', date_trunc('day', now()) - interval '1 day', interval '1 day') d`,
+      [ORG, ids.indicator, ids.operatorTrail, publishedAt],
+    )
+    const feedbackCase = (await pool.query<{ id: string }>(`insert into supervision_cases (organization_id, operator_id, team_id, title, summary, status, priority, indicator_code, indicator_value, indicator_target) values ($1,$2,$3,'Feedback da prova','Caso do feedback da prova.','RESOLVED','P3','TMA da prova','520','400') returning id`, [ORG, ids.operatorTrail, ids.team])).rows[0]!.id
+    await pool.query(`insert into feedbacks (organization_id, case_id, operator_id, status, impacted_indicator, evidence_found, observed_behavior, related_procedure, recommendation, published_at, feedback_kind) values ($1,$2,$3,'PUBLISHED','TMA da prova','Fechamento oficial: 520 s.','Esperas longas.','Procedimento.','Avise o cliente antes de cada espera.',$4,'INDICATOR')`, [ORG, feedbackCase, ids.operatorTrail, publishedAt])
+
+    // Formato com ROTEIRO: três passos (dois do líder, um do colaborador) e um checkpoint.
+    const lado = await admin.post("/api/v1/admin/intervention-policies/types").send({
+      key: `${KEY}_LADO`,
+      definition: typeDef("Lado a lado", {
+        capabilities: ["TASKS", "CHECKPOINTS"],
+        defaultDueDays: 21,
+        completion: { requireAllTasksDone: true, requireLearningAssessment: false, requireOperationalReading: true, requireOutcomeNote: true },
+        script: [
+          { kind: "TASK", title: "1ª sessão lado a lado", description: "Observar a condução.", owner: "RESPONSIBLE", dueInDays: 5 },
+          { kind: "TASK", title: "Aplicar os pontos combinados", description: "", owner: "COLLABORATOR", dueInDays: 12 },
+          { kind: "CHECKPOINT", title: "Leitura do indicador", description: "", owner: "RESPONSIBLE", dueInDays: null },
+        ],
+      }),
+    })
+    expect(lado.status, JSON.stringify(lado.body)).toBe(201)
+    expect((await admin.post(`/api/v1/admin/intervention-policies/types/${lado.body.data.id}/publish`).send({})).status).toBe(200)
+
+    const created = await admin.post("/api/v1/admin/intervention-policies/policies").send({ key: `${KEY}_TRILHA`, name: `Trilha ${TAG}`, scopeType: "GROUP", teamId: ids.team })
+    const trailPolicyId = created.body.data.id as string
+    const action = (typeKey: string, effect: "OPEN" | "NOTIFY", cooldownDays = 0) => ({ typeKey, effect, dueInDays: null, onActive: "KEEP" as const, cooldownDays })
+    const definition: PolicyDefinition = {
+      schemaVersion: INTERVENTION_POLICY_SCHEMA_VERSION,
+      description: "Prova da trilha: sem evolução desde o feedback abre o lado a lado; Q4 recorrente só avisa quem lidera.",
+      indicatorCode: `${KEY}_TMA`,
+      matchStrategy: "ALL_MATCHES",
+      report: { aiNarrative: false },
+      rules: [
+        { key: "SEM_EVOLUCAO", name: "Sem evolução desde o último feedback", priority: 1, justification: "O feedback não trouxe evolução: acompanhar de perto.", when: { operator: "ALL", items: [{ kind: "EVOLUTION", indicatorCode: null, withinDays: 90, expectation: "NOT_IMPROVED", minimumImprovementPercent: 5 }] }, actions: [action(`${KEY}_LADO`, "OPEN")], inconclusiveActions: [] },
+        { key: "Q4_AVISAR", name: "Q4 oficial recorrente", priority: 2, justification: "Pior quartil recorrente: avisar quem lidera.", when: { operator: "ALL", items: [quartileQ4(`${KEY}_TMA`)] }, actions: [action(`${KEY}_OBSERVAR`, "NOTIFY", 30)], inconclusiveActions: [] },
+      ],
+    }
+    await admin.put(`/api/v1/admin/intervention-policies/policies/${trailPolicyId}/draft`).send({ definition })
+    const published = await admin.post(`/api/v1/admin/intervention-policies/policies/${trailPolicyId}/publish`).send({})
+    expect(published.status, JSON.stringify(published.body)).toBe(200)
+    const header = (await loadPolicyHeader(pool, ORG, trailPolicyId))!
+    const evaluate = async (personId: string) => applyEvaluation(pool, { evaluation: (await evaluatePolicy(pool, { organizationId: ORG, policy: header, personId, asOf: new Date(), recommendOnly: false }))!, origin: "MANUAL", idempotencyKey: `trail:${randomUUID()}`, requestedBy: null })
+
+    const first = await evaluate(ids.operatorTrail)
+    expect(first.outcome).toBe("CREATED")
+    const lead = first.decisions.find((decision) => decision.typeKey === `${KEY}_LADO`)!
+    const notice = first.decisions.find((decision) => decision.typeKey === `${KEY}_OBSERVAR`)!
+    expect(lead).toMatchObject({ status: "CREATED", ruleKey: "SEM_EVOLUCAO" })
+    expect(notice).toMatchObject({ status: "NOTIFIED", interventionId: null })
+    // A condição guardou a medição e o limiar: 1% de melhora, mínimo de 5% → sem evolução.
+    const stored = (await pool.query<{ rules: { rules: { key: string; trace: { items: { outcome: { status: string; summary: string; facts: { improvementPercent: number; minimumImprovementPercent: number } } }[] } }[] } }>(`select rules from intervention_policy_evaluations where id = $1`, [first.evaluationId])).rows[0]!
+    const evolution = stored.rules.rules.find((rule) => rule.key === "SEM_EVOLUCAO")!.trace.items[0]!.outcome
+    expect(evolution).toMatchObject({ status: "MET", facts: { improvementPercent: 1, minimumImprovementPercent: 5 } })
+    expect(evolution.summary).toContain("Regra: sem evolução (melhora mínima de 5%) — não houve evolução.")
+
+    // O lado a lado nasce com o ROTEIRO: dono e prazo em cada passo; nenhuma intervenção para o tipo só avisado.
+    const items = (await pool.query<{ kind: string; title: string; owner_id: string; days: number }>(`select i.kind, i.title, i.owner_id, (i.due_at - (n.created_at at time zone 'America/Fortaleza')::date)::int days from intervention_items i join interventions n on n.id = i.intervention_id where i.intervention_id = $1 order by i.position`, [lead.interventionId])).rows
+    expect(items.map((item) => `${item.kind}:${item.title}`)).toEqual(["TASK:1ª sessão lado a lado", "TASK:Aplicar os pontos combinados", "CHECKPOINT:Leitura do indicador"])
+    expect(items.map((item) => item.owner_id)).toEqual([ids.supervisor, ids.operatorTrail, ids.supervisor])
+    expect(items.map((item) => item.days)).toEqual([5, 12, 21])
+    expect(Number((await pool.query<{ n: number }>(`select count(*)::int n from interventions where person_id = $1`, [ids.operatorTrail])).rows[0]!.n)).toBe(1)
+
+    // O aviso chega ao Acompanhamento de quem lidera com o resumo; no sino, abre o item do Acompanhamento.
+    const supervisor = await login(`supervisora.${TAG}@inia.local`)
+    const feed = await supervisor.get("/api/v1/analytics/follow-ups?limit=50")
+    const noticeItem = feed.body.data.items.find((item: { title: string; operator: { personId: string } | null }) => item.title === "Para acompanhar: Observar" && item.operator?.personId === ids.operatorTrail)
+    expect(noticeItem, JSON.stringify(feed.body.data.items.map((item: { title: string }) => item.title))).toBeTruthy()
+    expect(noticeItem.intervention).toMatchObject({ interventionId: null, typeName: "Observar" })
+    expect(noticeItem.intervention.lead).toMatch(/^Para você acompanhar: .*Não abri nenhuma ação/)
+    expect(noticeItem.intervention.nextSteps[0]).toMatch(/Nenhuma ação foi aberta/)
+    const bell = await supervisor.get("/api/v1/notifications")
+    expect(bell.body.data.items.find((item: { id: string }) => item.id === noticeItem.id).target).toMatchObject({ type: "FOLLOW_UP", itemId: noticeItem.id })
+    // Pendências não ganham nada pelo aviso (não é ação requerida).
+    const pending = await supervisor.get("/api/v1/pending-actions")
+    expect(pending.body.data.pending.filter((item: { kind: string; operator?: { personId: string }; typeName?: string }) => item.kind === "INTERVENTION" && item.operator?.personId === ids.operatorTrail && item.typeName === "Observar")).toEqual([])
+
+    // Nova avaliação no dia seguinte da regra: o aviso respeita a carência e o lado a lado já existe.
+    const second = await evaluate(ids.operatorTrail)
+    expect(second.decisions.map((decision) => `${decision.typeKey.replace(`${KEY}_`, "")}:${decision.status}`).sort()).toEqual(["LADO:EXISTING", "OBSERVAR:SUPPRESSED"])
+
+    // Só aviso (sem feedback, a regra de evolução não é atendida): resultado "Liderança avisada", caso sem ação pendente, zero intervenções.
+    const onlyNotice = await evaluate(ids.operatorNotice)
+    expect(onlyNotice.outcome).toBe("NOTIFIED")
+    expect(onlyNotice.decisions).toEqual([expect.objectContaining({ status: "NOTIFIED", interventionId: null })])
+    expect((await pool.query<{ status: string }>(`select status from supervision_cases where id = $1`, [onlyNotice.caseId])).rows[0]!.status).toBe("DETECTED")
+    expect(Number((await pool.query<{ n: number }>(`select count(*)::int n from interventions where person_id = $1`, [ids.operatorNotice])).rows[0]!.n)).toBe(0)
+  })
+  it("acompanhar até o fim: o colaborador marca o passo dele, o líder registra, o fechamento diz se deu resultado e por quê, e a gestão vê o resumão", async () => {
+    const admin = await login(ADMIN_GERAL)
+    const supervisor = await login(`supervisora.${TAG}@inia.local`)
+    const manager = await login(`gerente.${TAG}@inia.local`)
+    const lado = (await pool.query<{ id: string; revision: number }>(`select id, revision from interventions where person_id = $1 and type_key = $2`, [ids.operatorTrail, `${KEY}_LADO`])).rows[0]!
+
+    // VISÃO DA EQUIPE: quem lidera (e a gerência acima) vê o que está em andamento, com o próximo passo; o colaborador, nada.
+    const team = await supervisor.get("/api/v1/interventions/team")
+    expect(team.status, JSON.stringify(team.body)).toBe(200)
+    const mine = team.body.data.active.find((item: { id: string }) => item.id === lado.id)
+    expect(mine).toMatchObject({ typeName: "Lado a lado", status: "IN_PROGRESS", overdue: false, progress: { done: 0, total: 3 }, nextStep: { title: "1ª sessão lado a lado", overdue: false } })
+    expect((await manager.get("/api/v1/interventions/team")).body.data.active.some((item: { id: string }) => item.id === lado.id)).toBe(true)
+
+    // LADO DO COLABORADOR: só formato marcado como visível, só em execução, e só os próprios passos.
+    const visible = await admin.post("/api/v1/admin/intervention-policies/types").send({
+      key: `${KEY}_ASSISTIDO`,
+      definition: typeDef("Atendimento assistido", {
+        capabilities: ["TASKS"],
+        evidence: { minimumItems: 0, acceptedKinds: ["EVALUATION", "FEEDBACK"] },
+        collaboratorVisible: true,
+        script: [
+          { kind: "TASK", title: "Atender com apoio ao vivo", description: "", owner: "RESPONSIBLE", dueInDays: 5 },
+          { kind: "TASK", title: "Atender sozinho e trazer as dúvidas", description: "", owner: "COLLABORATOR", dueInDays: 10 },
+        ],
+      }),
+    })
+    expect(visible.status, JSON.stringify(visible.body)).toBe(201)
+    expect((await admin.post(`/api/v1/admin/intervention-policies/types/${visible.body.data.id}/publish`).send({})).status).toBe(200)
+    const opened = await supervisor.post("/api/v1/interventions").send({ personId: ids.operatorNotice, typeKey: `${KEY}_ASSISTIDO`, indicatorCode: `${KEY}_TMA`, reason: "Atendimento assistido combinado na reunião da equipe.", idempotencyKey: `assistido-${TAG}` })
+    expect(opened.status, JSON.stringify(opened.body)).toBe(201)
+    const assistedId = opened.body.data.id as string
+    await account(ids.operatorNotice, `aviso.${TAG}@inia.local`)
+    const operator = await login(`aviso.${TAG}@inia.local`)
+    // Proposta ainda não aceita: o colaborador não vê nada.
+    expect((await operator.get("/api/v1/interventions/mine")).body.data).toEqual([])
+    const accepted = await supervisor.post(`/api/v1/interventions/${assistedId}/accept`).send({ expectedRevision: opened.body.data.revision })
+    expect(accepted.status, JSON.stringify(accepted.body)).toBe(200)
+    const plans = (await operator.get("/api/v1/interventions/mine")).body.data
+    expect(plans).toHaveLength(1)
+    expect(plans[0]).toMatchObject({ id: assistedId, typeName: "Atendimento assistido", steps: [{ title: "Atender com apoio ao vivo", mine: false, done: false }, { title: "Atender sozinho e trazer as dúvidas", mine: true, ownerName: null, done: false }] })
+    // Nada do que fundamenta a intervenção sai para o colaborador.
+    expect(Object.keys(plans[0]).sort()).toEqual(["description", "dueAt", "id", "objective", "responsibleName", "revision", "startedAt", "steps", "typeName"])
+    const [leaderStep, ownStep] = plans[0].steps as { id: string }[]
+    expect((await operator.patch(`/api/v1/interventions/mine/${assistedId}/steps/${leaderStep!.id}`).send({ done: true })).status).toBe(403)
+    const marked = await operator.patch(`/api/v1/interventions/mine/${assistedId}/steps/${ownStep!.id}`).send({ done: true, note: "Atendi 12 chamadas sozinha." })
+    expect(marked.status, JSON.stringify(marked.body)).toBe(200)
+    expect(marked.body.data.steps[1]).toMatchObject({ done: true })
+    // Continua sem abrir a visão de quem conduz; formato não visível (o lado a lado da prova) não aparece para a outra operadora.
+    expect((await operator.get(`/api/v1/interventions/${assistedId}`)).status).toBe(404)
+    expect((await operator.get("/api/v1/interventions/team")).body.data).toMatchObject({ active: [], results: [] })
+    expect(await listMyFollowUps(pool, { organizationId: ORG, personId: ids.operatorTrail })).toEqual([])
+    const history = (await supervisor.get(`/api/v1/interventions/${assistedId}`)).body.data
+    expect(history.items[1]).toMatchObject({ status: "DONE", completedByName: expect.stringContaining("Operadora aviso") })
+
+    // FECHAMENTO do lado a lado: checkpoint com a medição da INIA anexada, tarefas feitas, "deu resultado?" e motivo obrigatórios.
+    let detail = (await supervisor.get(`/api/v1/interventions/${lado.id}`)).body.data
+    const checkpoint = detail.items.find((item: { kind: string }) => item.kind === "CHECKPOINT")
+    const recorded = await supervisor.patch(`/api/v1/interventions/${lado.id}/items/${checkpoint.id}`).send({ status: "DONE", reading: "TMA 495 s na semana, sem mudança relevante.", expectedRevision: detail.revision })
+    expect(recorded.status, JSON.stringify(recorded.body)).toBe(200)
+    // A intervenção começou hoje: a INIA diz que ainda é cedo para comparar (nunca inventa um resultado).
+    expect(recorded.body.data.items.find((item: { id: string }) => item.id === checkpoint.id).result.measured).toMatchObject({ status: "TOO_RECENT" })
+    detail = recorded.body.data
+    for (const task of detail.items.filter((item: { kind: string }) => item.kind === "TASK")) {
+      detail = (await supervisor.patch(`/api/v1/interventions/${lado.id}/items/${task.id}`).send({ status: "DONE", note: "Feito.", expectedRevision: detail.revision })).body.data
+    }
+    const closing = { note: "As sessões aconteceram, mas os pontos combinados não entraram na rotina.", operational: { result: "UNCHANGED", reading: "TMA 495 s antes e 494 s depois das sessões." } }
+    const withoutAnswer = await supervisor.post(`/api/v1/interventions/${lado.id}/complete`).send({ ...closing, expectedRevision: detail.revision })
+    expect(withoutAnswer.status).toBe(422)
+    expect(withoutAnswer.body.error.details.issues.map((issue: { code: string }) => issue.code)).toEqual(["INTERVENTION_EFFECTIVENESS_REQUIRED"])
+    const completed = await supervisor.post(`/api/v1/interventions/${lado.id}/complete`).send({ ...closing, worked: "NO", reasons: ["NOT_APPLIED", "NEEDS_MORE_TIME"], expectedRevision: detail.revision })
+    expect(completed.status, JSON.stringify(completed.body)).toBe(200)
+    expect(completed.body.data.outcome).toMatchObject({ worked: "NO", reasons: ["NOT_APPLIED", "NEEDS_MORE_TIME"], operational: { result: "UNCHANGED" }, measured: { status: "TOO_RECENT" } })
+
+    // RESUMÃO para quem lidera e para a gerência: por formato, quantos concluíram, deu resultado?, a medição e os motivos.
+    const results = (await manager.get("/api/v1/interventions/team")).body.data
+    expect(results.active.some((item: { id: string }) => item.id === lado.id)).toBe(false)
+    expect(results.results.find((row: { typeKey: string }) => row.typeKey === `${KEY}_LADO`)).toMatchObject({
+      typeName: "Lado a lado",
+      indicatorName: "TMA da prova",
+      completed: 1,
+      worked: { yes: 0, partial: 0, no: 1, unanswered: 0 },
+      measured: { improved: 0, unchanged: 0, worsened: 0, notComparable: 1 },
+      reasons: expect.arrayContaining([expect.objectContaining({ reason: "NOT_APPLIED", worked: "NO", count: 1, label: "O colaborador não aplicou o que foi combinado" })]),
+    })
+    // A avaliação de continuidade concluída nunca entra no resumão.
+    expect(results.results.some((row: { typeKey: string }) => row.typeKey === `${KEY}_CONTINUIDADE`)).toBe(false)
+
+    // LEMBRETE de prazo vencido: uma vez por semana por intervenção, para quem conduz; some ao concluir.
+    await pool.query(`update interventions set due_at = current_date - 3 where id = $1`, [assistedId])
+    await sendOverdueReminders(pool)
+    await sendOverdueReminders(pool)
+    const reminders = (await pool.query<{ recipient_id: string; title: string; description: string; status: string }>(`select recipient_id, title, description, status from alerts where alert_type = 'INTERVENTION_OVERDUE' and dedupe_key like $1`, [`intervention:${assistedId}:OVERDUE:%`])).rows
+    expect(reminders).toHaveLength(1)
+    expect(reminders[0]).toMatchObject({ recipient_id: ids.supervisor, title: "Prazo vencido: Atendimento assistido", status: "OPEN" })
+    expect(reminders[0]!.description).toMatch(/passou do prazo \(\d{2}\/\d{2}\/\d{4}\)/)
+    expect((await supervisor.get("/api/v1/interventions/team")).body.data.active.find((item: { id: string }) => item.id === assistedId)).toMatchObject({ overdue: true, progress: { done: 1, total: 2 } })
   })
 })

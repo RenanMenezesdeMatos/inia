@@ -29,7 +29,7 @@ export async function enrollIndicatorWorkflows(db: Queryable, input: IndicatorEn
   const strategy = await lookups.strategy(input.organizationId, input.indicatorCode)
   let enrolled = 0
   for (const workflow of candidates) {
-    const population = { scopeType: workflow.scope_type, teamId: workflow.team_id, subteamId: workflow.subteam_id, populationFilter: workflow.population_filter, operatingUniverse: workflow.operating_universe ?? null }
+    const population = { scopeType: workflow.scope_type, teamId: workflow.team_id, subteamId: workflow.subteam_id, populationFilter: workflow.population_filter, operatingUniverse: workflow.operating_universe ?? null, requireActiveAccess: workflow.require_active_access === true }
     if (!(await isOperatorEligibleForWorkflow(db as Database, input.organizationId, population, input.operatorId, operator, lookups.structureMembers))) continue
     const triggerNode = await lookups.triggerNode(workflow.active_version_id)
     if (!triggerNode) continue

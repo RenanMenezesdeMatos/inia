@@ -34,6 +34,12 @@ export const interventionTypeDefinitionSchema = z.object({
   completion: z.object({ requireAllTasksDone: z.boolean(), requireLearningAssessment: z.boolean(), requireOperationalReading: z.boolean(), requireOutcomeNote: z.boolean() }),
   incompatibleWith: z.array(z.string()),
   aiDraft: z.boolean(),
+  /** Roteiro: os passos com que a intervenção nasce. Versões anteriores a 18/11/2026 não o têm (vale vazio). */
+  script: z
+    .array(z.object({ kind: z.enum(["TASK", "CHECKPOINT"]), title: z.string(), description: z.string(), owner: z.enum(["RESPONSIBLE", "COLLABORATOR"]), dueInDays: z.number().nullable() }))
+    .default([]),
+  /** O colaborador vê o acompanhamento em execução e marca os próprios passos (nunca o motivo nem a análise). */
+  collaboratorVisible: z.boolean().default(false),
 })
 export type InterventionTypeDefinition = z.infer<typeof interventionTypeDefinitionSchema>
 
@@ -131,13 +137,16 @@ export const policyConditionSchema = z.union([
     threshold: z.number(),
     minimumInteractions: z.number(),
   }),
+  /** Evolução do indicador desde o último feedback (medição diária antes × depois), com o limiar da própria regra. */
+  z.object({ kind: z.literal("EVOLUTION"), indicatorCode: z.string().nullable(), withinDays: z.number(), expectation: z.enum(["NOT_IMPROVED", "IMPROVED"]), minimumImprovementPercent: z.number() }),
 ])
 export type PolicyCondition = z.infer<typeof policyConditionSchema>
 export type PolicyConditionGroup = { operator: "ALL" | "ANY"; items: (PolicyCondition | PolicyConditionGroup)[] }
 export const policyConditionGroupSchema: z.ZodType<PolicyConditionGroup> = z.lazy(() => z.object({ operator: z.enum(["ALL", "ANY"]), items: z.array(z.union([policyConditionSchema, policyConditionGroupSchema])) }))
 export const isConditionGroup = (item: PolicyCondition | PolicyConditionGroup): item is PolicyConditionGroup => "operator" in item && "items" in item
 
-export const policyActionSchema = z.object({ typeKey: z.string(), effect: z.enum(["RECOMMEND", "OPEN"]), dueInDays: z.number().nullable(), onActive: z.enum(["KEEP", "UPDATE"]), cooldownDays: z.number() })
+export const POLICY_ACTION_EFFECTS = ["RECOMMEND", "OPEN", "NOTIFY"] as const
+export const policyActionSchema = z.object({ typeKey: z.string(), effect: z.enum(POLICY_ACTION_EFFECTS), dueInDays: z.number().nullable(), onActive: z.enum(["KEEP", "UPDATE"]), cooldownDays: z.number() })
 export type PolicyAction = z.infer<typeof policyActionSchema>
 export const policyRuleSchema = z.object({ key: z.string(), name: z.string(), priority: z.number(), justification: z.string(), when: policyConditionGroupSchema, actions: z.array(policyActionSchema), inconclusiveActions: z.array(policyActionSchema) })
 export type PolicyRule = z.infer<typeof policyRuleSchema>
@@ -158,6 +167,10 @@ export const policyViewSchema = z.object({
   scheduled: z.array(versionView(policyDefinitionSchema)),
   versions: z.array(versionView(policyDefinitionSchema)),
   evaluations: z.object({ last30Days: z.number() }),
+  /** Onde a política roda (só no detalhe): Workflows com o nó que a cita. `running` = há ao menos um publicado e ligado. */
+  workflows: z
+    .object({ items: z.array(z.object({ id: z.string(), name: z.string(), active: z.boolean(), published: z.boolean(), inDraft: z.boolean() })), outOfScope: z.number(), running: z.boolean() })
+    .optional(),
   can: z.object({ edit: z.boolean(), publish: z.boolean(), simulate: z.boolean(), audit: z.boolean().optional() }),
 })
 export type PolicyView = z.infer<typeof policyViewSchema>
@@ -198,7 +211,7 @@ export const publishedPolicySummarySchema = z.object({
   description: z.string(),
   indicatorCode: z.string().nullable(),
   matchStrategy: z.enum(["FIRST_MATCH", "ALL_MATCHES"]).nullable(),
-  rules: z.array(z.object({ key: z.string(), name: z.string(), priority: z.number(), actions: z.array(z.object({ typeKey: z.string(), effect: z.enum(["RECOMMEND", "OPEN"]) })), inconclusiveActions: z.array(z.object({ typeKey: z.string(), effect: z.enum(["RECOMMEND", "OPEN"]) })) })),
+  rules: z.array(z.object({ key: z.string(), name: z.string(), priority: z.number(), actions: z.array(z.object({ typeKey: z.string(), effect: z.enum(POLICY_ACTION_EFFECTS) })), inconclusiveActions: z.array(z.object({ typeKey: z.string(), effect: z.enum(POLICY_ACTION_EFFECTS) })) })),
   types: z.array(z.object({ key: z.string(), name: z.string(), responsibleRole: z.enum(RESPONSIBLE_ROLES).nullable(), approval: z.union([z.object({ required: z.literal(false) }), z.object({ required: z.literal(true), approverRole: z.enum(ESCALATION_ROLES) })]).nullable(), sensitive: z.boolean(), active: z.boolean() })),
 })
 export type PublishedPolicySummary = z.infer<typeof publishedPolicySummarySchema>
@@ -251,14 +264,15 @@ export const OUTCOME_LABELS: Record<z.infer<typeof evaluationOutcomeSchema>, str
   EXISTING: "Intervenção já existente",
   CREATED: "Intervenção criada",
   PENDING_APPROVAL: "Aprovação pendente",
+  NOTIFIED: "Liderança avisada",
   NO_MATCH: "Nenhuma regra atendida",
   INCONCLUSIVE: "Avaliação inconclusiva",
   CONFLICT: "Conflito entre intervenções",
   SUPPRESSED: "Suprimida pela carência",
   NOT_APPLICABLE: "Política não aplicável",
 }
-export const DECISION_LABELS: Record<string, string> = { CREATED: "Abriria", PENDING_APPROVAL: "Abriria aguardando aprovação", RECOMMENDED: "Recomendaria", EXISTING: "Já existe ativa", SUPPRESSED: "Não reabre (carência)", CONFLICT: "Conflito — nada aplicado" }
+export const DECISION_LABELS: Record<string, string> = { CREATED: "Abriria", PENDING_APPROVAL: "Abriria aguardando aprovação", RECOMMENDED: "Recomendaria", NOTIFIED: "Só avisaria quem lidera", EXISTING: "Já existe ativa", SUPPRESSED: "Não reabre (carência)", CONFLICT: "Conflito — nada aplicado" }
 
 export function emptyTypeDefinition(name = "Nova intervenção"): InterventionTypeDefinition {
-  return { schemaVersion: INTERVENTION_TYPE_SCHEMA_VERSION, name, description: "", capabilities: ["TASKS"], responsibleRole: "SUPERVISOR", defaultDueDays: 15, approval: { required: false }, evidence: { minimumItems: 1, acceptedKinds: ["EVALUATION", "FEEDBACK", "DIAGNOSIS", "INDICATOR_RESULT"] }, form: [], completion: { requireAllTasksDone: true, requireLearningAssessment: false, requireOperationalReading: false, requireOutcomeNote: true }, incompatibleWith: [], aiDraft: false }
+  return { schemaVersion: INTERVENTION_TYPE_SCHEMA_VERSION, name, description: "", capabilities: ["TASKS"], responsibleRole: "SUPERVISOR", defaultDueDays: 15, approval: { required: false }, evidence: { minimumItems: 1, acceptedKinds: ["EVALUATION", "FEEDBACK", "DIAGNOSIS", "INDICATOR_RESULT"] }, form: [], completion: { requireAllTasksDone: true, requireLearningAssessment: false, requireOperationalReading: false, requireOutcomeNote: true }, incompatibleWith: [], aiDraft: false, script: [], collaboratorVisible: false }
 }

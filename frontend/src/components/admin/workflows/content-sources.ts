@@ -49,6 +49,7 @@ const OUTCOME_OPTIONS = [
   { value: "CREATED", label: "Intervenção criada" },
   { value: "PENDING_APPROVAL", label: "Aprovação pendente" },
   { value: "RECOMMENDED", label: "Intervenção recomendada" },
+  { value: "NOTIFIED", label: "Liderança avisada" },
   { value: "EXISTING", label: "Intervenção já existente" },
   { value: "NO_MATCH", label: "Nenhuma regra atendida" },
   { value: "INCONCLUSIVE", label: "Avaliação inconclusiva" },
@@ -61,6 +62,7 @@ const DECISION_OPTIONS = [
   { value: "CREATED", label: "Aberta" },
   { value: "PENDING_APPROVAL", label: "Aberta aguardando aprovação" },
   { value: "RECOMMENDED", label: "Recomendada ao responsável" },
+  { value: "NOTIFIED", label: "Só avisada a quem lidera" },
   { value: "EXISTING", label: "Já existia em andamento" },
   { value: "SUPPRESSED", label: "Não reaberta (carência)" },
   { value: "CONFLICT", label: "Não aplicada (conflito)" },
@@ -76,6 +78,7 @@ export const INTERVENTION_POLICY_RESULT_FIELDS: FlatOutputSchemaField[] = [
   { path: "created", label: "Abriu intervenção", type: "BOOLEAN" },
   { path: "pendingApproval", label: "Tem aprovação pendente", type: "BOOLEAN" },
   { path: "recommended", label: "Recomendou intervenção", type: "BOOLEAN" },
+  { path: "notified", label: "Só avisou quem lidera", type: "BOOLEAN" },
   { path: "existing", label: "Encontrou intervenção já ativa", type: "BOOLEAN" },
   { path: "suppressed", label: "Suprimiu pela carência", type: "BOOLEAN" },
   { path: "conflict", label: "Teve conflito", type: "BOOLEAN" },
@@ -85,6 +88,7 @@ export const INTERVENTION_POLICY_RESULT_FIELDS: FlatOutputSchemaField[] = [
   { path: "counts.CREATED", label: "Quantidade criada", type: "NUMBER" },
   { path: "counts.PENDING_APPROVAL", label: "Quantidade aguardando aprovação", type: "NUMBER" },
   { path: "counts.RECOMMENDED", label: "Quantidade recomendada", type: "NUMBER" },
+  { path: "counts.NOTIFIED", label: "Quantidade só avisada", type: "NUMBER" },
 ]
 
 /**

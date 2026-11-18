@@ -102,6 +102,23 @@ const interactionFlagConditionSchema = z
   })
   .strict()
 
+/**
+ * Evolução do indicador desde o último feedback publicado sobre ele (medição diária antes × depois — ver `domain/evolution.ts`).
+ * "Sem evolução" = não melhorou pelo menos `minimumImprovementPercent` (0 = qualquer melhora conta). Sem feedback no período
+ * a condição NÃO é atendida (não há "desde quando"); sem medição suficiente fica INCONCLUSIVA.
+ */
+const evolutionConditionSchema = z
+  .object({
+    kind: z.literal("EVOLUTION"),
+    /** null = o indicador da política. */
+    indicatorCode: z.string().trim().min(1).max(40).nullable(),
+    /** O feedback de referência precisa ter sido publicado nos últimos N dias. */
+    withinDays: z.number().int().min(7).max(365),
+    expectation: z.enum(["NOT_IMPROVED", "IMPROVED"]),
+    minimumImprovementPercent: z.number().min(0).max(100),
+  })
+  .strict()
+
 export const policyConditionSchema = z.union([
   indicatorConditionSchema,
   employmentConditionSchema,
@@ -110,6 +127,7 @@ export const policyConditionSchema = z.union([
   supportedDiagnosisConditionSchema,
   publishedFeedbackConditionSchema,
   interactionFlagConditionSchema,
+  evolutionConditionSchema,
 ])
 export type PolicyCondition = z.infer<typeof policyConditionSchema>
 export type PolicyConditionKind = PolicyCondition["kind"]
@@ -124,8 +142,12 @@ export const isConditionGroup = (item: PolicyCondition | PolicyConditionGroup): 
 export const policyActionSchema = z
   .object({
     typeKey: stableKeySchema,
-    /** RECOMMEND = a intervenção nasce PROPOSTA (o responsável aceita ou descarta); OPEN = nasce pronta (ou aguardando aprovação). */
-    effect: z.enum(["RECOMMEND", "OPEN"]),
+    /**
+     * RECOMMEND = a intervenção nasce PROPOSTA (o responsável aceita ou descarta); OPEN = nasce pronta (ou aguardando aprovação);
+     * NOTIFY = só avisa quem lidera, com o resumo da INIA no Acompanhamento — nenhuma intervenção é criada ("criar a ação para o
+     * líder" desligado). A carência vale para o aviso: o mesmo aviso não se repete antes de `cooldownDays`.
+     */
+    effect: z.enum(["RECOMMEND", "OPEN", "NOTIFY"]),
     /** Ausente = prazo padrão do tipo. */
     dueInDays: z.number().int().min(1).max(365).nullable(),
     /** Já existe uma ATIVA com a mesma identidade: KEEP = nada muda; UPDATE = registra o novo sinal nela (sem trocar versões). */
@@ -182,8 +204,8 @@ export type PolicyValidationCatalog = {
   /** Chaves de todos os tipos (inclusive sem versão publicada ou inativos) — referências históricas em condições. */
   allTypeKeys: ReadonlySet<string>
   competencyKeys: ReadonlySet<string>
-  /** Indicadores ativos da organização, por código. */
-  indicators: ReadonlyMap<string, { active: boolean }>
+  /** Indicadores ativos da organização, por código. `dailySupported` ausente = não informado (não bloqueia). */
+  indicators: ReadonlyMap<string, { active: boolean; dailySupported?: boolean }>
   /** Catálogo de flags por canal, chave `CANAL:nome`. */
   flags: ReadonlyMap<string, { valueType: "BOOLEAN" | "NUMERIC"; active: boolean }>
 }
@@ -218,6 +240,26 @@ const isVerifiableEvidenceCondition = (condition: PolicyCondition) =>
   condition.kind === "INDICATOR" ||
   (condition.kind === "PUBLISHED_FEEDBACK" && countsAtLeastOne(condition.comparator, condition.threshold)) ||
   (condition.kind === "INTERACTION_FLAG" && condition.measure === "COUNT" && countsAtLeastOne(condition.comparator, condition.threshold))
+
+/**
+ * "Já houve um acompanhamento concluído SEM evolução": intervenções anteriores só concluídas, só com resultado operacional
+ * "sem mudança" ou "piorou" (nunca "não medido" — sem leitura não se sabe se evoluiu) e pelo menos uma.
+ */
+export const isPriorFollowUpWithoutEvolution = (condition: PolicyCondition) =>
+  condition.kind === "PRIOR_INTERVENTIONS" &&
+  condition.statuses.length === 1 &&
+  condition.statuses[0] === "COMPLETED" &&
+  condition.operationalResults.length > 0 &&
+  condition.operationalResults.every((result) => result === "UNCHANGED" || result === "WORSENED") &&
+  countsAtLeastOne(condition.comparator, condition.threshold)
+
+/**
+ * Regra FIXA do degrau de continuidade: só é alcançável depois de pelo menos um acompanhamento anterior concluído sem evolução.
+ * Resultado ruim, sozinho, nunca leva à solicitação — vale na publicação e de novo na abertura (versões publicadas antes dela).
+ */
+export const continuityRuleRequiresPriorFollowUp = (rule: Pick<PolicyRule, "when">) => groupRequires(rule.when, isPriorFollowUpWithoutEvolution)
+export const CONTINUITY_PRIOR_FOLLOW_UP_MESSAGE =
+  "A avaliação de continuidade só pode ser solicitada depois de pelo menos um acompanhamento anterior concluído sem evolução: a regra precisa exigir \"Intervenções anteriores\" só concluídas, com resultado \"sem mudança\" ou \"piorou\", pelo menos uma vez."
 
 /** Validação do critério de indicador sem banco (formato da consulta). As capacidades do indicador ficam com a aplicação. */
 function indicatorCriterionIssues(criterion: EmployeeSelectionCriterion, path: string, catalog: PolicyValidationCatalog): ConfigIssue[] {
@@ -260,8 +302,18 @@ function indicatorCriterionIssues(criterion: EmployeeSelectionCriterion, path: s
   return issues
 }
 
-function conditionIssues(condition: PolicyCondition, path: string, catalog: PolicyValidationCatalog): ConfigIssue[] {
+function conditionIssues(condition: PolicyCondition, path: string, catalog: PolicyValidationCatalog, policyIndicatorCode: string | null): ConfigIssue[] {
   switch (condition.kind) {
+    case "EVOLUTION": {
+      const code = condition.indicatorCode ?? policyIndicatorCode
+      if (!code) return [{ path, code: "POLICY_EVOLUTION_INDICATOR_REQUIRED", message: "Evolução desde o feedback: escolha o indicador (a política não tem um indicador principal)." }]
+      const indicator = catalog.indicators.get(code)
+      if (!indicator) return [{ path, code: "POLICY_INDICATOR_NOT_FOUND", message: `O indicador ${code} não existe nesta organização.` }]
+      const issues: ConfigIssue[] = []
+      if (!indicator.active) issues.push({ path, code: "POLICY_INDICATOR_INACTIVE", message: `O indicador ${code} está desativado.` })
+      if (indicator.dailySupported === false) issues.push({ path, code: "POLICY_EVOLUTION_NEEDS_DAILY", message: `Evolução desde o feedback compara a medição diária, e o indicador ${code} não tem medição diária habilitada.` })
+      return issues
+    }
     case "INDICATOR":
       return indicatorCriterionIssues(condition.criterion, path, catalog)
     case "EMPLOYMENT":
@@ -304,8 +356,11 @@ function actionIssues(action: PolicyAction, path: string, catalog: PolicyValidat
     issues.push({ path, code: "POLICY_SKILL_GAP_NEEDS_DIAGNOSIS", message: `${type.definition.name} afirma uma lacuna de habilidade: a regra precisa exigir um diagnóstico sustentado (indicador abaixo da meta, sozinho, não basta).` })
   }
   if (isSensitiveType(type.definition)) {
+    // Continuidade é sempre a SOLICITAÇÃO formal, com decisão de pessoa autorizada — nunca um aviso solto a quem lidera.
+    if (action.effect === "NOTIFY") issues.push({ path, code: "CONTINUITY_REVIEW_NO_NOTIFY", message: "A avaliação de continuidade não pode ser só um aviso: ela sempre abre a solicitação, que é decidida por uma pessoa autorizada." })
     if (inconclusive) issues.push({ path, code: "CONTINUITY_REVIEW_NOT_ON_INCONCLUSIVE", message: "A avaliação de continuidade nunca é aberta com dados insuficientes." })
     if (!groupRequires(rule.when, isVerifiableEvidenceCondition)) issues.push({ path, code: "CONTINUITY_REVIEW_EVIDENCE_CONDITION", message: "A avaliação de continuidade exige uma condição com evidência verificável (indicador, diagnóstico sustentado ou feedback publicado)." })
+    if (!continuityRuleRequiresPriorFollowUp(rule)) issues.push({ path, code: "CONTINUITY_REVIEW_PRIOR_FOLLOW_UP", message: CONTINUITY_PRIOR_FOLLOW_UP_MESSAGE })
     if (rule.justification.trim().length < 30) issues.push({ path: `${path}`, code: "CONTINUITY_REVIEW_JUSTIFICATION", message: "A regra que abre avaliação de continuidade precisa de uma justificativa com pelo menos 30 caracteres." })
   }
   return issues
@@ -329,7 +384,7 @@ export function validatePolicyDefinition(definition: PolicyDefinition, catalog: 
     let count = 0
     walkConditions(rule.when, (condition, conditionPath) => {
       count += 1
-      issues.push(...conditionIssues(condition, `${path}.${conditionPath}`, catalog))
+      issues.push(...conditionIssues(condition, `${path}.${conditionPath}`, catalog, definition.indicatorCode))
     })
     if (count > MAX_CONDITIONS_PER_RULE) issues.push({ path: `${path}.when`, code: "POLICY_TOO_MANY_CONDITIONS", message: `Use no máximo ${MAX_CONDITIONS_PER_RULE} condições por regra.` })
     if (rule.actions.length === 0) issues.push({ path: `${path}.actions`, code: "POLICY_RULE_WITHOUT_ACTIONS", message: `A regra ${rule.name} precisa de pelo menos uma ação.` })

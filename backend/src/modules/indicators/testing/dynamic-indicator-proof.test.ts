@@ -227,7 +227,7 @@ describe.skipIf(!ENABLED)("prova arquitetural — indicador e Grupo que o códig
   })
 
   it("Grupo novo: Abrangência, Filtro populacional (Subgrupo/Supervisor) e destinatário pela estrutura resolvem sem alteração de engine", async () => {
-    const scope = { scopeType: "TEAM", teamId: TEAM, subteamId: null, operatingUniverse: null }
+    const scope = { scopeType: "TEAM", teamId: TEAM, subteamId: null, operatingUniverse: null, requireActiveAccess: false }
     expect(new Set(await resolveScopeOperatorIds(db, ORG, scope))).toEqual(new Set(OPERATORS))
     expect(new Set(await resolvePopulationFilterOperatorIds(db, ORG, { kind: "SUBTEAM", subteamId: SUBTEAM }, scope))).toEqual(new Set([OP_A, OP_B, OP_C]))
     expect(new Set(await resolveStructureAnchorOperatorIds(db, { kind: "SUPERVISOR_TEAM", supervisorId: SUPERVISOR }, SUPERVISOR))).toEqual(new Set(OPERATORS))

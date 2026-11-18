@@ -592,10 +592,12 @@ async function criarWorkflow(cliente: ClienteInia, linha: LinhaDoPlano, item: It
       mode: "CONSOLIDATED",
       consolidatedStructure: trocar(dados.consolidatedStructure),
     })
-  else if (dados.populationFilter && !linha.removerFiltroPopulacional)
+  else if ((dados.populationFilter && !linha.removerFiltroPopulacional) || dados.requireActiveAccess === true)
+    // "Somente quem tem acesso ativo à INIA" viaja com o Workflow: perder a opção no destino faria a publicação valer para todos.
     await cliente.put(`/api/v1/admin/workflows/${id}/analysis-config`, {
       mode: "INDIVIDUAL",
-      populationFilter: trocar(dados.populationFilter),
+      populationFilter: dados.populationFilter && !linha.removerFiltroPopulacional ? trocar(dados.populationFilter) : null,
+      ...(dados.requireActiveAccess === true ? { requireActiveAccess: true } : {}),
     })
   if (!dados.active) await cliente.patch(`/api/v1/admin/workflows/${id}`, { active: false })
   return id

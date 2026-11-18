@@ -91,7 +91,7 @@ export function EffectCard({ effect, people }: { effect: QaEffect; people: QaRun
   } else if (effect.kind === "INTERVENTION_POLICY") {
     Icon = Send
     title = "AVALIAÇÃO DE POLÍTICA DE ACOMPANHAMENTO SIMULADA"
-    const decisionLabel: Record<string, string> = { CREATED: "abriria", PENDING_APPROVAL: "abriria aguardando aprovação", RECOMMENDED: "recomendaria", EXISTING: "já existe ativa", SUPPRESSED: "não reabre (carência)", CONFLICT: "conflito — nada aplicado" }
+    const decisionLabel: Record<string, string> = { CREATED: "abriria", PENDING_APPROVAL: "abriria aguardando aprovação", RECOMMENDED: "recomendaria", NOTIFIED: "só avisaria quem lidera", EXISTING: "já existe ativa", SUPPRESSED: "não reabre (carência)", CONFLICT: "conflito — nada aplicado" }
     rows = [
       { label: "Política", value: `${effect.policyName}${effect.policyVersion ? ` · v${effect.policyVersion}` : ""}` },
       { label: "Resultado", value: OUTCOME_LABELS[effect.outcome as keyof typeof OUTCOME_LABELS] ?? effect.outcome },

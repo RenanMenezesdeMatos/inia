@@ -121,7 +121,7 @@ describe.skipIf(!ENABLED)("Universo de atuação — prova Postgres", () => {
     expect(await codes()).toEqual(["PROOF_UNIV_B2B"]) // 2020 continua no universo em que aconteceu
 
     // Workflows: a população do Workflow B2C só tem operadores B2C (pendente e outros universos fora).
-    const population = { scopeType: "SUBTEAM", teamId: teamX, subteamId: subY, populationFilter: null }
+    const population = { scopeType: "SUBTEAM", teamId: teamX, subteamId: subY, populationFilter: null, requireActiveAccess: false }
     const b2c = await resolveEligibleOperatorIds(client as never, org, { ...population, operatingUniverse: "B2C" })
     expect(b2c.sort()).toEqual([opB2B.id, opB2C.id].sort()) // opB2B mudou para B2C acima
     expect(await resolveEligibleOperatorIds(client as never, org, { ...population, operatingUniverse: null })).toEqual([])

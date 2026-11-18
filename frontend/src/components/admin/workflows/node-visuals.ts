@@ -40,55 +40,56 @@ export const NODE_ICONS: Record<FlowNodeType, LucideIcon> = {
   end: Flag,
 }
 
-export const NODE_COLORS: Record<FlowNodeType, { icon: string; iconBg: string; ring: string }> = {
-  trigger: { icon: "text-sky-600 dark:text-sky-300", iconBg: "bg-sky-100 dark:bg-sky-950", ring: "border-sky-400 ring-sky-400/30" },
-  wait: { icon: "text-amber-600 dark:text-amber-300", iconBg: "bg-amber-100 dark:bg-amber-950", ring: "border-amber-400 ring-amber-400/30" },
+/** `accent` = faixa de cor no topo do card da etapa no canvas: identifica o tipo à distância, além do ícone e do rótulo. */
+export const NODE_COLORS: Record<FlowNodeType, { icon: string; iconBg: string; ring: string; accent: string }> = {
+  trigger: { icon: "text-sky-600 dark:text-sky-300", iconBg: "bg-sky-100 dark:bg-sky-950", ring: "border-sky-400 ring-sky-400/30", accent: "border-t-sky-500" },
+  wait: { icon: "text-amber-600 dark:text-amber-300", iconBg: "bg-amber-100 dark:bg-amber-950", ring: "border-amber-400 ring-amber-400/30", accent: "border-t-amber-500" },
   condition: {
     icon: "text-violet-600 dark:text-violet-300",
     iconBg: "bg-violet-100 dark:bg-violet-950",
-    ring: "border-violet-400 ring-violet-400/30",
+    ring: "border-violet-400 ring-violet-400/30", accent: "border-t-violet-500",
   },
   select_employees: {
     icon: "text-teal-600 dark:text-teal-300",
     iconBg: "bg-teal-100 dark:bg-teal-950",
-    ring: "border-teal-400 ring-teal-400/30",
+    ring: "border-teal-400 ring-teal-400/30", accent: "border-t-teal-500",
   },
   apply_individually: {
     icon: "text-orange-600 dark:text-orange-300",
     iconBg: "bg-orange-100 dark:bg-orange-950",
-    ring: "border-orange-400 ring-orange-400/30",
+    ring: "border-orange-400 ring-orange-400/30", accent: "border-t-orange-500",
   },
   consolidate_results: {
     icon: "text-cyan-600 dark:text-cyan-300",
     iconBg: "bg-cyan-100 dark:bg-cyan-950",
-    ring: "border-cyan-400 ring-cyan-400/30",
+    ring: "border-cyan-400 ring-cyan-400/30", accent: "border-t-cyan-500",
   },
   action: {
     icon: "text-fuchsia-600 dark:text-fuchsia-300",
     iconBg: "bg-fuchsia-100 dark:bg-fuchsia-950",
-    ring: "border-fuchsia-400 ring-fuchsia-400/30",
+    ring: "border-fuchsia-400 ring-fuchsia-400/30", accent: "border-t-fuchsia-500",
   },
   orchestrator: {
     icon: "text-indigo-600 dark:text-indigo-300",
     iconBg: "bg-indigo-100 dark:bg-indigo-950",
-    ring: "border-indigo-400 ring-indigo-400/30",
+    ring: "border-indigo-400 ring-indigo-400/30", accent: "border-t-indigo-500",
   },
   human_review: {
     icon: "text-rose-600 dark:text-rose-300",
     iconBg: "bg-rose-100 dark:bg-rose-950",
-    ring: "border-rose-400 ring-rose-400/30",
+    ring: "border-rose-400 ring-rose-400/30", accent: "border-t-rose-500",
   },
   output: {
     icon: "text-emerald-600 dark:text-emerald-300",
     iconBg: "bg-emerald-100 dark:bg-emerald-950",
-    ring: "border-emerald-400 ring-emerald-400/30",
+    ring: "border-emerald-400 ring-emerald-400/30", accent: "border-t-emerald-500",
   },
   intervention_policy: {
     icon: "text-lime-700 dark:text-lime-300",
     iconBg: "bg-lime-100 dark:bg-lime-950",
-    ring: "border-lime-500 ring-lime-500/30",
+    ring: "border-lime-500 ring-lime-500/30", accent: "border-t-lime-600",
   },
-  end: { icon: "text-slate-600 dark:text-slate-300", iconBg: "bg-slate-100 dark:bg-slate-800", ring: "border-slate-400 ring-slate-400/30" },
+  end: { icon: "text-slate-600 dark:text-slate-300", iconBg: "bg-slate-100 dark:bg-slate-800", ring: "border-slate-400 ring-slate-400/30", accent: "border-t-slate-500" },
 }
 
 /** Nome de cada ação na tela — o mesmo da paleta, da Wiki e das mensagens de validação. */

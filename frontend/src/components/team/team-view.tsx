@@ -17,6 +17,7 @@ import { EMPTY_TEAM_FILTERS, hasActiveTeamFilters, TeamFilters, type TeamFilterS
 import { TeamMemberTable } from "./team-member-table"
 import { TeamSummary } from "./team-summary"
 import { SectionLabel } from "@/components/ui/surface"
+import { TeamInterventions } from "@/components/interventions/team-interventions"
 
 export type TeamViewState = { subject: SubjectRef | null; period: string | null; situation?: MemberSituation | null; attention?: string | null }
 
@@ -165,6 +166,8 @@ export function TeamView({ context, state, onStateChange, employeeHref }: { cont
           ) : null}
         </div>
       ) : null}
+      {/* Acompanhamentos da estrutura de quem vê: em andamento e o resumão do que foi concluído (some quando não há nada). */}
+      <TeamInterventions />
     </section>
   )
 }

@@ -85,6 +85,8 @@ export type ParitySetup = {
   db?: Partial<ParityDbFacts>
   /** Filtro Populacional do rascunho — só o backend o recebe (o editor valida o grafo; as rotas do rascunho recusam a combinação). */
   populationFilter?: PopulationFilter
+  /** "Somente quem tem acesso ativo à INIA" do rascunho. */
+  requireActiveAccess?: boolean
   /** Abrangência do Workflow (padrão: todos os Grupos). */
   scope?: { scopeType: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; teamId: string | null; subteamId: string | null }
 }
@@ -191,6 +193,7 @@ export async function backendVerdict(setup: ParitySetup): Promise<BackendVerdict
       triggerConfig: trigger,
       consolidatedStructure: setup.consolidated ? (setup.structure ?? PARITY_STRUCTURE) : null,
       populationFilter: setup.populationFilter ?? null,
+      requireActiveAccess: setup.requireActiveAccess === true,
     }
     await validateWorkflowForPublish(fakeDb(setup), ORGANIZATION_ID, WORKFLOW_ID, row, { hierarchy: PARITY_HIERARCHY })
     return null

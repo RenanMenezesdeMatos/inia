@@ -244,6 +244,24 @@ export default function WorkflowEngineOverviewPage() {
           Flag de canal já carrega o operador da interação que disparou o evento; Indicador já carrega o colaborador da medição. Os dois são
           Individual por definição do próprio evento — nem Modo de avaliação, nem Filtro Populacional aparecem pra eles.
         </p>
+        <h3 className="pt-2 font-heading text-lg font-semibold">Somente quem tem acesso ativo à INIA</h3>
+        <p>
+          Opção do modo Individual, desligada por padrão, que vale para qualquer gatilho (Flag de canal, Indicador, Agenda e Manual). Ligada, o
+          workflow só cria execução para quem tem cadastro ativo <strong>e</strong> login ativo na INIA. Serve para um piloto: num Subgrupo de 300
+          pessoas em que só 15 receberam acesso, só essas 15 recebem feedback.
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>Quem receber acesso depois passa a entrar sozinho; quem tiver o acesso desativado deixa de entrar. Não é preciso republicar.</li>
+          <li>O que já estava em andamento termina normalmente — a regra vale para execuções novas.</li>
+          <li>Senha temporária ainda não trocada conta como acesso ativo: liberar o acesso é o que coloca a pessoa no workflow.</li>
+          <li>Como o gatilho e a Abrangência, fica no rascunho e só passa a valer ao Publicar. O diálogo de publicação mostra quantas pessoas entram hoje.</li>
+          <li>Desligar a opção num workflow no ar pede confirmação, mostrando quantas pessoas sem acesso passam a entrar.</li>
+          <li>Não existe no modo Consolidado: ali a execução é uma só, da estrutura inteira.</li>
+        </ul>
+        <WarningCallout title="A opção decide quem entra, nunca com quem a pessoa é comparada">
+          Quartil operacional, ranking e &quot;Selecionar colaboradores&quot; continuam calculados sobre todos os colaboradores da população do
+          workflow, com ou sem login. Com 15 pessoas com acesso num Subgrupo de 300, o quartil continua sendo sobre as 300.
+        </WarningCallout>
       </WikiSection>
 
       <WikiSection id="periodo-comparacao" title="Período e Comparação" eyebrow="De quando, contra o quê">

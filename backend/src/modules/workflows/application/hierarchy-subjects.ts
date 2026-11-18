@@ -68,7 +68,23 @@ export async function resolveStructureAnchorOperatorIds(db: Database, structure:
   }
 }
 
-export type WorkflowScopeRef = { scopeType: string; teamId: string | null; subteamId?: string | null | undefined; /** Universo do Workflow — obrigatório para nenhum chamador esquecer o filtro. */ operatingUniverse: string | null }
+export type WorkflowScopeRef = {
+  scopeType: string
+  teamId: string | null
+  subteamId?: string | null | undefined
+  /** Universo do Workflow — obrigatório para nenhum chamador esquecer o filtro. */
+  operatingUniverse: string | null
+  /**
+   * "Somente quem tem acesso ativo à INIA" (migration 225) — obrigatório para cada chamador DECIDIR: `true` só para quem está
+   * resolvendo QUEM ENTRA numa execução; população de comparação (quartil, ranking) passa sempre `false`.
+   */
+  requireActiveAccess: boolean
+}
+
+/** Conta de acesso ativa da pessoa `alias` — a ÚNICA definição de "acesso ativo" para Workflows (senha temporária pendente conta: liberar o acesso é o ato). */
+export function activeAccessSql(alias: string): string {
+  return `exists (select 1 from user_accounts ua where ua.person_id = ${alias}.id and ua.organization_id = ${alias}.organization_id and ua.active)`
+}
 
 /** Todo operador ativo elegível pela Abrangência do Workflow — o mesmo universo que hoje
  * matricula um-por-operador quando não existe filtro nenhum (`ALL`, ausente = sempre foi assim).
@@ -80,8 +96,10 @@ export async function resolveScopeOperatorIds(db: Database, organizationId: stri
     `select id from people where organization_id = $1 and role = 'OPERATOR' and active
        and (($2 = 'ALL_TEAMS') or ($2 = 'TEAM' and team_id = $3) or ($2 = 'SUBTEAM' and subteam_id = $4))
        -- Universo: com a exigência ativa, só operadores do universo do Workflow (Workflow pendente não elege ninguém).
-       and (not exists (select 1 from organizations o where o.id = $1 and o.operating_universe_enforced_at is not null) or operating_universe = $5::text)`,
-    [organizationId, scope.scopeType, scope.teamId, scope.subteamId ?? null, scope.operatingUniverse],
+       and (not exists (select 1 from organizations o where o.id = $1 and o.operating_universe_enforced_at is not null) or operating_universe = $5::text)
+       -- "Somente quem tem acesso ativo à INIA": só quem tem conta de acesso ativa.
+       and (not $6::boolean or ${activeAccessSql("people")})`,
+    [organizationId, scope.scopeType, scope.teamId, scope.subteamId ?? null, scope.operatingUniverse, scope.requireActiveAccess],
   )
   return result.rows.map((row) => row.id)
 }

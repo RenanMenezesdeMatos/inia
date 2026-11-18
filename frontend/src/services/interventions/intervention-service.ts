@@ -1,5 +1,6 @@
 import { apiGet, apiPost, apiSend } from "@/lib/api/api-client"
 import { caseInterventionsSchema, forwardTargetSchema, trainingCompetencySchema, interventionDetailSchema, interventionSummarySchema, reportViewSchema, type CaseInterventions, type ContinuityDecision, type InterventionDetail, type InterventionPlan, type InterventionSummary, type ReportView } from "@/schemas/interventions/intervention.schema"
+import { myFollowUpSchema, teamOverviewSchema, type MyFollowUp, type TeamOverview } from "@/schemas/interventions/intervention.schema"
 import { z } from "zod"
 
 const BASE = "/api/v1/interventions"
@@ -30,7 +31,7 @@ export const returnIntervention = (id: string, body: { expectedRevision: number;
 export const decideContinuity = (id: string, body: { expectedRevision: number; decision: ContinuityDecision; justification: string }) => detail(apiPost<unknown>(`${BASE}/${id}/decide`, body))
 export const cancelIntervention = (id: string, body: { expectedRevision: number; reason: string }) => detail(apiPost<unknown>(`${BASE}/${id}/cancel`, body))
 export const forwardIntervention = (id: string, body: { expectedRevision: number; toPersonId: string; reason: string }) => detail(apiPost<unknown>(`${BASE}/${id}/forward`, body))
-export const completeIntervention = (id: string, body: { expectedRevision: number; note: string; learning: { result: "ACHIEVED" | "PARTIAL" | "NOT_ACHIEVED"; note: string } | null; operational: { result: "IMPROVED" | "UNCHANGED" | "WORSENED" | "NOT_MEASURED"; reading: string } | null; formValues?: Record<string, string | number | boolean | null> }) =>
+export const completeIntervention = (id: string, body: { expectedRevision: number; note: string; worked: "YES" | "PARTIAL" | "NO" | null; reasons: string[]; learning: { result: "ACHIEVED" | "PARTIAL" | "NOT_ACHIEVED"; note: string } | null; operational: { result: "IMPROVED" | "UNCHANGED" | "WORSENED" | "NOT_MEASURED"; reading: string } | null; formValues?: Record<string, string | number | boolean | null> }) =>
   detail(apiPost<unknown>(`${BASE}/${id}/complete`, body))
 export const updateInterventionPlan = (id: string, body: { expectedRevision: number; plan?: InterventionPlan; formValues?: Record<string, string | number | boolean | null> }) => detail(apiSend<unknown>(`${BASE}/${id}/plan`, "PUT", body))
 export const addInterventionItem = (id: string, body: { expectedRevision: number; kind: "TASK" | "CHECKPOINT" | "ACTIVITY"; title: string; description?: string; ownerId?: string | null; dueAt?: string | null }) => detail(apiPost<unknown>(`${BASE}/${id}/items`, body))
@@ -41,3 +42,12 @@ export async function fetchTrainingCompetencies() {
   return z.array(trainingCompetencySchema).parse(await apiGet<unknown>(`${BASE}/competencies`))
 }
 export const applyTrainingCompetency = (id: string, body: { expectedRevision: number; competencyKey: string }) => detail(apiPost<unknown>(`${BASE}/${id}/competency`, body))
+
+// Visão da equipe (quem lidera e a gestão acima) e o lado do colaborador.
+export async function fetchTeamOverview(): Promise<TeamOverview> {
+  return teamOverviewSchema.parse(await apiGet<unknown>(`${BASE}/team`))
+}
+export async function fetchMyFollowUps(): Promise<MyFollowUp[]> {
+  return z.array(myFollowUpSchema).parse(await apiGet<unknown>(`${BASE}/mine`))
+}
+export const markMyStep = async (id: string, stepId: string, body: { done: boolean; note?: string }): Promise<MyFollowUp> => myFollowUpSchema.parse(await apiSend<unknown>(`${BASE}/mine/${id}/steps/${stepId}`, "PATCH", body))

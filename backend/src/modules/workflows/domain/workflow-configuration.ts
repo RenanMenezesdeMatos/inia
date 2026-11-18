@@ -24,6 +24,12 @@ export type WorkflowConfiguration = {
   populationFilter: PopulationFilter | null
   /** Universo de atuação (B2B/B2C/B2X; null = pendente) — parte da Abrangência: só vale ao Publicar. */
   operatingUniverse: string | null
+  /**
+   * "Somente quem tem acesso ativo à INIA" (migration 225; ausente = desligada): só nasce execução para quem tem conta de
+   * acesso ativa. Vale só no modo Individual e só na ENTRADA do Workflow — a população de comparação (quartil, ranking)
+   * nunca usa este corte (workflow-eligibility.ts › comparisonPopulationOf).
+   */
+  requireActiveAccess?: boolean
 }
 
 /** O que mudou entre o rascunho e a configuração publicada — na ordem em que o editor apresenta. */
@@ -66,7 +72,8 @@ export function configurationChanges(draft: WorkflowConfiguration, published: Wo
   }
   if (
     stableJson(draft.consolidatedStructure) !== stableJson(published.consolidatedStructure) ||
-    stableJson(normalizedPopulation(draft.populationFilter)) !== stableJson(normalizedPopulation(published.populationFilter))
+    stableJson(normalizedPopulation(draft.populationFilter)) !== stableJson(normalizedPopulation(published.populationFilter)) ||
+    (draft.requireActiveAccess === true) !== (published.requireActiveAccess === true)
   ) {
     changes.push("ANALYSIS")
   }

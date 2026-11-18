@@ -3,7 +3,7 @@
 import { Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { ESCALATION_ROLE_LABELS, RESPONSIBLE_ROLE_LABELS, type PolicyAction, type PolicyConditionGroup } from "@/schemas/admin/intervention-policy.schema"
+import { ESCALATION_ROLE_LABELS, POLICY_ACTION_EFFECTS, RESPONSIBLE_ROLE_LABELS, type PolicyAction, type PolicyConditionGroup } from "@/schemas/admin/intervention-policy.schema"
 
 import { Note, NumberField, OptionSelect } from "../shared/fields"
 import { ACTION_EFFECT_HINTS, ACTION_EFFECT_LABELS, ON_ACTIVE_LABELS } from "../shared/labels"
@@ -67,14 +67,14 @@ function ActionRow({ action, inconclusive, when, siblings, onChange, onRemove }:
           ) : null}
         </div>
         <div className="space-y-1">
-          <OptionSelect label="Efeito" value={action.effect} options={(["RECOMMEND", "OPEN"] as const).map((value) => ({ value, label: ACTION_EFFECT_LABELS[value] }))} onChange={(effect) => onChange({ ...action, effect })} />
+          <OptionSelect label="Efeito" value={action.effect} options={POLICY_ACTION_EFFECTS.map((value) => ({ value, label: ACTION_EFFECT_LABELS[value] }))} onChange={(effect) => onChange({ ...action, effect })} />
           <p className="text-xs text-muted-foreground">{ACTION_EFFECT_HINTS[action.effect]}</p>
         </div>
       </div>
       <div className="flex flex-wrap items-start gap-4">
-        <NumberField label="Prazo (dias)" allowEmpty emptyPlaceholder={type ? String(type.definition.defaultDueDays) : "padrão"} value={action.dueInDays} min={1} max={365} hint={action.dueInDays === null ? `Vazio = prazo padrão do tipo${type ? ` (${type.definition.defaultDueDays} dias)` : ""}.` : undefined} onChange={(dueInDays) => onChange({ ...action, dueInDays })} />
+        {action.effect === "NOTIFY" ? null : <NumberField label="Prazo (dias)" allowEmpty emptyPlaceholder={type ? String(type.definition.defaultDueDays) : "padrão"} value={action.dueInDays} min={1} max={365} hint={action.dueInDays === null ? `Vazio = prazo padrão do tipo${type ? ` (${type.definition.defaultDueDays} dias)` : ""}.` : undefined} onChange={(dueInDays) => onChange({ ...action, dueInDays })} />}
         <OptionSelect className="min-w-56" label="Se já houver uma ativa igual" value={action.onActive} options={(["KEEP", "UPDATE"] as const).map((value) => ({ value, label: ON_ACTIVE_LABELS[value] }))} onChange={(onActive) => onChange({ ...action, onActive })} />
-        <NumberField label="Carência após encerrar (dias)" value={action.cooldownDays} min={0} max={365} hint="Encerrada há menos que isso não reabre. 0 = sem carência." onChange={(cooldownDays) => onChange({ ...action, cooldownDays: cooldownDays ?? 0 })} />
+        <NumberField label={action.effect === "NOTIFY" ? "Não repetir o aviso por (dias)" : "Carência após encerrar (dias)"} value={action.cooldownDays} min={0} max={365} hint={action.effect === "NOTIFY" ? "O mesmo aviso não se repete antes disso. 0 = avisa toda vez que a regra bater." : "Encerrada há menos que isso não reabre. 0 = sem carência."} onChange={(cooldownDays) => onChange({ ...action, cooldownDays: cooldownDays ?? 0 })} />
         {readOnly ? null : (
           <Button type="button" size="sm" variant="ghost" className="ml-auto self-end" aria-label={`Remover ação ${type?.name ?? action.typeKey}`} onClick={onRemove}>
             <Trash2 /> Remover
@@ -82,6 +82,7 @@ function ActionRow({ action, inconclusive, when, siblings, onChange, onRemove }:
         )}
       </div>
       {duplicated ? <p className="text-xs text-destructive">Este tipo aparece mais de uma vez nesta lista.</p> : null}
+      {type?.traits?.sensitive && action.effect === "NOTIFY" ? <Note tone="warning">A avaliação de continuidade não pode ser só um aviso: ela sempre abre a solicitação, decidida por uma pessoa autorizada. A publicação vai rejeitar.</Note> : null}
       {type && !type.active ? <p className="text-xs text-destructive">Este tipo está inativo: a publicação vai rejeitar.</p> : null}
       {type?.traits && inconclusive && !type.traits.allowedOnInconclusive ? (
         <Note tone="warning">{type.name} classifica o colaborador: com dados insuficientes só cabem tipos de observação, revisão de dados ou revisão pela liderança. A publicação vai rejeitar.</Note>

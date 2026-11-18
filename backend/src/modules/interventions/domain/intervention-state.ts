@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { effectiveCapabilities, type InterventionCapability } from "./capabilities.js"
 import { OPERATIONAL_RESULTS } from "./policy-definition.js"
 import type { FormField, InterventionTypeDefinition } from "./intervention-type.js"
 import type { ConfigIssue } from "./intervention-type.js"
@@ -174,9 +175,34 @@ export function validateFormValues(fields: readonly FormField[], values: FormVal
  * a partir das tarefas), aprendizagem (avaliação registrada) e evolução OPERACIONAL (leitura do indicador). Tarefa concluída
  * não prova melhora: "melhorou" exige a leitura que sustenta.
  */
+/**
+ * "DEU RESULTADO?" — a avaliação de quem conduziu, em três valores, e o PORQUÊ numa lista curta e fixa (mais o texto livre do
+ * resultado). É o que permite somar, por formato e por indicador, o que funciona e o que não funciona e por quê. Não substitui
+ * a leitura do indicador (`operational`) nem a medição da INIA (`measured`): são três coisas, lado a lado.
+ */
+export const EFFECTIVENESS_VALUES = ["YES", "PARTIAL", "NO"] as const
+export type Effectiveness = (typeof EFFECTIVENESS_VALUES)[number]
+export const EFFECTIVENESS_LABELS: Record<Effectiveness, string> = { YES: "Deu resultado", PARTIAL: "Deu resultado em parte", NO: "Não deu resultado" }
+export const OUTCOME_REASONS = ["APPLIED_AGREEMENT", "NOT_APPLIED", "NOT_ENOUGH_FOLLOW_UP", "ABSENCE", "OTHER_CAUSE", "NEEDS_MORE_TIME", "OTHER"] as const
+export type OutcomeReason = (typeof OUTCOME_REASONS)[number]
+export const OUTCOME_REASON_LABELS: Record<OutcomeReason, string> = {
+  APPLIED_AGREEMENT: "O colaborador aplicou o que foi combinado",
+  NOT_APPLIED: "O colaborador não aplicou o que foi combinado",
+  NOT_ENOUGH_FOLLOW_UP: "Faltou tempo de quem conduz para acompanhar",
+  ABSENCE: "Ausência no período",
+  OTHER_CAUSE: "A causa era outra (processo, sistema ou ferramenta)",
+  NEEDS_MORE_TIME: "Precisa de mais tempo para aparecer no indicador",
+  OTHER: "Outro (explicado no resultado)",
+}
+/** Capacidades em que o formato FAZ algo com o colaborador — só nelas "deu resultado?" é obrigatório. */
+const EFFECTIVENESS_CAPABILITIES: readonly InterventionCapability[] = ["TASKS", "TRAINING", "ACTION_PLAN", "GUIDANCE"]
+export const asksEffectiveness = (definition: Pick<InterventionTypeDefinition, "capabilities">) => effectiveCapabilities(definition.capabilities).some((capability) => EFFECTIVENESS_CAPABILITIES.includes(capability))
+
 export const completionInputSchema = z
   .object({
     note: z.string().trim().max(3000).default(""),
+    worked: z.enum(EFFECTIVENESS_VALUES).nullable().default(null),
+    reasons: z.array(z.enum(OUTCOME_REASONS)).max(OUTCOME_REASONS.length).default([]),
     learning: z.object({ result: z.enum(["ACHIEVED", "PARTIAL", "NOT_ACHIEVED"]), note: z.string().trim().max(2000).default("") }).strict().nullable().default(null),
     operational: z.object({ result: z.enum(OPERATIONAL_RESULTS), reading: z.string().trim().max(2000).default("") }).strict().nullable().default(null),
     formValues: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).default({}),
@@ -196,6 +222,11 @@ export function completionIssues(definition: InterventionTypeDefinition, input: 
     issues.push({ path: "operational.reading", code: "INTERVENTION_OPERATIONAL_READING", message: "Descreva a leitura do indicador que sustenta o resultado operacional (período, valor antes e depois)." })
   }
   if (completion.requireOutcomeNote && input.note.trim().length === 0) issues.push({ path: "note", code: "INTERVENTION_NOTE_REQUIRED", message: "Registre o resultado da intervenção." })
+  if (asksEffectiveness(definition)) {
+    if (!input.worked) issues.push({ path: "worked", code: "INTERVENTION_EFFECTIVENESS_REQUIRED", message: "Diga se o acompanhamento deu resultado." })
+    else if (new Set(input.reasons).size === 0) issues.push({ path: "reasons", code: "INTERVENTION_OUTCOME_REASON_REQUIRED", message: "Marque pelo menos um motivo do resultado." })
+    if (input.reasons.includes("OTHER") && input.note.trim().length < 10) issues.push({ path: "note", code: "INTERVENTION_OUTCOME_REASON_NOTE", message: "Com o motivo “Outro”, explique no resultado o que aconteceu." })
+  }
   issues.push(...validateFormValues(definition.form, input.formValues, { requireComplete: true }))
   return issues
 }

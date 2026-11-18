@@ -69,6 +69,8 @@ function targetOf(alert: AlertRow, kind: NotificationKind, workdayActionId: stri
     return { type: "TEAM_CALENDAR", operatorId: match?.[2] ?? null, date: match?.[3] ?? null }
   }
   if (alert.alertType === "AI_BUDGET_THRESHOLD") return { type: "ADMIN_AI_USAGE" }
+  // "Só avisar" da política: é conteúdo para ler — abre o item no Acompanhamento (não existe intervenção para abrir).
+  if (alert.alertType === "INTERVENTION_NOTICE") return { type: "FOLLOW_UP", itemId: alert.id, operatorId: alert.operator?.personId ?? null }
   if (kind === "INTERVENTION") {
     const intervention = /^intervention:([0-9a-f-]{36}):/.exec(alert.dedupeKey)
     return intervention && alert.caseId ? { type: "INTERVENTION", caseId: alert.caseId, interventionId: intervention[1]! } : { type: "NONE" }

@@ -13,6 +13,9 @@ const INTERACTION_ENTITY = {
   targetEntity: "interactions",
   naturalKey: ["externalInteractionId"],
   dependencies: ["EMPLOYEES"],
+  foreignKeys: [
+    { field: "externalEmployeeId", references: [{ contract: "EMPLOYEES", field: "externalEmployeeId" }] },
+  ],
   writeSemantics: "IDEMPOTENT_EVENT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: "endedAt",
@@ -72,6 +75,8 @@ export const INTERACTIONS_CONTRACT: DataContract = {
   ],
   examples: [
     { externalInteractionId: "CALL-2026-000123", externalEmployeeId: "OP-10234", channel: "VOICE", reason: "Fatura", subReason: "Segunda via", startedAt: "2026-09-15T14:02:10-03:00", endedAt: "2026-09-15T14:11:42-03:00", transcriptContent: "Operador: Bom dia, em que posso ajudar? Cliente: Preciso da segunda via da minha fatura.", transcriptLanguage: "pt-BR", transcriptConfidence: 0.94 },
+    { externalInteractionId: "CALL-2026-000124", externalEmployeeId: "OP-20871", channel: "VOICE", reason: "Fatura", subReason: "Contestação de valor", startedAt: "2026-09-15T15:20:05-03:00", endedAt: "2026-09-15T15:34:51-03:00", transcriptContent: null, transcriptLanguage: null, transcriptConfidence: null },
+    { externalInteractionId: "CALL-2026-000125", externalEmployeeId: "OP-10234", channel: "VOICE", reason: "Cancelamento", subReason: null, startedAt: "2026-09-16T09:05:40-03:00", endedAt: "2026-09-16T09:12:02-03:00", transcriptContent: null, transcriptLanguage: null, transcriptConfidence: null },
   ],
 }
 
@@ -91,6 +96,9 @@ export const TRANSCRIPTS_CONTRACT: DataContract = {
   ],
   naturalKey: ["externalInteractionId", "version"],
   dependencies: ["INTERACTIONS"],
+  foreignKeys: [
+    { field: "externalInteractionId", references: [{ contract: "INTERACTIONS", field: "externalInteractionId" }] },
+  ],
   writeSemantics: "IDEMPOTENT_EVENT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: null,
@@ -101,7 +109,11 @@ export const TRANSCRIPTS_CONTRACT: DataContract = {
     if (typeof record.version === "number" && record.version < 1) errors.push({ code: "DATA_CONTRACT_VIOLATION" as const, field: "version", message: "Versão precisa ser ≥ 1." })
     return errors
   },
-  examples: [{ externalInteractionId: "CALL-2026-000123", content: "Operador: Bom dia, em que posso ajudar? Cliente: Quero cancelar meu plano.", version: 1, language: "pt-BR", confidence: 0.94 }],
+  examples: [
+    { externalInteractionId: "CALL-2026-000123", content: "Operador: Bom dia, em que posso ajudar? Cliente: Quero cancelar meu plano.", version: 1, language: "pt-BR", confidence: 0.94 },
+    { externalInteractionId: "CALL-2026-000123", content: "Operador: Bom dia, em que posso ajudar? Cliente: Quero cancelar meu plano, recebi uma oferta de outra operadora.", version: 2, language: "pt-BR", confidence: 0.97 },
+    { externalInteractionId: "CALL-2026-000124", content: "Operador: Boa tarde, com quem eu falo? Cliente: Minha fatura veio com um valor que eu não reconheço.", version: 1, language: "pt-BR", confidence: 0.91 },
+  ],
 }
 
 export const INTERACTION_FLAGS_CONTRACT: DataContract = {
@@ -118,11 +130,16 @@ export const INTERACTION_FLAGS_CONTRACT: DataContract = {
   ],
   naturalKey: ["externalInteractionId", "flagName"],
   dependencies: ["INTERACTIONS"],
+  foreignKeys: [
+    { field: "externalInteractionId", references: [{ contract: "INTERACTIONS", field: "externalInteractionId" }] },
+    { field: "flagName", references: [{ catalog: "Catálogo de flags do canal" }] },
+  ],
   writeSemantics: "IDEMPOTENT_EVENT",
   writePolicy: "PARTIAL_ALLOWED",
   businessTimeField: null,
   examples: [
     { externalInteractionId: "CALL-2026-000123", flagName: "rechamada", value: "true" },
     { externalInteractionId: "CALL-2026-000123", flagName: "nota_ura", value: "3" },
+    { externalInteractionId: "CALL-2026-000124", flagName: "rechamada", value: "false" },
   ],
 }

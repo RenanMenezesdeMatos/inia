@@ -1,4 +1,5 @@
 import type { CommunicationView } from "../../communications/domain/communication.js"
+import type { FollowUpInterventionBrief } from "../../interventions/application/follow-up-briefs.js"
 import type { FeedbackView } from "../../reliable-feedback/domain/feedback-view.js"
 import type { PrvSupervisorView } from "../../reliable-feedback/domain/prv-closing-views.js"
 import type { FeedbackSupportMaterialView } from "../../feedbacks/application/feedback-support-materials.js"
@@ -532,6 +533,9 @@ export type FollowUpItem = {
     supervisorView?: PrvSupervisorView | null } | null
   /** Entrega (ou aviso) de report recorrente — só quando kind = REPORT; o item é de quem RECEBEU (escopo dele). */
   report?: FollowUpReportDelivery | null
+  /** Resumo da INIA de uma intervenção aberta pela política (situação, o que já foi feito, evolução medida) — só nos avisos de
+   * abertura e só para quem ainda é parte da intervenção; ausente nos demais itens. */
+  intervention?: FollowUpInterventionBrief
   /** Comunicado da liderança (migration 199) — só quando kind = NOTICE: publicado por quem lê ou recebido por ele. */
   notice?: CommunicationView | null
 }

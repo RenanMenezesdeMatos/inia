@@ -4,7 +4,7 @@ import { resolveOrganizationTimezone } from "../../workflows/application/organiz
 import { localDateOf } from "../../workflows/application/time-window.js"
 import { resolveByRoleChain } from "../../workflows/application/enrollment-subject.js"
 import { rolesWithPermission } from "../../access/domain/roles.js"
-import { aggregateOutcome, buildJustification, evaluateGroup, planDecisions, selectRules, type EvaluationOutcome, type PlannedDecision, type RuleSelection, type RuleTrace } from "../domain/policy-evaluation.js"
+import { ADDRESSED_STATUSES, aggregateOutcome, buildJustification, evaluateGroup, planDecisions, selectRules, type EvaluationOutcome, type PlannedDecision, type RuleSelection, type RuleTrace, type SentNotice } from "../domain/policy-evaluation.js"
 import { isSensitiveType } from "../domain/intervention-type.js"
 import type { ReportPerson, ReportPriorIntervention } from "../domain/intelligence-report.js"
 import { createConditionResolver, loadSustainedDiagnoses, type SustainedDiagnosis } from "./condition-resolvers.js"
@@ -95,7 +95,7 @@ function addDays(localDate: string, days: number): string {
 export async function resolveAssignments(db: Db, organizationId: string, person: EvaluationPerson, decisions: readonly PlannedDecision[], types: ReadonlyMap<string, PublishedType>, today: string): Promise<Map<string, Assignment>> {
   const assignments = new Map<string, Assignment>()
   for (const decision of decisions) {
-    if (!["CREATED", "PENDING_APPROVAL", "RECOMMENDED"].includes(decision.status)) continue
+    if (!ADDRESSED_STATUSES.includes(decision.status)) continue
     const type = types.get(decision.typeKey)
     if (!type) continue
     const dueAt = addDays(today, decision.action.dueInDays ?? type.definition.defaultDueDays)
@@ -103,7 +103,8 @@ export async function resolveAssignments(db: Db, organizationId: string, person:
     let problem: string | null = responsibleId ? null : unresolvedResponsibleMessage(type.definition.responsibleRole, person.name, type.definition.name, "ser responsável por")
     let approver: ReportPerson | null = null
     let approvalRecipientIds: string[] = []
-    if (type.definition.approval.required) {
+    // Só avisar não abre nada: não há aprovação a resolver.
+    if (type.definition.approval.required && decision.status !== "NOTIFIED") {
       const approverId = (await resolveByRoleChain(db as Database, person.id, [type.definition.approval.approverRole]))[0]?.id ?? null
       if (isSensitiveType(type.definition)) {
         // Decisão sensível: endereçada a quem tem a permissão (o aprovador designado só entra se também a tiver).
@@ -131,6 +132,18 @@ async function loadInterventionState(db: Db, organizationId: string, personId: s
     [organizationId, personId, asOf],
   )
   return rows.rows
+}
+
+/** Avisos (decisões NOTIFIED) já gravados para a pessoa — base da carência do "só avisar". */
+async function loadSentNotices(db: Db, organizationId: string, personId: string, asOf: Date): Promise<SentNotice[]> {
+  const rows = await db.query<{ type_key: string; subject_key: string | null; evaluated_at: Date }>(
+    `select d->>'typeKey' type_key, e.facts->>'subjectKey' subject_key, e.evaluated_at
+       from intervention_policy_evaluations e, jsonb_array_elements(e.decisions) d
+      where e.organization_id = $1 and e.person_id = $2 and e.evaluated_at >= $3 and e.evaluated_at <= $4 and d->>'status' = 'NOTIFIED'
+      order by e.evaluated_at desc limit 200`,
+    [organizationId, personId, new Date(asOf.getTime() - 365 * DAY_MS), asOf],
+  )
+  return rows.rows.flatMap((row) => (row.subject_key ? [{ typeKey: row.type_key, subjectKey: row.subject_key, at: row.evaluated_at.toISOString() }] : []))
 }
 
 export type EvaluatePolicyInput = {
@@ -182,6 +195,8 @@ export async function evaluatePolicy(db: Db, input: EvaluatePolicyInput): Promis
     types,
     active: history.filter((row) => ["PROPOSED", "AWAITING_APPROVAL", "IN_PROGRESS"].includes(row.status)).map((row) => ({ id: row.id, typeKey: row.type_key, subjectKey: row.subject_key, status: row.status })),
     closed: history.filter((row) => row.closed_at).map((row) => ({ id: row.id, typeKey: row.type_key, subjectKey: row.subject_key, closedAt: row.closed_at!.toISOString() })),
+    // Só quando alguma regra selecionada avisa (e quem pede pode ver o histórico da pessoa).
+    notices: !historyHidden && selection.selected.some(({ rule, mode }) => (mode === "MATCHED" ? rule.actions : rule.inconclusiveActions).some((action) => action.effect === "NOTIFY")) ? await loadSentNotices(db, input.organizationId, person.id, input.asOf) : [],
     now: input.asOf,
     recommendOnly: input.recommendOnly,
   })

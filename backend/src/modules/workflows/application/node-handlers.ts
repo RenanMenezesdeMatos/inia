@@ -17,7 +17,7 @@ import { executeInterventionPolicyNode } from "./intervention-policy-executor.js
 import { localDateParts } from "./schedule-recurrence.js"
 import { resolveSelectionCandidates, runEmployeeRanking, runEmployeeSelection, type EmployeeCollectionOutput } from "./select-employees-executor.js"
 import { elapsedScheduledPercent, resolveShiftWindow } from "./shift-schedule.js"
-import { resolveEligibleOperatorIds, type WorkflowPopulation } from "./workflow-eligibility.js"
+import { comparisonPopulationOf, resolveEligibleOperatorIds, type WorkflowPopulation } from "./workflow-eligibility.js"
 import { consolidatedStructureAnchorId, type ConsolidatedStructure } from "../domain/consolidated-structure-schema.js"
 import {
   findEdge,
@@ -172,13 +172,15 @@ async function readCollection(context: ProcessContext, collectionNodeId: string)
 async function resolveConditionPopulation(context: ProcessContext, nodeId: string, operatorId: string): Promise<string[]> {
   const previous = findPrecedingCollectionNode(context.graph, nodeId)
   if (previous) return (await readCollection(context, previous.id))?.memberIds ?? []
-  const population: WorkflowPopulation = {
+  // População de COMPARAÇÃO (quartil operacional): nunca usa "Somente quem tem acesso ativo à INIA" — a opção decide quem
+  // recebe uma execução, não com quem a pessoa é comparada.
+  const population: WorkflowPopulation = comparisonPopulationOf({
     scopeType: context.workflow.scopeType,
     teamId: context.workflow.teamId,
     subteamId: context.workflow.subteamId,
     populationFilter: context.workflow.populationFilter,
     operatingUniverse: context.workflow.operatingUniverse ?? null,
-  }
+  })
   const structure = context.workflow.consolidatedStructure
   if (structure) {
     const { candidateIds } = await resolveSelectionCandidates(context.db, context.graph, nodeId, context.enrollment.organization_id, structure, population, consolidatedStructureAnchorId(structure) ?? context.enrollment.scheduled_subject_id, context.enrollment.node_outputs)
@@ -658,13 +660,14 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
       if (mode === "RANKING" && !node.config.ranking) throw new Error(`O nó "${node.label}" precisa de uma configuração de ranking.`)
       if (mode === "CONDITION" && !node.config.criterion) throw new Error(`O nó "${node.label}" precisa de um critério de seleção configurado.`)
       const anchorId = consolidatedStructureAnchorId(structure) ?? context.enrollment.scheduled_subject_id
-      const population: WorkflowPopulation = {
+      // "Selecionar colaboradores" é comparação/seleção dentro da estrutura (modo Consolidado) — sem o corte de acesso.
+      const population: WorkflowPopulation = comparisonPopulationOf({
         scopeType: context.workflow.scopeType,
         teamId: context.workflow.teamId,
         subteamId: context.workflow.subteamId,
         populationFilter: context.workflow.populationFilter,
         operatingUniverse: context.workflow.operatingUniverse ?? null,
-      }
+      })
       const { candidateIds, sourceKind, sourceNodeId } = await resolveSelectionCandidates(
         context.db,
         context.graph,

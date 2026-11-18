@@ -88,12 +88,12 @@ export function NodePalette({ isConsolidatedMode, onAddNode }: { isConsolidatedM
   return (
     <div className="space-y-3">
       <div className="space-y-1">
-        <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Adicionar etapa</p>
+        <p className="text-xs font-semibold tracking-wider text-foreground uppercase">Adicionar etapa</p>
         <p className="text-xs text-muted-foreground">Clique para adicionar abaixo da última etapa, ou arraste para o lugar certo.</p>
       </div>
       {groups.map((group) => (
         <div key={group.title} className="space-y-1.5" role="group" aria-label={group.title}>
-          <p className="text-xs font-medium text-muted-foreground">{group.title}</p>
+          <p className="pt-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">{group.title}</p>
           {group.entries.map((entry) => {
             const Icon = entry.icon
             const colors = NODE_COLORS[entry.type]
@@ -116,15 +116,15 @@ export function NodePalette({ isConsolidatedMode, onAddNode }: { isConsolidatedM
                   event.preventDefault()
                   onAddNode?.(entry)
                 }}
-                className="flex w-full cursor-grab items-start gap-2 rounded-md border bg-background px-2.5 py-2 text-sm shadow-sm select-none hover:bg-muted active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                className="flex w-full cursor-grab items-start gap-2 rounded-lg border border-foreground/15 bg-card px-2.5 py-2 text-sm shadow-xs select-none hover:border-primary/50 hover:bg-primary/5 active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               >
-                <span className={cn("mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded", colors.iconBg)}>
+                <span className={cn("mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md", colors.iconBg)}>
                   <Icon className={cn("h-3.5 w-3.5", colors.icon)} aria-hidden />
                 </span>
                 {/* Quebra só entre palavras: partir "Aguardar" em "Agu/ard/ar" (QA visual a 1024 px) era pior que a coluna mais larga. */}
                 <span className="min-w-0 space-y-0.5">
-                  <span className="block leading-tight font-medium">{entry.label}</span>
-                  <span id={`palette-${entry.id}`} className="block text-xs leading-tight text-muted-foreground">
+                  <span className="block leading-tight font-semibold text-foreground">{entry.label}</span>
+                  <span id={`palette-${entry.id}`} className="block text-xs leading-tight text-foreground/70">
                     {entry.description}
                   </span>
                 </span>
