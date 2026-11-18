@@ -6,6 +6,7 @@
  *  - feedbacks dos liderados e avisos endereçados ao líder no mesmo feed, cada um com os campos da própria origem;
  *  - o conteúdo (view/JSON) só vem para feedback; "aguardando ciência" tira os avisos e os já confirmados; oculto fica fora.
  *  - o filtro "Tipo" recorta cada ramo (monitoria, aviso de workflow…), convive com a ciência e com o cursor.
+ *  - o filtro "Para quem" separa o endereçado ao líder (avisos) dos feedbacks da equipe, convive com o tipo e com o cursor.
  * Dados commitados e apagados no fim, pelos ids criados.
  *   INIA_DB_PROOF=1 NODE_ENV=test npx vitest run follow-up-feed-proof
  */
@@ -130,6 +131,15 @@ describe.skipIf(!ENABLED)("Feed da estrutura — prova Postgres (migration 130, 
     const firstMonitoring = await repository.loadFollowUpFeed({ ...base, limit: 1, before: null, types: ["MONITORING"] })
     expect(firstMonitoring.items.map((item) => item.id)).toEqual([withView])
     expect((await repository.loadFollowUpFeed({ ...base, limit: 50, before: decodeFollowUpCursor(firstMonitoring.nextCursor), types: ["MONITORING"] })).items.map((item) => item.id)).toEqual(expected.slice(2))
+
+    // Filtro "Para quem": o aviso é do líder; os feedbacks dos liderados, da equipe. Combina com o tipo e pagina pelo cursor.
+    const aimed = async (audience: "MINE" | "TEAM", extra: Partial<FollowUpFeedQuery> = {}) => (await repository.loadFollowUpFeed({ ...base, limit: 50, before: null, audience, ...extra })).items.map((item) => item.id)
+    expect(await aimed("MINE")).toEqual([alert])
+    expect(await aimed("TEAM")).toEqual(expected.filter((id) => id !== alert))
+    expect(await aimed("MINE", { types: ["MONITORING"] })).toEqual([])
+    expect(await aimed("TEAM", { types: ["WORKFLOW_OUTPUT"] })).toEqual([])
+    const firstTeam = await repository.loadFollowUpFeed({ ...base, limit: 1, before: null, audience: "TEAM" })
+    expect((await repository.loadFollowUpFeed({ ...base, limit: 50, before: decodeFollowUpCursor(firstTeam.nextCursor), audience: "TEAM" })).items.map((item) => item.id)).toEqual(expected.filter((id) => id !== alert).slice(1))
 
     // Um feedback publicado depois da 1ª página não desloca as seguintes: nada repete, nada some (com OFFSET, o último item da
     // página 1 voltava no topo da página 2).

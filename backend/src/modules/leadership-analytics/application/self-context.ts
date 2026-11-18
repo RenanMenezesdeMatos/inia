@@ -14,6 +14,7 @@ import { resolveAnalysisPeriod, resolveIndicatorReference } from "./references.j
 import { buildSelfResults } from "./self-results.js"
 import { executeSelfPractices, SELF_PRACTICES_DECLARATION, SELF_PRACTICES_RULE, SELF_PRACTICES_TOOL } from "../../best-practices/application/operator-guidance.js"
 import { ALIGNMENT_HISTORY_DECLARATION, ALIGNMENT_HISTORY_RULE, ALIGNMENT_HISTORY_TOOL, executeAlignmentHistory } from "../../operational-alignments/application/alignment-history.js"
+import { ALIGNMENTS_IN_FORCE_DECLARATION, ALIGNMENTS_IN_FORCE_TOOL, executeAlignmentsInForce } from "../../operational-alignments/application/alignments-in-force-tool.js"
 
 /**
  * INIA para o OPERADOR — a mesma arquitetura da liderança (a IA escolhe a ferramenta, o backend calcula, a IA explica), com UMA
@@ -92,6 +93,8 @@ export async function loadSelfChatContext(db: Database, user: AuthTokenPayload, 
     if (name === SELF_PRACTICES_TOOL) return executeSelfPractices(db, repository, { scope, closure, args })
     // Histórico de alinhamentos operacionais que já não valem (sempre da própria pessoa; nenhum parâmetro alcança outra).
     if (name === ALIGNMENT_HISTORY_TOOL) return executeAlignmentHistory(db, { organizationId: scope.organizationId, personId: person.id, now: options.now ?? new Date() })
+    // Alinhamentos que valem hoje ou vão começar, de todos os processos (sempre da própria pessoa) — "temos algum alinhamento?".
+    if (name === ALIGNMENTS_IN_FORCE_TOOL) return executeAlignmentsInForce(db, { organizationId: scope.organizationId, personId: person.id, now: options.now ?? new Date() })
     if (name !== SELF_TOOL) return { text: "Ferramenta desconhecida.", card: null, issue: { kind: "INVALID", message: "Ferramenta desconhecida.", candidates: [] } }
     const definitions = await repository.loadIndicatorDefinitions(scope.organizationId)
     const requested = Array.isArray(args.indicadores) ? args.indicadores.filter((value): value is string => typeof value === "string" && value.trim() !== "") : []
@@ -114,5 +117,5 @@ export async function loadSelfChatContext(db: Database, user: AuthTokenPayload, 
     const text = ["[Seus resultados, calculados pelo sistema — use exatamente estes números]", `${card.title} · ${card.scopeNote}`, "", queryTableMarkdown(card), ...(card.limitations.length > 0 ? ["", `Limitações: ${card.limitations.join(" ")}`] : []), `Base: ${card.methods.join(" ")}`].join("\n")
     return { text, card }
   }
-  return { instructions: SELF_RESPONSE_RULES, voiceInstructions: SELF_VOICE_RULES, toolset: { declarations: [SELF_TOOL_DECLARATION, SELF_PRACTICES_DECLARATION, ALIGNMENT_HISTORY_DECLARATION], handles: (name) => name === SELF_TOOL || name === SELF_PRACTICES_TOOL || name === ALIGNMENT_HISTORY_TOOL, execute } }
+  return { instructions: SELF_RESPONSE_RULES, voiceInstructions: SELF_VOICE_RULES, toolset: { declarations: [SELF_TOOL_DECLARATION, SELF_PRACTICES_DECLARATION, ALIGNMENTS_IN_FORCE_DECLARATION, ALIGNMENT_HISTORY_DECLARATION], handles: (name) => name === SELF_TOOL || name === SELF_PRACTICES_TOOL || name === ALIGNMENTS_IN_FORCE_TOOL || name === ALIGNMENT_HISTORY_TOOL, execute } }
 }

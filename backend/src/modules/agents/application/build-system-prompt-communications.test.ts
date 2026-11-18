@@ -89,7 +89,7 @@ describe("comunicados no prompt do chat", () => {
 
   it("depois do alinhamento o comunicado continua (informativo), sem o bloco do alinhamento; autor sem cargo sai só com o nome", async () => {
     const built = await buildSystemPromptWithTrace(fakeDb({ communications: [{ ...SECOND_COPY, authorJobTitle: null }] }), "agent-1", AGENT, { query: QUESTION, askerQuestion: QUESTION, governanceSubjectPersonId: "op-1", collaboratorConversation: true, alignmentReferenceDate: new Date("2026-12-02T14:00:00Z") })
-    expect(built.systemPrompt).not.toContain("ALINHAMENTOS OPERACIONAIS")
+    expect(built.systemPrompt).not.toContain("ALINHAMENTOS OPERACIONAIS VIGENTES")
     expect(built.systemPrompt).toContain("Publicado por: Mariana Souza · em 12/11/2026")
   })
 

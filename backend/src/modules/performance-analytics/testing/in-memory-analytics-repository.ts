@@ -209,6 +209,13 @@ export class InMemoryAnalyticsRepository implements AnalyticsReadRepository {
           ? query.operatorIds.includes(item.operator?.personId ?? "") && (!query.unacknowledgedOnly || item.acknowledgedAt === null)
           : query.includeViewerAlerts && !query.unacknowledgedOnly,
       )
+      // Filtro "Para quem" (mesma regra de `followUpAudienceSql`): feedback é da equipe; aviso e report, de quem lê; comunicado
+      // publicado por quem lê é da equipe, recebido é dele.
+      .filter((item) => {
+        if (!query.audience) return true
+        const team = item.kind === "FEEDBACK" || (item.kind === "NOTICE" && item.notice?.author.personId === query.viewerId)
+        return query.audience === "TEAM" ? team : !team
+      })
       .filter((item) => before === null || key(atOf(item), item.id) < before)
       .filter((item) => (!query.since || Date.parse(item.createdAt) >= Date.parse(query.since)) && (!query.until || Date.parse(item.createdAt) < Date.parse(query.until)))
       .sort((a, b) => key(atOf(b), b.id).localeCompare(key(atOf(a), a.id)))

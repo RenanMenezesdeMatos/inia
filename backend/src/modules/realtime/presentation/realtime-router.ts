@@ -33,7 +33,7 @@ import type { KnowledgeTrace } from "../../knowledge/application/retrieve-knowle
 import { continueVoiceTurnConsultation, knowledgeConsultationScope, markPinnedDocumentsUsed } from "../../knowledge/application/knowledge-consultation-context.js"
 import { loadAgentGuardrails, renderConversationGuardrails, type AgentGuardrails } from "../../agents/application/agent-guardrails.js"
 import { checkResponse, recordResponseCheck, responseCheckToolCall, type ResponseCheck, type ResponseCheckResult } from "../../governance/application/response-compliance.js"
-import { complianceRulesOf, complianceSourcesOfExcerpts, priorAnswerSources, replyComplianceSources, RESPONSE_BLOCKED_TEXT, RESPONSE_CHECK_UNAVAILABLE_TEXT, responseCheckMode, SPOKEN_VIOLATION_NOTICE, toolDataSources, type ComplianceSource } from "../../governance/domain/response-compliance.js"
+import { complianceRulesOf, complianceSourcesOfExcerpts, priorAnswerSources, replyComplianceSources, replyPublicationRefs, RESPONSE_BLOCKED_TEXT, RESPONSE_CHECK_UNAVAILABLE_TEXT, responseCheckMode, SPOKEN_VIOLATION_NOTICE, toolDataSources, type ComplianceSource } from "../../governance/domain/response-compliance.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 import { buildLeadershipChatContext, loadLeadershipSession, visibleCards, type LeadershipChatContext } from "../../leadership-analytics/application/leadership-context.js"
 import { isLeadershipTool, LEADERSHIP_ASK_DECLARATION, LEADERSHIP_ASK_TOOL, summarizeLeadershipCard } from "../../leadership-analytics/application/leadership-toolset.js"
@@ -51,7 +51,8 @@ import { loadReadableKnowledge, postgresReadableKnowledgePorts } from "../../kno
 import { resolveAccessibleKnowledgeMaterials } from "../../knowledge/application/knowledge-material-access.js"
 import { knowledgeScaleRetrievalEnabled, sharedKnowledgeRecall } from "../../knowledge/application/knowledge-recall.js"
 import { conversationPublicationsFor, loadAlignmentsInForceFor } from "../../communications/infrastructure/conversation-publications.js"
-import { clarificationYieldsTo } from "../../communications/domain/publication-relevance.js"
+import { loadPublicationComplianceSources } from "../../communications/infrastructure/publication-compliance-sources.js"
+import { clarificationYieldsTo, selectedAnything } from "../../communications/domain/publication-relevance.js"
 import { createKnowledgeClarification, knowledgeClarificationEnabled, type ClarificationOutcome, type ClarificationRequest, type ClarificationStream } from "../../knowledge-clarification/application/knowledge-clarification-service.js"
 import { gatewayClarificationModel } from "../../knowledge-clarification/application/clarification-model.js"
 import { loadClarificationGuardrails, loadSpecialistInstructions } from "../../knowledge-clarification/application/clarification-context.js"
@@ -215,12 +216,22 @@ const voiceSessionSchema = z.object({
  * Vai ANTES dos assuntos proibidos. Falha na leitura nunca derruba a resposta (fica sem o bloco).
  */
 export async function leaderStructureInstruction(db: Database, organizationId: string, personId: string, question: string): Promise<string> {
+  return (await leaderStructureContext(db, organizationId, personId, question)).text
+}
+
+/**
+ * O bloco da estrutura de quem lidera e, para a conferência da resposta (`RESPONSE_COMPLIANCE_V6`), o texto publicado dos alinhamentos e
+ * comunicados que entraram nele — sem eles, a orientação temporária citada era barrada como "prazo criado" (caso real do diretor, 18/11/2026).
+ */
+export async function leaderStructureContext(db: Database, organizationId: string, personId: string, question: string): Promise<{ text: string; sources: ComplianceSource[] }> {
   try {
     const block = await loadLeaderStructureBlock(db, { organizationId, scope: { kind: "LEADER_STRUCTURE", leaderPersonId: personId, teamIds: null }, question })
-    return block.text ? `\n\n${block.text}` : ""
+    if (!block.text) return { text: "", sources: [] }
+    const sources = await loadPublicationComplianceSources(db, organizationId, { communicationIds: block.communicationIds, alignmentVersionIds: block.alignments.map((alignment) => alignment.versionId) }).catch(() => [])
+    return { text: `\n\n${block.text}`, sources }
   } catch (error) {
     console.error(JSON.stringify({ event: "leader_structure_context_failed", message: (error as Error).message }))
-    return ""
+    return { text: "", sources: [] }
   }
 }
 
@@ -438,6 +449,10 @@ export function createRealtimeRouter(
    * Resposta da voz que passa pelo servidor, antes de chegar ao modelo de voz e à tela (PREVENTIVA para o que vem do servidor). O que o modelo de
    * voz gera sozinho só é conferido depois de falado: ver `/voice-turn`. `blocked` = entregar o texto fixo no lugar.
    */
+  // Comunicados e alinhamentos que entraram nas instruções da resposta, com o texto do registro publicado (`RESPONSE_COMPLIANCE_V6`). Falha na
+  // leitura = sem essas fontes (o erro possível é barrar, nunca liberar).
+  const publicationSources = (organizationId: string, reply: Parameters<typeof replyPublicationRefs>[0], orchestrator?: Parameters<typeof replyPublicationRefs>[1]) =>
+    loadPublicationComplianceSources(db, organizationId, replyPublicationRefs(reply, orchestrator)).catch(() => [])
   const guardVoiceText = async (input: { organizationId: string; conversationId: string; text: string; question: string; agentId: string | null; sources: readonly ComplianceSource[] }) => {
     const mode = responseCheckMode()
     if (mode === "OFF") return { blocked: false as const, record: async () => undefined }
@@ -483,7 +498,7 @@ export function createRealtimeRouter(
     const lastTurn = input.history.at(-1)
     // Na voz, o último turno é a `query` do modelo de voz; as palavras da pessoa chegam à parte (`literal`).
     const literalQuestion = input.literal || (lastTurn?.role === "user" ? lastTurn.text : null)
-    const clarify = async (resolved: ResolvedOrchestrator, scope: ProcessClarificationScope, question: string): Promise<ClarificationReply | null> => {
+    const clarify = async (resolved: ResolvedOrchestrator, scope: ProcessClarificationScope, question: string, publicationsDecision: Promise<Awaited<ReturnType<typeof conversationPublicationsFor>> | null>): Promise<ClarificationReply | null> => {
       if (!input.clarification || !knowledgeClarification || clarifying) return null
       clarifying = true
       latest ??= latestClarificationOf({ organizationId: input.organizationId, ownerPersonId: input.personId }, input.clarification.conversationId)
@@ -508,6 +523,19 @@ export function createRealtimeRouter(
         clarifying = false
         throw error
       }
+      // ALINHAMENTO/COMUNICADO NA CONSULTA DE PROCESSO DE QUEM LIDERA (18/11/2026, caso real do diretor): a resposta das bases não encerra o
+      // turno quando a IA escolheu um alinhamento ou comunicado que chega à estrutura consultada (PUBLICATION_SELECTED) ou quando ela se apoiou
+      // num processo que um alinhamento em vigor para esses públicos muda (ALIGNED_PROCESS) — o Orquestrador do Grupo responde, com os
+      // alinhamentos da estrutura nas instruções dos especialistas (`LEADER_STRUCTURE_CONTEXT_V1`). A mesma regra do operador
+      // (`clarificationYieldsTo`); o funil (pergunta em aberto) nunca é desviado. Decisão indisponível = só a regra pelas fontes.
+      if (outcome.kind === "REPLY" && (outcome.state as { status?: unknown }).status !== "OPEN") {
+        const yielded = clarificationYieldsTo(outcome, await publicationsDecision)
+        if (yielded) {
+          clarifying = false
+          console.info(JSON.stringify({ event: "knowledge_clarification_yielded", reason: yielded, conversationId: input.clarification.conversationId, orchestratorId: resolved.orchestratorId }))
+          return null
+        }
+      }
       if (outcome.kind === "REPLY") {
         clarifications.push({ outcome, scope })
         return outcome
@@ -528,28 +556,47 @@ export function createRealtimeRouter(
             const resolved = await orchestratorById(input.organizationId, orchestrator.id, question, input.leadership.processScope?.orchestratorUniverses ?? null)
             if (!resolved) return null
             const scope: ProcessClarificationScope = { kind: "LEADERSHIP_PROCESS", orchestratorId: resolved.orchestratorId, orchestratorName: orchestrator.name, groupNames }
-            const clarified = await clarify(resolved, scope, question)
-            if (clarified) {
-              sources.push(...clarificationSources(clarified))
-              return { text: clarified.content, clarification: true, trace: { knowledgeClarification: clarified.state.status } }
-            }
+            // Alinhamentos e comunicados dos públicos dos Grupos CONSULTADOS (`LEADER_STRUCTURE_CONTEXT_V1`), não os do próprio gestor:
+            // é a regra que vale hoje para quem atende nesses Grupos.
+            const structureScope: LeaderStructureScope = { kind: "LEADER_STRUCTURE", leaderPersonId: input.personId, teamIds: teamIds.length > 0 ? teamIds : null, groupNames }
             const frame = processConsultationFrame(groupNames)
             // O contexto vai no prompt do Orquestrador, NUNCA como contexto extra: o contexto extra chega aos especialistas como
             // material de análise (transcrição), e especialista de domínio passaria a exigir citação literal dele (mesmo cuidado da
             // sessão de feedback). A moldura chega aos especialistas pelo canal próprio (`conversationFrame`).
-            const session = { ...resolved, systemPrompt: `${resolved.systemPrompt}${await askingPersonProfile(input.organizationId, input.personId, { processConsultation: true })}\n\n${frame}` }
-            // Alinhamentos e comunicados dos públicos dos Grupos CONSULTADOS (`LEADER_STRUCTURE_CONTEXT_V1`), não os do próprio gestor:
-            // é a regra que vale hoje para quem atende nesses Grupos.
-            const structureScope: LeaderStructureScope = { kind: "LEADER_STRUCTURE", leaderPersonId: input.personId, teamIds: teamIds.length > 0 ? teamIds : null, groupNames }
-            const reply = await orchestratedReply(db, session, [{ role: "user", text: question }], "", input.personId, { collaboratorConversation: true, conversationFrame: frame, structureScope })
+            const orchestrate = async () => {
+              const session = { ...resolved, systemPrompt: `${resolved.systemPrompt}${await askingPersonProfile(input.organizationId, input.personId, { processConsultation: true })}\n\n${frame}` }
+              return orchestratedReply(db, session, [{ role: "user", text: question }], "", input.personId, { collaboratorConversation: true, conversationFrame: frame, structureScope })
+            }
+            // TEMPO (18/11/2026, sem mudar nenhuma decisão): a decisão de relevância roda JUNTO do esclarecimento (antes, depois dele) e, se ela já
+            // escolheu um alinhamento ou comunicado, a orquestração do Grupo começa sem esperar o esclarecimento terminar — se ele abrir uma pergunta
+            // (funil), vale o esclarecimento e a orquestração antecipada é descartada (o mesmo padrão do operador). Sem esclarecimento disponível,
+            // nada muda.
+            const publicationsDecision = input.clarification && knowledgeClarification
+              ? conversationPublicationsFor(db, { organizationId: input.organizationId, personId: input.personId, question: literalQuestion ?? question, structure: structureScope, recentTurns: input.history.slice(0, -1) }).catch(() => null)
+              : Promise.resolve(null)
+            let speculated: Promise<Awaited<ReturnType<typeof orchestrate>>> | null = null
+            void publicationsDecision.then((publications) => {
+              if (publications && selectedAnything(publications.selection) && !speculated) {
+                speculated = orchestrate()
+                speculated.catch(() => undefined)
+              }
+            })
+            const clarified = await clarify(resolved, scope, question, publicationsDecision)
+            if (clarified) {
+              sources.push(...clarificationSources(clarified))
+              return { text: clarified.content, clarification: true, trace: { knowledgeClarification: clarified.state.status, ...(speculated ? { speculativeOrchestrationDiscarded: true } : {}) } }
+            }
+            const reply = await (speculated ?? orchestrate())
             if (reply.supportMaterials && reply.supportMaterials.length > 0) materials.push({ orchestratorId: resolved.orchestratorId, recommendations: reply.supportMaterials })
-            sources.push(...replyComplianceSources(reply, resolved))
+            sources.push(...replyComplianceSources(reply, resolved), ...(await publicationSources(input.organizationId, reply, resolved)))
             return { text: reply.text, trace: { specialists: reply.calls.map((call) => call.toolName), agentId: reply.agentId } }
           },
         })
       : null
     const directTools = process ? combineToolsets(process, input.leadership.toolset) : input.leadership.toolset
-    const top = leadershipOnlyOrchestrator(input.organizationId, input.instruction + (await leaderStructureInstruction(db, input.organizationId, input.personId, lastUserText(input.history))) + guardrails)
+    const structureContext = await leaderStructureContext(db, input.organizationId, input.personId, lastUserText(input.history))
+    sources.push(...structureContext.sources)
+    const top = leadershipOnlyOrchestrator(input.organizationId, input.instruction + structureContext.text + guardrails)
     // Em fluxo, só enquanto nenhuma consulta de processo virou esclarecimento: nesse caso o texto da resposta é o do esclarecimento
     // (`leadershipTextWithClarification`) e o do modelo não vai para a tela antes da hora.
     // Grupo exigido ou Grupo que ficou de fora (PROCESS_GROUP_RULE_V1): o texto final é do sistema, então o do modelo não vai em fluxo.
@@ -952,7 +999,7 @@ export function createRealtimeRouter(
     const composed = clarified ? leadershipTextWithClarification(reply, clarified.outcome.content) : null
     const baseText = composed?.text ?? reply.text
     const replyText = offer ? `${baseText}${REPORT_OFFER_LINE}` : baseText
-    const replyGuard = await guardVoiceText({ organizationId: scope.organizationId, conversationId: writable.conversationId, text: replyText, question: spoken, agentId: askOrchestrator?.orchestratorAgentId || null, sources: [...replyComplianceSources(reply, askOrchestrator), ...replyDataSources(reply), ...(leaderAnswer?.sources ?? []), ...priorAnswers] })
+    const replyGuard = await guardVoiceText({ organizationId: scope.organizationId, conversationId: writable.conversationId, text: replyText, question: spoken, agentId: askOrchestrator?.orchestratorAgentId || null, sources: [...replyComplianceSources(reply, askOrchestrator), ...(await publicationSources(scope.organizationId, reply, askOrchestrator)), ...replyDataSources(reply), ...(leaderAnswer?.sources ?? []), ...priorAnswers] })
     if (replyGuard.blocked) return blockedVoiceAnswer(request, { guard: replyGuard, scope, writable, personId, clientMessageId, participants: orchestratedToolCalls(reply) })
     const toolCalls = [...(orchestratedToolCalls(reply) ?? []), ...(clarified ? [clarificationToolCall(clarified.outcome, clarified.scope)] : [])]
     // Sinais como no chat de texto: quem lidera = só o esclarecimento da consulta de processo; sem Orquestrador = só dados (vazia).
@@ -1126,7 +1173,7 @@ export function createRealtimeRouter(
           return
         }
         knowledge = specialist.knowledge
-        const specialistGuard = await guardVoiceText({ organizationId: scope.organizationId, conversationId: resolved.conversationId, text: specialist.text, question: input.utterance || input.query, agentId: orchestrator!.orchestratorAgentId || specialistAgentId, sources: complianceSourcesOfExcerpts([...(orchestrator!.knowledge?.retrieved ?? []), ...(specialist.knowledge?.retrieved ?? [])]) })
+        const specialistGuard = await guardVoiceText({ organizationId: scope.organizationId, conversationId: resolved.conversationId, text: specialist.text, question: input.utterance || input.query, agentId: orchestrator!.orchestratorAgentId || specialistAgentId, sources: [...complianceSourcesOfExcerpts([...(orchestrator!.knowledge?.retrieved ?? []), ...(specialist.knowledge?.retrieved ?? [])]), ...(await publicationSources(scope.organizationId, { results: [specialist] }, orchestrator))] })
         if (specialistGuard.blocked) {
           const blocked = await blockedVoiceAnswer(request, { guard: specialistGuard, scope, writable: resolved, personId: operatorId, clientMessageId })
           response.json({ data: blocked })
@@ -1545,7 +1592,7 @@ export function createRealtimeRouter(
             // tool-trace.ts) — auditável, nunca prompt/raciocínio; ferramentas do backend (liderança) com argumentos e cartão.
             toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
             signals,
-          }, { sources: [...replyComplianceSources(reply), ...replyDataSources(reply), ...extraSources] })
+          }, { sources: [...replyComplianceSources(reply), ...(await publicationSources(scope.organizationId, reply)), ...replyDataSources(reply), ...extraSources] })
           if (cards.length > 0) send("analytics", { interactionId, cards })
           // Materiais recomendados pelo Orquestrador (já validados contra os candidatos dos
           // especialistas): persistidos junto da resposta e revalidados contra o DESTINATÁRIO (o
@@ -1579,7 +1626,7 @@ export function createRealtimeRouter(
           // A instrução da aplicação substitui o prompt do Orquestrador: os limites de atuação dele e os assuntos proibidos entram aqui.
           const instruction = application.instruction + addressing + guardrails
           const consultation = application.consultation
-          await prepareResponseCheck(sessionOrchestrator?.orchestratorAgentId || null, [...replyComplianceSources({}, sessionOrchestrator), ...priorAnswerSources(history)])
+          await prepareResponseCheck(sessionOrchestrator?.orchestratorAgentId || null, [...replyComplianceSources({}, sessionOrchestrator), ...(await publicationSources(scope.organizationId, {}, sessionOrchestrator)), ...priorAnswerSources(history)])
           // PRODUTO NÃO ESTABELECIDO PELA GRAVAÇÃO (`PRODUCT_APPLICABILITY_V1`): a sessão usa o MESMO esclarecimento pelas bases do chat — a IA
           // decide se a pergunta depende do produto e, se sim, pergunta (curto, sem pedir número completo). A escolha fica gravada com
           // procedência `CHAT_CONFIRMATION` (nunca evidência da gravação; nada volta para a análise). Sem produto pendente, nada muda.
@@ -1648,7 +1695,7 @@ export function createRealtimeRouter(
         if (dataTools) isDataTool = (name) => dataTools.handles(name)
         const systemInstruction = INIA_CHAT_PERSONA + renderClientContext(input.contextHint) + addressing + profile + originContext + (leadership ? `\n\n${leadership.instructions}` : self ? `\n\n${self.instructions}` : "")
         trace.note("instructionChars", systemInstruction.length + (orchestrator?.systemPrompt.length ?? 0))
-        await prepareResponseCheck(orchestrator?.orchestratorAgentId || null, [...replyComplianceSources({}, orchestrator), ...priorAnswerSources(history)])
+        await prepareResponseCheck(orchestrator?.orchestratorAgentId || null, [...replyComplianceSources({}, orchestrator), ...(await publicationSources(scope.organizationId, {}, orchestrator)), ...priorAnswerSources(history)])
 
         // ESCLARECIMENTO PELAS BASES (quem atende, na conversa dela, com Orquestrador): antes da orquestração, a IA navega pelas bases
         // que a pessoa pode ler. Se um cenário muda a resposta, a INIA pergunta com opções das fontes; se já dá para
@@ -1703,8 +1750,9 @@ export function createRealtimeRouter(
           trace.setPath("DATA_ONLY")
           // Sem Orquestrador configurado, a pessoa ainda consulta os próprios dados (ou os da estrutura que lidera): a mesma
           // orquestração, só com as ferramentas do backend (sem especialistas) e os assuntos proibidos.
-          const instruction = systemInstruction + (await leaderStructureInstruction(db, scope.organizationId, operatorId, lastUserText(history))) + (await conversationGuardrails(scope.organizationId, null))
-          await sendOrchestratedReply(await trace.span("orchestration", () => orchestratedReply(db, leadershipOnlyOrchestrator(scope.organizationId, instruction), history, "", operatorId, { collaboratorConversation: true }, {}, { directTools: dataTools, stream: liveStream, toleratesToolFailure: true })), "")
+          const structureContext = await leaderStructureContext(db, scope.organizationId, operatorId, lastUserText(history))
+          const instruction = systemInstruction + structureContext.text + (await conversationGuardrails(scope.organizationId, null))
+          await sendOrchestratedReply(await trace.span("orchestration", () => orchestratedReply(db, leadershipOnlyOrchestrator(scope.organizationId, instruction), history, "", operatorId, { collaboratorConversation: true }, {}, { directTools: dataTools, stream: liveStream, toleratesToolFailure: true })), "", undefined, [], structureContext.sources)
           send("done", {})
           return
         }

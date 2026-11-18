@@ -5,7 +5,7 @@ import { loadArgumentScriptPromptLines, type ArgumentScriptAudience } from "../.
 import { retrieveKnowledgeForAgent, type KnowledgeCoverageRequest, type KnowledgeTrace } from "../../knowledge/application/retrieve-knowledge.js"
 import { agentSnapshotFor } from "./agent-runtime-context.js"
 import { hadRecentAlignments, resolveOperationalAlignmentsFor } from "../../operational-alignments/infrastructure/operational-alignment-loaders.js"
-import { alignmentSnapshotOf, NO_ALIGNMENT_IN_FORCE_NOTICE, renderAlignmentsForConversation, type AlignmentResolution } from "../../operational-alignments/domain/operational-alignment.js"
+import { alignmentSnapshotOf, noAlignmentInForceNotice, renderAlignmentsForConversation, type AlignmentResolution } from "../../operational-alignments/domain/operational-alignment.js"
 import { loadAgentGuardrails, renderAgentGuardrails } from "./agent-guardrails.js"
 import { loadCommunicationsForConversation } from "../../communications/infrastructure/communication-conversation-loader.js"
 import { communicationSnapshotOf } from "../../communications/domain/communication-conversation.js"
@@ -154,10 +154,10 @@ export async function buildSystemPromptWithTrace(db: Database, agentId: string, 
     ? await resolveOperationalAlignmentsFor(db, { organizationId: agent.organization_id, personId: alignmentSubject, at: options.alignmentReferenceDate ?? new Date(), documentIds: knowledge.trace.authorizedDocuments.map((document) => document.id), usage: { surface: options.collaboratorConversation ? "CONVERSATION" : "AGENT", agentId } })
     : null
   if (alignments && alignments.applied.length > 0) knowledge.trace.operationalAlignments = alignments.applied.map(alignmentSnapshotOf)
-  // Ajuste de segurança da CONVERSA: nada vale hoje, mas houve alinhamento recente para estas bases — o histórico da conversa pode
-  // trazer uma resposta baseada nele, que não vale mais.
-  const alignmentNotice = !structureScope && alignmentSubject && options.collaboratorConversation && alignments && alignments.applied.length === 0 && (await hadRecentAlignments(db, agent.organization_id, knowledge.trace.authorizedDocuments.map((document) => document.id), options.alignmentReferenceDate ?? new Date()))
-    ? NO_ALIGNMENT_IN_FORCE_NOTICE
+  // CONVERSA com pessoa conhecida e nenhum alinhamento vigente para estas bases: a ausência entra como dado (`noAlignmentInForceNotice`,
+  // V3). Se houve alinhamento recente para estas bases, o histórico da conversa pode trazer uma resposta baseada nele, que não vale mais.
+  const alignmentNotice = !structureScope && alignmentSubject && options.collaboratorConversation && alignments && alignments.applied.length === 0
+    ? noAlignmentInForceNotice({ recentlyEnded: await hadRecentAlignments(db, agent.organization_id, authorizedDocumentIds, options.alignmentReferenceDate ?? new Date()) })
     : null
 
   // Comunicados (`COMMUNICATION_CONVERSATION_V2`): só na CONVERSA com uma pessoa conhecida, os comunicados no ar que ela enxerga e que

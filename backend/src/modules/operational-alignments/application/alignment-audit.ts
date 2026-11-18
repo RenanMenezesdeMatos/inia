@@ -55,15 +55,20 @@ export function recordAlignmentUsage(db: Queryable, organizationId: string, reso
  * instante gravado é o da vigência, não o do job). Encerramento antecipado e cancelamento já foram gravados por quem os fez; versão
  * substituída antes de começar não "começa".
  */
-export async function runAlignmentLifecycle(db: Queryable, now: Date = new Date()): Promise<{ started: number; expired: number }> {
-  const started = await db.query(
+export async function runAlignmentLifecycle(db: Queryable, now: Date = new Date(), notifyStarted: (versionIds: string[], now: Date) => Promise<unknown> = async () => undefined): Promise<{ started: number; expired: number }> {
+  const started = await db.query<{ version_id: string }>(
     `insert into operational_alignment_events (organization_id, alignment_id, version_id, version, event_type, actor_person_id, occurred_at, details)
      select v.organization_id, v.alignment_id, v.id, v.version, 'STARTED', null, v.effective_from, jsonb_build_object('startsOn', v.starts_on, 'timeZone', v.time_zone)
      from operational_alignment_versions v
      where v.status in ('PUBLISHED', 'SUPERSEDED') and v.effective_from <= $1 and v.effective_until > v.effective_from
-     on conflict do nothing`,
+     on conflict do nothing
+     returning version_id`,
     [now],
   )
+  // Sino (Acompanhamento do operador, 18/11/2026): só as versões que começaram AGORA (o evento acabou de ser gravado, uma vez por
+  // versão em qualquer número de processos). Falha no aviso não desfaz o rastro.
+  const startedVersionIds = started.rows.map((row) => row.version_id)
+  if (startedVersionIds.length > 0) await notifyStarted(startedVersionIds, now).catch((error: unknown) => console.error("Falha no aviso de alinhamento em vigor:", error))
   const expired = await db.query(
     `insert into operational_alignment_events (organization_id, alignment_id, version_id, version, event_type, actor_person_id, occurred_at, details)
      select v.organization_id, v.alignment_id, v.id, v.version, 'EXPIRED', null, v.effective_until,

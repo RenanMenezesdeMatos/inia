@@ -57,16 +57,24 @@ describe("alinhamento operacional no prompt do chat", () => {
 
   it("depois do término o chat volta ao procedimento oficial; fora do escopo nada muda", async () => {
     const after = await buildSystemPromptWithTrace(fakeDb({ team_id: OUVIDORIA, universe: "B2C" }), "agent-1", AGENT, { query: "Como envio a fatura?", governanceSubjectPersonId: "op-1", collaboratorConversation: true, alignmentReferenceDate: new Date("2026-12-02T14:00:00Z") })
-    expect(after.systemPrompt).not.toContain("ALINHAMENTOS OPERACIONAIS")
+    // V3: sem nenhum vigente, a ausência entra como dado e a pergunta "há alinhamento ativo?" é só informativa (sem mandar seguir a
+    // base nem prometer avisos); sem alinhamento recente, a frase de correção do que foi citado antes não entra.
+    expect(after.systemPrompt).not.toContain("ALINHAMENTOS OPERACIONAIS VIGENTES")
+    expect(after.systemPrompt).toContain("nenhum alinhamento operacional vale hoje, para quem está na conversa")
+    expect(after.systemPrompt).toContain("Não acrescente orientação para seguir a base ou os procedimentos, e não prometa avisos futuros")
+    expect(after.systemPrompt).not.toContain("NÃO vale mais")
+    expect(after.systemPrompt).not.toContain("App Meu Vivo")
     // Ajuste de segurança: houve alinhamento recente para estas bases → a INIA é avisada de que o citado antes não vale mais.
     const afterWithHistory = await buildSystemPromptWithTrace(fakeDb({ team_id: OUVIDORIA, universe: "B2C" }, { recentlyEnded: true }), "agent-1", AGENT, { query: "Como envio a fatura?", governanceSubjectPersonId: "op-1", collaboratorConversation: true, alignmentReferenceDate: new Date("2026-12-02T14:00:00Z") })
-    expect(afterWithHistory.systemPrompt).toContain("nenhum vale hoje para quem está na conversa")
-    expect(afterWithHistory.systemPrompt).toContain("NÃO vale mais: oriente pela base oficial")
+    expect(afterWithHistory.systemPrompt).toContain("nenhum alinhamento operacional vale hoje, para quem está na conversa")
+    expect(afterWithHistory.systemPrompt).toContain("ele NÃO vale mais: diga que aquela orientação temporária não está mais em vigor e, se a pergunta for sobre como proceder, oriente pela base oficial")
     expect(afterWithHistory.systemPrompt).not.toContain("App Meu Vivo")
     const otherGroup = await buildSystemPromptWithTrace(fakeDb({ team_id: "outro-grupo", universe: "B2C" }), "agent-1", AGENT, { query: "Como envio a fatura?", governanceSubjectPersonId: "op-2", collaboratorConversation: true, alignmentReferenceDate: new Date("2026-11-15T14:00:00Z") })
-    expect(otherGroup.systemPrompt).not.toContain("ALINHAMENTOS OPERACIONAIS")
+    expect(otherGroup.systemPrompt).not.toContain("ALINHAMENTOS OPERACIONAIS VIGENTES")
+    expect(otherGroup.systemPrompt).not.toContain("App Meu Vivo")
     const otherUniverse = await buildSystemPromptWithTrace(fakeDb({ team_id: OUVIDORIA, universe: "B2B" }), "agent-1", AGENT, { query: "Como envio a fatura?", governanceSubjectPersonId: "op-3", collaboratorConversation: true, alignmentReferenceDate: new Date("2026-11-15T14:00:00Z") })
-    expect(otherUniverse.systemPrompt).not.toContain("ALINHAMENTOS OPERACIONAIS")
+    expect(otherUniverse.systemPrompt).not.toContain("ALINHAMENTOS OPERACIONAIS VIGENTES")
+    expect(otherUniverse.systemPrompt).not.toContain("App Meu Vivo")
   })
 
   it("sem pessoa (teste do agente, prévia, coordenação por Grupo): nenhum alinhamento", async () => {

@@ -8,6 +8,7 @@ import {
   renderComplianceLimitSystem,
   renderComplianceSourcesSystem,
   replyComplianceSources,
+  replyPublicationRefs,
   toolDataSources,
   RESPONSE_COMPLIANCE_CONTENT_PROMPT_VERSION,
   RESPONSE_COMPLIANCE_DATA_PROMPT_VERSION,
@@ -15,6 +16,7 @@ import {
   RESPONSE_COMPLIANCE_MAX_PRIOR_ANSWERS,
   RESPONSE_COMPLIANCE_MAX_SOURCE_CHARS,
   RESPONSE_COMPLIANCE_PROMPT_VERSION,
+  RESPONSE_COMPLIANCE_PUBLICATIONS_PROMPT_VERSION,
   RESPONSE_COMPLIANCE_SOURCES_PROMPT_VERSION,
   type ComplianceSource,
 } from "../domain/response-compliance.js"
@@ -290,6 +292,47 @@ describe("dados calculados pelo sistema como fonte (V5)", () => {
   it("na ordem do limite, o dado vem depois da base e antes das respostas anteriores", () => {
     const prior: ComplianceSource = { origin: "PRIOR_ANSWER", title: null, text: "resposta anterior" }
     expect(limitComplianceSources([prior, DATA, KB])).toEqual([KB, DATA, prior])
+  })
+})
+
+describe("comunicados e alinhamentos da liderança como fonte (V6)", () => {
+  // Caso real de 18/11/2026 ("E comunicados?", pela voz): a INIA trouxe o comunicado da festa e a conferência barrou a data como "promessa financeira",
+  // porque o texto do comunicado não ia como fonte.
+  const NOTICE: ComplianceSource = { origin: "PUBLICATION", title: "Comunicado: Festa de fim de ano: 23/11 em Fortaleza e Curitiba", text: "Publicado por Renan Menezes de Matos em 17/11/2026.\nA confraternização de fim de ano será no dia 23/11, em Fortaleza e Curitiba." }
+  const PARTY = "Temos um comunicado recente: a confraternização de fim de ano será no dia 23/11, em Fortaleza e Curitiba."
+
+  it("com publicação: usa a V6, a publicação chega ao modelo com a própria origem e a instrução diz que repassá-la não é criar", async () => {
+    const { calls, model } = modelReplying(ALLOW)
+    const result = await ask(model, { text: PARTY, question: "E comunicados?", sources: [NOTICE] })
+    expect(result).toMatchObject({ outcome: "ALLOWED", promptVersion: RESPONSE_COMPLIANCE_PUBLICATIONS_PROMPT_VERSION })
+    expect(calls[0]!.user).toContain('<fonte origem="publicacao_da_lideranca">\nTítulo: Comunicado: Festa de fim de ano')
+    expect(calls[0]!.system).toContain('<fonte origem="publicacao_da_lideranca">')
+    expect(calls[0]!.system).toContain("é informação publicada pela liderança, não prazo, valor ou condição criado ou prometido")
+    // A V6 traz também a origem dos dados calculados (texto único por versão).
+    expect(calls[0]!.system).toContain('<fonte origem="dados_calculados">')
+  })
+
+  it("sem publicação, a V3 e a V5 continuam exatamente como eram", async () => {
+    expect(renderComplianceSourcesSystem(complianceRulesOf(GUARDRAILS))).not.toContain("publicacao_da_lideranca")
+    expect(renderComplianceSourcesSystem(complianceRulesOf(GUARDRAILS), { withData: true })).not.toContain("publicacao_da_lideranca")
+  })
+
+  it("a publicação não libera por código: a violação apontada pelo modelo continua valendo", async () => {
+    const { model } = modelReplying(`{"verdict":"VIOLATION","violated":["R1"],"excerpt":"dia 23/11","reason":"x"}`)
+    expect(await ask(model, { text: PARTY, sources: [NOTICE] })).toMatchObject({ outcome: "VIOLATION", promptVersion: RESPONSE_COMPLIANCE_PUBLICATIONS_PROMPT_VERSION })
+  })
+
+  it("o que entrou nas instruções: comunicados e versões de alinhamento do Orquestrador e de cada especialista, sem repetir", () => {
+    const orchestrator = { knowledge: { communications: [{ id: "c1" }], operationalAlignments: [{ versionId: "v1" }] } }
+    const reply = { results: [{ knowledge: { communications: [{ id: "c1" }, { id: "c2" }] } }, { knowledge: { operationalAlignments: [{ versionId: "v2" }] } }, {}] }
+    expect(replyPublicationRefs(reply, orchestrator)).toEqual({ communicationIds: ["c1", "c2"], alignmentVersionIds: ["v1", "v2"] })
+    expect(replyPublicationRefs({})).toEqual({ communicationIds: [], alignmentVersionIds: [] })
+  })
+
+  it("na ordem do limite, a publicação vem logo depois da base", () => {
+    const prior: ComplianceSource = { origin: "PRIOR_ANSWER", title: null, text: "resposta anterior" }
+    const data: ComplianceSource = { origin: "DATA", title: "my_results", text: "dados" }
+    expect(limitComplianceSources([prior, data, NOTICE, KB])).toEqual([KB, NOTICE, data, prior])
   })
 })
 

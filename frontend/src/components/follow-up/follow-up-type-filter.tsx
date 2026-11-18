@@ -18,6 +18,7 @@ export type { FollowUpType }
 
 export const FOLLOW_UP_TYPE_LABELS: Record<FollowUpType, string> = {
   NOTICE: "Comunicados",
+  ALIGNMENT: "Alinhamentos",
   MONITORING: "Feedbacks de monitoria",
   INDICATOR: "Feedbacks de indicador",
   WORKFLOW_OUTPUT: "Resultados de workflow",
@@ -29,9 +30,9 @@ export const FOLLOW_UP_TYPE_LABELS: Record<FollowUpType, string> = {
 }
 
 /** O que aparece no Acompanhamento do próprio colaborador. */
-export const OPERATOR_FOLLOW_UP_TYPES: FollowUpType[] = ["NOTICE", "MONITORING", "INDICATOR"]
+export const OPERATOR_FOLLOW_UP_TYPES: FollowUpType[] = ["NOTICE", "ALIGNMENT", "MONITORING", "INDICATOR"]
 /** O que aparece no Acompanhamento da estrutura (feedbacks dos liderados + avisos, reports e comunicados de quem lê). */
-export const STRUCTURE_FOLLOW_UP_TYPES: FollowUpType[] = ["NOTICE", "MONITORING", "INDICATOR", "WORKFLOW_OUTPUT", "HUMAN_REVIEW", "ESCALATION", "INTERVENTION", "REPORT", "OTHER"]
+export const STRUCTURE_FOLLOW_UP_TYPES: FollowUpType[] = ["NOTICE", "ALIGNMENT", "MONITORING", "INDICATOR", "WORKFLOW_OUTPUT", "HUMAN_REVIEW", "ESCALATION", "INTERVENTION", "REPORT", "OTHER"]
 
 export function FollowUpTypeFilter({ value, onChange, types }: { value: FollowUpType[] | null; onChange: (value: FollowUpType[] | null) => void; types: FollowUpType[] }) {
   const selected = value ?? types

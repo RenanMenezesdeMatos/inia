@@ -1,6 +1,6 @@
 import { apiGet, toQueryString } from "@/lib/api/api-client"
 import { subjectQuery, type SubjectRef } from "@/lib/analytics/subject-params"
-import type { FollowUpType } from "@/schemas/analytics/analytics.schema"
+import type { FollowUpAudience, FollowUpType } from "@/schemas/analytics/analytics.schema"
 import {
   analyticsContextSchema,
   followUpFeedSchema,
@@ -68,6 +68,6 @@ export async function fetchTeamMembers(subject: SubjectRef | null, period: strin
 export type FollowUpPeriodBounds = { since: string; until: string }
 
 /** Página do Acompanhamento da estrutura depois de `cursor` (null = a primeira); `period` = só o recorte do calendário. */
-export async function fetchFollowUpFeed(subject: SubjectRef | null, cursor: string | null, limit: number, unacknowledgedOnly = false, period: FollowUpPeriodBounds | null = null, types: FollowUpType[] | null = null): Promise<FollowUpFeed> {
-  return followUpFeedSchema.parse(await apiGet(`${BASE}/follow-ups${toQueryString({ ...subjectQuery(subject), cursor: cursor ?? undefined, limit, ack: unacknowledgedOnly ? "pending" : undefined, since: period?.since, until: period?.until, types: types?.join(",") })}`))
+export async function fetchFollowUpFeed(subject: SubjectRef | null, cursor: string | null, limit: number, unacknowledgedOnly = false, period: FollowUpPeriodBounds | null = null, types: FollowUpType[] | null = null, audience: FollowUpAudience | null = null): Promise<FollowUpFeed> {
+  return followUpFeedSchema.parse(await apiGet(`${BASE}/follow-ups${toQueryString({ ...subjectQuery(subject), cursor: cursor ?? undefined, limit, ack: unacknowledgedOnly ? "pending" : undefined, since: period?.since, until: period?.until, types: types?.join(","), audience: audience ?? undefined })}`))
 }

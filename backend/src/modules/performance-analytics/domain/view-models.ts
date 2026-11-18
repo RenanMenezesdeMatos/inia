@@ -1,4 +1,5 @@
 import type { CommunicationView } from "../../communications/domain/communication.js"
+import type { StructureAlignment } from "../../operational-alignments/application/structure-alignments.js"
 import type { FollowUpInterventionBrief } from "../../interventions/application/follow-up-briefs.js"
 import type { FeedbackView } from "../../reliable-feedback/domain/feedback-view.js"
 import type { PrvSupervisorView } from "../../reliable-feedback/domain/prv-closing-views.js"
@@ -508,15 +509,23 @@ export type TeamMembersPage = {
  * Filtro "Tipo" do Acompanhamento da estrutura (um ou vários; ausente = tudo). Cada valor corresponde a um ramo do feed:
  * feedbacks por `feedback_kind`, avisos por `alert_type`, reports e comunicados pelo ramo. OTHER = avisos fora dessas famílias.
  */
-export const FOLLOW_UP_TYPES = ["NOTICE", "MONITORING", "INDICATOR", "WORKFLOW_OUTPUT", "HUMAN_REVIEW", "ESCALATION", "INTERVENTION", "REPORT", "OTHER"] as const
+export const FOLLOW_UP_TYPES = ["NOTICE", "ALIGNMENT", "MONITORING", "INDICATOR", "WORKFLOW_OUTPUT", "HUMAN_REVIEW", "ESCALATION", "INTERVENTION", "REPORT", "OTHER"] as const
 export type FollowUpType = (typeof FOLLOW_UP_TYPES)[number]
+
+/**
+ * Filtro "Para quem" do Acompanhamento da PRÓPRIA estrutura (ausente = tudo). MINE = o que é endereçado a quem lê: avisos de workflow
+ * (resultados, revisões, escalonamentos), intervenções, reports e comunicados que recebeu. TEAM = o acompanhamento da equipe que
+ * aparece para ele: feedbacks publicados dos liderados e comunicados que ele mesmo publicou para a equipe.
+ */
+export const FOLLOW_UP_AUDIENCES = ["MINE", "TEAM"] as const
+export type FollowUpAudience = (typeof FOLLOW_UP_AUDIENCES)[number]
 
 export type FollowUpItem = {
   id: string
-  kind: "FEEDBACK" | "ALERT" | "REPORT" | "NOTICE"
+  kind: "FEEDBACK" | "ALERT" | "REPORT" | "NOTICE" | "ALIGNMENT"
   /** INTERVENTION = atualização de uma intervenção (aberta, aprovada, decidida, novo sinal) — o link vai para o caso.
    * REPORT = entrega válida de um report recorrente; REPORT_NOT_FORWARDED = aviso de execução não encaminhada (nunca um report novo). */
-  category: "INDICATOR" | "MONITORING" | "WORKFLOW_OUTPUT" | "WORKFLOW_HUMAN_REVIEW" | "WORKFLOW_ESCALATION" | "INTERVENTION" | "REPORT" | "REPORT_NOT_FORWARDED" | "NOTICE" | "OTHER"
+  category: "INDICATOR" | "MONITORING" | "WORKFLOW_OUTPUT" | "WORKFLOW_HUMAN_REVIEW" | "WORKFLOW_ESCALATION" | "INTERVENTION" | "REPORT" | "REPORT_NOT_FORWARDED" | "NOTICE" | "ALIGNMENT" | "OTHER"
   title: string
   /** Metadado do título (ex.: "Atendimento de 29/09/2026") — só feedbacks com cabeçalho; null = sem subtítulo. */
   subtitle?: string | null
@@ -545,6 +554,8 @@ export type FollowUpItem = {
   intervention?: FollowUpInterventionBrief
   /** Comunicado da liderança (migration 199) — só quando kind = NOTICE: publicado por quem lê ou recebido por ele. */
   notice?: CommunicationView | null
+  /** Alinhamento operacional que alcança a estrutura (fase 2) — só quando kind = ALIGNMENT: a versão mostrada, alcance e leituras. */
+  alignment?: StructureAlignment | null
 }
 
 export type FollowUpReportDelivery = {

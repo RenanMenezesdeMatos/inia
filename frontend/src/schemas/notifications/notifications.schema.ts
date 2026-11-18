@@ -1,7 +1,7 @@
 import { z } from "zod"
 
 /** Espelho de backend/src/modules/notifications/domain/view-models.ts. */
-export const notificationKindSchema = z.enum(["HUMAN_REVIEW", "WORKFLOW_OUTPUT", "INIA_MESSAGE", "ESCALATION", "WORKDAY_RECONCILIATION", "CALENDAR_NOTICE", "INTERVENTION", "FEEDBACK_CONTESTATION", "OTHER"])
+export const notificationKindSchema = z.enum(["HUMAN_REVIEW", "WORKFLOW_OUTPUT", "INIA_MESSAGE", "ESCALATION", "WORKDAY_RECONCILIATION", "CALENDAR_NOTICE", "INTERVENTION", "FEEDBACK_CONTESTATION", "OPERATIONAL_ALIGNMENT", "OTHER"])
 export type NotificationKind = z.infer<typeof notificationKindSchema>
 
 export const notificationTargetSchema = z.discriminatedUnion("type", [
@@ -54,5 +54,6 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   CALENDAR_NOTICE: "Calendário operacional",
   INTERVENTION: "Intervenção",
   FEEDBACK_CONTESTATION: "Contestação de feedback",
+  OPERATIONAL_ALIGNMENT: "Alinhamento operacional",
   OTHER: "Aviso",
 }

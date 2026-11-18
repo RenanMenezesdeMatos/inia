@@ -15,7 +15,7 @@ import { ANALYTICS_SUBJECT_KINDS, buildAnalyticsSubject, isStructureSubject, typ
 import { isGroupingDimension } from "../domain/hierarchy-levels.js"
 import { DEFAULT_OPERATIONAL_COMPARISON, isOperationalComparison, type OperationalComparison } from "../domain/operational-comparison.js"
 import { parseReferencePeriod } from "../domain/reference-period.js"
-import { FOLLOW_UP_TYPES } from "../domain/view-models.js"
+import { FOLLOW_UP_AUDIENCES, FOLLOW_UP_TYPES } from "../domain/view-models.js"
 import { resolveOfficialClosure, type OfficialClosureContext } from "../../indicators/application/official-closure.js"
 import { clampToClosedReferencePeriod } from "../../indicators/domain/official-closure-policy.js"
 import { decodeFollowUpCursor } from "../../feedbacks/domain/follow-up-cursor.js"
@@ -32,6 +32,8 @@ const followUpQuerySchema = z.object({
   until: z.string().datetime({ offset: true }).optional(),
   /** Filtro "Tipo" (um ou vários, `types=A,B`); ausente = todos. */
   types: listParam(z.enum(FOLLOW_UP_TYPES)),
+  /** Filtro "Para quem" (`audience=MINE|TEAM`); ausente = tudo. */
+  audience: z.enum(FOLLOW_UP_AUDIENCES).optional(),
 }).refine((query) => !query.since || !query.until || Date.parse(query.since) < Date.parse(query.until), { message: "O início do período precisa ser antes do fim.", path: ["until"] })
 
 const subjectQuerySchema = z.object({
@@ -178,7 +180,7 @@ export function createAnalyticsRouter(
       const query = followUpQuerySchema.parse(request.query)
       const before = decodeFollowUpCursor(query.cursor)
       if (query.cursor && !before) throw new DomainError("Cursor de paginação inválido.", "INVALID_CURSOR", 400)
-      response.json({ data: await buildFollowUpFeed(repository, scope, subject, { limit: query.limit, before, unacknowledgedOnly: query.ack === "pending", since: query.since ?? null, until: query.until ?? null, types: query.types ?? null }) })
+      response.json({ data: await buildFollowUpFeed(repository, scope, subject, { limit: query.limit, before, unacknowledgedOnly: query.ack === "pending", since: query.since ?? null, until: query.until ?? null, types: query.types ?? null, audience: query.audience ?? null }) })
     } catch (error) {
       next(error)
     }

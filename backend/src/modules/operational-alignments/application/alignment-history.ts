@@ -24,8 +24,9 @@ export const ALIGNMENT_HISTORY_DECLARATION: FunctionDeclaration = {
 
 export const ALIGNMENT_HISTORY_RULE = [
   "[Alinhamentos operacionais — regra do sistema]",
-  "- Só vale como orientação atual o alinhamento operacional que estiver nas instruções DESTA resposta. Se uma mensagem anterior desta conversa citou um alinhamento que não está nas instruções agora, ele NÃO vale mais: oriente pela base oficial e diga que aquela orientação temporária não está mais em vigor.",
-  `- Pergunta sobre alinhamentos anteriores: acione ${ALIGNMENT_HISTORY_TOOL} e responda como histórico ("houve um alinhamento operacional (referência), válido de … a …, que orientava: …"), sempre dizendo que não vale mais e o que vale hoje pela base oficial. Nunca oriente a pessoa a seguir um alinhamento do histórico.`,
+  "- Só vale como orientação atual o alinhamento operacional que estiver nas instruções DESTA resposta. Se uma mensagem anterior desta conversa citou um alinhamento que não está nas instruções agora, ele NÃO vale mais: diga que aquela orientação temporária não está mais em vigor e, se a pergunta for sobre como proceder, oriente pela base oficial.",
+  "- Pergunta se há alinhamento ativo, vigente, novo ou do time: acione alinhamentos_vigentes e responda pelo resultado dela, que cobre todos os processos (as instruções só trazem os alinhamentos das bases de cada agente). Sem nenhum, diga que não há nenhum ativo no momento. É uma pergunta informativa: não acrescente orientação para seguir a base ou os procedimentos, e não prometa avisos futuros (nem da INIA, nem da liderança).",
+  `- Pergunta sobre alinhamentos anteriores: acione ${ALIGNMENT_HISTORY_TOOL} e responda como histórico ("houve um alinhamento operacional (referência), válido de … a …, que orientava: …"), sempre dizendo que não vale mais. Só diga o que vale hoje pela base oficial se a pessoa perguntar como proceder. Nunca oriente a pessoa a seguir um alinhamento do histórico.`,
 ].join("\n")
 
 type HistoryRow = {
@@ -86,7 +87,7 @@ export async function loadAlignmentHistory(db: Queryable, input: { organizationI
 /** Texto para o modelo: cabeçalho que proíbe usar como orientação atual + um item por alinhamento. */
 export async function executeAlignmentHistory(db: Queryable, input: { organizationId: string; personId: string; now?: Date }): Promise<{ text: string; card: null }> {
   const history = await loadAlignmentHistory(db, input)
-  if (history.length === 0) return { text: "[Histórico de alinhamentos operacionais] Nenhum alinhamento operacional deixou de valer para o público desta pessoa nos últimos 12 meses. Diga isso; a orientação atual é a das bases oficiais (e dos alinhamentos que estiverem nas instruções).", card: null }
+  if (history.length === 0) return { text: "[Histórico de alinhamentos operacionais] Nenhum alinhamento operacional deixou de valer para o público desta pessoa nos últimos 12 meses. Diga só isso, sem acrescentar orientação para seguir a base nem prometer avisos futuros.", card: null }
   const lines = history.map((entry) => [
     `- ${entry.reference} · "${entry.title}" — valeu ${entry.period}; não vale mais desde ${entry.noLongerValidSince} (${entry.why}).`,
     `  Processos: ${entry.processes.join(", ") || "—"}${entry.affectedTopic ? ` · trecho que mudava: ${entry.affectedTopic}` : ""}${entry.productName ? ` · produto: ${entry.productName}` : ""}`,

@@ -1,6 +1,6 @@
 import type { FollowUpCursor } from "../../feedbacks/domain/follow-up-cursor.js"
 import type { AnalyticsSubject } from "../domain/analytics-subject.js"
-import type { FollowUpFeed, FollowUpType } from "../domain/view-models.js"
+import type { FollowUpAudience, FollowUpFeed, FollowUpType } from "../domain/view-models.js"
 import type { AnalyticsReadRepository } from "./analytics-read-repository.js"
 import { resolveSubject, type ViewerScope } from "./viewer-scope.js"
 
@@ -10,7 +10,7 @@ import { resolveSubject, type ViewerScope } from "./viewer-scope.js"
  * workflow, revisões humanas pendentes e escalonamentos. Mesmos objetos, sem tabela nova. Paginado por cursor (keyset),
  * como o Acompanhamento do colaborador.
  */
-export type FollowUpFeedPageOptions = { limit: number; before: FollowUpCursor | null; unacknowledgedOnly: boolean; since?: string | null; until?: string | null; types?: readonly FollowUpType[] | null }
+export type FollowUpFeedPageOptions = { limit: number; before: FollowUpCursor | null; unacknowledgedOnly: boolean; since?: string | null; until?: string | null; types?: readonly FollowUpType[] | null; audience?: FollowUpAudience | null }
 
 export async function buildFollowUpFeed(repository: AnalyticsReadRepository, scope: ViewerScope, subject: AnalyticsSubject, options: FollowUpFeedPageOptions): Promise<FollowUpFeed> {
   const resolved = resolveSubject(scope, subject)
@@ -27,5 +27,6 @@ export async function buildFollowUpFeed(repository: AnalyticsReadRepository, sco
     since: options.since ?? null,
     until: options.until ?? null,
     types: options.types ?? null,
+    audience: options.audience ?? null,
   })
 }

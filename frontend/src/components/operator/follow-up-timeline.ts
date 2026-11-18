@@ -1,6 +1,7 @@
 import type { OperatorIndicatorHistory } from "@/schemas/operator"
 import type { ReceivedCommunication } from "@/schemas/communications/communication.schema"
 import type { DeliveredFeedback } from "@/schemas/feedback-delivery/feedback-delivery.schema"
+import type { MyAlignment } from "@/schemas/operational-alignments/my-alignment.schema"
 
 /**
  * Timeline do Acompanhamento: as fontes do feed (feedbacks publicados, feedbacks de atendimento entregues e comunicados da
@@ -15,17 +16,20 @@ export type FollowUpEntry =
   | { key: string; at: number; source: "history"; item: OperatorIndicatorHistory }
   | { key: string; at: number; source: "delivered"; item: DeliveredFeedback }
   | { key: string; at: number; source: "notice"; item: ReceivedCommunication }
+  /** Alinhamento operacional do público da pessoa (18/11/2026): instante = publicação da versão mostrada (nova versão sobe). */
+  | { key: string; at: number; source: "alignment"; item: MyAlignment }
 
 const instant = (value: string | null | undefined) => {
   const at = value ? Date.parse(value) : Number.NaN
   return Number.isNaN(at) ? Number.NEGATIVE_INFINITY : at
 }
 
-export function buildFollowUpTimeline(history: readonly OperatorIndicatorHistory[], delivered: readonly DeliveredFeedback[], notices: readonly ReceivedCommunication[] = []): FollowUpEntry[] {
+export function buildFollowUpTimeline(history: readonly OperatorIndicatorHistory[], delivered: readonly DeliveredFeedback[], notices: readonly ReceivedCommunication[] = [], alignments: readonly MyAlignment[] = []): FollowUpEntry[] {
   const entries: FollowUpEntry[] = [
     ...history.map((item) => ({ key: `history:${item.id}`, at: instant(item.occurredAt), source: "history" as const, item })),
     ...delivered.map((item) => ({ key: `delivered:${item.id}`, at: instant(item.deliveredAt), source: "delivered" as const, item })),
     ...notices.map((item) => ({ key: `notice:${item.id}`, at: instant(item.publishedAt), source: "notice" as const, item })),
+    ...alignments.map((item) => ({ key: `alignment:${item.alignmentId}`, at: instant(item.publishedAt), source: "alignment" as const, item })),
   ]
   return entries.sort((a, b) => (b.at !== a.at ? (b.at > a.at ? 1 : -1) : b.key < a.key ? -1 : b.key > a.key ? 1 : 0))
 }

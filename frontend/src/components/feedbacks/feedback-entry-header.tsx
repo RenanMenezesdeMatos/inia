@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { CalendarDays, ChartLine, ClipboardCheck, FileBarChart2, Headset, ListChecks, Megaphone, MessageSquareText, Send, Sun, TriangleAlert } from "lucide-react"
+import { CalendarDays, ChartLine, ClipboardCheck, FileBarChart2, Headset, ListChecks, Megaphone, MessageSquareText, OctagonX, Route, Send, Sun, TriangleAlert } from "lucide-react"
 
 import { DisplayIcon } from "@/lib/display-icons"
 import { cn } from "@/lib/utils"
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils"
  * O Acompanhamento da estrutura (liderança) usa o MESMO cabeçalho; as famílias depois de "Leitura do dia" são os itens que só
  * a liderança recebe (resultado de Workflow, revisão, escalonamento, comunicado) — o colaborador nunca as vê.
  */
-export type FeedbackEntryFamily = "MONITORING" | "INDICATOR" | "DAILY_READING" | "WORKFLOW_OUTPUT" | "HUMAN_REVIEW" | "ESCALATION" | "INTERVENTION" | "NOTICE" | "REPORT" | "REPORT_NOT_FORWARDED" | "OTHER"
+export type FeedbackEntryFamily = "MONITORING" | "INDICATOR" | "DAILY_READING" | "WORKFLOW_OUTPUT" | "HUMAN_REVIEW" | "ESCALATION" | "INTERVENTION" | "NOTICE" | "REPORT" | "REPORT_NOT_FORWARDED" | "ALIGNMENT" | "ALIGNMENT_ENDED" | "OTHER"
 export type FeedbackEntryOrigin = { family: FeedbackEntryFamily; label: string | null; iconKey: string | null }
 
 const FAMILY: Record<FeedbackEntryFamily, { label: string; fallback: typeof Headset; tile: string; eyebrow: string }> = {
@@ -27,6 +27,9 @@ const FAMILY: Record<FeedbackEntryFamily, { label: string; fallback: typeof Head
   NOTICE: { label: "Comunicado", fallback: Megaphone, tile: "bg-primary/10 text-primary dark:text-chart-4", eyebrow: "text-primary dark:text-chart-4" },
   REPORT: { label: "Report", fallback: FileBarChart2, tile: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300", eyebrow: "text-sky-800 dark:text-sky-300" },
   REPORT_NOT_FORWARDED: { label: "Report não encaminhado", fallback: TriangleAlert, tile: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300", eyebrow: "text-amber-800 dark:text-amber-300" },
+  // Alinhamento operacional (orientação temporária da gestão): roxo da marca; quando não vale mais, vermelho com o símbolo de PARE.
+  ALIGNMENT: { label: "Alinhamento operacional", fallback: Route, tile: "bg-primary/10 text-primary dark:text-chart-4", eyebrow: "text-primary dark:text-chart-4" },
+  ALIGNMENT_ENDED: { label: "Alinhamento operacional", fallback: OctagonX, tile: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300", eyebrow: "text-red-700 dark:text-red-300" },
   OTHER: { label: "Acompanhamento", fallback: MessageSquareText, tile: "bg-muted text-muted-foreground", eyebrow: "text-muted-foreground" },
 }
 
@@ -83,11 +86,11 @@ export function FeedbackEntryWhen({ text }: { text: string }) {
  * O cartão de um feedback: o topo (tipo, motivo, título, data, ação) separado do conteúdo por uma linha — a identidade do
  * feedback fica num lugar só, e o texto começa logo abaixo.
  */
-export function FeedbackCard({ header, children, usageEntity }: { header: ReactNode; children: ReactNode; usageEntity?: { type: "PUBLISHED_FEEDBACK" | "INTERACTION_FEEDBACK_DELIVERY"; id: string } }) {
+export function FeedbackCard({ header, children, usageEntity, className }: { header: ReactNode; children: ReactNode; usageEntity?: { type: "PUBLISHED_FEEDBACK" | "INTERACTION_FEEDBACK_DELIVERY"; id: string }; className?: string }) {
   // Monitoria de usabilidade: o cartão visto (≥ 50% por 1 s) é a EXPOSIÇÃO do feedback; o corpo é o conteúdo cuja leitura (rolagem) é medida.
   const usage = usageEntity ? { "data-usage-expose": "feedback.card", "data-usage-entity-type": usageEntity.type, "data-usage-entity-id": usageEntity.id } : {}
   return (
-    <article className="min-w-0 overflow-hidden rounded-2xl bg-muted/35 ring-1 ring-border/60" data-slot="feedback-card" {...usage}>
+    <article className={cn("min-w-0 overflow-hidden rounded-2xl bg-muted/35 ring-1 ring-border/60", className)} data-slot="feedback-card" {...usage}>
       <div className="px-4 pt-4 pb-3.5 sm:px-5">{header}</div>
       <div className="border-t border-border/60 px-4 py-4 sm:px-5" data-usage-scroll={usageEntity ? "feedback.content" : undefined}>
         {children}

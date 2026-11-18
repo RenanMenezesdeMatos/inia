@@ -198,6 +198,14 @@ describe("GET /analytics/follow-ups — feed da estrutura por cursor", () => {
     expect((await request(app).get(`/analytics/follow-ups?since=2026-09-25T00:00:00.000Z&until=2026-09-20T00:00:00.000Z`)).status).toBe(400)
     expect((await request(app).get("/analytics/follow-ups?since=ontem")).status).toBe(400)
   })
+
+  it("\"Para quem\": MINE traz só o endereçado a quem lê, TEAM só os feedbacks da equipe; valor fora do enum → 400", async () => {
+    const app = appAs(user(IDS.director, "DIRECTOR"), { ...fixtureOrg(), feed })
+    const ids = async (audience: string) => (await request(app).get(`/analytics/follow-ups?limit=10&audience=${audience}`)).body.data.items.map((entry: FollowUpItem) => entry.id.slice(-2))
+    expect(await ids("MINE")).toEqual(["a4"])
+    expect(await ids("TEAM")).toEqual(["a3", "a2", "a1", "a5"])
+    expect((await request(app).get("/analytics/follow-ups?audience=EVERYONE")).status).toBe(400)
+  })
 })
 
 describe("GET /analytics — foto das pessoas pela apresentação", () => {

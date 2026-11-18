@@ -21,7 +21,7 @@ import { createGatewayEngineModel } from "../../../src/modules/feedback-engine/i
 import { createInMemoryFeedbackMemoryStore } from "../../../src/modules/feedback-engine/infrastructure/in-memory-feedback-memory-store.js"
 import { renderProhibitedTopicsBlock } from "../../../src/modules/governance/domain/prohibited-topic.js"
 import { ALIGNMENT_HISTORY_DECLARATION, ALIGNMENT_HISTORY_RULE } from "../../../src/modules/operational-alignments/application/alignment-history.js"
-import { NO_ALIGNMENT_IN_FORCE_NOTICE, renderAlignmentsForConversation, resolveOperationalAlignments, type AlignmentCandidate, type AlignmentSubject } from "../../../src/modules/operational-alignments/domain/operational-alignment.js"
+import { noAlignmentInForceNotice, renderAlignmentsForConversation, resolveOperationalAlignments, type AlignmentCandidate, type AlignmentSubject } from "../../../src/modules/operational-alignments/domain/operational-alignment.js"
 import { runWithAiOrganization } from "../../../src/shared/application/model-routing/ai-runtime.js"
 import { generateForRoute, routeFor, type GatewayRequest, type GatewayResponse } from "../../../src/shared/application/model-routing/llm-gateway.js"
 import { costTotal } from "../../../src/shared/application/model-routing/model-pricing.js"
@@ -121,11 +121,11 @@ async function runChat() {
   const c2 = textOf(await chat("C2", chatSystem(block([ALIGNMENT], otherGroup, DURING)), [{ role: "user", text: QUESTION }]))
   record("C2", "Operador de outro Grupo: segue o PR oficial (envio por e-mail), sem alinhamento", has(c2, /e-?mail/i) && !has(c2, /AO-[0-9A-F]{8}/) && !has(c2, /App Meu Vivo/i), c2)
 
-  const c3System = chatSystem(NO_ALIGNMENT_IN_FORCE_NOTICE)
+  const c3System = chatSystem(noAlignmentInForceNotice({ recentlyEnded: true }))
   const c3 = textOf(await chat("C3", c3System, [{ role: "user", text: QUESTION }, { role: "model", text: c1 }, { role: "user", text: "Hoje (05/12) chegou outro cliente pedindo a fatura. Faço igual?" }]))
   record("C3", "Depois do término, com a resposta antiga na conversa: volta ao PR oficial e diz que o alinhamento não vale mais", has(c3, /e-?mail/i) && has(c3, /(não (vale|está) mais|encerr|expir|deixou de valer|não está mais em vigor)/i), c3)
 
-  const c4System = chatSystem(NO_ALIGNMENT_IN_FORCE_NOTICE)
+  const c4System = chatSystem(noAlignmentInForceNotice({ recentlyEnded: true }))
   const c4Turns: GatewayRequest["contents"] = [{ role: "user", text: "Teve algum alinhamento antes sobre fatura na Ouvidoria? O que ele dizia?" }]
   const c4First = await chat("C4-ferramenta", c4System, c4Turns as never, [ALIGNMENT_HISTORY_DECLARATION] as never)
   const called = c4First.kind === "functionCalls" && c4First.calls.some((call) => call.name === ALIGNMENT_HISTORY_DECLARATION.name)

@@ -23,6 +23,7 @@ import {
   RESPONSE_COMPLIANCE_PROMPT_VERSION,
   RESPONSE_COMPLIANCE_SOURCES_PROMPT_VERSION,
   RESPONSE_COMPLIANCE_DATA_PROMPT_VERSION,
+  RESPONSE_COMPLIANCE_PUBLICATIONS_PROMPT_VERSION,
   responseCheckMode,
   responseCheckModeOf,
   type ComplianceHit,
@@ -125,8 +126,9 @@ export const checkResponse: ResponseCheck = async (db, request, model = gatewayC
   const limitRules = complianceRulesOf({ actionLimits: guardrails.actionLimits, prohibitedTopics: [] })
   // Com dados calculados entre as fontes, a V5 (a V3 com a origem desses dados); sem eles, a V3 exatamente como foi medida.
   const withData = sources.some((source) => source.origin === "DATA")
-  const sourcesVersion = withData ? RESPONSE_COMPLIANCE_DATA_PROMPT_VERSION : RESPONSE_COMPLIANCE_SOURCES_PROMPT_VERSION
-  const judgeTopics = () => (sources.length > 0 ? judge(topicRules, renderComplianceSourcesSystem(topicRules, { withData }), sourcesVersion, sources) : judge(topicRules, renderComplianceSystem(topicRules), RESPONSE_COMPLIANCE_PROMPT_VERSION, []))
+  const withPublications = sources.some((source) => source.origin === "PUBLICATION")
+  const sourcesVersion = withPublications ? RESPONSE_COMPLIANCE_PUBLICATIONS_PROMPT_VERSION : withData ? RESPONSE_COMPLIANCE_DATA_PROMPT_VERSION : RESPONSE_COMPLIANCE_SOURCES_PROMPT_VERSION
+  const judgeTopics = () => (sources.length > 0 ? judge(topicRules, renderComplianceSourcesSystem(topicRules, { withData, withPublications }), sourcesVersion, sources) : judge(topicRules, renderComplianceSystem(topicRules), RESPONSE_COMPLIANCE_PROMPT_VERSION, []))
   const judgeLimits = () => judge(limitRules, renderComplianceLimitSystem(limitRules), RESPONSE_COMPLIANCE_LIMIT_PROMPT_VERSION, [])
   if (limitRules.length === 0) return judgeTopics()
   if (topicRules.length === 0) return judgeLimits()

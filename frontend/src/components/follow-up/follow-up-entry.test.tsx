@@ -255,7 +255,7 @@ describe("Acompanhamento da estrutura — timeline", () => {
     expect(screen.getByText("Carregando feedbacks...")).toBeInTheDocument()
     await act(async () => intersect?.())
     expect(await screen.findByRole("heading", { name: "Feedback antigo" })).toBeInTheDocument()
-    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, "cursor-fb-7", 8, false, null, null)
+    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, "cursor-fb-7", 8, false, null, null, null)
     expect(screen.getAllByTestId("follow-up-day")).toHaveLength(2)
     expect(screen.getByText("Fim dos feedbacks.")).toBeInTheDocument()
     expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(9)
@@ -285,7 +285,7 @@ describe("Acompanhamento da estrutura — calendário filtra as ações", () => 
     expect(await screen.findByRole("heading", { name: "TMA acima da meta" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Filtrar o Acompanhamento por período" })).toHaveTextContent("Todo o período")
     expect(screen.queryByTestId("follow-up-period-bar")).toBeNull()
-    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, null, 8, false, null, null)
+    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, null, 8, false, null, null, null)
 
     // Recorte com resultados mistos: indicador, monitoria e comunicado de hoje.
     await pickPreset("Hoje")
@@ -314,15 +314,53 @@ describe("Acompanhamento da estrutura — calendário filtra as ações", () => 
     expect(await screen.findByRole("heading", { name: "TMA acima da meta" })).toBeInTheDocument()
     expect(screen.queryByTestId("follow-up-period-bar")).toBeNull()
     expect(screen.getByRole("button", { name: "Filtrar o Acompanhamento por período" })).toHaveTextContent("Todo o período")
-    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, null, 8, false, null, null)
+    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, null, 8, false, null, null, null)
 
     // Filtro "Tipo": vai ao servidor (o feed é paginado lá) — "todos menos monitoria"; nada nesses tipos → vazio próprio que volta a tudo.
     service.fetchFollowUpFeed.mockResolvedValueOnce({ items: [], nextCursor: null })
     fireEvent.click(screen.getByRole("button", { name: /Filtrar o Acompanhamento por tipo/ }))
     fireEvent.click(await screen.findByRole("checkbox", { name: "Feedbacks de monitoria" }))
     expect(await screen.findByText("Nada nos tipos escolhidos")).toBeInTheDocument()
-    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, null, 8, false, null, ["NOTICE", "INDICATOR", "WORKFLOW_OUTPUT", "HUMAN_REVIEW", "ESCALATION", "INTERVENTION", "REPORT", "OTHER"])
+    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, null, 8, false, null, ["NOTICE", "ALIGNMENT", "INDICATOR", "WORKFLOW_OUTPUT", "HUMAN_REVIEW", "ESCALATION", "INTERVENTION", "REPORT", "OTHER"], null)
     fireEvent.click(screen.getByRole("button", { name: "Ver todos os tipos" }))
     expect(await screen.findByRole("heading", { name: "TMA acima da meta" })).toBeInTheDocument()
+  })
+})
+
+describe("Acompanhamento da estrutura — filtro \"Para quem\"", () => {
+  const now = new Date().toISOString()
+  const teamFeedback = legacyFeedback({ id: "fb-team", title: "Contestação de cobrança", createdAt: now })
+  const myAlert = legacyFeedback({ id: "al-1", kind: "ALERT", category: "WORKFLOW_OUTPUT", title: "Resultado do workflow de TMA", createdAt: now })
+
+  it("só na própria estrutura: Tudo · Para mim · Da equipe vão ao servidor; \"Para mim\" desliga a ciência e o vazio volta a tudo", async () => {
+    service.fetchFollowUpFeed.mockImplementation(async (_s: unknown, _c: unknown, _l: unknown, _a: unknown, _p: unknown, _t: unknown, audience: string | null) =>
+      ({ items: audience === "MINE" ? [myAlert] : audience === "TEAM" ? [teamFeedback] : [myAlert, teamFeedback], nextCursor: null }))
+    const onAck = vi.fn()
+    renderWithQuery(<StructureFollowUpFeed subject={null} description="Feedbacks da sua estrutura" audienceFilter unacknowledgedOnly onUnacknowledgedOnlyChange={onAck} />)
+    const filter = await screen.findByTestId("follow-up-audience-filter")
+    expect(within(filter).getByRole("radio", { name: "Tudo" })).toHaveAttribute("data-state", "on")
+
+    fireEvent.click(within(filter).getByRole("radio", { name: "Da equipe" }))
+    expect(await screen.findByRole("heading", { name: "Contestação de cobrança" })).toBeInTheDocument()
+    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, null, 8, true, null, null, "TEAM")
+    expect(onAck).not.toHaveBeenCalled()
+
+    fireEvent.click(within(filter).getByRole("radio", { name: "Para mim" }))
+    expect(onAck).toHaveBeenCalledWith(false)
+
+    service.fetchFollowUpFeed.mockResolvedValueOnce({ items: [], nextCursor: null })
+    fireEvent.click(within(filter).getByRole("radio", { name: "Da equipe" }))
+    expect(await screen.findByText("Nada da equipe")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Ver tudo" }))
+    expect(await screen.findByRole("heading", { name: "Resultado do workflow de TMA" })).toBeInTheDocument()
+    expect(within(filter).getByRole("radio", { name: "Tudo" })).toHaveAttribute("data-state", "on")
+  })
+
+  it("na ficha do colaborador (sem audienceFilter) o controle não aparece e nada vai ao servidor", async () => {
+    service.fetchFollowUpFeed.mockResolvedValue({ items: [teamFeedback], nextCursor: null })
+    renderWithQuery(<StructureFollowUpFeed subject={{ kind: "EMPLOYEE", id: "op-1" }} description="Feedbacks da Ana" />)
+    expect(await screen.findByRole("heading", { name: "Contestação de cobrança" })).toBeInTheDocument()
+    expect(screen.queryByTestId("follow-up-audience-filter")).toBeNull()
+    expect(service.fetchFollowUpFeed.mock.lastCall?.[6]).toBeNull()
   })
 })

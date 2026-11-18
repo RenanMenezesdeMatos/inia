@@ -118,6 +118,25 @@ A V4 rodou 3 vezes por caso, e a V1, 2 vezes. Os outros 66 casos de limite, já 
 
 **Prova:** `response-compliance-sources.test.ts` ("dados calculados pelo sistema como fonte") e `realtime-router-response-check.test.ts` (chat e `self_ask` mandam `DATA`; a consulta de processo não).
 
+## Comunicados e alinhamentos como fonte (RESPONSE_COMPLIANCE_V6, 18/11/2026)
+
+Caso real (voz, Larissa Monteiro, 18/11 16:23): "E comunicados?" — a INIA entendeu o contexto e trouxe os dois comunicados recebidos, mas a
+conferência barrou a resposta pela regra "Promessa financeira não autorizada": a data da festa (23/11) "não constava na fonte". Os comunicados
+(e os alinhamentos vigentes) entram nas instruções da resposta, mas o rastro guarda só id e título — o texto nunca chegava à conferência.
+
+- Origem nova `PUBLICATION` (`<fonte origem="publicacao_da_lideranca">`): o texto do REGISTRO publicado, carregado pelo id no momento da
+  conferência (`communications/infrastructure/publication-compliance-sources.ts`; comunicado: autor, data, resumo e texto; alinhamento:
+  vigência, trecho e orientação; até 12 mil caracteres cada). Ids pelo rastro da resposta (`replyPublicationRefs`: Orquestrador + cada
+  especialista). Ligado no chat (`prepareResponseCheck` e a resposta orquestrada) e na voz (resposta orquestrada e especialista direto).
+- V6 = V5 + a origem das publicações e a linha "repassar o que um comunicado ou alinhamento das fontes publicou… não é criar nem prometer".
+  Só vale com fonte PUBLICATION; sem ela, V3 e V5 ficam idênticas (teste). A V6 traz sempre também a origem dos dados calculados.
+- A publicação não libera por código: a violação apontada pelo modelo continua valendo (teste). Falha ao ler as publicações = sem essas
+  fontes (o erro possível é barrar).
+- Prova com o modelo real (1 chamada): o mesmo texto barrado às 16:23, com os dois comunicados como fonte → `ALLOWED` na V6.
+- Liderança (mesmo dia): a consulta de processo e o bloco da estrutura também mandam as publicações como fonte; a do alinhamento leva
+  referência, público, vigência, quem definiu, trecho, orientação e motivo — sem público e autor, "definida pela supervisora X, para o
+  Subgrupo Y" foi barrado como contexto inventado (replay do diretor).
+
 ## Decisões (PEN-078 e PEN-018)
 
 - Chat: confere antes de entregar, com a entrega depois da conferência quando há regra aplicável. Resposta bloqueada: mensagem fixa. Falha da conferência: a resposta não sai.

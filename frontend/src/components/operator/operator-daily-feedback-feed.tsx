@@ -14,6 +14,8 @@ import { DeliveredFeedbackEntry } from "./delivered-feedback-entry"
 import { useMyDeliveredFeedbackQuery } from "@/queries/feedback-delivery/use-delivered-feedback"
 import { useReceivedCommunicationsQuery } from "@/queries/communications/use-communications"
 import { CommunicationEntry } from "@/components/communications/communication-entry"
+import { MyAlignmentEntry } from "@/components/operational-alignments/my-alignments/my-alignment-entry"
+import { useMyAlignmentsQuery } from "@/queries/operational-alignments/use-my-alignments"
 import { useOperatorFeedbackHistory } from "@/queries/operator/use-operator-feedback-history"
 import { formatDateTime } from "@/lib/format/date"
 import { boundFollowUpTimeline, buildFollowUpTimeline, followUpDayKey, followUpDayLabel, followUpPeriodBounds, isWithinFollowUpPeriod, type FollowUpEntry, type FollowUpPeriod } from "./follow-up-timeline"
@@ -35,7 +37,8 @@ const familyOf: Record<OperatorIndicatorsHistoryKind, FeedbackEntryFamily> = {
   indicator_feedback: "INDICATOR",
 }
 
-export function OperatorDailyFeedbackFeed({ indicators }: { indicators: OperatorIndicatorsData }) {
+/** `highlightItemKey`: item a destacar e rolar até (deep link `item=` do sino — ex.: `alignment:<id>` quando um alinhamento começa a valer). */
+export function OperatorDailyFeedbackFeed({ indicators, highlightItemKey = null }: { indicators: OperatorIndicatorsData; highlightItemKey?: string | null }) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [loading, setLoading] = useState(false)
   // Feedback de atendimento (V1.5.6): mais uma FONTE deste mesmo feed — entregas ao próprio colaborador (flag OFF = nenhuma).
@@ -43,13 +46,15 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
   // Comunicados da liderança (migration 199): outra FONTE do mesmo feed — os recebidos pela pessoa (os mais recentes), em lista
   // leve; o conteúdo de cada um é lido pelo id quando a pessoa o abre.
   const notices = useReceivedCommunicationsQuery()
+  // Alinhamentos operacionais do público da pessoa (18/11/2026): mais uma FONTE — um item por alinhamento, na versão que importa agora.
+  const alignments = useMyAlignmentsQuery()
   // Feedbacks publicados por página: a primeira veio no SSR, as seguintes o servidor manda pelo cursor quando o feed chega ao fim
   // do que já tem.
   const { history, hasMoreHistory, loadingMoreHistory, loadMoreError, loadMoreHistory } = useOperatorFeedbackHistory(indicators.history, indicators.historyNextCursor ?? null)
   const loaderRef = useRef<HTMLDivElement>(null)
   // Uma timeline só, MAIS RECENTE PRIMEIRO (feedbacks publicados + entregas de atendimento); o "carregar mais" revela os
   // progressivamente mais antigos da lista já ordenada — e busca a próxima página quando o que chegou acabou.
-  const fullTimeline = boundFollowUpTimeline(buildFollowUpTimeline(history, delivered.data ?? [], notices.data ?? []), hasMoreHistory)
+  const fullTimeline = boundFollowUpTimeline(buildFollowUpTimeline(history, delivered.data ?? [], notices.data ?? [], alignments.data ?? []), hasMoreHistory)
   // Calendário do cabeçalho: vazio = visão inicial (tudo). O recorte usa o MESMO instante que ordena e rotula o dia do item; as
   // páginas mais antigas só são buscadas enquanto ainda podem ter itens do período (a timeline vem do mais recente para o mais antigo).
   const [period, setPeriodState] = useState<FollowUpPeriod>({})
@@ -94,6 +99,19 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
     setOpenEntries((current) => ({ ...current, [timeline[readIndex]!.key]: true }))
     setFlashKey(timeline[readIndex]!.key)
   }
+  // Deep link do sino (`item=alignment:<id>`): fora do recorte, volta à visão inicial; achado, revela até ele e destaca (uma vez).
+  const [handledHighlight, setHandledHighlight] = useState<string | null>(null)
+  const highlightIndex = highlightItemKey ? timeline.findIndex((entry) => entry.key === highlightItemKey) : -1
+  if (highlightItemKey && handledHighlight !== highlightItemKey && highlightIndex < 0 && (bounds || types || ack) && fullTimeline.some((entry) => entry.key === highlightItemKey)) {
+    setPeriodState({})
+    setTypesState(null)
+    setAckState(null)
+  }
+  if (highlightItemKey && handledHighlight !== highlightItemKey && highlightIndex >= 0) {
+    setHandledHighlight(highlightItemKey)
+    if (highlightIndex >= visibleCount) setVisibleCount(highlightIndex + 1)
+    setFlashKey(highlightItemKey)
+  }
   // "Ler feedback" de um item que ainda não chegou: busca as páginas seguintes até ele aparecer (ou o histórico acabar) — uma por
   // vez; cada página que chega (o tamanho do histórico muda) reavalia.
   const readPending = readTarget !== null && readIndex < 0 && handledRead !== readTarget.nonce
@@ -135,6 +153,7 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
     // Avaliação do colaborador (escolha registrada na ciência + contestação antiga) só onde ela é real: item com fonte (feedback
     // publicado ou atendimento entregue), nunca "Leitura do dia". Sempre visível, mesmo com o item fechado.
     if (entry.source === "notice") return <CommunicationEntry notice={entry.item}/>
+    if (entry.source === "alignment") return <MyAlignmentEntry alignment={entry.item} highlighted={flashKey === entry.key}/>
     const source = sourceOfEntry(entry)
     if (entry.source === "delivered") {
       const item = entry.item
@@ -160,6 +179,7 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
       {/* O acompanhamento em execução com quem lidera (só formatos visíveis ao colaborador) — some quando não há nenhum, e com o filtro de tipo ativo. */}
       {types || ack ? null : <MyFollowUpPlans/>}
       {delivered.isPending ? <div className="flex gap-3 py-5" aria-busy="true" aria-label="Carregando feedbacks de atendimento"><Skeleton className="size-9 shrink-0 rounded-full"/><div className="flex-1 space-y-2"><Skeleton className="h-4 w-40"/><Skeleton className="h-4 w-full"/></div></div> : null}
+      {alignments.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os alinhamentos. <button type="button" className="underline" onClick={() => void alignments.refetch()}>Tentar novamente</button></p> : null}
       {notices.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os comunicados. <button type="button" className="underline" onClick={() => void notices.refetch()}>Tentar novamente</button></p> : null}
       {delivered.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os feedbacks de atendimento. <button type="button" className="underline" onClick={() => void delivered.refetch()}>Tentar novamente</button></p> : null}
       {delivered.isSuccess && timeline.length === 0 && !hasMore ? (ack ? <FollowUpAckEmpty value={ack.value} onClear={() => { setAck(null); setTypes(null) }}/> : types ? <FollowUpTypeEmpty onClear={() => setTypes(null)}/> : bounds ? <FollowUpPeriodEmpty onClear={() => setPeriod({})}/> : <p className="py-8 text-center text-sm text-muted-foreground">Nenhum feedback por enquanto.</p>) : null}
@@ -186,6 +206,7 @@ const typeOfHistoryKind: Record<OperatorIndicatorsHistoryKind, FollowUpType> = {
 /** Tipo do item para o filtro: comunicado; feedback de atendimento entregue = monitoria; histórico pelo tipo do feedback. */
 function followUpTypeOf(entry: FollowUpEntry): FollowUpType {
   if (entry.source === "notice") return "NOTICE"
+  if (entry.source === "alignment") return "ALIGNMENT"
   if (entry.source === "delivered") return "MONITORING"
   return typeOfHistoryKind[entry.item.kind]
 }
@@ -205,7 +226,7 @@ function ackStateOf(entry: FollowUpEntry, confirmed: Readonly<Record<string, Con
 
 /** Fonte da aplicação de um item do feed (o tipo faz parte da identidade); `null` = item sem aplicação ("Leitura do dia"). */
 function sourceOfEntry(entry: FollowUpEntry): FeedbackSourceRef | null {
-  if (entry.source === "notice") return null
+  if (entry.source === "notice" || entry.source === "alignment") return null
   if (entry.source === "delivered") return { kind: "INTERACTION_FEEDBACK_DELIVERY", id: entry.item.id }
   return entry.item.acknowledgedAt !== undefined ? { kind: "PUBLISHED_FEEDBACK", id: entry.item.id } : null
 }

@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { communicationSchema } from "@/schemas/communications/communication.schema"
+import { structureAlignmentSchema } from "@/schemas/operational-alignments/my-alignment.schema"
 
 import { feedbackSupportMaterialSchema } from "@/schemas/feedbacks/support-material.schema"
 import { interventionBriefViewSchema } from "@/schemas/interventions/intervention.schema"
@@ -549,13 +550,16 @@ export type TeamMembersPage = z.infer<typeof teamMembersPageSchema>
 
 /** Filtro "Tipo" do Acompanhamento (um ou vários). Os da estrutura vão ao servidor (`types` em `/follow-ups`). Não há "Leitura do dia":
  * `feedback_kind` só tem INDICATOR e MONITORING (retirada do filtro em 18/11/2026). */
-export const followUpTypeSchema = z.enum(["NOTICE", "MONITORING", "INDICATOR", "WORKFLOW_OUTPUT", "HUMAN_REVIEW", "ESCALATION", "INTERVENTION", "REPORT", "OTHER"])
+export const followUpTypeSchema = z.enum(["NOTICE", "ALIGNMENT", "MONITORING", "INDICATOR", "WORKFLOW_OUTPUT", "HUMAN_REVIEW", "ESCALATION", "INTERVENTION", "REPORT", "OTHER"])
 export type FollowUpType = z.infer<typeof followUpTypeSchema>
+/** Filtro "Para quem" do Acompanhamento da própria estrutura (`audience` em `/follow-ups`): MINE = endereçado a quem lê; TEAM = da equipe. */
+export const followUpAudienceSchema = z.enum(["MINE", "TEAM"])
+export type FollowUpAudience = z.infer<typeof followUpAudienceSchema>
 
 export const followUpItemSchema = z.object({
   id: z.string(),
-  kind: z.enum(["FEEDBACK", "ALERT", "REPORT", "NOTICE"]),
-  category: z.enum(["INDICATOR", "MONITORING", "WORKFLOW_OUTPUT", "WORKFLOW_HUMAN_REVIEW", "WORKFLOW_ESCALATION", "INTERVENTION", "REPORT", "REPORT_NOT_FORWARDED", "NOTICE", "OTHER"]),
+  kind: z.enum(["FEEDBACK", "ALERT", "REPORT", "NOTICE", "ALIGNMENT"]),
+  category: z.enum(["INDICATOR", "MONITORING", "WORKFLOW_OUTPUT", "WORKFLOW_HUMAN_REVIEW", "WORKFLOW_ESCALATION", "INTERVENTION", "REPORT", "REPORT_NOT_FORWARDED", "NOTICE", "ALIGNMENT", "OTHER"]),
   title: z.string(),
   /** Metadado do título ("Atendimento de 29/09/2026") — `FEEDBACK_HEADING_V1`. */
   subtitle: z.string().nullish(),
@@ -587,6 +591,8 @@ export const followUpItemSchema = z.object({
   report: z.unknown().optional(),
   /** Comunicado da liderança (kind = NOTICE): publicado por quem lê ou recebido por ele. */
   notice: communicationSchema.nullish(),
+  /** Alinhamento que alcança a estrutura (fase 2) — só quando kind = ALIGNMENT. */
+  alignment: structureAlignmentSchema.nullish(),
   /** Resumo da INIA de uma intervenção aberta pela política — só nos avisos de abertura, para quem ainda é parte dela. */
   intervention: interventionBriefViewSchema.nullish(),
 })

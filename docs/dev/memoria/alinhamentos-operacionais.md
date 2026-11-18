@@ -79,8 +79,20 @@ Meu Vivo ou o site.
   dizendo o que vale hoje pela base oficial.
 - **Ajuste de segurança**: o histórico da conversa pode ter uma resposta baseada num alinhamento que deixou de valer. (1) O bloco de
   alinhamentos vigentes diz que só valem os listados; (2) sem nenhum vigente, mas com alinhamento não excluído para as mesmas bases que
-  deixou de valer nos últimos 12 meses (`hadRecentAlignments`), o prompt da conversa recebe `NO_ALIGNMENT_IN_FORCE_NOTICE`; (3) a regra
+  deixou de valer nos últimos 12 meses (`hadRecentAlignments`), o aviso de nenhum vigente ganha a frase de correção; (3) a regra
   do operador (`ALIGNMENT_HISTORY_RULE`) repete: alinhamento citado antes e ausente das instruções atuais não vale mais.
+- **"Temos algum alinhamento?" responde por TODOS os processos** (18/11/2026, caso real: a Larissa ouviu "não há nenhum" com um alinhamento
+  em vigor para ela): o Orquestrador e cada especialista só veem os alinhamentos das PRÓPRIAS bases, então o aviso de "nenhum vigente" é por
+  bases e diz isso ("isso NÃO diz se há alinhamento sobre outros processos"; sem a ferramenta, "sobre esses processos não há"). A
+  pergunta usa a ferramenta `alinhamentos_vigentes` (`application/alignments-in-force-tool.ts`, na caixa do operador em
+  `self-context.ts`, ao lado de `alinhamentos_anteriores`): em vigor + programados, do público da própria pessoa, pela MESMA leitura do
+  Acompanhamento (`listMyAlignments`); `ALIGNMENT_HISTORY_RULE` manda acioná-la. Liderança: ainda não tem a ferramenta.
+- **Nenhum vigente é dado, e a pergunta é informativa** (`OPERATIONAL_ALIGNMENT_CONVERSATION_V3`, 18/11/2026, decisão do usuário):
+  toda conversa com pessoa conhecida sem alinhamento vigente para as bases do agente recebe `noAlignmentInForceNotice` (antes só
+  entrava com alinhamento recente e o "não há" saía por inferência). "Temos algum alinhamento ativo?" se responde só com "não há
+  nenhum ativo no momento": nunca acrescentar "siga a base/os procedimentos" nem prometer avisos futuros da INIA ou da liderança
+  (caso real: a V2 mandava "oriente pela base oficial" e o modelo aplicava a qualquer pergunta). A base oficial só entra quando a
+  pergunta é como proceder; o histórico vazio e a resposta do histórico seguem a mesma regra.
 - Liderança: a ferramenta ainda não está na caixa de ferramentas da liderança.
 
 ## Regra única (chat e monitoria) — `operational-alignments/domain/operational-alignment.ts`
@@ -243,3 +255,85 @@ de [experiencia-do-colaborador.md](experiencia-do-colaborador.md).
 O público passa a ter vínculos (`operational_alignment_version_scopes`, da versão): o universo inteiro OU vários Grupos inteiros e/ou
 Subgrupos de Grupos diferentes. A precedência usa o vínculo que alcança cada pessoa; conflito = vínculo idêntico. Detalhes em
 [alcance-multigrupo.md](alcance-multigrupo.md).
+
+## Alinhamento no Acompanhamento do operador — fase 1 implementada (18/11/2026, migration 227, não commitado)
+
+Motivo (usuário, 18/11): o alinhamento vale na avaliação das chamadas sem que o operador seja avisado — hoje só aparece no chat, se ele
+perguntar, e na monitoria. Decisões do usuário (pergunta com opções, 18/11): leitura simples; sino ao começar a valer; aparece já na
+publicação com destaque de "válido a partir de"; um item por alinhamento, sempre atualizado. "Priorize UI/UX."
+
+- **Quem vê**: o público do alinhamento pela MESMA regra da conversa (universo e Grupo/Subgrupo da pessoa HOJE, vínculos 223), lido a
+  cada consulta — quem entra no Grupo durante a vigência passa a ver; quem sai deixa de ver. Excluído (lógico) some; restaurado volta.
+  Nunca uma lista de destinatários gravada (diferente dos comunicados TEAM).
+- **Um item por alinhamento**: mostra a versão publicada mais recente que alcança a pessoa; o instante do item na timeline = publicação
+  dessa versão (nova versão sobe com "Atualizado em …" e "O que mudou nesta versão" = motivo da alteração). Encerrado/expirado fica como
+  histórico (12 meses, como `alinhamentos_anteriores`) **em vermelho, com o símbolo de PARE** (octógono) no lugar do ícone da família e
+  faixa vermelha em destaque "Este alinhamento não está mais vigente" + "Encerrado em …" (ajuste do usuário, 18/11: o cinza não chamava
+  atenção); sem botão de leitura; a leitura já feita continua visível.
+- **Cartão** (família nova `ALIGNMENT` no `FeedbackEntryHeader`, ícone de rota, tom roxo da marca; vermelho com PARE quando não vale mais):
+  linha "ALINHAMENTO OPERACIONAL · ‹público›" + título; selos de estado — "Em vigor · até 30/11 (N dias)" verde, "Atualizado em …" roxo,
+  "Não vale mais desde …" vermelho; **vigência sempre visível** em selo próprio ("Vigência 24/11 a 30/11"); processos em selos; blocos
+  "O que fazer" (orientação, texto puro com quebras), "O que muda" (trecho, se houver), produto (se houver), "Por quê" (justificativa);
+  rodapé "Definido por ‹nome (cargo)›" + ação de leitura.
+- **Antes de valer**: aparece já na publicação com faixa âmbar em destaque "Alinhamento válido a partir de ‹dia da semana›, 24/11"
+  (+ "Até lá, siga o procedimento de hoje."). A faixa só existe enquanto a data civil de quem lê (fuso da organização) é anterior ao
+  início; depois do início some e vale o selo "Em vigor".
+- **Leitura simples** ("Li o alinhamento", sem senha; nunca chamar de "ciência" — a palavra é da confirmação com login e senha dos
+  feedbacks): tabela nova só de inserção (pessoa × VERSÃO, instante), idempotente; nova versão pede leitura de novo ("Li a nova versão");
+  depois: "Você leu em …". Não muda a avaliação das chamadas nem o chat. A liderança vê "N de M leram" (fase 2, no Acompanhamento do
+  líder, ramo "Da equipe").
+- **Sino**: no job `operational-alignments-lifecycle` (STARTED, uma vez por versão), um aviso para cada pessoa do público naquele
+  momento — "Novo alinhamento em vigor: ‹título›" / "Alinhamento atualizado: ‹título›" para versão > 1 —, inserção em lote
+  (`insert … select`), com chave de deduplicação por versão × pessoa; rota do sino = o item no Acompanhamento.
+- **Filtro "Tipo"**: opção "Alinhamentos" no operador (e na liderança, quando entrar a fase 2).
+- **Fora do escopo**: avaliação das chamadas e chat continuam como estão (o alinhamento vale com ou sem leitura).
+- **Implementação (fase 1)**: `MY_OPERATIONAL_ALIGNMENTS_V1`. Backend: regra pura `domain/my-alignments.ts` (versão mostrada = a em
+  vigor; sem ela, a próxima; sem as duas, a última que valeu; público pela `audienceReasonOf` de hoje), leitura
+  `application/my-alignments.ts` (`listMyAlignments`, `markMyAlignmentRead` — 404 fora do público/encerrado/excluído/outra versão —,
+  `notifyAlignmentVersionsStarted`), rota `GET /api/v1/operational-alignments/mine` e `POST /:alignmentId/versions/:versionId/read`
+  (pessoa só da sessão, `presentation/my-operational-alignments-router.ts`). Migration 227 `operational_alignment_reads` (pessoa × versão,
+  só inserção por trigger), aplicada em `inia` e `inia_test`. Sino: `runAlignmentLifecycle` recebe `notifyStarted` e avisa as versões
+  cujo STARTED acabou de ser gravado (`returning`); destinatários = `people.role = 'OPERATOR'` ativos do público (líder não recebe); alerta
+  `OPERATIONAL_ALIGNMENT_STARTED`, chave `operational_alignment_started:<alinhamento>:<versão>:<pessoa>`, kind `OPERATIONAL_ALIGNMENT`,
+  destino `FOLLOW_UP` com `itemId = alignment:<id>`; versão que começou há mais de 2 dias não avisa (implantação/job parado não gera
+  enxurrada; alinhamentos que já valiam antes da 227 não avisam). Frontend: `components/operational-alignments/my-alignments/
+  my-alignment-entry.tsx` (cartão; famílias `ALIGNMENT` e `ALIGNMENT_ENDED` no `FeedbackEntryHeader`, `FeedbackCard` ganhou
+  `className`), fonte `alignment` em `follow-up-timeline.ts`, tipo `ALIGNMENT` ("Alinhamentos") no filtro do operador, deep link
+  `?tab=followup&item=alignment:<id>` destacado no feed do operador (`highlightItemKey`), Wiki `/wiki/acompanhamento#alinhamentos` e o
+  sino em `wiki-reference.ts`. Provas: `INIA_DB_PROOF=1 NODE_ENV=test npx vitest run my-alignments-proof` (API real, público, estados, nova
+  versão, leitura, sino, excluído), `domain/my-alignments.test.ts`, `my-alignment-entry.test.tsx`. Dev não tinha nenhum alinhamento
+  publicado em 18/11 (conferência visual pendente).
+- **Fase 2 — quem lidera (18/11/2026, não commitado, `STRUCTURE_OPERATIONAL_ALIGNMENTS_V1`)**: `application/structure-alignments.ts`
+  (`listStructureAlignments`): alinhamentos cujo público alcança algum liderado ativo (regra de público em SQL, `alignmentReachesPersonSql`,
+  a mesma da `audienceReasonOf` pelo cadastro de hoje), um por alinhamento pela mesma escolha do operador (`pickDisplayVersions`), com
+  `reach = { people, read }` (pessoas da estrutura alcançadas e quantas marcaram "Li o alinhamento" na versão mostrada).
+  - **Feed do líder**: porta `performance-analytics/application/follow-up-alignment-source.ts` (padrão: `infrastructure/
+    structure-alignment-source.ts`, como a dos comunicados); `loadFollowUpFeed` une um ramo `ALIGNMENT` (lista da porta passada por
+    `unnest(ids, instantes)`, mesmo keyset e período), só na própria estrutura, fora de "Só aguardando ciência" e de "Para mim" (é "Da
+    equipe"), tipo `ALIGNMENT` no filtro (`FOLLOW_UP_TYPES`). Item `kind/category = ALIGNMENT` com `alignment` (StructureAlignment).
+    Frontend: o MESMO cartão (`MyAlignmentEntry`) com "N de M pessoas da equipe leram esta versão" e barra, sem botão de leitura.
+  - **Chat do líder**: ferramenta `leadership_alignments` (estrutura opcional, como as demais `leadership_*`; em vigor + programados, com
+    alcance e leituras; `renderStructureAlignments`), regra de roteamento em `LEADERSHIP_RESPONSE_RULES` ("nunca responda que não há sem
+    ela"). Voz do líder chega por `leadership_ask`.
+  - Prova: `my-alignments-proof` cobre alcance/leituras, o ramo no feed com tipo, Da equipe, Para mim, ciência, sem a própria estrutura e o
+    cursor. Dev 18/11: equipe da Daniela Duarte Rocha = 39 liderados, os 3 TESTE QA alcançam 36.
+- **Consulta de processo de quem lidera respeita o alinhamento (18/11/2026, caso real do diretor)**: "Como a equipe deve registrar uma
+  contestação?" era respondida pelo ESCLARECIMENTO pelas bases (texto final = o do esclarecimento) e o alinhamento que muda aquele registro
+  para um Subgrupo nunca aparecia. Agora o `clarify` da liderança (`realtime-router.ts`) aplica a MESMA regra do operador
+  (`clarificationYieldsTo`): a decisão da IA de relevância passa a receber também os alinhamentos em vigor para os PÚBLICOS da estrutura
+  (`conversation-publications.ts` → `resolveAlignmentsForStructure`, import adiado por ciclo) e, com alinhamento/comunicado escolhido
+  (PUBLICATION_SELECTED) ou base apoiada num processo alinhado (ALIGNED_PROCESS), o esclarecimento cede a vez ao Orquestrador do Grupo, que
+  responde com os alinhamentos da estrutura nos especialistas; o funil (pergunta em aberto) nunca é desviado. Continuação pelo formulário
+  (escolha de uma opção) ainda responde direto pelas bases — limitação.
+  - Conferência da resposta no caminho do líder: a consulta de processo e o bloco da estrutura no topo (`leaderStructureContext`) passam a
+    mandar o texto publicado dos alinhamentos/comunicados como fonte PUBLICATION (V6); a fonte do alinhamento leva referência, público,
+    vigência, quem definiu, trecho, orientação e motivo (sem isso, "definida pela supervisora X, para o Subgrupo Y" era barrado).
+  - Replay real (diretor, 3 tentativas, 18/11): esclarecimento sem alinhamento → barrado (V3, sem fonte) → barrado (V6 sem público/autor) →
+    entregue (V6) com a exceção do Subgrupo e o procedimento padrão. Custo de tempo: a consulta que cede vai ao Orquestrador de todos os
+    Grupos da estrutura (~90 s para o diretor com 12 Grupos, contra ~40 s pelo esclarecimento).
+  - **Tempo (mesmo dia, sem mudar decisão)**: a decisão de relevância roda JUNTO do esclarecimento (antes, depois dele) e, quando ela já
+    escolheu alinhamento/comunicado, a orquestração do Grupo começa sem esperar o esclarecimento (se ele abrir pergunta, vale o funil e a
+    orquestração antecipada é descartada — custo só nesse caso). Diretor: 91 s → 64 s, mesma resposta, conferência V6 aprovada. O que resta é
+    estrutural: especialistas (~17 s), síntese do Orquestrador do Grupo (~11 s) e a reescrita final pelo modelo da liderança (~10 s) —
+    pular a reescrita mudaria o texto e precisa de avaliação de qualidade antes (regra "qualidade acima de velocidade").
+

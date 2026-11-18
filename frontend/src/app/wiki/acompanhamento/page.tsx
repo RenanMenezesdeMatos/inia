@@ -49,11 +49,11 @@ export default function FollowUpPage() {
           <li><strong className="font-medium text-foreground">Orientação</strong> — recomendação sem revisão prévia (ex.: TMA acima da meta hoje).</li>
           <li><strong className="font-medium text-foreground">Resumo / resultado de Workflow</strong> — para a gestão (ex.: resumo mensal da equipe, panorama de Qualidade).</li>
           <li><strong className="font-medium text-foreground">Escalonamento</strong> — um caso encaminhado a você com o conteúdo analisado.</li>
+          <li><strong className="font-medium text-foreground">Alinhamento operacional</strong> — para o colaborador: orientação temporária da gestão para o público dele, com a vigência (ver <WikiLink href="#alinhamentos">Alinhamentos no Acompanhamento</WikiLink>).</li>
         </ul>
         <p>
-          No topo do Acompanhamento, “Tipos” (ao lado do período) escolhe o que aparece — marque ou desmarque comunicados, feedbacks de monitoria ou de indicador
+          No topo do Acompanhamento, “Tipos” (ao lado do período) escolhe o que aparece — marque ou desmarque comunicados, alinhamentos, feedbacks de monitoria ou de indicador
           e, para quem lidera, também resultados de workflow, revisões pendentes, escalonamentos, intervenções e reports. “Todos os tipos” volta a mostrar tudo.
-          O colaborador tem também “Ciência”: só os feedbacks que ainda aguardam a confirmação de leitura, ou só os já confirmados.
         </p>
         <WikiFlow
           compact
@@ -133,6 +133,20 @@ export default function FollowUpPage() {
         </p>
         <FieldRow label="Disposição na tela" value="A página rola até o Acompanhamento e a INIA pararem logo abaixo das abas; a partir daí, cada coluna rola por conta própria. A partir de 1024 px eles ficam lado a lado, com a largura ajustável pelo divisor. Em telas menores aparece uma coluna por vez, com a alternância “Acompanhamento” e “INIA”; trocar de coluna não perde a conversa nem a posição de leitura." />
         <FieldRow label="Avatar" value="Compacto por padrão, com o estado e os controles da chamada ao lado. O botão “Ampliar a INIA” dá a ela uma área própria, acima das mensagens, para falar por voz ou vídeo; ela nunca fica por cima da conversa. “Compactar a INIA” volta ao tamanho menor. Trocar o tamanho não interrompe a voz." />
+      </WikiSection>
+
+      <WikiSection id="alinhamentos" title="Alinhamentos no Acompanhamento" eyebrow="Conteúdo da liderança">
+        <p>
+          Cada alinhamento operacional do público do colaborador (universo e Grupo/Subgrupo de hoje) vira um cartão no Acompanhamento dele —
+          um cartão por alinhamento, sempre na versão que importa agora. A vigência aparece em todo cartão. Ver{" "}
+          <WikiLink href="/wiki/administracao">Administração › Alinhamentos operacionais</WikiLink> para o cadastro.
+        </p>
+        <FieldRow label="Antes de valer" value="Aparece já na publicação, com a faixa em destaque “Alinhamento válido a partir de …” e o selo “Começa em …”. A faixa some no primeiro dia da vigência (data do fuso da organização)." />
+        <FieldRow label="Em vigor" value="Selo “Em vigor · até …”, o que fazer, o que muda no procedimento, os processos e o porquê. Uma nova versão atualiza o mesmo cartão, que sobe no feed com “Atualizado em …” e “O que mudou nesta versão”." />
+        <FieldRow label="Não vale mais" value="O cartão fica em vermelho, com o símbolo de PARE e a faixa “Este alinhamento não está mais vigente”, como histórico por 12 meses. Alinhamento excluído some." />
+        <FieldRow label="Li o alinhamento" value="Leitura simples, sem senha, registrada por versão (uma nova versão pede “Li a nova versão”). Não é a ciência dos feedbacks e não muda a avaliação das chamadas nem o chat." />
+        <FieldRow label="Sino" value="Quando a vigência começa (ou uma nova versão passa a valer), cada operador do público recebe um aviso; clicar leva ao cartão destacado." />
+        <FieldRow label="Para quem lidera" value="No Acompanhamento da própria estrutura, em “Da equipe”, aparecem os alinhamentos que valem para alguém da equipe, no mesmo cartão, com “N de M pessoas da equipe leram”. No chat, “quais os alinhamentos do meu time?” traz os em vigor e programados, com quem já leu." />
       </WikiSection>
 
       <WikiSection id="comunicados" title="Comunicados e Publicações" eyebrow="Conteúdo da liderança">

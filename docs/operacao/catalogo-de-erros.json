@@ -10036,6 +10036,7 @@
         "Alinhamento não encontrado."
       ],
       "refs": [
+        "backend/src/modules/operational-alignments/application/my-alignments.ts",
         "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
       ],
       "family": "FAMILIA-NAO-ENCONTRADO"

@@ -4,7 +4,7 @@ import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-qu
 
 import type { SubjectRef } from "@/lib/analytics/subject-params"
 import type { FollowUpPeriodBounds } from "@/services/analytics/analytics-service"
-import type { FollowUpType } from "@/schemas/analytics/analytics.schema"
+import type { FollowUpAudience, FollowUpType } from "@/schemas/analytics/analytics.schema"
 import type { AnalyticsContext, GroupingDimension, OperationalComparison } from "@/schemas/analytics/analytics.schema"
 import {
   fetchAnalyticsContext,
@@ -59,10 +59,10 @@ export function useTeamMembersQuery(subject: SubjectRef | null, period: string |
 /** Acompanhamento da estrutura como uma timeline só (mais recente primeiro): cada página do servidor é anexada ao fim — o
  * "carregar mais" do feed revela os progressivamente mais antigos, como no Acompanhamento do colaborador, pelo cursor que veio
  * com a página anterior (um item novo publicado no meio não repete nem pula nada). */
-export function useFollowUpFeedQuery(subject: SubjectRef | null, limit: number, unacknowledgedOnly = false, period: FollowUpPeriodBounds | null = null, types: FollowUpType[] | null = null) {
+export function useFollowUpFeedQuery(subject: SubjectRef | null, limit: number, unacknowledgedOnly = false, period: FollowUpPeriodBounds | null = null, types: FollowUpType[] | null = null, audience: FollowUpAudience | null = null) {
   return useInfiniteQuery({
-    queryKey: analyticsKeys.followUps(subject, limit, unacknowledgedOnly, period, types),
-    queryFn: ({ pageParam }) => fetchFollowUpFeed(subject, pageParam, limit, unacknowledgedOnly, period, types),
+    queryKey: analyticsKeys.followUps(subject, limit, unacknowledgedOnly, period, types, audience),
+    queryFn: ({ pageParam }) => fetchFollowUpFeed(subject, pageParam, limit, unacknowledgedOnly, period, types, audience),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
   })

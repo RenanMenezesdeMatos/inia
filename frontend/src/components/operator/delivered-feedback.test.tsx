@@ -14,6 +14,8 @@ import larissaView from "@/components/feedbacks/__fixtures__/larissa-feedback-vi
 
 const service = vi.hoisted(() => ({ fetchMyDeliveredFeedback: vi.fn() }))
 vi.mock("@/services/feedback-delivery/feedback-delivery-service", () => service)
+const alignmentsService = vi.hoisted(() => ({ fetchMyAlignments: vi.fn(async () => []), markMyAlignmentRead: vi.fn() }))
+vi.mock("@/services/operational-alignments/my-alignments-service", () => alignmentsService)
 const confirmation = vi.hoisted(() => ({ confirmFeedbackReading: vi.fn(), recordReadConfirmationEvent: vi.fn(async () => undefined) }))
 vi.mock("@/services/feedback-read-confirmations/feedback-read-confirmations-service", () => confirmation)
 
@@ -170,11 +172,12 @@ describe("Acompanhamento do colaborador — filtro por tipo", () => {
     await waitFor(() => expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(2))
     expect(screen.queryByText("Resumo Indicador B")).not.toBeInTheDocument()
     expect(screen.getByTestId("delivered-feedback")).toBeInTheDocument()
-    expect(screen.getByTestId("follow-up-type-filter")).toHaveTextContent("2 de 3 tipos")
+    expect(screen.getByTestId("follow-up-type-filter")).toHaveTextContent("3 de 4 tipos")
     // Não existe "Leitura do dia" (feedback_kind só tem monitoria e indicador): a opção saiu do filtro.
     expect(screen.queryByRole("checkbox", { name: "Leituras do dia" })).toBeNull()
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Feedbacks de monitoria" }))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Alinhamentos" }))
     expect(screen.getByRole("checkbox", { name: "Comunicados" })).toBeDisabled()
     expect(await screen.findByText("Nada nos tipos escolhidos")).toBeInTheDocument()
     expect(screen.getByTestId("follow-up-type-filter")).toHaveTextContent("Comunicados")

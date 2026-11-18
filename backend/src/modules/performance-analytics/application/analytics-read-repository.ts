@@ -11,7 +11,7 @@ import { PgPendingActionsRepository } from "../../pending-actions/application/pe
 import { quartileSchema, type Quartile } from "../../indicators/domain/employee-performance-schema.js"
 import type { IndicatorDirection } from "../../indicators/domain/evaluate-attainment.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
-import type { EmploymentStatusView, FollowUpFeed, FollowUpItem, FollowUpType, OperationalStructureSummary, OperationalTrendView, PersistedInsight } from "../domain/view-models.js"
+import type { EmploymentStatusView, FollowUpAudience, FollowUpFeed, FollowUpItem, FollowUpType, OperationalStructureSummary, OperationalTrendView, PersistedInsight } from "../domain/view-models.js"
 import { EMPLOYMENT_STATUS_LABELS, STATUS_BASIS_LABELS } from "../../people/domain/employment-status.js"
 import { loadEmploymentStatusHistory, resolveEmployeeStatusAt } from "../../people/application/employment-status-service.js"
 import { loadWorkScheduleSummary } from "../../people/application/work-schedule-service.js"
@@ -22,6 +22,8 @@ import type { OperationalComparison } from "../domain/operational-comparison.js"
 import { buildEmployeeOperationalTrends, buildStructureOperationalSummary, type StructureSummaryObservation } from "./operational-trend.js"
 import { AnalyticsCache, membersFingerprint } from "../infrastructure/analytics-cache.js"
 import { communicationNoticeSource } from "../infrastructure/communication-notice-source.js"
+import { structureAlignmentSource } from "../infrastructure/structure-alignment-source.js"
+import type { FollowUpAlignmentSource } from "./follow-up-alignment-source.js"
 import { loadAnalyticsVersions, type AnalyticsVersions } from "../infrastructure/analytics-versions.js"
 import type { VisibilityFilter } from "../../access/application/access-repository.js"
 import { visibilityOf } from "../../access/application/access-service.js"
@@ -104,6 +106,8 @@ export type FollowUpFeedQuery = {
   until?: string | null
   /** Filtro "Tipo" (um ou vários); ausente/null = todos os tipos. */
   types?: readonly FollowUpType[] | null
+  /** Filtro "Para quem": MINE = endereçado a quem lê; TEAM = feedbacks dos liderados e comunicados que ele publicou; ausente = tudo. */
+  audience?: FollowUpAudience | null
 }
 
 export interface AnalyticsReadRepository {
@@ -166,6 +170,8 @@ export type PgAnalyticsReadRepositoryOptions = {
    * (infrastructure/communication-notice-source.ts), como os caches acima — o analytics nunca importa o módulo de comunicados.
    */
   notices?: FollowUpNoticeSource
+  /** Alinhamentos operacionais que alcançam a estrutura (fase 2). Padrão: o adaptador da própria área (structure-alignment-source.ts). */
+  alignments?: FollowUpAlignmentSource
   /**
    * Resumo operacional da estrutura: `read-model` (padrão) = infrastructure/operational-read-model.ts com cache curto;
    * `raw` = o caminho original, consultas por indicador — a referência da prova.
@@ -187,6 +193,7 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
   private readonly operationalSummaryCache: AnalyticsCache<OperationalStructureSummary | null>
   private readonly officialCache: boolean
   private readonly notices: FollowUpNoticeSource
+  private readonly alignments: FollowUpAlignmentSource
   constructor(
     private readonly db: Database,
     options: PgAnalyticsReadRepositoryOptions = {},
@@ -198,6 +205,7 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     this.operationalSummaryCache = options.operationalSummaryCache ?? operationalSummaryCache
     this.officialCache = options.officialCache ?? true
     this.notices = options.notices ?? communicationNoticeSource
+    this.alignments = options.alignments ?? structureAlignmentSource
   }
 
   async loadCacheVersions(organizationId: string): Promise<AnalyticsVersions | null> {
@@ -485,19 +493,27 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     // histórico da estrutura e sem OFFSET, que crescia com a profundidade da página. O item
     // extra só conta (`hasMore`): o conteúdo é montado para os `limit` exibidos.
     const params: unknown[] = [query.organizationId, query.operatorIds, query.includeViewerAlerts && !query.unacknowledgedOnly, query.viewerId, query.limit, query.unacknowledgedOnly]
-    const before = query.before ? (params.push(query.before.at, query.before.id), { feedback: `and (coalesce(f.published_at, f.created_at), f.id) < ($7::timestamptz, $8::uuid)`, alert: `and (a.created_at, a.id) < ($7::timestamptz, $8::uuid)`, report: `and (r.created_at, r.delivery_id) < ($7::timestamptz, $8::uuid)`, notice: `and (n.published_at, n.id) < ($7::timestamptz, $8::uuid)` }) : { feedback: "", alert: "", report: "", notice: "" }
+    const before = query.before ? (params.push(query.before.at, query.before.id), { feedback: `and (coalesce(f.published_at, f.created_at), f.id) < ($7::timestamptz, $8::uuid)`, alert: `and (a.created_at, a.id) < ($7::timestamptz, $8::uuid)`, report: `and (r.created_at, r.delivery_id) < ($7::timestamptz, $8::uuid)`, notice: `and (n.published_at, n.id) < ($7::timestamptz, $8::uuid)`, alignment: `and (al.at, al.id) < ($7::timestamptz, $8::uuid)` }) : { feedback: "", alert: "", report: "", notice: "", alignment: "" }
     // Recorte do calendário sobre o MESMO instante de cada ramo (o que ordena o feed e dá o rótulo do dia na tela).
     const inPeriod = (instant: string) => [query.since ? `and ${instant} >= $${params.push(query.since)}::timestamptz` : "", query.until ? `and ${instant} < $${params.push(query.until)}::timestamptz` : ""].join(" ")
-    const period = { feedback: inPeriod("coalesce(f.published_at, f.created_at)"), alert: inPeriod("a.created_at"), report: inPeriod("r.created_at"), notice: inPeriod("n.published_at") }
+    const period = { feedback: inPeriod("coalesce(f.published_at, f.created_at)"), alert: inPeriod("a.created_at"), report: inPeriod("r.created_at"), notice: inPeriod("n.published_at"), alignment: inPeriod("al.at") }
     // Filtro "Tipo": SQL fixo por ramo (o valor já passou pelo enum da rota); o ramo que não tem o tipo pedido sai inteiro.
     const typed = followUpTypeSql(query.types ?? null)
+    const aimed = followUpAudienceSql(query.audience ?? null)
+    // Alinhamentos que alcançam a estrutura (fase 2): só na PRÓPRIA estrutura (como avisos, reports e comunicados), fora de "aguardando
+    // ciência" e de "Para mim" (são da equipe), e quando o tipo pedido os inclui. Calculados pela porta e unidos ao feed por instante e id.
+    const wantsAlignments = query.includeViewerAlerts && !query.unacknowledgedOnly && query.audience !== "MINE" && (!query.types || query.types.length === 0 || query.types.includes("ALIGNMENT"))
+    const teamAlignments = wantsAlignments ? await this.alignments.listForStructure(this.db, query.organizationId, query.operatorIds, new Date()) : []
+    const alignmentById = new Map(teamAlignments.map((item) => [item.alignmentId, item]))
+    const alignmentIdsParam = params.push(teamAlignments.map((item) => item.alignmentId))
+    const alignmentAtsParam = params.push(teamAlignments.map((item) => item.publishedAt))
     const result = await this.db.query<Record<string, unknown>>(
       `with feed as (
          select f.id, 'FEEDBACK' kind, coalesce(f.published_at, f.created_at) "createdAt"
          from feedbacks f
          where f.organization_id = $1 and f.status = 'PUBLISHED' and f.operator_id = any($2::uuid[])
            and (not $6::boolean or f.acknowledged_at is null)
-           and ${visibleInFollowUpSql("f")} ${before.feedback} ${period.feedback} ${typed.feedback}
+           and ${visibleInFollowUpSql("f")} ${before.feedback} ${period.feedback} ${typed.feedback} ${aimed.feedback}
          union all
          select a.id, 'ALERT', a.created_at
          from alerts a
@@ -505,27 +521,32 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
            -- Intervenção: resolver a PENDÊNCIA (aceitar, aprovar) não apaga o registro do Acompanhamento — o aviso continua
            -- como histórico com o link para o caso. Os demais avisos saem do feed quando resolvidos.
            and (a.status in ('OPEN', 'SEEN', 'ACKNOWLEDGED') or (a.status = 'RESOLVED' and left(a.alert_type, 13) = 'INTERVENTION_'))
-           and not ${recadoAlertCoveredByFollowUpSql("a")} ${before.alert} ${period.alert} ${typed.alert}
+           and not ${recadoAlertCoveredByFollowUpSql("a")} ${before.alert} ${period.alert} ${typed.alert} ${aimed.alert}
            -- Aviso de execução bloqueada é só do sino: Acompanhamento é conteúdo para ler (D1, docs/qa/workflows/propostas.md).
            and a.alert_type <> 'WORKFLOW_EXECUTION_BLOCKED'
          union all
          -- Reports recorrentes: entregas e avisos de "não encaminhado" endereçados a QUEM LÊ (cada um com a versão do escopo dele).
          select r.delivery_id, 'REPORT', r.created_at
          from report_delivery_recipients r
-         where $3::boolean and r.organization_id = $1 and r.recipient_person_id = $4 ${before.report} ${period.report} ${typed.report}
+         where $3::boolean and r.organization_id = $1 and r.recipient_person_id = $4 ${before.report} ${period.report} ${typed.report} ${aimed.report}
          union all
          -- Comunicados da liderança (migration 199): os que QUEM LÊ publicou e os que recebeu (equipe de cima ou organização inteira).
          select n.id, 'NOTICE', n.published_at
          from communications n
-         where $3::boolean and n.organization_id = $1 and ${this.notices.visibleToSql("n", "$4")} ${before.notice} ${period.notice} ${typed.notice}
+         where $3::boolean and n.organization_id = $1 and ${this.notices.visibleToSql("n", "$4")} ${before.notice} ${period.notice} ${typed.notice} ${aimed.notice}
+         union all
+         -- Alinhamentos operacionais que alcançam a estrutura (fase 2): a lista já veio da porta; o instante é a publicação da versão mostrada.
+         select al.id, 'ALIGNMENT', al.at
+         from unnest($${alignmentIdsParam}::uuid[], $${alignmentAtsParam}::timestamptz[]) al(id, at)
+         where true ${before.alignment} ${period.alignment}
        ), probe as (
          select id, kind, "createdAt" from feed order by "createdAt" desc, id desc limit $5 + 1
        ), page as (
          select id, kind, "createdAt" from probe order by "createdAt" desc, id desc limit $5
        )
        select page.id::text id, page.kind, page."createdAt", ${followUpCursorAtSql('page."createdAt"')} "cursorAt", (select count(*) from probe) > $5 "hasMore",
-              case when page.kind = 'NOTICE' then 'NOTICE' when page.kind = 'REPORT' then case when rd.kind = 'DELIVERY' then 'REPORT' else 'REPORT_NOT_FORWARDED' end else coalesce(f.feedback_kind::text, a.alert_type) end category,
-              case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,heading,title}', f.context_snapshot#>>'{reliableFeedback,feedbackView,heading,title}', f.impacted_indicator) when page.kind = 'REPORT' then rp.name when page.kind = 'NOTICE' then '' else a.title end title,
+              case when page.kind = 'NOTICE' then 'NOTICE' when page.kind = 'ALIGNMENT' then 'ALIGNMENT' when page.kind = 'REPORT' then case when rd.kind = 'DELIVERY' then 'REPORT' else 'REPORT_NOT_FORWARDED' end else coalesce(f.feedback_kind::text, a.alert_type) end category,
+              case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,heading,title}', f.context_snapshot#>>'{reliableFeedback,feedbackView,heading,title}', f.impacted_indicator) when page.kind = 'REPORT' then rp.name when page.kind in ('NOTICE', 'ALIGNMENT') then '' else a.title end title,
               case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,heading,subtitle}', f.context_snapshot#>>'{reliableFeedback,feedbackView,heading,subtitle}') when page.kind = 'REPORT' then concat_ws(' · ', rd.structure_label, rd.period_label) end subtitle,
               case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,card}', f.context_snapshot#>>'{reliableFeedback,feedbackView,card}', f.observed_behavior) when page.kind = 'REPORT' then coalesce(rd.analysis_text, '') else a.description end summary,
               f.recommendation detail, a.severity, coalesce(f.operator_id, c.operator_id) "operatorId", p.name "operatorName", coalesce(f.case_id, a.case_id)::text "caseId",
@@ -563,16 +584,17 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     const notices = await this.notices.loadViews(this.db, query.organizationId, query.viewerId, rows.filter((row) => row.kind === "NOTICE").map((row) => String(row.id)))
     // Intervenção: o resumo da INIA (situação, o que já foi feito, evolução) gravado na avaliação, só para quem ainda é parte dela.
     const interventionBriefs = await loadInterventionBriefsForAlerts(this.db, { organizationId: query.organizationId, viewerId: query.viewerId, alertIds: rows.filter((row) => row.kind === "ALERT" && String(row.category).startsWith("INTERVENTION_")).map((row) => String(row.id)) })
+    const alignmentOf = (row: Record<string, unknown>) => (row.kind === "ALIGNMENT" ? (alignmentById.get(String(row.id)) ?? null) : null)
     return {
       nextCursor,
       items: rows.map((row, index) => ({
         id: String(row.id),
-        kind: row.kind === "FEEDBACK" ? "FEEDBACK" : row.kind === "REPORT" ? "REPORT" : row.kind === "NOTICE" ? "NOTICE" : "ALERT",
+        kind: row.kind === "FEEDBACK" ? "FEEDBACK" : row.kind === "REPORT" ? "REPORT" : row.kind === "NOTICE" ? "NOTICE" : row.kind === "ALIGNMENT" ? "ALIGNMENT" : "ALERT",
         category: normalizeCategory(String(row.category)),
-        title: notices.get(String(row.id))?.title ?? legacyHeadings.get(String(row.id))?.title ?? String(row.title),
+        title: alignmentOf(row)?.title ?? notices.get(String(row.id))?.title ?? legacyHeadings.get(String(row.id))?.title ?? String(row.title),
         // Cabeçalho do feedback (`FEEDBACK_HEADING_V1`): o MESMO título/subtítulo do Acompanhamento do colaborador.
         subtitle: legacyHeadings.has(String(row.id)) ? legacyHeadings.get(String(row.id))!.subtitle : typeof row.subtitle === "string" ? row.subtitle : null,
-        summary: notices.get(String(row.id))?.plainText ?? String(row.summary ?? ""),
+        summary: alignmentOf(row)?.guidance ?? notices.get(String(row.id))?.plainText ?? String(row.summary ?? ""),
         detail: row.detail === null || row.detail === undefined ? null : String(row.detail),
         severity: (row.severity as FollowUpItem["severity"]) ?? null,
         operator: row.operatorId ? { personId: String(row.operatorId), name: String(row.operatorName ?? "") } : null,
@@ -582,6 +604,7 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
         origin: row.kind === "FEEDBACK" ? (origins.get(String(row.id)) ?? null) : null,
         feedback: row.feedback ? { ...(row.feedback as NonNullable<FollowUpItem["feedback"]>), view: views[index] ?? null, supportMaterials: supportMaterials.get(String(row.id)) ?? [] } : null,
         ...(row.kind === "NOTICE" ? { notice: notices.get(String(row.id)) ?? null } : {}),
+        ...(row.kind === "ALIGNMENT" ? { alignment: alignmentOf(row) } : {}),
         ...(interventionBriefs.has(String(row.id)) ? { intervention: interventionBriefs.get(String(row.id))! } : {}),
         ...(row.kind === "REPORT" && row.report ? { report: { ...(row.report as NonNullable<FollowUpItem["report"]>), lastCheckedAt: new Date(String((row.report as { lastCheckedAt: string }).lastCheckedAt)).toISOString() } } : {}),
       })),
@@ -614,6 +637,19 @@ export function followUpTypeSql(types: readonly FollowUpType[] | null): { feedba
   }
 }
 
+/**
+ * Condição de cada ramo do feed para o filtro "Para quem" — texto fixo (o valor já passou pelo enum da rota). Feedbacks são sempre dos
+ * liderados (`operatorIds` não inclui quem lê) → equipe; avisos e reports são endereçados a quem lê → dele; comunicado: o que ele
+ * publicou é da equipe, o que recebeu é dele (`$4` = quem lê). Ausente = sem filtro.
+ */
+export function followUpAudienceSql(audience: FollowUpAudience | null): { feedback: string; alert: string; report: string; notice: string } {
+  if (!audience) return { feedback: "", alert: "", report: "", notice: "" }
+  const none = "and false"
+  return audience === "MINE"
+    ? { feedback: none, alert: "", report: "", notice: "and n.author_person_id <> $4" }
+    : { feedback: "", alert: none, report: none, notice: "and n.author_person_id = $4" }
+}
+
 function normalizeCategory(value: string): FollowUpItem["category"] {
   switch (value) {
     case "INDICATOR":
@@ -624,6 +660,7 @@ function normalizeCategory(value: string): FollowUpItem["category"] {
     case "REPORT":
     case "REPORT_NOT_FORWARDED":
     case "NOTICE":
+    case "ALIGNMENT":
       return value
     default:
       return value.startsWith("INTERVENTION_") ? "INTERVENTION" : "OTHER"

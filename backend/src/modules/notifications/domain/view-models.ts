@@ -4,7 +4,7 @@
  * pelo backend; o frontend só traduz o destino em rota. Ler ≠ resolver: marcar como lida
  * altera só `readAt`; decidir uma revisão é outra operação (pending-actions).
  */
-export type NotificationKind = "HUMAN_REVIEW" | "WORKFLOW_OUTPUT" | "INIA_MESSAGE" | "ESCALATION" | "WORKDAY_RECONCILIATION" | "CALENDAR_NOTICE" | "INTERVENTION" | "FEEDBACK_CONTESTATION" | "OTHER"
+export type NotificationKind = "HUMAN_REVIEW" | "WORKFLOW_OUTPUT" | "INIA_MESSAGE" | "ESCALATION" | "WORKDAY_RECONCILIATION" | "CALENDAR_NOTICE" | "INTERVENTION" | "FEEDBACK_CONTESTATION" | "OPERATIONAL_ALIGNMENT" | "OTHER"
 
 export type NotificationTarget =
   | { type: "PENDING_ACTION"; actionId: string }

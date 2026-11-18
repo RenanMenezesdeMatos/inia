@@ -1,6 +1,6 @@
 import type { SubjectRef } from "@/lib/analytics/subject-params"
 import type { FollowUpPeriodBounds } from "@/services/analytics/analytics-service"
-import type { FollowUpType } from "@/schemas/analytics/analytics.schema"
+import type { FollowUpAudience, FollowUpType } from "@/schemas/analytics/analytics.schema"
 
 /**
  * Chaves da área de analytics. Tudo que depende de competência/sujeito carrega os dois na chave —
@@ -13,5 +13,5 @@ export const analyticsKeys = {
   indicatorMembers: (subject: SubjectRef | null, period: string | null, code: string, params: unknown) => ["analytics", "indicator-members", subject, period, code, params] as const,
   team: (subject: SubjectRef | null, period: string | null) => ["analytics", "team", subject, period] as const,
   teamMembers: (subject: SubjectRef | null, period: string | null, params: unknown) => ["analytics", "team-members", subject, period, params] as const,
-  followUps: (subject: SubjectRef | null, limit: number, unacknowledgedOnly: boolean, period: FollowUpPeriodBounds | null = null, types: FollowUpType[] | null = null) => ["analytics", "follow-ups", subject, limit, unacknowledgedOnly, period, types] as const,
+  followUps: (subject: SubjectRef | null, limit: number, unacknowledgedOnly: boolean, period: FollowUpPeriodBounds | null = null, types: FollowUpType[] | null = null, audience: FollowUpAudience | null = null) => ["analytics", "follow-ups", subject, limit, unacknowledgedOnly, period, types, audience] as const,
 }

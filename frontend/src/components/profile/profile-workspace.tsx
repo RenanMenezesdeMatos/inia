@@ -99,7 +99,7 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
                   (janela − barra global 56 − abas 48 − margem 16 − respiro do fim 20). O piso vale para janelas muito baixas. */}
               {operatorSurface && activeTab === "followup" ? (
                 <div role="tabpanel" aria-label={tabs.find((tab) => tab.value === activeTab)?.label} className="mt-4 h-[calc(100dvh-8.75rem)] min-h-[28rem]">
-                  <OperatorFollowupWorkspace indicators={operatorSurface.indicators} operator={profile} />
+                  <OperatorFollowupWorkspace indicators={operatorSurface.indicators} operator={profile} highlightItemKey={state.item} />
                 </div>
               ) : null}
               {/* A Surface só é renderizada enquanto a aba está ativa, e não via o ciclo de
@@ -116,7 +116,7 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
                   <div className="h-[calc(100dvh-8.75rem)] min-h-[28rem]">
                   <FollowupWorkspaceShell
                     docked
-                    feed={<StructureFollowUpFeed subject={null} description="Feedbacks, resultados de workflow e escalonamentos da sua estrutura" employeeHref={(personId) => employeeProfileHref(personId, "followup")} unacknowledgedOnly={state.ackPending} onUnacknowledgedOnlyChange={(value) => update({ ackPending: value })} highlightItemId={state.item} />}
+                    feed={<StructureFollowUpFeed subject={null} description="Feedbacks, resultados de workflow e escalonamentos da sua estrutura" employeeHref={(personId) => employeeProfileHref(personId, "followup")} unacknowledgedOnly={state.ackPending} onUnacknowledgedOnlyChange={(value) => update({ ackPending: value })} highlightItemId={state.item} audienceFilter />}
                     renderChat={({ onCollapse, hidden }) => <OperatorIniaChat indicators={EMPTY_INDICATORS} operator={profile} context="team" onCollapse={onCollapse} hidden={hidden} />}
                   />
                   </div>

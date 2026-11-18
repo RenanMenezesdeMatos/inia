@@ -60,6 +60,7 @@ import { createEmployeePerformanceRouter } from "../modules/indicators/presentat
 import { createCallExpectationRouter } from "../modules/call-expectations/presentation/call-expectation-router.js"
 import { createArgumentScriptRouter } from "../modules/argument-scripts/presentation/argument-script-router.js"
 import { createOperationalAlignmentRouter } from "../modules/operational-alignments/presentation/operational-alignment-router.js"
+import { createMyOperationalAlignmentsRouter } from "../modules/operational-alignments/presentation/my-operational-alignments-router.js"
 import { createUserAccountRouter } from "../modules/users/presentation/user-account-router.js"
 import { createChannelFlagRouter } from "../modules/channel-flags/presentation/channel-flag-router.js"
 import { createWorkflowRouter } from "../modules/workflows/presentation/workflow-router.js"
@@ -409,6 +410,8 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   const communicationWrites: express.RequestHandler = (request, response, next) =>
     request.method === "POST" && request.path === "/audience-preview" ? next() : onlyMethods(["POST", "PATCH", "DELETE"], communicationPublishes)(request, response, next)
   app.use("/api/v1/communications", requireAuth, communicationWrites, createCommunicationsRouter(createPostgresCommunicationStore(database)))
+  // Alinhamentos operacionais da PRÓPRIA pessoa no Acompanhamento (18/11/2026): ler e marcar "Li o alinhamento" — pessoa da sessão.
+  app.use("/api/v1/operational-alignments", requireAuth, createMyOperationalAlignmentsRouter(database))
   // Cenário da INIA (fundo atrás do avatar): qualquer pessoa autenticada vê o que vale hoje; só o Administrador geral configura.
   app.use("/api/v1/inia-scenes", requireAuth, createIniaSceneRouter(database))
   app.use("/api/v1/supervision-cases", requireAuth, createCaseRouter(new PgCaseRepository(database), (request) => loadCaseVisibility(database, request.user!), (organizationId, caseId) => loadCaseAgentRecords(database, organizationId, caseId)))

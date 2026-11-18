@@ -30,6 +30,9 @@ function kindOf(alertType: string): NotificationKind {
     case "WORK_SCHEDULE_HORIZON":
     case "DATA_SOURCE_AVAILABILITY_DELAYED":
       return "CALENDAR_NOTICE"
+    // Alinhamento operacional começou a valer (18/11/2026): abre o item do alinhamento no Acompanhamento do operador.
+    case "OPERATIONAL_ALIGNMENT_STARTED":
+      return "OPERATIONAL_ALIGNMENT"
     default:
       // Políticas de acompanhamento: atribuição, aprovação/decisão pedida, aprovada/devolvida/decidida, encaminhada, novo sinal.
       if (alertType.startsWith("INTERVENTION_")) return "INTERVENTION"
@@ -69,6 +72,11 @@ function targetOf(alert: AlertRow, kind: NotificationKind, workdayActionId: stri
     return { type: "TEAM_CALENDAR", operatorId: match?.[2] ?? null, date: match?.[3] ?? null }
   }
   if (alert.alertType === "AI_BUDGET_THRESHOLD") return { type: "ADMIN_AI_USAGE" }
+  if (kind === "OPERATIONAL_ALIGNMENT") {
+    // `operational_alignment_started:<alinhamento>:<versão>:<pessoa>` → o item `alignment:<alinhamento>` do Acompanhamento.
+    const started = /^operational_alignment_started:([0-9a-f-]{36}):/.exec(alert.dedupeKey)
+    return started ? { type: "FOLLOW_UP", itemId: `alignment:${started[1]!}`, operatorId: null } : { type: "NONE" }
+  }
   // "Só avisar" da política: é conteúdo para ler — abre o item no Acompanhamento (não existe intervenção para abrir).
   if (alert.alertType === "INTERVENTION_NOTICE") return { type: "FOLLOW_UP", itemId: alert.id, operatorId: alert.operator?.personId ?? null }
   if (kind === "INTERVENTION") {

@@ -7574,6 +7574,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "Alinhamento não encontrado."
     ],
     "refs": [
+      "backend/src/modules/operational-alignments/application/my-alignments.ts",
       "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
     ]
   },

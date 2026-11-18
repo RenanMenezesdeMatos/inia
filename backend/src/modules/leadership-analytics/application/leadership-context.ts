@@ -21,6 +21,7 @@ import { executeLeadershipTool, isLeadershipTool, LEADERSHIP_ASK_TOOL, LEADERSHI
 import { processScopeOf, structureGroupsOf, type ProcessScope } from "./process-consultation.js"
 import { resolveAnalysisPeriod, resolveStructureReference, type ResolvedStructure } from "./references.js"
 import { createLeadershipPracticesLoader, type LeadershipPracticesLoader } from "../../best-practices/application/leadership-practices.js"
+import { listStructureAlignments, type StructureAlignment } from "../../operational-alignments/application/structure-alignments.js"
 
 /** Ferramentas executadas pelo próprio backend dentro de um turno do Orquestrador (ver run-orchestrated-reply.ts). */
 export type DirectToolset = {
@@ -62,6 +63,7 @@ export type LeadershipSession = {
   loadInteractionStats?: InteractionStatsLoader
   loadHireDates?: HireDatesLoader
   loadBestPractices?: LeadershipPracticesLoader
+  loadStructureAlignments?: (memberIds: readonly string[]) => Promise<StructureAlignment[]>
 }
 
 /**
@@ -118,6 +120,8 @@ export async function loadLeadershipSession(
       return new Map(result.rows.map((row) => [row.id, row.hired_at]))
     },
     loadBestPractices: createLeadershipPracticesLoader(db, scope.organizationId),
+    // Alinhamentos operacionais que alcançam os liderados (fase 2): em vigor e programados, com alcance e leituras.
+    loadStructureAlignments: (memberIds) => listStructureAlignments(db, { organizationId: scope.organizationId, memberIds, now: closure.now, includeEnded: false }),
     statusFreshness: async () => {
       const freshness = await resolveEmploymentStatusFreshness(db, scope.organizationId, closure.now, closure.timeZone)
       return { state: freshness.state, lastSuccessLocalDate: freshness.lastSuccessLocalDate }
@@ -136,6 +140,7 @@ export function toolDependencies(session: LeadershipSession): LeadershipToolDepe
     ...(session.loadInteractionStats ? { loadInteractionStats: session.loadInteractionStats } : {}),
     ...(session.loadHireDates ? { loadHireDates: session.loadHireDates } : {}),
     ...(session.loadBestPractices ? { loadBestPractices: session.loadBestPractices } : {}),
+    ...(session.loadStructureAlignments ? { loadStructureAlignments: session.loadStructureAlignments } : {}),
   }
 }
 
@@ -155,7 +160,7 @@ export const LEADERSHIP_RESPONSE_RULES = [
   "Como responder a quem lidera pessoas:",
   "- Quem lidera NÃO realiza atendimentos. Oriente como gestão da equipe: onde está o desvio, quem acompanhar, que conversa ou feedback ter, que procedimento revisar com a equipe, que fluxo abrir (Pendências, caso, intervenção). Nunca diga \"aplique no seu atendimento\" nem \"procure sua liderança\".",
   "- Toda pergunta sobre equipe/estrutura, pessoas, indicadores, metas, resultados, comparações, evolução, pendências, prioridades ou \"como melhorar\" um indicador: VÁ AOS DADOS antes de responder — acione as ferramentas leadership_* (várias de uma vez, se precisar). A consulta flexível (leadership_indicator_query) responde qualquer recorte que as outras não cobrem. Nunca invente número, nome, percentual ou meta.",
-  "- Escolha a ferramenta pelo que a pessoa quer saber, não pela frase: números de resultados (piores/melhores, PRV, quartil geral, quartis e dispersão, % ou quantidade fora/dentro, comparações entre unidades/Grupos/Subgrupos, evolução e recorrência nos últimos N meses, consolidado) → consulta flexível; \"onde está o problema\" / \"o que os piores têm em comum\" / \"por que está ruim\" → diagnóstico do indicador; pessoas por situação funcional (férias, produção, afastamento, quantas pessoas) → força de trabalho; prioridades e pendências → onde atuar; processos, procedimentos e o que dizem as bases → consulta de processo do Grupo (leadership_process: responde o Orquestrador do Grupo da equipe; quando a estrutura tem Grupos com bases diferentes, passe o Grupo — ou a equipe citada — ou consulte cada um).",
+  "- Escolha a ferramenta pelo que a pessoa quer saber, não pela frase: números de resultados (piores/melhores, PRV, quartil geral, quartis e dispersão, % ou quantidade fora/dentro, comparações entre unidades/Grupos/Subgrupos, evolução e recorrência nos últimos N meses, consolidado) → consulta flexível; \"onde está o problema\" / \"o que os piores têm em comum\" / \"por que está ruim\" → diagnóstico do indicador; pessoas por situação funcional (férias, produção, afastamento, quantas pessoas) → força de trabalho; prioridades e pendências → onde atuar; alinhamentos operacionais (se há, quais valem, quem já leu) → leadership_alignments, nunca responda que não há sem ela; processos, procedimentos e o que dizem as bases → consulta de processo do Grupo (leadership_process: responde o Orquestrador do Grupo da equipe; quando a estrutura tem Grupos com bases diferentes, passe o Grupo — ou a equipe citada — ou consulte cada um).",
   "- Entenda o que a pergunta pede: \"quantos\" = quantidade; \"qual %\" = percentual; \"quem\" = nomes (recorte por PESSOA); \"pior quartil geral\" = Q4 de PRV; \"dispersão\" = distribuição Q1–Q4 e desvio padrão. Traga o que foi pedido e, quando ajudar, os outros dois.",
   "- Aprofunde com várias consultas quando a pergunta pedir: você pode acionar ferramentas mais de uma vez (ex.: achar os piores e depois diagnosticá-los; abrir a unidade com mais desvio; comparar meses). Filtre por estrutura (nome de liderado, Grupo ou Subgrupo), quartil, situação e indicadores.",
   "- Cite só indicadores, motivos e números que as ferramentas trouxeram: nunca dê como exemplo um indicador que não apareceu nos dados nem atribua à equipe um processo/área que os dados não mostram. Se o indicador pedido quase não tem dado na estrutura e a ferramenta indicar outro parecido com dado, use esse e diga qual usou.",
