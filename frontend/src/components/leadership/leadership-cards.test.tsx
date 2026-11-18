@@ -49,10 +49,22 @@ describe("cartões de dados da liderança", () => {
 
   it("no chat os cartões ficam recolhidos: a resposta em markdown já traz as tabelas", () => {
     render(<LeadershipCards collapsible cards={[queryTableCard(), indicatorAnalysisCard()]} />)
-    expect(screen.getByTestId("leadership-cards-trigger")).toHaveTextContent("Dados e links: Reincidência em até 7 Dias por supervisor · Tempo Médio de Atendimento")
+    // Pílula curta; os títulos (sem repetição) vão para o tooltip e para o nome acessível.
+    const trigger = screen.getByTestId("leadership-cards-trigger")
+    expect(trigger).toHaveTextContent("Dados e links · 2 consultas")
+    expect(trigger).not.toHaveTextContent("Tempo Médio")
+    expect(trigger).toHaveClass("cursor-pointer")
+    expect(trigger).toHaveAccessibleName("Dados e links — 2 consultas: Reincidência em até 7 Dias por supervisor; Tempo Médio de Atendimento")
     expect(screen.queryByRole("link", { name: "Sara Silva" })).toBeNull()
     fireEvent.click(screen.getByTestId("leadership-cards-trigger"))
     expect(screen.getByRole("link", { name: "Sara Silva" })).toBeInTheDocument()
+  })
+
+  it("consulta repetida no turno aparece uma vez no resumo, com a contagem", () => {
+    render(<LeadershipCards collapsible cards={[queryTableCard(), queryTableCard(), queryTableCard(), indicatorAnalysisCard()]} />)
+    const trigger = screen.getByTestId("leadership-cards-trigger")
+    expect(trigger).toHaveTextContent("Dados e links · 4 consultas")
+    expect(trigger).toHaveAccessibleName("Dados e links — 4 consultas: Reincidência em até 7 Dias por supervisor (3 vezes); Tempo Médio de Atendimento")
   })
 
   it("só leitura (painel do admin): os números aparecem, os links e as ações não", () => {
