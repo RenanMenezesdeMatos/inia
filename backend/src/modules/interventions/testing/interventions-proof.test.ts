@@ -592,6 +592,8 @@ describe.skipIf(!ENABLED)("Políticas de acompanhamento e intervenções — per
     expect(catalog.status).toBe(200)
     expect(catalog.body.data.unrestricted).toBe(false)
     expect(catalog.body.data.teams.map((team: { id: string }) => team.id)).toEqual([ids.team])
+    // O catálogo traz o universo do Grupo (nulo = ainda não classificado): é o que encadeia universo → Grupo → Subgrupo no escopo.
+    expect(catalog.body.data.teams[0]).toHaveProperty("operatingUniverse")
     expect(catalog.body.data.indicators.some((indicator: { code: string }) => indicator.code === `${KEY}_TMA`)).toBe(true)
     expect(catalog.body.data.documents.every((document: { title: string; published: boolean }) => typeof document.title === "string" && typeof document.published === "boolean")).toBe(true)
     expect((await editor.post("/api/v1/admin/intervention-policies/policies").send({ key: `${KEY}_ORG`, name: `Organização ${TAG}`, scopeType: "ORGANIZATION" })).status).toBe(403)

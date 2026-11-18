@@ -6,11 +6,12 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import { useCreatePolicyMutation, useEditorCatalogQuery } from "@/queries/admin/use-intervention-policy-queries"
 
 import { Note } from "../shared/fields"
 import { errorMessage, normalizeStableKey, STABLE_KEY_HINT, STABLE_KEY_PATTERN } from "../shared/helpers"
+import { PolicyScopeField } from "./policy-scope-field"
 import { fromOrgScope, scopeIsComplete } from "./scope"
 
 /**
@@ -80,7 +81,7 @@ export function PolicyCreateForm({ onCancel }: { onCancel: () => void }) {
       </div>
       <div className="space-y-1.5">
         <p className="text-sm font-medium">Escopo</p>
-        {catalogQuery.isError ? <Note>Não foi possível carregar os grupos agora: {errorMessage(catalogQuery.error)}</Note> : <OrgScopeSelect teams={catalogQuery.data?.teams ?? []} value={scope} onChange={setScope} allowAllTeams={catalogQuery.data?.unrestricted ?? true} />}
+        {catalogQuery.isError ? <Note>Não foi possível carregar os grupos agora: {errorMessage(catalogQuery.error)}</Note> : <PolicyScopeField teams={catalogQuery.data?.teams ?? []} value={scope} onChange={setScope} allowAllTeams={catalogQuery.data?.unrestricted ?? true} />}
         <p className="text-xs text-muted-foreground">Quem a política alcança. Seu escopo de edição precisa cobrir o escolhido; depois da primeira publicação o escopo não muda.</p>
       </div>
       {create.isError ? <p className="text-sm text-destructive">{errorMessage(create.error)}</p> : null}

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import { formatDateTime } from "@/lib/format/date"
 import { useEditorCatalogQuery, useSetPolicyActiveMutation, useUpdatePolicyHeaderMutation, useUpdatePolicyScopeMutation } from "@/queries/admin/use-intervention-policy-queries"
 import type { PolicyView } from "@/schemas/admin/intervention-policy.schema"
@@ -15,6 +15,7 @@ import type { PolicyView } from "@/schemas/admin/intervention-policy.schema"
 import { ActiveStatusControl } from "../shared/active-status-control"
 import { Note } from "../shared/fields"
 import { errorMessage } from "../shared/helpers"
+import { PolicyScopeField } from "../policies/policy-scope-field"
 import { fromOrgScope, scopeIsComplete, toOrgScope } from "../policies/scope"
 
 /**
@@ -84,7 +85,7 @@ export function PolicyHeaderCard({ policy }: { policy: PolicyView }) {
             {catalogQuery.isError ? (
               <Note>Não foi possível carregar os grupos agora: {errorMessage(catalogQuery.error)}</Note>
             ) : (
-              <OrgScopeSelect teams={catalogQuery.data?.teams ?? []} value={scope} onChange={setScope} allowAllTeams={catalogQuery.data?.unrestricted ?? true} />
+              <PolicyScopeField teams={catalogQuery.data?.teams ?? []} value={scope} onChange={setScope} allowAllTeams={catalogQuery.data?.unrestricted ?? true} />
             )}
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" variant="outline" disabled={updateScope.isPending || !scopeChanged || !scopeComplete} onClick={() => updateScope.mutate({ id: policy.id, name: policy.name, ...nextScope })}>

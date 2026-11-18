@@ -158,6 +158,7 @@ teste `list-filters.test.tsx`); `OrgScopeSelect universe=…` + `orgScopeValueAf
 | Orquestrador — cadastro (`assistant/orchestrator-editor-page.tsx`) | universo, alcance, agente orquestrador, especialistas, domínios | universo → alcance, agentes, domínios (alcance × agente já filtrava: `scopesAreCompatible`) |
 | Bases — lista (`knowledge/knowledge-page.tsx`) | Universo, Grupo/Subgrupo | universo → Grupo/Subgrupo (assunto não tem universo) |
 | Base — cadastro/edição (`knowledge/knowledge-form-page.tsx`) | universo, alcance, produtos | universo → alcance, produtos (produtos já filtravam) |
+| Política de acompanhamento — criação e escopo (`intervention-policies/policies/policy-scope-field.tsx`, usado em `policy-create-form.tsx` e `policy-header-card.tsx`) | universo, alcance | universo → Grupo → Subgrupo (a política não guarda universo: ele só filtra; `/editor-catalog` passou a trazer `operatingUniverse`) |
 | Workflows — lista (`workflows/workflows-page.tsx`) | Universo, Grupo/Subgrupo | universo → Grupo/Subgrupo |
 | Workflow — criação e Configurações (`workflows-page.tsx`, `workflow-settings-sheet.tsx`) | universo, Abrangência, indicador do gatilho, pessoas da estrutura/população | universo → Abrangência → indicador, pessoas |
 | Editor de Workflow (`node-config/action-form.tsx`, `orchestrator-form.tsx`, `indicator-select.tsx`, `trigger-fields.tsx`) | agente, Orquestrador, indicador | universo do rascunho (`workflow-universe-context.tsx`) → opções; salvo de outro universo marcado |

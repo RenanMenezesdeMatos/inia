@@ -152,7 +152,8 @@ export async function setInterventionTypeActive(db: Database, organizationId: st
 // CATÁLOGO DO EDITOR
 // ---------------------------------------------------------------------------------------------
 
-export type EditorCatalogTeam = { id: string; name: string; operationId: string; subteams: { id: string; teamId: string; name: string }[] }
+/** `operatingUniverse`: no Grupo, o dele; no Subgrupo, o EFETIVO (o próprio ou o do Grupo-pai) — o mesmo contrato de `/admin/org-structure/teams`. */
+export type EditorCatalogTeam = { id: string; name: string; operationId: string; operatingUniverse: string | null; subteams: { id: string; teamId: string; name: string; operatingUniverse: string | null }[] }
 export type EditorCatalog = {
   /** Grupos e subgrupos que o escopo de quem edita cobre; `unrestricted` = pode escolher "toda a organização". */
   teams: EditorCatalogTeam[]
@@ -171,8 +172,8 @@ export type EditorCatalog = {
  */
 export async function loadEditorCatalog(db: Database, organizationId: string, scope: { unrestricted: boolean; teamIds: ReadonlySet<string>; subteamIds: ReadonlySet<string> }): Promise<EditorCatalog> {
   const [teams, subteams, indicators, documents, flags] = await Promise.all([
-    db.query<{ id: string; name: string; operationId: string }>(`select id, name, operation_id "operationId" from teams where organization_id = $1 order by name`, [organizationId]),
-    db.query<{ id: string; teamId: string; name: string }>(`select id, team_id "teamId", name from subteams where organization_id = $1 order by name`, [organizationId]),
+    db.query<{ id: string; name: string; operationId: string; operatingUniverse: string | null }>(`select id, name, operation_id "operationId", operating_universe "operatingUniverse" from teams where organization_id = $1 order by name`, [organizationId]),
+    db.query<{ id: string; teamId: string; name: string; operatingUniverse: string | null }>(`select s.id, s.team_id "teamId", s.name, coalesce(s.operating_universe, t.operating_universe) "operatingUniverse" from subteams s join teams t on t.id = s.team_id where s.organization_id = $1 order by s.name`, [organizationId]),
     db.query<EditorCatalog["indicators"][number]>(
       `select code, name, unit, active, daily_supported "dailySupported", official_closure_supported "officialClosureSupported" from indicator_definitions where organization_id = $1 order by name`,
       [organizationId],
