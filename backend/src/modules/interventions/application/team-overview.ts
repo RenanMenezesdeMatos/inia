@@ -1,6 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { scopesWithPermission, type AccessContext } from "../../access/domain/access-decision.js"
 import type { Permission } from "../../access/domain/permissions.js"
+import { isUniverseEnforced, personRuleFor, personUniverse, type PersonUniverseRule } from "../../operating-universe/application/universe-access.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
 import { EFFECTIVENESS_VALUES, INTERVENTION_STATUS_LABELS, OUTCOME_REASON_LABELS, OUTCOME_REASONS, type Effectiveness, type InterventionStatus, type OutcomeReason } from "../domain/intervention-state.js"
@@ -17,7 +18,7 @@ import { EFFECTIVENESS_VALUES, INTERVENTION_STATUS_LABELS, OUTCOME_REASON_LABELS
  */
 const INTERVENTION_PERMISSIONS: Permission[] = ["interventions.view", "interventions.execute", "interventions.approve", "interventions.sensitive_decide"]
 export const TEAM_RESULTS_WINDOW_DAYS = 180
-const MAX_ACTIVE = 200
+export const MAX_ACTIVE = 200
 
 type Scope = { organizationWide: boolean; teamIds: string[]; subteamIds: string[] }
 
@@ -30,7 +31,15 @@ function permissionScope(access: AccessContext): Scope {
   }
 }
 
-/** Parâmetros fixos: $1 organização, $2 quem vê, $3 organização inteira?, $4 grupos, $5 subgrupos. `i` = interventions, `p` = o colaborador. */
+/**
+ * Parâmetros fixos: $1 organização, $2 quem vê, $3 organização inteira?, $4 grupos, $5 subgrupos; $6 é a data de cada consulta;
+ * $7–$10 = universo de atuação (ver `universeParams`). `i` = interventions, `p` = o colaborador.
+ *
+ * UNIVERSO DE ATUAÇÃO (decisão de 19/11/2026, POL-03): vale para intervenções a mesma regra de PESSOAS da aba Equipe
+ * (`personAllowedByUniverse`) — o universo limita o que vem dos PAPÉIS (permissão na organização, no Grupo ou no Subgrupo), nunca
+ * a própria estrutura nem quem é parte da intervenção. Organização sem universos ativados e `operating_universes.all` na
+ * organização inteira: $7 verdadeiro, nada muda.
+ */
 const STRUCTURE_CTE = `structure as (
     with recursive down as (
       select x.id, 1 depth from people x where x.reports_to_id = $2 and x.organization_id = $1
@@ -38,8 +47,15 @@ const STRUCTURE_CTE = `structure as (
       select x.id, d.depth + 1 from people x join down d on x.reports_to_id = d.id where d.depth < 12)
     select id from down)`
 const IN_SCOPE = `i.organization_id = $1 and i.person_id <> $2
-  and ($3::boolean or p.team_id = any($4::uuid[]) or p.subteam_id = any($5::uuid[]) or i.person_id in (select id from structure)
+  and ((($3::boolean or p.team_id = any($4::uuid[]) or p.subteam_id = any($5::uuid[]))
+        and ($7::boolean or p.operating_universe = $8::text or p.team_id = any($9::uuid[]) or p.subteam_id = any($10::uuid[])))
+       or i.person_id in (select id from structure)
        or i.responsible_id = $2 or i.approver_id = $2 or $2 = any(i.approval_recipient_ids))`
+
+/** $7 sem filtro de universo?, $8 universo de quem vê, $9/$10 Grupos e Subgrupos onde a conta tem `operating_universes.all`. */
+export function universeParams(rule: PersonUniverseRule): [boolean, string | null, string[], string[]] {
+  return [!rule.enforced || rule.cross.organizationWide, rule.own, [...rule.cross.teamIds], [...rule.cross.subteamIds]]
+}
 
 export type TeamIntervention = {
   id: string
@@ -71,20 +87,25 @@ export type FormatResult = {
   reasons: { reason: OutcomeReason; label: string; worked: Effectiveness; count: number }[]
 }
 
-export type TeamOverview = { active: TeamIntervention[]; results: FormatResult[]; windowDays: number }
+/** `activeTotal` = contagem REAL dos acompanhamentos em andamento no alcance; `active` traz no máximo `MAX_ACTIVE` (ARQ-13). */
+export type TeamOverview = { active: TeamIntervention[]; activeTotal: number; activeTruncated: boolean; results: FormatResult[]; windowDays: number }
 
 export async function loadTeamOverview(db: Database, viewer: { organizationId: string; personId: string; access: AccessContext }, now: Date = new Date()): Promise<TeamOverview> {
   const scope = permissionScope(viewer.access)
   const params = [viewer.organizationId, viewer.personId, scope.organizationWide, scope.teamIds, scope.subteamIds]
   const today = localDateOf(now, await resolveOrganizationTimezone(db, viewer.organizationId))
+  const [enforced, own] = await Promise.all([isUniverseEnforced(db, viewer.organizationId), personUniverse(db, viewer.organizationId, viewer.personId)])
+  const universe = universeParams(personRuleFor(viewer.access, enforced, own))
 
-  const active = await db.query<{ id: string; case_id: string; person_id: string; person_name: string; team_name: string | null; type_name: string; sensitive: boolean; indicator_name: string | null; status: InterventionStatus; due_at: string; responsible_id: string; responsible_name: string; created_at: Date; done: number; total: number; next_title: string | null; next_due: string | null; next_owner: string | null }>(
+  const active = await db.query<{ id: string; case_id: string; person_id: string; person_name: string; team_name: string | null; type_name: string; sensitive: boolean; indicator_name: string | null; status: InterventionStatus; due_at: string; responsible_id: string; responsible_name: string; created_at: Date; done: number; total: number; next_title: string | null; next_due: string | null; next_owner: string | null; active_total: number }>(
     `with ${STRUCTURE_CTE}
      select i.id, i.case_id, i.person_id, p.name person_name, t.name team_name, coalesce(v.definition->>'name', i.type_key) type_name, i.sensitive,
             coalesce(d.name, i.indicator_code) indicator_name, i.status, i.due_at::text, i.responsible_id, r.name responsible_name, i.created_at,
             (select count(*) filter (where it.status <> 'PENDING')::int from intervention_items it where it.intervention_id = i.id) done,
             (select count(*)::int from intervention_items it where it.intervention_id = i.id) total,
-            nx.title next_title, nx.due_at::text next_due, nx.owner_name next_owner
+            nx.title next_title, nx.due_at::text next_due, nx.owner_name next_owner,
+            -- Total do alcance ANTES do corte: a tela diz quantos existem, não quantos vieram.
+            count(*) over ()::int active_total
        from interventions i
        join people p on p.id = i.person_id
        left join teams t on t.id = p.team_id
@@ -97,7 +118,7 @@ export async function loadTeamOverview(db: Database, viewer: { organizationId: s
       where ${IN_SCOPE} and i.status in ('PROPOSED', 'AWAITING_APPROVAL', 'IN_PROGRESS')
       order by (i.due_at < $6::date) desc, i.due_at, i.created_at
       limit ${MAX_ACTIVE}`,
-    [...params, today],
+    [...params, today, ...universe],
   )
 
   const since = new Date(now.getTime() - TEAM_RESULTS_WINDOW_DAYS * 86_400_000)
@@ -115,7 +136,7 @@ export async function loadTeamOverview(db: Database, viewer: { organizationId: s
         where ${IN_SCOPE} and i.status = 'COMPLETED' and not i.sensitive and i.completed_at >= $6
         group by i.type_key, i.indicator_code
         order by completed desc, type_name`,
-      [...params, since],
+      [...params, since, ...universe],
     ),
     db.query<{ type_key: string; indicator_code: string | null; worked: string; reason: string; count: number }>(
       `with ${STRUCTURE_CTE}
@@ -127,14 +148,17 @@ export async function loadTeamOverview(db: Database, viewer: { organizationId: s
         where ${IN_SCOPE} and i.status = 'COMPLETED' and not i.sensitive and i.completed_at >= $6 and i.outcome->>'worked' is not null
         group by i.type_key, i.indicator_code, i.outcome->>'worked', cited.code
         order by count desc, cited.code`,
-      [...params, since],
+      [...params, since, ...universe],
     ),
   ])
 
+  const activeTotal = Math.max(active.rows[0]?.active_total ?? 0, active.rows.length)
   const isReason = (value: string): value is OutcomeReason => (OUTCOME_REASONS as readonly string[]).includes(value)
   const isWorked = (value: string): value is Effectiveness => (EFFECTIVENESS_VALUES as readonly string[]).includes(value)
   return {
     windowDays: TEAM_RESULTS_WINDOW_DAYS,
+    activeTotal,
+    activeTruncated: activeTotal > active.rows.length,
     active: active.rows.map((row) => ({
       id: row.id,
       caseId: row.case_id,
@@ -163,39 +187,4 @@ export async function loadTeamOverview(db: Database, viewer: { organizationId: s
         .flatMap((reason) => (isReason(reason.reason) && isWorked(reason.worked) ? [{ reason: reason.reason, label: OUTCOME_REASON_LABELS[reason.reason], worked: reason.worked, count: reason.count }] : [])),
     })),
   }
-}
-
-/**
- * LEMBRETE DE PRAZO VENCIDO — uma vez por semana por intervenção, para o responsável: recomendação sem resposta depois do
- * prazo, ou execução com o prazo (ou algum passo) vencido. O atraso continua sendo derivado do prazo, nunca um status; isto só
- * AVISA (sino e Acompanhamento) — a pendência já existia. Idempotente pela chave do aviso (semana ISO no fuso da organização).
- */
-export async function sendOverdueReminders(db: Database, now: Date = new Date()): Promise<{ sent: number }> {
-  const organizations = await db.query<{ organization_id: string }>(`select distinct organization_id from interventions where status in ('PROPOSED', 'IN_PROGRESS')`)
-  let sent = 0
-  for (const { organization_id: organizationId } of organizations.rows) {
-    const today = localDateOf(now, await resolveOrganizationTimezone(db, organizationId))
-    const inserted = await db.query(
-      `insert into alerts (organization_id, case_id, recipient_id, title, description, severity, alert_type, dedupe_key)
-       select i.organization_id, i.case_id, i.responsible_id,
-              'Prazo vencido: ' || coalesce(v.definition->>'name', i.type_key),
-              case when i.status = 'PROPOSED'
-                   then '“' || coalesce(v.definition->>'name', i.type_key) || '” de ' || p.name || ' está sem resposta e o prazo venceu em ' || to_char(i.due_at, 'DD/MM/YYYY') || '. Aceite ou descarte no caso.'
-                   when i.due_at < $2::date
-                   then '“' || coalesce(v.definition->>'name', i.type_key) || '” de ' || p.name || ' passou do prazo (' || to_char(i.due_at, 'DD/MM/YYYY') || '). Registre o andamento ou conclua no caso.'
-                   else '“' || coalesce(v.definition->>'name', i.type_key) || '” de ' || p.name || ' tem ' || late.items || ' passo(s) vencido(s). Registre o andamento no caso.' end,
-              'MEDIUM', 'INTERVENTION_OVERDUE',
-              'intervention:' || i.id || ':OVERDUE:' || i.responsible_id || ':' || to_char($2::date, 'IYYY-"W"IW')
-         from interventions i
-         join people p on p.id = i.person_id
-         left join intervention_type_versions v on v.id = i.type_version_id
-         cross join lateral (select count(*)::int items from intervention_items it where it.intervention_id = i.id and it.status = 'PENDING' and it.due_at < $2::date) late
-        where i.organization_id = $1 and not i.sensitive
-          and ((i.status = 'PROPOSED' and i.due_at < $2::date) or (i.status = 'IN_PROGRESS' and (i.due_at < $2::date or late.items > 0)))
-       on conflict (dedupe_key) do nothing`,
-      [organizationId, today],
-    )
-    sent += inserted.rowCount ?? 0
-  }
-  return { sent }
 }

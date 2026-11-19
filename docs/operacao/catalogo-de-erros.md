@@ -1624,7 +1624,7 @@ já diz a regra; a família do status diz como investigar.
 
 **Recuperação:** Restabelecer a dependência; repetir a ação. **Escalar para:** Infraestrutura da VM (servidor, IIS, PostgreSQL). Sem solução em 30 min: equipe de desenvolvimento da INIA com a referência, o horário UTC e as linhas do log.
 
-## Códigos dos módulos (958)
+## Códigos dos módulos (961)
 
 ### Módulo `access`
 
@@ -1881,6 +1881,7 @@ já diz a regra; a família do status diz como investigar.
 | `WORKFLOW_RETRY_CONTENT_MISSING` | — | FAMILIA-DEPENDENCIA | O conteúdo a revisar continua ausente nesta versão. Publique uma versão que corrija a origem do conteúdo. | `backend/src/modules/workflows/application/workflow-retry.ts` |
 | `WORKFLOW_RETRY_FAN_OUT_MISSING` | — | FAMILIA-DEPENDENCIA | A versão vigente do Workflow não tem mais a etapa de envio para vários colaboradores desta execução. Publique uma versão com essa etapa ou execute o Workflow de novo. | `backend/src/modules/workflows/application/workflow-retry.ts` |
 | `WORKFLOW_RETRY_IN_PROGRESS` | 409 | FAMILIA-CONFLITO | Já existe uma nova tentativa desta execução em andamento. Aguarde ela terminar. | `backend/src/modules/workflows/application/workflow-retry.ts` |
+| `WORKFLOW_RETRY_NO_ACTIVE_ACCESS` | — | FAMILIA-DEPENDENCIA | Este Workflow só cria execução para quem tem acesso ativo à INIA, e o colaborador desta execução não tem conta de acesso ativa. Libere o acesso dele ou publique o Workflow sem essa opção antes de tentar de novo. | `backend/src/modules/workflows/application/workflow-retry.ts` |
 | `WORKFLOW_RETRY_NOT_BLOCKED` | 409 | FAMILIA-CONFLITO | Só uma execução bloqueada aceita nova tentativa. | `backend/src/modules/workflows/application/workflow-retry.ts` |
 | `WORKFLOW_RETRY_RECONFIRM` | 409 | FAMILIA-CONFLITO | O que será usado na nova tentativa mudou desde que você abriu a confirmação. Confira os dados atualizados e confirme de novo. | `backend/src/modules/workflows/application/workflow-retry.ts` |
 | `WORKFLOW_RETRY_RECORD_CANCELLED` | — | FAMILIA-DEPENDENCIA | A medição desta execução foi cancelada na Central de Dados. Ela precisa voltar a valer, por uma carga ou por Reativar, antes de uma nova tentativa. | `backend/src/modules/workflows/application/workflow-retry.ts` |
@@ -1981,6 +1982,7 @@ já diz a regra; a família do status diz como investigar.
 | `REPORT_PROPOSAL_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Proposta não encontrada. | `backend/src/modules/reports/application/report-service.ts` |
 | `REPORT_REVISION_CONFLICT` | 409 | FAMILIA-CONFLITO | O report foi alterado em outra tela. Recarregue e tente de novo. | `backend/src/modules/reports/application/report-service.ts` |
 | `REPORT_SELF_NOT_ALLOWED` | 403 | FAMILIA-ACESSO | Para criar um report para você é preciso liderar uma estrutura (ou ter acesso de consulta). | `backend/src/modules/reports/application/report-service.ts` |
+| `REPORT_TERM_FIELD_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/reports/application/report-service.ts` |
 | `REPORTS_ACCESS_REQUIRED` | 403 | FAMILIA-ACESSO | Reports são para quem lidera uma estrutura ou tem o papel Report. | `backend/src/modules/reports/application/report-service.ts` |
 | `STRUCTURE_OUT_OF_SCOPE` | 403 | FAMILIA-ACESSO | A estrutura escolhida não está no seu escopo. | `backend/src/modules/reports/application/report-service.ts` |
 
@@ -2127,10 +2129,10 @@ já diz a regra; a família do status diz como investigar.
 | `CONTINUITY_REVIEW_EXCLUSIVE` | — | FAMILIA-DEPENDENCIA | A avaliação de continuidade é um processo próprio: não se combina com outras capacidades. | `backend/src/modules/interventions/domain/intervention-type.ts` |
 | `CONTINUITY_REVIEW_JUSTIFICATION` | — | FAMILIA-DEPENDENCIA | A regra que abre avaliação de continuidade precisa de uma justificativa com pelo menos 30 caracteres. | `backend/src/modules/interventions/domain/policy-definition.ts` |
 | `CONTINUITY_REVIEW_NO_AI` | — | FAMILIA-DEPENDENCIA | A IA nunca rascunha nem decide uma avaliação de continuidade. | `backend/src/modules/interventions/domain/intervention-type.ts` |
-| `CONTINUITY_REVIEW_NO_NOTIFY` | — | FAMILIA-DEPENDENCIA | A avaliação de continuidade não pode ser só um aviso: ela sempre abre a solicitação, que é decidida por uma pessoa autorizada. | `backend/src/modules/interventions/domain/policy-definition.ts` |
+| `CONTINUITY_REVIEW_NO_NOTIFY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A avaliação de continuidade não pode ser só um aviso: ela sempre abre a solicitação, que é decidida por uma pessoa autorizada. | `backend/src/modules/interventions/application/apply-evaluation.ts`<br>`backend/src/modules/interventions/domain/policy-definition.ts` |
 | `CONTINUITY_REVIEW_NOT_ON_INCONCLUSIVE` | — | FAMILIA-DEPENDENCIA | A avaliação de continuidade nunca é aberta com dados insuficientes. | `backend/src/modules/interventions/domain/policy-definition.ts` |
 | `CONTINUITY_REVIEW_NOT_VISIBLE` | — | FAMILIA-DEPENDENCIA | A avaliação de continuidade nunca aparece para o colaborador. | `backend/src/modules/interventions/domain/intervention-type.ts` |
-| `CONTINUITY_REVIEW_PRIOR_FOLLOW_UP` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/interventions/application/apply-evaluation.ts`<br>`backend/src/modules/interventions/domain/policy-definition.ts` |
+| `CONTINUITY_REVIEW_PRIOR_FOLLOW_UP` | — | FAMILIA-DEPENDENCIA | (mensagem montada no código) | `backend/src/modules/interventions/domain/policy-definition.ts` |
 | `INTERVENTION_AI_DRAFT_NOT_READY` | 409 | FAMILIA-CONFLITO | Não há rascunho pronto para aplicar. | `backend/src/modules/interventions/application/ai-draft.ts` |
 | `INTERVENTION_AI_DRAFT_UNAVAILABLE` | 409 | FAMILIA-CONFLITO | Rascunho pela IA não está disponível para esta intervenção agora. | `backend/src/modules/interventions/application/ai-draft.ts` |
 | `INTERVENTION_AI_DRAFT_UNSUPPORTED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Rascunho pela IA só existe para treinamento ou plano de ação. | `backend/src/modules/interventions/application/ai-draft.ts` |
@@ -2154,7 +2156,7 @@ já diz a regra; a família do status diz como investigar.
 | `INTERVENTION_NO_APPROVER` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/interventions/application/intervention-service.ts` |
 | `INTERVENTION_NOT_COMPLETABLE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/interventions/application/intervention-service.ts` |
 | `INTERVENTION_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Acompanhamento não encontrado. | `backend/src/modules/interventions/application/collaborator-view.ts`<br>`backend/src/modules/interventions/application/intervention-service.ts` |
-| `INTERVENTION_NOT_IN_PROGRESS` | 409 | FAMILIA-CONFLITO | Itens são concluídos durante a execução. | `backend/src/modules/interventions/application/intervention-service.ts` |
+| `INTERVENTION_NOT_IN_PROGRESS` | 409 | FAMILIA-CONFLITO | Este acompanhamento já foi encerrado: os passos não mudam mais. | `backend/src/modules/interventions/application/collaborator-view.ts`<br>`backend/src/modules/interventions/application/intervention-service.ts` |
 | `INTERVENTION_NOT_READY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/interventions/application/intervention-service.ts` |
 | `INTERVENTION_NOT_TRAINING` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Só intervenções com treinamento usam competências. | `backend/src/modules/interventions/application/intervention-service.ts` |
 | `INTERVENTION_NOTE_REQUIRED` | — | FAMILIA-DEPENDENCIA | Registre o resultado da intervenção. | `backend/src/modules/interventions/domain/intervention-state.ts` |
@@ -2178,6 +2180,7 @@ já diz a regra; a família do status diz como investigar.
 | `INTERVENTION_POLICY_VERSION_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Versão não encontrada. | `backend/src/modules/interventions/presentation/intervention-admin-router.ts` |
 | `INTERVENTION_REASON_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Diga o que precisa mudar (pelo menos 5 caracteres). | `backend/src/modules/interventions/application/intervention-service.ts` |
 | `INTERVENTION_REPORT_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Relatório não encontrado. | `backend/src/modules/interventions/application/report-narrative.ts`<br>`backend/src/modules/interventions/presentation/intervention-router.ts` |
+| `INTERVENTION_STEP_DONE_BY_LEADER` | 409 | FAMILIA-CONFLITO | Este passo foi concluído por quem conduz o acompanhamento: só ele pode reabri-lo. | `backend/src/modules/interventions/application/collaborator-view.ts` |
 | `INTERVENTION_STEP_NOT_YOURS` | 403 | FAMILIA-ACESSO | Este passo é de quem conduz o acompanhamento. | `backend/src/modules/interventions/application/collaborator-view.ts` |
 | `INTERVENTION_STEP_SKIPPED` | 409 | FAMILIA-CONFLITO | Este passo foi dispensado por quem conduz. | `backend/src/modules/interventions/application/collaborator-view.ts` |
 | `INTERVENTION_TASKS_PENDING` | — | FAMILIA-DEPENDENCIA | Ainda há ${counts.tasksTotal - counts.tasksDone - counts.tasksSkipped} tarefa(s) pendente(s). | `backend/src/modules/interventions/domain/intervention-state.ts` |

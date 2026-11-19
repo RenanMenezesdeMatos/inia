@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { escalationRoleSchema, type EscalationRole } from "../../workflows/domain/escalation-role-schema.js"
+import { addCivilDays } from "./evolution.js"
 import { CAPABILITY_DEFINITIONS, EVIDENCE_KINDS, INTERVENTION_CAPABILITIES, effectiveCapabilities, type InterventionCapability } from "./capabilities.js"
 
 /**
@@ -198,9 +199,6 @@ export function emptyInterventionTypeDefinition(name = "Nova intervenção"): In
     collaboratorVisible: false,
   }
 }
-
-const DAY_MS = 86_400_000
-const addCivilDays = (day: string, days: number) => new Date(Date.parse(`${day}T12:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10)
 
 export type ScriptItem = { kind: "TASK" | "CHECKPOINT"; title: string; description: string; ownerId: string; dueAt: string }
 

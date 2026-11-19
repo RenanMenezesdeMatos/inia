@@ -25,6 +25,12 @@ export const feedbackAboutIndicatorSql = (feedbackAlias: string, caseAlias: stri
     or exists (select 1 from indicator_definitions d where d.organization_id = ${feedbackAlias}.organization_id and d.code = ${codeParam}
                 and lower(d.name) in (lower(${caseAlias}.indicator_code), lower(${feedbackAlias}.impacted_indicator))))`
 
+/**
+ * Feedback com citação CONFERIDA: síntese de IA sem citação conferida (achado AI-02) nunca é evidência verificável. O mesmo
+ * predicado vale para a condição "Feedbacks publicados" e para o feedback de referência da condição "Evolução" (ARQ-04).
+ */
+export const feedbackVerifiedSql = (feedbackAlias: string) => `coalesce(${feedbackAlias}.context_snapshot->>'evidenceVerified', 'true') <> 'false'`
+
 export type LeaderContextInput = { organizationId: string; personId: string; indicatorCode: string | null; indicatorName: string | null; asOf: Date; timeZone: string }
 
 export async function loadFeedbackHistory(db: Database, input: LeaderContextInput, days: number = BRIEF_HISTORY_DAYS): Promise<{ feedbacks: BriefFeedback[]; feedbackCount: number }> {
@@ -48,14 +54,33 @@ export async function loadFeedbackHistory(db: Database, input: LeaderContextInpu
   }
 }
 
+export type EvolutionReferenceOptions = { days?: number; verifiedOnly?: boolean }
+
 /**
- * Evolução do indicador desde o feedback de referência: o mais recente com idade suficiente para comparar; se todos forem
- * recentes demais, o mais recente (e o resultado diz que ainda é cedo). Sem indicador ou sem feedback não há marco: null.
+ * O MARCO da evolução, por consulta própria (QA-01): o feedback mais recente sobre o indicador com idade suficiente para
+ * comparar; se todos forem recentes demais, o mais recente (e o resultado diz que ainda é cedo). Não depende da lista do
+ * resumo, que é cortada em `BRIEF_MAX_FEEDBACKS` — com vários feedbacks na semana o marco antigo ficava fora dela.
+ * `verifiedOnly`: só feedback com citação conferida (quando o marco vira evidência da regra).
  */
-export async function loadEvolution(db: Database, input: LeaderContextInput, feedbacks: readonly BriefFeedback[]): Promise<Evolution | null> {
-  if (feedbacks.length === 0) return null
-  const old = feedbacks.find((feedback) => input.asOf.getTime() - new Date(feedback.publishedAt).getTime() >= EVOLUTION_MIN_DAYS_SINCE * DAY_MS)
-  const reference = old ?? feedbacks[0]!
+export async function loadEvolutionReference(db: Database, input: LeaderContextInput, options: EvolutionReferenceOptions = {}): Promise<{ id: string; publishedAt: string } | null> {
+  const since = new Date(input.asOf.getTime() - (options.days ?? BRIEF_HISTORY_DAYS) * DAY_MS)
+  const oldEnough = new Date(input.asOf.getTime() - EVOLUTION_MIN_DAYS_SINCE * DAY_MS)
+  const row = (await db.query<{ id: string; published_at: Date }>(
+    `select f.id, f.published_at
+       from feedbacks f join supervision_cases c on c.id = f.case_id and c.organization_id = f.organization_id
+      where f.organization_id = $1 and f.operator_id = $2 and f.status in ('PUBLISHED', 'ACKNOWLEDGED')
+        and f.published_at >= $3 and f.published_at <= $4 and ${feedbackAboutIndicatorSql("f", "c", "$5")} and ${visibleInFollowUpSql("f")}
+        ${options.verifiedOnly ? `and ${feedbackVerifiedSql("f")}` : ""}
+      order by (f.published_at <= $6) desc, f.published_at desc, f.id desc limit 1`,
+    [input.organizationId, input.personId, since, input.asOf, input.indicatorCode, oldEnough],
+  )).rows[0]
+  return row ? { id: row.id, publishedAt: row.published_at.toISOString() } : null
+}
+
+/** Evolução do indicador desde o feedback de referência (`loadEvolutionReference`). Sem indicador ou sem feedback não há marco: null. */
+export async function loadEvolution(db: Database, input: LeaderContextInput, options: EvolutionReferenceOptions = {}): Promise<Evolution | null> {
+  const reference = await loadEvolutionReference(db, input, options)
+  if (!reference) return null
   return measureEvolution(db, input, { kind: "FEEDBACK", ref: reference.id, label: "o feedback", at: reference.publishedAt })
 }
 
@@ -91,5 +116,6 @@ export async function measureEvolution(db: Database, input: LeaderContextInput, 
 
 export async function loadLeaderContext(db: Database, input: LeaderContextInput): Promise<LeaderContext> {
   const history = await loadFeedbackHistory(db, input)
-  return { ...history, evolution: await loadEvolution(db, input, history.feedbacks) }
+  // O texto dos feedbacks é histórico (nunca evidência): o resumo não exige citação conferida; a lista é que tem o teto de 5.
+  return { ...history, evolution: history.feedbackCount > 0 ? await loadEvolution(db, input) : null }
 }

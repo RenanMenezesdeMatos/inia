@@ -5,6 +5,7 @@ import { localDateOf } from "../../workflows/application/time-window.js"
 import { resolveByRoleChain } from "../../workflows/application/enrollment-subject.js"
 import { rolesWithPermission } from "../../access/domain/roles.js"
 import { ADDRESSED_STATUSES, aggregateOutcome, buildJustification, evaluateGroup, planDecisions, selectRules, type EvaluationOutcome, type PlannedDecision, type RuleSelection, type RuleTrace, type SentNotice } from "../domain/policy-evaluation.js"
+import { addCivilDays } from "../domain/evolution.js"
 import { isSensitiveType } from "../domain/intervention-type.js"
 import type { ReportPerson, ReportPriorIntervention } from "../domain/intelligence-report.js"
 import { createConditionResolver, loadSustainedDiagnoses, type SustainedDiagnosis } from "./condition-resolvers.js"
@@ -85,12 +86,6 @@ async function personName(db: Db, id: string): Promise<ReportPerson> {
   return { personId: id, name: row?.name ?? "—" }
 }
 
-function addDays(localDate: string, days: number): string {
-  const date = new Date(`${localDate}T12:00:00Z`)
-  date.setUTCDate(date.getUTCDate() + days)
-  return date.toISOString().slice(0, 10)
-}
-
 /** Responsável, aprovador e prazo de cada decisão que abriria uma intervenção — pela cadeia do colaborador (reports_to). */
 export async function resolveAssignments(db: Db, organizationId: string, person: EvaluationPerson, decisions: readonly PlannedDecision[], types: ReadonlyMap<string, PublishedType>, today: string): Promise<Map<string, Assignment>> {
   const assignments = new Map<string, Assignment>()
@@ -98,7 +93,7 @@ export async function resolveAssignments(db: Db, organizationId: string, person:
     if (!ADDRESSED_STATUSES.includes(decision.status)) continue
     const type = types.get(decision.typeKey)
     if (!type) continue
-    const dueAt = addDays(today, decision.action.dueInDays ?? type.definition.defaultDueDays)
+    const dueAt = addCivilDays(today, decision.action.dueInDays ?? type.definition.defaultDueDays)
     const responsibleId = await resolveResponsibleId(db, person.id, type.definition.responsibleRole)
     let problem: string | null = responsibleId ? null : unresolvedResponsibleMessage(type.definition.responsibleRole, person.name, type.definition.name, "ser responsável por")
     let approver: ReportPerson | null = null

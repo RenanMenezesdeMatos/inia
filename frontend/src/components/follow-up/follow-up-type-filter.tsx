@@ -33,6 +33,11 @@ export const FOLLOW_UP_TYPE_LABELS: Record<FollowUpType, string> = {
 export const OPERATOR_FOLLOW_UP_TYPES: FollowUpType[] = ["NOTICE", "ALIGNMENT", "MONITORING", "INDICATOR"]
 /** O que aparece no Acompanhamento da estrutura (feedbacks dos liderados + avisos, reports e comunicados de quem lê). */
 export const STRUCTURE_FOLLOW_UP_TYPES: FollowUpType[] = ["NOTICE", "ALIGNMENT", "MONITORING", "INDICATOR", "WORKFLOW_OUTPUT", "HUMAN_REVIEW", "ESCALATION", "INTERVENTION", "REPORT", "OTHER"]
+/**
+ * Fora da própria estrutura (ficha de um colaborador, estrutura de um liderado) o servidor só devolve os feedbacks publicados — os
+ * avisos, comunicados, alinhamentos e reports são de quem lê e só entram na estrutura dele. Oferecer os outros tipos daria sempre vazio.
+ */
+export const SUBJECT_FOLLOW_UP_TYPES: FollowUpType[] = ["MONITORING", "INDICATOR"]
 
 export function FollowUpTypeFilter({ value, onChange, types }: { value: FollowUpType[] | null; onChange: (value: FollowUpType[] | null) => void; types: FollowUpType[] }) {
   const selected = value ?? types

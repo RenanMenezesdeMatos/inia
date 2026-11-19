@@ -1,4 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { canOnCollaborator, type AccessContext } from "../../access/domain/access-decision.js"
+import type { Permission } from "../../access/domain/permissions.js"
+import { personAllowedByUniverse, type PersonUniverseRule } from "../../operating-universe/application/universe-access.js"
 import type { Queryable } from "../../people/application/schedule-exception-service.js"
 import { compareImpact, summarizeImpact, INTERVENTION_IMPACT_PREVIEW_VERSION, type ImpactComparison, type ImpactEvaluation, type ImpactSummary } from "../domain/impact-preview.js"
 import { isSensitiveType } from "../domain/intervention-type.js"
@@ -29,15 +32,37 @@ export const IMPACT_PREVIEW_BUDGET_MS = 25_000
 export const IMPACT_PREVIEW_CONCURRENCY = 6
 
 /** Pessoas ATIVAS da operação no escopo da política (Organização, Grupo ou Subgrupo), por nome — a mesma população da simulação. */
-export async function loadImpactPopulation(db: Db, organizationId: string, policy: Pick<PolicyHeader, "scopeType" | "teamId" | "subteamId">): Promise<{ id: string; teamId: string | null; subteamId: string | null }[]> {
-  const rows = await db.query<{ id: string; team_id: string | null; subteam_id: string | null }>(
-    `select id, team_id, subteam_id from people
+export type ImpactPopulationPerson = { id: string; teamId: string | null; subteamId: string | null; operatingUniverse: string | null }
+
+export async function loadImpactPopulation(db: Db, organizationId: string, policy: Pick<PolicyHeader, "scopeType" | "teamId" | "subteamId">): Promise<ImpactPopulationPerson[]> {
+  const rows = await db.query<{ id: string; team_id: string | null; subteam_id: string | null; operating_universe: string | null }>(
+    `select id, team_id, subteam_id, operating_universe from people
       where organization_id = $1 and active and role = 'OPERATOR'
         and ($2 = 'ORGANIZATION' or ($2 = 'GROUP' and team_id = $3::uuid) or ($2 = 'SUBGROUP' and subteam_id = $4::uuid))
       order by name, id`,
     [organizationId, policy.scopeType, policy.teamId, policy.subteamId],
   )
-  return rows.rows.map((row) => ({ id: row.id, teamId: row.team_id, subteamId: row.subteam_id }))
+  return rows.rows.map((row) => ({ id: row.id, teamId: row.team_id, subteamId: row.subteam_id, operatingUniverse: row.operating_universe }))
+}
+
+const INTERVENTION_PERMISSIONS: Permission[] = ["interventions.view", "interventions.execute", "interventions.approve", "interventions.sensitive_decide"]
+
+/**
+ * Quem o usuário alcança DENTRO da população da política (os critérios de `canSimulateWith` e de `canSeeInterventionsOf`, sem uma
+ * consulta por pessoa): a própria estrutura (`led`), Workflows no escopo ou Indicadores no escopo (`visible`). O UNIVERSO DE
+ * ATUAÇÃO entra com a regra de pessoas (`personAllowedByUniverse`, POL-03): fora da própria estrutura, só quem é do universo de
+ * quem pede ou está onde a conta tem `operating_universes.all`. `universe` ausente/sem ativação = sem filtro.
+ */
+export function reachableImpactPeople(input: { access: AccessContext; led: ReadonlySet<string>; visible: (personId: string) => boolean; universe: PersonUniverseRule | undefined; population: readonly ImpactPopulationPerson[] }): ImpactPerson[] {
+  const { access } = input
+  return input.population.flatMap((person) => {
+    if (person.id === access.personId) return []
+    const resource = { personId: person.id, teamId: person.teamId, subteamId: person.subteamId }
+    const inStructure = input.led.has(person.id)
+    if (!canOnCollaborator(access, "workflows.manage", resource, inStructure) && !input.visible(person.id)) return []
+    if (input.universe && !personAllowedByUniverse(input.universe, person, inStructure)) return []
+    return [{ id: person.id, historyVisible: inStructure || INTERVENTION_PERMISSIONS.some((permission) => canOnCollaborator(access, permission, resource, inStructure)) }]
+  })
 }
 
 export function toImpactEvaluation(evaluation: PolicyEvaluation): ImpactEvaluation {

@@ -1,4 +1,4 @@
-import type { ReportConfig, ReportDefinition, VisualizationType } from "@/schemas/reports/reports.schema"
+import { isRecordTool, type ReportConfig, type ReportDefinition, type VisualizationType } from "@/schemas/reports/reports.schema"
 
 /** Padrões e regras de tela do formulário de report (o backend revalida tudo). */
 export function defaultConfig(input: { canCreateForSelf: boolean }): ReportConfig {
@@ -16,6 +16,12 @@ export function defaultConfig(input: { canCreateForSelf: boolean }): ReportConfi
 /** Mesma regra do backend (`staticCompatibility`): evolução só com dimensão temporal; distribuição com faixas; resumo com uma linha. */
 export function staticCompatibility(definition: ReportDefinition): VisualizationType[] {
   const types: VisualizationType[] = ["TABLE", "BAR"]
+  if (definition.tool === "SPAN" || isRecordTool(definition.tool)) {
+    const groupBy = definition.queryArgs?.agrupar_por
+    if (groupBy === "DIA" || groupBy === "SEMANA" || groupBy === "MES") types.push("LINE", "AREA")
+    if (definition.tool !== "SPAN" && (groupBy === undefined || groupBy === "ESTRUTURA")) types.push("KPI")
+    return types
+  }
   if (definition.period.mode === "LAST_N_CLOSED" && (definition.period.display === "POR_MES" || definition.groupBy === "COMPETENCIA")) types.push("LINE", "AREA")
   if (definition.view === "QUARTIS" || (definition.tool === "WORKFORCE" && !definition.listPeople)) types.push("DISTRIBUTION")
   const wholeStructure = definition.groupBy === undefined || definition.groupBy === "ESTRUTURA"
@@ -26,6 +32,8 @@ export function staticCompatibility(definition: ReportDefinition): Visualization
 /** Ajusta a definição ao trocar o tipo de consulta (período e campos que deixam de valer). */
 export function switchTool(definition: ReportDefinition, tool: ReportDefinition["tool"]): ReportDefinition {
   const base = { structure: definition.structure, limit: definition.limit, indicators: [] as string[] }
+  if (tool === "SPAN") return { ...base, tool, period: { mode: "TODAY" }, queryArgs: {} }
+  if (isRecordTool(tool)) return { ...base, tool, period: { mode: "LAST_CLOSED" }, queryArgs: {} }
   if (tool === "WORKFORCE") return { ...base, tool, period: { mode: "TODAY" }, groupBy: "UNIDADE" }
   if (tool === "INDICATOR_DIAGNOSIS") return { ...base, tool, period: { mode: "LAST_CLOSED" }, indicators: definition.indicators.slice(0, 1) }
   return { ...base, tool, period: { mode: "LAST_CLOSED" }, indicators: definition.indicators, groupBy: "PESSOA" }

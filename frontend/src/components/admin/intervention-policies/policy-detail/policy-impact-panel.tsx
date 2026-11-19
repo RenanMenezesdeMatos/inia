@@ -5,6 +5,7 @@ import { useMutation } from "@tanstack/react-query"
 import { AlertTriangle, BarChart3 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { InlineError } from "@/components/ui/states"
 import { SectionLabel, StatusChip, type Tone } from "@/components/ui/surface"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TABLE_FRAME } from "@/components/ui/table"
 import { formatDateTime } from "@/lib/format/date"
@@ -233,11 +234,7 @@ export function PolicyImpactPanel({ policy }: { policy: PolicyView }) {
         </Button>
       </div>
       {versionOptions.length === 0 ? <p className="text-xs text-muted-foreground">Não há versão para conferir.</p> : null}
-      {preview.isError ? (
-        <p className="text-sm text-destructive" role="alert">
-          {errorMessage(preview.error, "Não foi possível calcular o impacto.")}
-        </p>
-      ) : null}
+      {preview.isError ? <InlineError message={errorMessage(preview.error, "Não foi possível calcular o impacto.")} onRetry={() => preview.mutate()} /> : null}
       {preview.data ? <ImpactResult result={preview.data} /> : null}
     </div>
   )

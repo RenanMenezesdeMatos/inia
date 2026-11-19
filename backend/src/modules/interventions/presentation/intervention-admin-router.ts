@@ -17,7 +17,7 @@ import { applyEvaluation } from "../application/apply-evaluation.js"
 import { loadPolicyHeader, loadPolicyVersion, loadValidationCatalog, policyVersionInForceAt, type PolicyHeader, type PolicyVersion } from "../application/catalog.js"
 import * as config from "../application/config-service.js"
 import { evaluatePolicy, serializeEvaluation } from "../application/evaluate-policy.js"
-import { loadImpactPopulation, previewPolicyImpact } from "../application/impact-preview.js"
+import { loadImpactPopulation, previewPolicyImpact, reachableImpactPeople, type ImpactPopulationPerson } from "../application/impact-preview.js"
 import { canSeeInterventionsOf } from "../application/intervention-access.js"
 import { loadPolicyWorkflowUsage, type PolicyWorkflowUsage } from "../application/policy-references.js"
 import { protectStoredLeave } from "../domain/protected-leave.js"
@@ -89,7 +89,7 @@ async function canSimulateWith(db: Database, request: Request, personId: string)
  * Quem o usuário alcança DENTRO da população da política, de uma vez (os mesmos critérios de `canSimulateWith` e de
  * `canSeeInterventionsOf`, sem uma consulta por pessoa): a prévia de impacto só soma pessoas que ele já enxerga.
  */
-async function reachablePopulation(db: Database, request: Request, population: readonly { id: string; teamId: string | null; subteamId: string | null }[]) {
+async function reachablePopulation(db: Database, request: Request, population: readonly ImpactPopulationPerson[]) {
   const access = accessOf(request)
   const [structure, scope] = await Promise.all([
     db.query<{ id: string }>(
@@ -102,15 +102,8 @@ async function reachablePopulation(db: Database, request: Request, population: r
     ),
     loadViewerScope(new PgAnalyticsReadRepository(db), sessionUser(request), "indicators.view"),
   ])
-  const led = new Set(structure.rows.map((row) => row.id))
-  const INTERVENTION_PERMISSIONS: Permission[] = ["interventions.view", "interventions.execute", "interventions.approve", "interventions.sensitive_decide"]
-  return population.flatMap((person) => {
-    if (person.id === access.personId) return []
-    const resource = { personId: person.id, teamId: person.teamId, subteamId: person.subteamId }
-    const inStructure = led.has(person.id)
-    if (!canOnCollaborator(access, "workflows.manage", resource, inStructure) && !scope.nodes.has(person.id)) return []
-    return [{ id: person.id, historyVisible: inStructure || INTERVENTION_PERMISSIONS.some((permission) => canOnCollaborator(access, permission, resource, inStructure)) }]
-  })
+  // O universo de atuação de quem pede vale aqui como na aba Equipe (a regra vem do mesmo `loadViewerScope`).
+  return reachableImpactPeople({ access, led: new Set(structure.rows.map((row) => row.id)), visible: (personId) => scope.nodes.has(personId), universe: scope.universe, population })
 }
 
 const versionChoiceSchema = z.union([z.literal("DRAFT"), z.literal("IN_FORCE"), z.string().uuid()])

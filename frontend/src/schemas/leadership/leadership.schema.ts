@@ -191,7 +191,19 @@ export const queryTableCardSchema = z.object({
 })
 export type QueryTableCard = z.infer<typeof queryTableCardSchema>
 
-export const leadershipCardSchema = z.discriminatedUnion("type", [indicatorAnalysisCardSchema, structureOverviewCardSchema, peopleCardSchema, prioritiesCardSchema, queryTableCardSchema])
+/** Escolha da leitura dos dados: o termo pedido aparece em mais de um campo; a pessoa escolhe e a escolha volta como pergunta. */
+export const dataChoiceCardSchema = z.object({
+  type: z.literal("DATA_CHOICE"),
+  generatedAt: z.string(),
+  structure: structureRefSchema,
+  title: z.string(),
+  prompt: z.string(),
+  scopeNote: z.string(),
+  options: z.array(z.object({ id: z.string(), label: z.string(), detail: z.string(), question: z.string() })).min(1),
+})
+export type DataChoiceCard = z.infer<typeof dataChoiceCardSchema>
+
+export const leadershipCardSchema = z.discriminatedUnion("type", [indicatorAnalysisCardSchema, structureOverviewCardSchema, peopleCardSchema, prioritiesCardSchema, queryTableCardSchema, dataChoiceCardSchema])
 export type LeadershipCard = z.infer<typeof leadershipCardSchema>
 
 /** Cartões válidos de uma lista vinda do chat/histórico — um cartão de formato antigo/desconhecido é ignorado, nunca quebra o chat. */

@@ -9,6 +9,13 @@ import type { MemberSituation } from "../../performance-analytics/domain/view-mo
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { IndicatorAnalysisCard, LeadershipCard, PeopleCard, PrioritiesCard, QueryTableCard, StructureOverviewCard } from "../domain/view-models.js"
 import { buildIndicatorAnalysis } from "./indicator-analysis.js"
+import { buildSpan, spanLevelsValid, type SpanCounted, type SpanLevel, type SpanView } from "./span.js"
+import { DOMAIN_OF_TOOL, domainAllowed, runDomainQuery, type DomainAccess, type DomainFactsLoader } from "./data-domains.js"
+import { SCHEDULE_EXCEPTION_LABELS } from "../../people/domain/schedule-exception.js"
+import { WORKDAY_CLASSIFICATION_LABELS } from "../../people/domain/workday-classification.js"
+import { RESOLVED_WORKDAY_STATE_LABELS } from "../../people/domain/workday-resolution.js"
+import { PERSON_GROUPINGS, STATISTICS, TIME_GROUPINGS } from "./fact-query.js"
+import { ARITHMETIC_OPERATIONS, calculate, CALCULATION_TRACE, parseCalculations, renderCalculations } from "./arithmetic.js"
 import { buildWorkforce, WORKFORCE_STATUS_FILTERS, type StatusFreshness, type StatusLoader } from "./workforce.js"
 import { buildIndicatorDiagnosis, type HireDatesLoader, type InteractionStatsLoader } from "./indicator-diagnosis.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
@@ -31,7 +38,7 @@ import { alignmentReferenceOf } from "../../operational-alignments/domain/operat
  *  - `card`: o mesmo resultado estruturado, exibido na tela com os números do backend e os links de aprofundamento.
  */
 
-export const LEADERSHIP_TOOL_NAMES = ["leadership_priorities", "leadership_structure_overview", "leadership_indicator_analysis", "leadership_people", "leadership_indicator_query", "leadership_workforce", "leadership_indicator_diagnosis", "leadership_best_practices", "leadership_alignments"] as const
+export const LEADERSHIP_TOOL_NAMES = ["leadership_priorities", "leadership_structure_overview", "leadership_indicator_analysis", "leadership_people", "leadership_indicator_query", "leadership_workforce", "leadership_indicator_diagnosis", "leadership_best_practices", "leadership_alignments", "leadership_span", "leadership_calculate", "leadership_interactions", "leadership_monitoring", "leadership_feedbacks", "leadership_cases", "leadership_schedule", "leadership_workday", "leadership_communications", "leadership_inia_usage", "leadership_support"] as const
 export type LeadershipToolName = (typeof LEADERSHIP_TOOL_NAMES)[number]
 
 export function isLeadershipTool(name: string): name is LeadershipToolName {
@@ -163,6 +170,201 @@ LEADERSHIP_TOOL_DECLARATIONS.push({
   parameters: { type: "object", properties: { estrutura: structureParameter }, required: [] },
 })
 
+LEADERSHIP_TOOL_DECLARATIONS.push({
+  name: "leadership_span",
+  description:
+    "SPAN DE CONTROLE: quantos operadores cada líder de um nível (supervisor, por padrão) tem abaixo dele, calculado pelo sistema a partir do organograma — por líder (lista nominal completa), por Grupo ou por Subgrupo (quantos líderes, operadores, média, mínimo e máximo), sempre com o total da estrutura (líderes, operadores, média e mediana). Use para \"span dos supervisores\", \"quantos operadores tem cada supervisor\", \"média de operadores por supervisor por Grupo\", \"quantos supervisores eu tenho\", \"média de supervisores por gerente\" (líderes abaixo de líderes, com contar). Para pedir nominal e por Grupo, acione duas vezes (por=LIDER e por=GRUPO).",
+  parameters: {
+    type: "object",
+    properties: {
+      estrutura: structureParameter,
+      nivel: { type: "string", description: "Nível do líder do span (padrão SUPERVISOR).", enum: ["SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER"] },
+      contar: { type: "string", description: "O que contar abaixo de cada líder (padrão OPERADORES). Ex.: supervisores por gerente = nivel MANAGER + contar SUPERVISORES.", enum: ["OPERADORES", "SUPERVISORES", "COORDENADORES", "GERENTES"] },
+      por: { type: "string", description: "LIDER (padrão: uma linha por líder, nominal), GRUPO ou SUBGRUPO.", enum: ["LIDER", "GRUPO", "SUBGRUPO"] },
+      limite: { type: "integer", description: "Máximo de linhas (padrão e máximo: 300)." },
+    },
+  },
+})
+
+LEADERSHIP_TOOL_DECLARATIONS.push({
+  name: "leadership_calculate",
+  description:
+    "CALCULADORA: faz contas sobre números que outras ferramentas trouxeram — soma, subtração, multiplicação, divisão, média, mediana, mínimo, máximo, contagem, percentual, variação percentual e desvio padrão. Use SEMPRE que a resposta precisar de um número que nenhuma ferramenta devolveu pronto (somar totais de vários Grupos, dividir operadores por supervisores, % de uma parte, diferença entre meses). Nunca faça conta de cabeça. Vários cálculos numa chamada.",
+  parameters: {
+    type: "object",
+    properties: {
+      calculos: {
+        type: "array",
+        description: "Lista de cálculos.",
+        items: {
+          type: "object",
+          properties: {
+            rotulo: { type: "string", description: "O que o resultado representa (ex.: \"Operadores por supervisor — B2B\")." },
+            operacao: { type: "string", enum: [...ARITHMETIC_OPERATIONS], description: "SUBTRACAO e DIVISAO: o primeiro valor menos/dividido pelos demais. PERCENTUAL: [parte, total]. VARIACAO_PERCENTUAL: [de, para]." },
+            valores: { type: "array", items: { type: "number" }, description: "Os números, exatamente como as ferramentas trouxeram." },
+          },
+          required: ["operacao", "valores"],
+        },
+      },
+    },
+    required: ["calculos"],
+  },
+})
+
+const factCommon = (dimensionKeys: string[]) => ({
+  estrutura: structureParameter,
+  competencia: { type: "string", description: "Mês AAAA-MM. Omita para a última competência fechada. Ou use data_inicio + data_fim (\"hoje\", \"esta semana\", \"próxima semana\": datas, com as datas de hoje do contexto)." },
+  data_inicio: { type: "string", description: "AAAA-MM-DD (com data_fim) para um período de datas." },
+  data_fim: { type: "string", description: "AAAA-MM-DD, inclusive." },
+  agrupar_por: { type: "string", description: "Linhas da tabela: pela pessoa (ESTRUTURA = só o total, PESSOA, SUPERVISOR, COORDENADOR, GERENTE, GERENTE_SENIOR, GRUPO, SUBGRUPO), pelo tempo (DIA, SEMANA, MES, DIA_DA_SEMANA) ou por um campo do registro.", enum: [...PERSON_GROUPINGS, ...TIME_GROUPINGS, ...dimensionKeys] },
+  estatisticas: { type: "array", items: { type: "string", enum: [...STATISTICS] }, description: "Estatísticas de cada medida (vazio = as padrão). TAXA vale para medidas de % (ocorrências, cumprimento, ciência)." },
+  ordenar_por: { type: "string", enum: ["GRUPO", "VALOR"], description: "VALOR = pela primeira estatística da primeira medida." },
+  ordem: { type: "string", enum: ["ASC", "DESC"] },
+  limite: { type: "integer", description: "Máximo de linhas (até 300). O total da estrutura considera sempre todas." },
+  minimo_registros: { type: "integer", description: "Linhas com menos registros saem da tabela (padrão 5 ao ordenar por VALOR um campo do registro, senão 0)." },
+})
+const filterParameter = (description: string) => ({ type: "array", items: { type: "string" }, description })
+const FACT_NOTE = " O sistema calcula tudo (total, média, mediana, mínimo, máximo, percentis, desvio padrão, %), sobre TODOS os registros do recorte e com zero para quem não tem registro — nunca calcule você a partir de uma lista."
+
+LEADERSHIP_TOOL_DECLARATIONS.push({
+  name: "leadership_interactions",
+  description:
+    "ATENDIMENTOS / LIGAÇÕES registrados das pessoas da estrutura: quantos atendimentos (total e por pessoa: média, mediana, mínimo, máximo, percentis), duração (média, mediana), por motivo, submotivo, canal, pessoa, supervisor, Grupo, dia, semana ou mês — e as OCORRÊNCIAS de cada atendimento (rechamada, nota da URA, transferência, cancelamento, detrator, contestação, tempo de silêncio, desconexão…) em % ou média. Use para \"quantos atendimentos\", \"mediana de atendimentos por operador\", \"tempo médio das ligações por motivo\", \"% de rechamada por supervisor\", \"nota média da URA\", \"principais motivos de contato\". NÃO é indicador oficial (meta/atingimento → leadership_indicator_query)." + FACT_NOTE,
+  parameters: {
+    type: "object",
+    properties: {
+      ...factCommon(["MOTIVO", "SUBMOTIVO", "CANAL"]),
+      medidas: { type: "array", items: { type: "string" }, description: "ATENDIMENTOS_POR_PESSOA (padrão), DURACAO (padrão) e as ocorrências do catálogo da organização, pelo nome ou pelo rótulo (se o nome não existir, o sistema devolve as medidas disponíveis)." },
+      motivo: filterParameter("Só estes motivos, valor EXATO (ex.: Fatura). Para assunto em texto livre use termo."),
+      submotivo: filterParameter("Só estes submotivos."),
+      canal: filterParameter("Só estes canais (ex.: VOICE)."),
+      com_ocorrencia: filterParameter("Só atendimentos em que a ocorrência aconteceu (nome ou rótulo exato da ocorrência no catálogo da organização)."),
+      termo: { type: "string", description: "Trecho a procurar, sem acento obrigatório (ex.: contestação, portabilidade), quando a pessoa fala de um assunto/motivo em texto livre. Sem termo_em, o sistema procura no motivo, no submotivo e nas ocorrências: se aparecer em mais de um, devolve as opções para a PESSOA escolher." },
+      termo_em: { type: "array", items: { type: "string", enum: ["MOTIVO", "SUBMOTIVO", "OCORRENCIA"] }, description: "Onde procurar o termo, quando a pessoa disse (ou escolheu no cartão). Vários = qualquer um deles." },
+      motivo_contem: { type: "string", description: "Só atendimentos cujo motivo contém este trecho." },
+      submotivo_contem: { type: "string", description: "Só atendimentos cujo submotivo contém este trecho." },
+    },
+  },
+})
+
+LEADERSHIP_TOOL_DECLARATIONS.push({
+  name: "leadership_monitoring",
+  description:
+    "MONITORIA DAS CHAMADAS analisadas: quantas chamadas foram analisadas e quanto dos CRITÉRIOS do procedimento foi cumprido ou não, por assunto, critério, pessoa, supervisor, Grupo ou período. Use para \"critérios mais descumpridos\", \"% de cumprimento do procedimento por supervisor\", \"quantas chamadas foram monitoradas\", \"onde a equipe mais erra no procedimento de X\". Nota de monitoria oficial (indicador) → leadership_indicator_query." + FACT_NOTE,
+  parameters: {
+    type: "object",
+    properties: {
+      ...factCommon(["ASSUNTO", "CRITERIO", "SITUACAO"]),
+      medidas: { type: "array", items: { type: "string", enum: ["CHAMADAS_POR_PESSOA", "CUMPRIDO", "NAO_CUMPRIDO"] } },
+      assunto: filterParameter("Só estes assuntos da chamada."),
+      situacao: filterParameter("Só critérios nesta situação: Cumprido, Parcial, Não cumprido, Não aplicável, Não observável."),
+    },
+  },
+})
+
+LEADERSHIP_TOOL_DECLARATIONS.push({
+  name: "leadership_feedbacks",
+  description:
+    "FEEDBACKS PUBLICADOS às pessoas da estrutura: quantos (total e por pessoa), de que tipo (indicador ou monitoria), sobre qual indicador, quantos com ciência do colaborador, quantos aguardando ciência, dias até a ciência e quantos concordaram ou não. Use para \"quantos feedbacks minha equipe recebeu\", \"quem está sem ciência\", \"% de ciência por supervisor\", \"quantos discordaram\". Inclui feedbacks de indicador, de monitoria e de atendimento." + FACT_NOTE,
+  parameters: {
+    type: "object",
+    properties: {
+      ...factCommon(["TIPO", "INDICADOR", "CIENCIA", "CONCORDANCIA"]),
+      medidas: { type: "array", items: { type: "string", enum: ["FEEDBACKS_POR_PESSOA", "CIENCIA", "DIAS_ATE_CIENCIA", "CONCORDA"] } },
+      tipo: filterParameter("Indicador, Monitoria ou Atendimento."),
+      ciencia: filterParameter("Confirmada ou Aguardando."),
+      concordancia: filterParameter("Concorda, Não concorda ou Sem resposta."),
+    },
+  },
+})
+
+LEADERSHIP_TOOL_DECLARATIONS.push({
+  name: "leadership_cases",
+  description:
+    "CASOS DE ACOMPANHAMENTO abertos para as pessoas da estrutura: quantos, por status (detectado, em diagnóstico, ação pendente, acompanhando, escalado, resolvido, encerrado), prioridade e indicador, quantos seguem em aberto e há quantos dias. Use para \"quantos casos abertos\", \"casos escalados por Grupo\", \"casos por indicador\"." + FACT_NOTE,
+  parameters: {
+    type: "object",
+    properties: {
+      ...factCommon(["STATUS", "PRIORIDADE", "INDICADOR"]),
+      medidas: { type: "array", items: { type: "string", enum: ["CASOS_POR_PESSOA", "ABERTO", "DIAS_EM_ABERTO"] } },
+      status: filterParameter("Só estes status."),
+      indicador: filterParameter("Só estes indicadores."),
+    },
+  },
+})
+
+LEADERSHIP_TOOL_DECLARATIONS.push({
+  name: "leadership_schedule",
+  description:
+    "ESCALA PLANEJADA das pessoas: quantos dias cada um está escalado ou de folga, tipo de escala (5x2, 6x1), turno e horário de entrada, horas escaladas, pausas planejadas e exceções (folga, banco de horas, atestado), por pessoa, supervisor, Grupo, dia ou semana — inclusive datas futuras. Use para \"quem está escalado amanhã\", \"quantas pessoas entram às 8h\", \"escala da próxima semana por Grupo\", \"quantas folgas no sábado\". O que de fato aconteceu no dia (produziu ou não) → leadership_workday." + FACT_NOTE,
+  parameters: {
+    type: "object",
+    properties: {
+      ...factCommon(["SITUACAO", "ESCALA", "TURNO", "ENTRADA", "EXCECAO"]),
+      medidas: { type: "array", items: { type: "string", enum: ["DIA_ESCALADO", "HORAS_ESCALADAS", "PAUSAS_PLANEJADAS", "PESSOAS_COM_ESCALA"] } },
+      situacao: filterParameter("Escalado ou Folga."),
+      entrada: filterParameter("Horário de entrada HH:MM."),
+      excecao: filterParameter(`${Object.values(SCHEDULE_EXCEPTION_LABELS).join(", ")}.`),
+    },
+  },
+})
+
+LEADERSHIP_TOOL_DECLARATIONS.push({
+  name: "leadership_workday",
+  description:
+    "JORNADA, dia a dia, pela MESMA regra do Calendário da equipe: em quantos dias planejados a pessoa trabalhou (produção observada), dias já encerrados sem produção que a liderança ainda precisa classificar, falta injustificada já confirmada, trabalho em dia planejado como não trabalhado, atendimentos por dia trabalhado, classificação do dia e divergências em aberto, por pessoa, supervisor, Grupo, dia ou semana. Férias, afastamento, ausência justificada, folga, feriado, dia em curso, dado ainda não esperado e fonte atrasada NUNCA contam como sem produção: dado ausente não é falta, e \"sem produção\" ainda não classificado não é falta — diga \"sem produção a classificar\". Use para \"quem estava escalado e não atendeu\", \"aderência à escala da equipe\", \"quem trabalhou na folga\", \"faltas confirmadas\". Escala futura/planejada → leadership_schedule; férias e afastamentos → leadership_workforce." + FACT_NOTE,
+  parameters: {
+    type: "object",
+    properties: {
+      ...factCommon(["SITUACAO", "ESCALA", "EXCECAO", "CLASSIFICACAO", "DIVERGENCIA"]),
+      medidas: { type: "array", items: { type: "string", enum: ["PRODUZIU_NO_DIA_ESCALADO", "SEM_PRODUCAO_NO_DIA_ESCALADO", "PRODUCAO_NA_FOLGA", "ATENDIMENTOS_NO_DIA", "DIVERGENCIA_ABERTA"] } },
+      situacao: filterParameter(`Situação do dia, valor exato: ${Object.values(RESOLVED_WORKDAY_STATE_LABELS).join(" · ")}.`),
+      classificacao: filterParameter(`${Object.values(WORKDAY_CLASSIFICATION_LABELS).join(" · ")}.`),
+    },
+  },
+})
+
+LEADERSHIP_TOOL_DECLARATIONS.push({
+  name: "leadership_communications",
+  description:
+    "COMUNICADOS da liderança que CHEGARAM às pessoas da estrutura: quantos comunicados foram publicados no período, quais, para que público e quantas pessoas cada um alcançou, por pessoa, supervisor ou Grupo. A leitura não é registrada (não diga quem leu). Use para \"quais comunicados minha equipe recebeu\", \"quantas pessoas o comunicado X alcançou\". Alinhamentos operacionais (e quem leu) → leadership_alignments." + FACT_NOTE,
+  parameters: {
+    type: "object",
+    properties: {
+      ...factCommon(["COMUNICADO", "PUBLICO"]),
+      medidas: { type: "array", items: { type: "string", enum: ["COMUNICADOS_POR_PESSOA", "RECEBEU"] } },
+      comunicado: filterParameter("Título do comunicado."),
+    },
+  },
+})
+
+LEADERSHIP_TOOL_DECLARATIONS.push({
+  name: "leadership_inia_usage",
+  description:
+    "USO DA INIA pelas pessoas da estrutura: quantas usaram, quantas perguntas e conversas por pessoa (média, mediana), chat × voz, por pessoa, supervisor, Grupo ou período. Nunca o conteúdo das conversas. Use para \"minha equipe está usando a INIA?\", \"quem nunca usou a INIA\", \"uso da INIA por supervisor\"." + FACT_NOTE,
+  parameters: {
+    type: "object",
+    properties: {
+      ...factCommon(["CANAL"]),
+      medidas: { type: "array", items: { type: "string", enum: ["PERGUNTAS_POR_PESSOA", "CONVERSAS_POR_PESSOA", "USOU"] } },
+      canal: filterParameter("Chat ou Voz."),
+    },
+  },
+})
+
+LEADERSHIP_TOOL_DECLARATIONS.push({
+  name: "leadership_support",
+  description:
+    "APOIO COM ANJO (apoio humano pedido pelo operador no chat): quantos atendimentos de apoio, quantas pessoas pediram, como terminaram e o tempo até a primeira resposta do Anjo, por pessoa, supervisor, Grupo ou período. Nunca o conteúdo da sala de apoio. Use para \"quantos pedidos de apoio minha equipe fez\", \"tempo de resposta do Anjo\"." + FACT_NOTE,
+  parameters: {
+    type: "object",
+    properties: {
+      ...factCommon(["FIM"]),
+      medidas: { type: "array", items: { type: "string", enum: ["PEDIDOS_POR_PESSOA", "PEDIU_APOIO", "TEMPO_ATE_RESPOSTA", "DURACAO"] } },
+    },
+  },
+})
+
 /** Voz: UMA ferramenta que leva a pergunta ao mesmo raciocínio do chat de texto (dados da estrutura + especialistas), no backend. */
 export const LEADERSHIP_ASK_TOOL = "leadership_ask"
 export const LEADERSHIP_ASK_DECLARATION: FunctionDeclaration = {
@@ -187,6 +389,18 @@ export type LeadershipToolDependencies = {
   loadBestPractices?: LeadershipPracticesLoader
   /** Alinhamentos operacionais que alcançam os liderados (em vigor e programados), com alcance e leituras. Ausente = ferramenta indisponível. */
   loadStructureAlignments?: (memberIds: readonly string[]) => Promise<StructureAlignment[]>
+  /** Registros dos domínios de dado (atendimentos, monitoria, feedbacks, casos). Ausente = essas ferramentas indisponíveis. */
+  loadDomainFacts?: DomainFactsLoader
+  /** Onde a CONTA tem a permissão da tela de origem dos domínios restritos (uso da INIA, Apoio com Anjo). Ausente = sem permissão. */
+  domainAccess?: DomainAccess
+}
+
+/** Ferramentas declaradas ao modelo para ESTA conta: as dos domínios restritos só entram com a permissão da tela de origem. */
+export function leadershipDeclarationsFor(domainAccess: DomainAccess | undefined): FunctionDeclaration[] {
+  return LEADERSHIP_TOOL_DECLARATIONS.filter((declaration) => {
+    const domain = DOMAIN_OF_TOOL[declaration.name]
+    return !domain || domainAllowed(domainAccess, domain)
+  })
 }
 
 /** `issue` = pedido não resolvido (ambíguo, fora do escopo/inexistente, inválido): o chat repassa ao modelo, a rota vira 422. */
@@ -205,6 +419,11 @@ function clarification<T>(outcome: ReferenceOutcome<T>, what: string): Leadershi
 export async function executeLeadershipTool(deps: LeadershipToolDependencies, name: string, args: Record<string, unknown>): Promise<LeadershipToolResult> {
   const { repository, scope, closure } = deps
   try {
+    if (name === "leadership_calculate") {
+      const parsed = parseCalculations(args.calculos)
+      if ("error" in parsed) return { text: `Cálculo não feito: ${parsed.error}`, card: null, issue: { kind: "INVALID", message: parsed.error, candidates: [] } }
+      return { text: renderCalculations(parsed.calculations.map(calculate)), card: null, trace: CALCULATION_TRACE }
+    }
     // `subject_kind/subject_id` não são declarados ao modelo: vêm de quem chama pelo backend (rota da tela) e são validados
     // contra o escopo como qualquer referência.
     const structureOutcome = resolveStructureReference(scope, { name: str(args.estrutura), subjectKind: str(args.subject_kind), subjectId: str(args.subject_id) })
@@ -245,6 +464,22 @@ export async function executeLeadershipTool(deps: LeadershipToolDependencies, na
       const situation = SITUATIONS.find((value) => value === args.situacao) ?? null
       const card = await buildStructurePeople(repository, scope, { structure, period, situation, indicator: indicatorOutcome?.kind === "OK" ? indicatorOutcome.value : null, pendingOnly: args.so_pendentes === true, now: closure.now })
       return { text: renderPeople(card), card }
+    }
+    const domain = DOMAIN_OF_TOOL[name]
+    if (domain) {
+      if (!deps.loadDomainFacts) return { text: "Estes dados não estão disponíveis aqui.", card: null, issue: { kind: "INVALID", message: "Dados indisponíveis.", candidates: [] } }
+      const outcome = await runDomainQuery(scope, { domain, structure, args, load: deps.loadDomainFacts, lastClosedPeriod: closure.lastClosedPeriod, now: closure.now, ...(deps.domainAccess ? { domainAccess: deps.domainAccess } : {}) })
+      if ("error" in outcome) return { text: `Consulta não feita: ${outcome.error}`, card: null, issue: { kind: "INVALID", message: outcome.error, candidates: [] } }
+      if ("choice" in outcome) return { text: outcome.summary, card: outcome.choice, issue: { kind: "AMBIGUOUS", message: outcome.choice.prompt, candidates: outcome.choice.options.map((option) => option.label) } }
+      return { text: renderQueryTable(outcome.card), card: outcome.card }
+    }
+    if (name === "leadership_span") {
+      const level: SpanLevel = (["SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER"] as const).find((value) => value === args.nivel) ?? "SUPERVISOR"
+      const view: SpanView = args.por === "GRUPO" ? "TEAM" : args.por === "SUBGRUPO" ? "SUBTEAM" : "LEADER"
+      const counted: SpanCounted = ({ OPERADORES: "OPERATOR", SUPERVISORES: "SUPERVISOR", COORDENADORES: "COORDINATOR", GERENTES: "MANAGER" } as const)[String(args.contar ?? "OPERADORES") as "OPERADORES"] ?? "OPERATOR"
+      if (!spanLevelsValid(level, counted)) return { text: `Span inválido: ${String(args.contar)} não fica abaixo de ${level}. Escolha um nível de líder acima do que é contado.`, card: null, issue: { kind: "INVALID", message: "O nível contado precisa ficar abaixo do nível do líder.", candidates: [] } }
+      const card = buildSpan(scope, { structure, level, counted, view, limit: typeof args.limite === "number" ? args.limite : 300, now: closure.now })
+      return { text: renderQueryTable(card), card }
     }
     if (name === "leadership_workforce") {
       if (!deps.loadStatuses) return { text: "A situação funcional não está disponível aqui.", card: null, issue: { kind: "INVALID", message: "Situação funcional indisponível.", candidates: [] } }
@@ -367,6 +602,8 @@ export function summarizeLeadershipCard(card: LeadershipCard): string {
       return card.items.length === 0 ? "Onde atuar: nenhuma decisão pendente e nenhum desvio em destaque." : `Onde atuar${card.structure ? ` — ${where(card.structure, card.periodLabel)}` : ""}: ${card.items.slice(0, 3).map((item) => item.title).join("; ")}.`
     case "QUERY_TABLE":
       return `${card.title} — ${card.structure.label} · ${card.scopeNote}: ${card.totalRows} ${card.totalRows === 1 ? "linha" : "linhas"}.`
+    case "DATA_CHOICE":
+      return `${card.title}: ${card.options.map((option) => `${option.label} (${option.detail})`).join("; ")}.`
   }
 }
 

@@ -11,7 +11,9 @@ import { resolveEmploymentStatusFreshness, type EmploymentStatusFreshness } from
 import { loadAnalyticsVersion } from "../../performance-analytics/infrastructure/analytics-versions.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import type { SourceState } from "../domain/delivery-decision.js"
-import { requiredSources, type ReportAudience, type ReportDefinition, type ReportSource } from "../domain/report-definition.js"
+import type { RecordMarks } from "../domain/record-coverage.js"
+import { localDateParts } from "../../workflows/application/schedule-recurrence.js"
+import { isRecordTool, requiredSources, type ReportAudience, type ReportDefinition, type ReportSource } from "../domain/report-definition.js"
 import { peopleBelow } from "../../leadership-analytics/application/workforce.js"
 import { ReportRunReads, type CoverageReads } from "./report-run-reads.js"
 
@@ -32,12 +34,17 @@ export type RecipientContext = {
   /** Fração das pessoas da estrutura com dado no período para o que a definição pede (null = não se aplica). */
   coverage(structure: ResolvedStructure, definition: ReportDefinition, period: string | null): Promise<number | null>
   sources(structure: ResolvedStructure, definition: ReportDefinition): Promise<SourceState[]>
+  /** Marcas de cobertura dos atendimentos da estrutura (primeiro/último atendimento e dia da última carga do feed), em datas
+   * civis no fuso da organização — ver `domain/record-coverage.ts`. */
+  recordMarks(structure: ResolvedStructure, definition: ReportDefinition): Promise<RecordMarks>
   /** Pessoas ativas abaixo da âncora da estrutura que o escopo DESTA pessoa alcança (líderes inclusive) — o que as ferramentas
    * leem além dos operadores; entra na chave que junta destinatários numa entrega (achado C15 da 4ª auditoria). */
   visibleBelow(structure: ResolvedStructure): string[]
   indicatorDirection(code: string | null): Promise<"HIGHER" | "LOWER" | "TARGET" | null>
-  /** Competência fechada mais recente (para o rótulo do período). */
+  /** Competência fechada mais recente (para o rótulo do período e o "último mês fechado" das consultas de registros). */
   lastClosedPeriod: string
+  /** Data local (AAAA-MM-DD, fuso da organização) do relógio da sessão — base dos períodos relativos de registros. */
+  today: string
   /** Estruturas que o escopo ATUAL alcança (escolha de estrutura fixa no formulário). */
   structureOptions(): { subjectKind: string; subjectId: string; label: string; description: string }[]
   /** Catálogo de indicadores (para o formulário e para guardar CÓDIGOS na definição). */
@@ -89,6 +96,7 @@ const SOURCE_LABELS: Record<ReportSource, string> = {
   INDICATOR_MEASUREMENTS: "Medição diária dos indicadores",
   EMPLOYMENT_STATUS: "Situação funcional (colaboradores e ausências)",
   INTERACTIONS: "Interações",
+  PLATFORM_RECORDS: "Registros da plataforma (consultados a cada execução)",
 }
 const CONTRACT_BY_SOURCE: Record<ReportSource, string[]> = {
   OFFICIAL_INDICATOR_PERFORMANCE: ["OFFICIAL_INDICATOR_PERFORMANCE"],
@@ -96,6 +104,7 @@ const CONTRACT_BY_SOURCE: Record<ReportSource, string[]> = {
   INDICATOR_MEASUREMENTS: ["INDICATOR_MEASUREMENTS"],
   EMPLOYMENT_STATUS: ["EMPLOYEES", "EMPLOYEE_ABSENCES"],
   INTERACTIONS: ["INTERACTIONS"],
+  PLATFORM_RECORDS: [],
 }
 
 type FeedRow = { contract_key: string; last_success_at: Date | null; last_data_at: Date | null; cadence: Cadence; expected_interval_minutes: number | null }
@@ -160,6 +169,11 @@ export function createPostgresReportRuntime(db: Database, clock: () => Date = ()
         const result = await db.query<{ last: Date | null }>(`select max(started_at) last from interactions where organization_id = $1 and operator_id = any($2::uuid[])`, [organizationId, memberIds])
         const last = result.rows[0]?.last ?? null
         states.push({ source, label: SOURCE_LABELS[source], watermark: last ? `interaction:${last.toISOString()}` : null, lastUpdatedAt: last?.toISOString() ?? null, stale: false, detail: feedNote })
+      } else if (source === "PLATFORM_RECORDS") {
+        // Gravados pela própria plataforma, sem carga nem versão: consultados a cada execução (a marca é o momento da consulta) e
+        // "mudou ou não" fica com a impressão digital do resultado (regra 4).
+        const checkedAt = clock().toISOString()
+        states.push({ source, label: SOURCE_LABELS[source], watermark: `checked:${checkedAt}`, lastUpdatedAt: checkedAt, stale: false, detail: "Organograma, monitoria, feedbacks, casos, escala, comunicados, uso da INIA e Apoio com Anjo são lidos direto da plataforma na execução." })
       } else {
         const freshness = organization.employment!
         const stamp = freshness.lastSuccessAt ?? freshness.lastDataAt
@@ -169,8 +183,19 @@ export function createPostgresReportRuntime(db: Database, clock: () => Date = ()
     return states
   }
 
+  const recordMarks = async (organizationId: string, structure: ResolvedStructure, organization: OrganizationSourceState): Promise<RecordMarks> => {
+    const result = await db.query<{ first_day: string | null; last_day: string | null }>(
+      `select to_char(min(started_at) at time zone $3, 'YYYY-MM-DD') first_day, to_char(max(started_at) at time zone $3, 'YYYY-MM-DD') last_day
+         from interactions where organization_id = $1 and operator_id = any($2::uuid[])`,
+      [organizationId, structure.resolved.members.map((member) => member.id), organization.timeZone],
+    )
+    const loaded = feedState(organization.feeds.filter((row) => CONTRACT_BY_SOURCE.INTERACTIONS.includes(row.contract_key)), organization.timeZone).lastSuccess
+    return { firstDay: result.rows[0]?.first_day ?? null, lastDay: result.rows[0]?.last_day ?? null, loadedThroughDay: loaded ? localDateParts(loaded, organization.timeZone).date : null }
+  }
+
   const coverage = async (reads: CoverageReads, organizationId: string, structure: ResolvedStructure, definition: ReportDefinition, period: string | null): Promise<number | null> => {
-    if (definition.tool === "WORKFORCE" || definition.period.mode === "CURRENT" || !period) return null
+    // Cobertura de fechamento oficial só vale para indicadores; registros e span não têm "quem tem dado" equivalente.
+    if (definition.tool === "WORKFORCE" || definition.tool === "SPAN" || isRecordTool(definition.tool) || definition.period.mode === "CURRENT" || !period) return null
     const members = structure.resolved.members
     if (members.length === 0) return null
     const ids = members.map((member) => member.id)
@@ -198,6 +223,7 @@ export function createPostgresReportRuntime(db: Database, clock: () => Date = ()
       runTool: (name, args) => executeLeadershipTool(deps, name, args),
       coverage: (structure, definition, period) => coverage(reads, organizationId, structure, definition, period),
       sources: async (structure, definition) => sourceStates(organizationId, structure, definition, await organizationSources(definition)),
+      recordMarks: async (structure, definition) => recordMarks(organizationId, structure, await organizationSources(definition)),
       visibleBelow: (structure) => peopleBelow(session.scope, structure).map((person) => person.id),
       indicatorDirection: async (code) => {
         if (!code) return null
@@ -205,6 +231,7 @@ export function createPostgresReportRuntime(db: Database, clock: () => Date = ()
         return (definition?.direction as "HIGHER" | "LOWER" | "TARGET" | undefined) ?? null
       },
       lastClosedPeriod: session.closure.lastClosedPeriod,
+      today: localDateParts(session.closure.now, session.closure.timeZone).date,
       structureOptions: () => structureCandidates(session.scope).map((candidate) => ({ ...subjectParts(candidate.subject as unknown as Record<string, unknown>), label: candidate.label, description: candidate.description })),
       indicatorOptions: async () => (await session.repository.loadIndicatorDefinitions(organizationId)).map((definition) => ({ code: definition.code, name: definition.name, unit: definition.unit, direction: definition.direction, active: (definition as { active?: boolean }).active !== false })),
     }

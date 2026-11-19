@@ -321,7 +321,8 @@ export const formatResultSchema = z.object({
   reasons: z.array(z.object({ reason: z.string(), label: z.string(), worked: z.enum(["YES", "PARTIAL", "NO"]), count: z.number() })),
 })
 export type FormatResult = z.infer<typeof formatResultSchema>
-export const teamOverviewSchema = z.object({ active: z.array(teamInterventionSchema), results: z.array(formatResultSchema), windowDays: z.number() })
+/** `activeTotal` = contagem real no alcance; `active` vem limitada pelo servidor e `activeTruncated` diz se houve corte. */
+export const teamOverviewSchema = z.object({ active: z.array(teamInterventionSchema), activeTotal: z.number().int().nonnegative(), activeTruncated: z.boolean(), results: z.array(formatResultSchema), windowDays: z.number() })
 export type TeamOverview = z.infer<typeof teamOverviewSchema>
 
 /** O acompanhamento como o COLABORADOR o vê: o combinado e os passos — nunca o motivo, a análise ou as anotações de quem conduz. */

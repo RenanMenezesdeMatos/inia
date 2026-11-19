@@ -4,8 +4,9 @@ import type { QueryTableCard } from "../../leadership-analytics/domain/view-mode
 import { longPeriodLabel, previousReferencePeriod } from "../../performance-analytics/domain/reference-period.js"
 import { localDateParts } from "../../workflows/application/schedule-recurrence.js"
 import { compareCards, compareFirstAndLastMonth, notComparable, type ReportComparison } from "../domain/comparison.js"
-import { cardFingerprint, decideDelivery, type DeliveryBaseline } from "../domain/delivery-decision.js"
-import { describePeriod, toToolCall, type ReportDefinition } from "../domain/report-definition.js"
+import { cardFingerprint, decideDelivery, legacyCardFingerprint, type DeliveryBaseline } from "../domain/delivery-decision.js"
+import { recordPeriodCovered, withRecordCoverage, type RecordMarks } from "../domain/record-coverage.js"
+import { describePeriod, isRecordTool, reportDefinitionSchema, requiredSources, resolveRecordPeriod, toToolCall, type ConcretePeriod, type ReportDefinition, type ResolvedRecordPeriod } from "../domain/report-definition.js"
 import { buildVisualizationData } from "../domain/visualization.js"
 import type { RecipientContext, RecipientLookup, ReportRuntime } from "./report-runtime.js"
 import type { DeliveryRecord, Recipient, ReportRecord, ReportStore, RunRecord, RunStatus } from "./report-store.js"
@@ -70,24 +71,39 @@ function weekStart(date: string): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) - back * 86_400_000).toISOString().slice(0, 10)
 }
 
+/** Mês ou datas concretos como sobrescrita do período na chamada da ferramenta de registros. */
+const periodOverrideOf = (period: ConcretePeriod) => ("month" in period ? { month: period.month } : { dates: period.dates })
+
 function periodLabelOf(definition: ReportDefinition, card: QueryTableCard, now: Date, timeZone: string): string {
-  if (definition.period.mode === "TODAY") return `Situação em ${localDateParts(now, timeZone).date.split("-").reverse().join("/")}`
+  if (definition.period.mode === "TODAY") return `${definition.tool === "SPAN" ? "Organograma" : "Situação"} em ${localDateParts(now, timeZone).date.split("-").reverse().join("/")}`
   if (definition.period.mode === "CURRENT") return card.scopeNote || describePeriod(definition.period)
   if (!card.period) return describePeriod(definition.period)
   if (definition.period.mode === "LAST_N_CLOSED") return `${longPeriodLabel(shiftMonths(card.period, definition.period.months - 1))} a ${longPeriodLabel(card.period)}`
   return longPeriodLabel(card.period)
 }
 
-async function buildComparison(context: RecipientContext, report: ReportRecord, card: QueryTableCard, lastValid: DeliveryRecord | null): Promise<ReportComparison> {
+async function buildComparison(context: RecipientContext, report: ReportRecord, card: QueryTableCard, lastValid: DeliveryRecord | null, recordPeriod: ResolvedRecordPeriod | null, marks: RecordMarks | null, today: string): Promise<ReportComparison> {
   const definition = report.definition
   if (!report.analysis.comparison) return notComparable("DISABLED", "", "Comparação desligada na configuração do report.")
+  if (isRecordTool(definition.tool)) {
+    // Registros: a MESMA consulta no período equivalente anterior (mês anterior; semana/mês anterior; os mesmos N dias logo antes).
+    if (!recordPeriod?.reference) return notComparable("NOT_COMPARABLE", "", "Sem período de referência equivalente.")
+    const reference = recordPeriod.reference
+    // Referência que a carga não cobre desde o início (antes da implantação ou da retenção) não é zero: é falta de dado.
+    if (marks && !recordPeriodCovered(marks, reference, today, { fromStart: true })) return { ...notComparable("NO_HISTORY", `${recordPeriod.label} × ${reference.label}`, `Sem dados em ${reference.label} para comparar.`), currentLabel: recordPeriod.label, referenceLabel: reference.label }
+    const call = toToolCall(definition, periodOverrideOf(reference))
+    const result = await context.runTool(call.name, call.args)
+    const referenceCard = result.card && result.card.type === "QUERY_TABLE" ? result.card : null
+    if (!referenceCard) return { ...notComparable("NO_HISTORY", `${recordPeriod.label} × ${reference.label}`, `Sem dados em ${reference.label} para comparar.`), currentLabel: recordPeriod.label, referenceLabel: reference.label }
+    return compareCards(card, referenceCard, { basis: `${recordPeriod.label} × ${reference.label} — período equivalente anterior, mesma consulta, escopo e filtros (estrutura atual nos dois períodos)`, currentLabel: recordPeriod.label, referenceLabel: reference.label, valueDirection: null })
+  }
   if (definition.tool === "INDICATOR_DIAGNOSIS") return notComparable("NOT_COMPARABLE", "Diagnóstico do período", "O diagnóstico mostra associações do período analisado; não há comparação equivalente.")
   if (definition.period.mode === "CURRENT") return notComparable("NOT_COMPARABLE", "Período em curso", "Período em curso (parcial): comparar com um período completo não seria equivalente.")
   if (definition.period.mode === "LAST_N_CLOSED" && definition.period.display === "RECORRENCIA") return notComparable("NOT_COMPARABLE", "Recorrência no período", "A recorrência já resume o período inteiro; não há referência equivalente.")
   if (definition.period.mode === "LAST_N_CLOSED" && definition.period.display === "POR_MES") return compareFirstAndLastMonth(card)
-  if (definition.tool === "WORKFORCE") {
+  if (definition.tool === "WORKFORCE" || definition.tool === "SPAN") {
     if (!lastValid?.dataset) return notComparable("NO_HISTORY", "Situação × entrega anterior", "Ainda não há entrega anterior para comparar.")
-    return compareCards(card, lastValid.dataset, { basis: `Situação atual × entrega anterior (${lastValid.createdAt.slice(0, 10).split("-").reverse().join("/")}), mesma definição e escopo`, currentLabel: "Agora", referenceLabel: "Entrega anterior", valueDirection: null, configurationChanged: lastValid.configVersion !== report.configVersion })
+    return compareCards(card, lastValid.dataset, { basis: `${definition.tool === "SPAN" ? "Organograma atual" : "Situação atual"} × entrega anterior (${lastValid.createdAt.slice(0, 10).split("-").reverse().join("/")}), mesma definição e escopo`, currentLabel: "Agora", referenceLabel: "Entrega anterior", valueDirection: null, configurationChanged: lastValid.configVersion !== report.configVersion })
   }
   if (!card.period) return notComparable("NOT_COMPARABLE", "", "Sem competência identificada para comparar.")
   const months = definition.period.mode === "LAST_N_CLOSED" ? definition.period.months : 1
@@ -114,6 +130,10 @@ export async function executeReportRun(deps: ExecutorDeps, run: RunRecord): Prom
   if (report.status !== "ACTIVE" && run.triggerKind === "SCHEDULE") return { status: "SKIPPED", outcome: { reason: "REPORT_INACTIVE" } }
   const definition = report.definition
   const timeZone = report.timeZone
+  // Definição gravada antes das regras atuais (trecho sem o campo onde procurar, data que não existe): não é reproduzível — a
+  // execução para aqui, sem cartão de escolha nem troca de leitura, e pede a correção a quem configurou.
+  const valid = reportDefinitionSchema.safeParse(definition)
+  if (!valid.success) return { status: "BLOCKED", outcome: { reason: "DEFINITION_NOT_REPRODUCIBLE", message: `A consulta deste report precisa ser refeita: ${valid.error.issues.map((issue) => issue.message).join("; ")}` } }
 
   // Responsável: conta e pessoa ativas; distribuição ainda permitida; estrutura fixa ainda no escopo dele.
   const owner = await deps.runtime.account(report.organizationId, report.ownerAccountId)
@@ -160,8 +180,11 @@ export async function executeReportRun(deps: ExecutorDeps, run: RunRecord): Prom
   const notForwarded: { key: string; reason: string; structure: string; pendingSources: { label: string; lastUpdatedAt: string | null; detail: string | null }[] }[] = []
   const failed: { key: string; structure: string; message: string }[] = []
   const created: DeliveryRecord[] = []
+  const today = localDateParts(now, timeZone).date
   for (const group of groups.values()) {
-    const call = toToolCall(definition)
+    // Registros: o período relativo vira mês/datas concretos da data da execução (fuso do report) a cada execução.
+    const recordPeriod = isRecordTool(definition.tool) ? resolveRecordPeriod(definition.period, { today, lastClosedPeriod: group.context.lastClosedPeriod }) : null
+    const call = toToolCall(definition, recordPeriod ? periodOverrideOf(recordPeriod) : undefined)
     // Estrutura "de quem recebe": a ferramenta usa a estrutura própria da conta do grupo (mesma chave de escopo).
     const result = await group.context.runTool(call.name, call.args)
     const card = result.card && result.card.type === "QUERY_TABLE" ? result.card : null
@@ -169,14 +192,16 @@ export async function executeReportRun(deps: ExecutorDeps, run: RunRecord): Prom
       failed.push({ key: group.key, structure: group.structure.ref.label, message: result.issue?.message ?? "A consulta não devolveu uma tabela." })
       continue
     }
-    const periodKey = periodKeyOf(definition, card, now, timeZone)
+    const periodKey = recordPeriod?.key ?? periodKeyOf(definition, card, now, timeZone)
     const lastValid = await deps.store.lastValidDelivery(report.id, group.key)
     const baseline: DeliveryBaseline | null = lastValid ? { periodKey: lastValid.periodKey, fingerprint: lastValid.fingerprint, watermarks: Object.fromEntries(lastValid.sources.map((source) => [source.source, source.watermark])) } : null
-    const sources = await group.context.sources(group.structure, definition)
+    // Atendimentos: período que a carga ainda não cobriu vira "sem dados no período" (não encaminhado), nunca zero.
+    const marks = recordPeriod && requiredSources(definition).includes("INTERACTIONS") ? await group.context.recordMarks(group.structure, definition) : null
+    const sources = withRecordCoverage(await group.context.sources(group.structure, definition), marks, recordPeriod, today)
     const coverage = await group.context.coverage(group.structure, definition, card.period)
     const fingerprint = cardFingerprint(card)
-    const decision = decideDelivery({ coverage, sources, periodKey, fingerprint, baseline })
-    const periodLabel = periodLabelOf(definition, card, now, timeZone)
+    const decision = decideDelivery({ coverage, sources, periodKey, fingerprint, legacyFingerprint: legacyCardFingerprint(card), baseline })
+    const periodLabel = recordPeriod?.label ?? periodLabelOf(definition, card, now, timeZone)
     if (decision.kind === "NOT_FORWARDED") {
       // Aviso repetido (mesmo motivo e período) não vira outro item: conta a ocorrência no aviso que já existe.
       const latest = await deps.store.latestRecord(report.id, group.key)
@@ -189,7 +214,7 @@ export async function executeReportRun(deps: ExecutorDeps, run: RunRecord): Prom
       notForwarded.push({ key: group.key, reason: decision.reason, structure: group.structure.ref.label, pendingSources: decision.pendingSources.map((source) => ({ label: source.label, lastUpdatedAt: source.lastUpdatedAt, detail: source.detail })) })
       continue
     }
-    const comparison = await buildComparison(group.context, report, card, lastValid)
+    const comparison = await buildComparison(group.context, report, card, lastValid, recordPeriod, marks, today)
     const visualization = buildVisualizationData(card, report.visualization)
     const saved = await deps.store.insertDelivery({ organizationId: report.organizationId, reportId: report.id, runId: run.id, configVersion: report.configVersion, scopeKey: group.key, kind: "DELIVERY", reason: null, structureLabel: group.structure.ref.label, periodKey, periodLabel, sources, dataset: card, visualization, comparison, fingerprint, empty: card.rows.length === 0, analysisStatus: report.analysis.enabled ? "PENDING" : "DISABLED" })
     await deps.store.addRecipients(saved.delivery.id, run.id, report.organizationId, report.id, group.recipients)

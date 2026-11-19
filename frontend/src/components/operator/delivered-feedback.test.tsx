@@ -204,12 +204,12 @@ describe("Acompanhamento do colaborador — filtro de ciência", () => {
     await screen.findByTestId("delivered-feedback")
     expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(3)
 
-    await choose("Feedbacks sem ciência")
+    await choose("Feedbacks aguardando ciência")
     await waitFor(() => expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(2))
     expect(screen.getByText("Resumo Pendente A")).toBeInTheDocument()
     expect(screen.getByTestId("delivered-feedback")).toBeInTheDocument()
     expect(screen.queryByText("Resumo Lido B")).not.toBeInTheDocument()
-    expect(screen.getByTestId("follow-up-ack-filter")).toHaveTextContent("Sem ciência")
+    expect(screen.getByTestId("follow-up-ack-filter")).toHaveTextContent("Aguardando ciência")
 
     await choose("Feedbacks com ciência")
     await waitFor(() => expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(1))
@@ -222,7 +222,7 @@ describe("Acompanhamento do colaborador — filtro de ciência", () => {
     service.fetchMyDeliveredFeedback.mockResolvedValue([])
     renderWithQuery(<OperatorDailyFeedbackFeed indicators={{ current: [], history: [published("fb-d", "Lido B", "2026-09-29T10:00:00.000Z")] }} />)
     await screen.findByText("Resumo Lido B")
-    await choose("Feedbacks sem ciência")
+    await choose("Feedbacks aguardando ciência")
     expect(await screen.findByText("Nenhum feedback aguardando sua ciência")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Ver tudo" }))
     expect(await screen.findByText("Resumo Lido B")).toBeInTheDocument()

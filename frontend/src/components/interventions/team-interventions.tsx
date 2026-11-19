@@ -1,9 +1,12 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { AlertTriangle } from "lucide-react"
 
+import { ListPagination } from "@/components/admin/shared/list/list-pagination"
 import { Badge } from "@/components/ui/badge"
+import { InlineError } from "@/components/ui/states"
 import { SectionLabel, SURFACE_CARD } from "@/components/ui/surface"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TABLE_FRAME } from "@/components/ui/table"
 import { formatCivilDate } from "@/lib/format/date"
@@ -17,8 +20,12 @@ import type { FormatResult } from "@/schemas/interventions/intervention.schema"
  * atraso) e o RESUMÃO do que foi concluído, por formato e indicador: quantos, "deu resultado?" segundo quem conduziu, a medição
  * da INIA e os motivos mais citados. O alcance é decidido pelo servidor (o mesmo de abrir cada intervenção).
  *
- * Sem nada em andamento e sem nada concluído no período, o bloco não aparece (a aba Equipe continua como era).
+ * Sem nada em andamento e sem nada concluído no período, o bloco não aparece (a aba Equipe continua como era). Consulta que FALHA
+ * não é "não há nada": mostra o erro com nova tentativa.
  */
+/** A lista em andamento vem limitada pelo servidor, que informa o total real (`activeTotal`) e se houve corte (`activeTruncated`). */
+const PAGE_SIZE_DEFAULT = 20
+
 const WORKED_LABEL = { YES: "deu resultado", PARTIAL: "em parte", NO: "não deu resultado" } as const
 
 function ResultRow({ row }: { row: FormatResult }) {
@@ -57,17 +64,35 @@ function ResultRow({ row }: { row: FormatResult }) {
 
 export function TeamInterventions() {
   const query = useTeamInterventionsQuery()
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(PAGE_SIZE_DEFAULT)
   const data = query.data
+  if (query.isError) {
+    return (
+      <div className={cn(SURFACE_CARD, "space-y-2 p-5")} data-testid="team-interventions-error">
+        <SectionLabel as="h3">Acompanhamentos em andamento</SectionLabel>
+        <InlineError message="Não foi possível carregar os acompanhamentos da sua estrutura." onRetry={() => void query.refetch()} />
+      </div>
+    )
+  }
   if (!data || (data.active.length === 0 && data.results.length === 0)) return null
   const overdue = data.active.filter((item) => item.overdue || item.nextStep?.overdue).length
+  const truncated = data.activeTruncated
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(data.active.length / pageSize)))
+  const visible = data.active.slice((currentPage - 1) * pageSize, currentPage * pageSize)
   return (
     <div className="space-y-4" data-testid="team-interventions">
       <div className={cn(SURFACE_CARD, "space-y-3 p-5")}>
         <div>
           <SectionLabel as="h3">Acompanhamentos em andamento</SectionLabel>
           <p className="text-sm text-muted-foreground">
-            {data.active.length === 0 ? "Nenhum acompanhamento em andamento na sua estrutura." : `${data.active.length} em andamento na sua estrutura${overdue > 0 ? ` · ${overdue} com prazo ou passo vencido` : ""}.`}
+            {data.active.length === 0 ? "Nenhum acompanhamento em andamento na sua estrutura." : `${data.activeTotal} em andamento na sua estrutura${overdue > 0 ? ` · ${overdue} com prazo ou passo vencido${truncated ? " entre os listados" : ""}` : ""}.`}
           </p>
+          {truncated ? (
+            <p className="text-xs text-muted-foreground" role="status" data-testid="team-interventions-truncated">
+              A lista mostra os {data.active.length} primeiros de {data.activeTotal} (atrasados antes).
+            </p>
+          ) : null}
         </div>
         {data.active.length > 0 ? (
           <div className={TABLE_FRAME}>
@@ -82,7 +107,7 @@ export function TeamInterventions() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.active.map((item) => (
+                {visible.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell className="align-top">
                       <p className="font-medium">{item.person.name}</p>
@@ -115,7 +140,7 @@ export function TeamInterventions() {
                     <TableCell className="align-top whitespace-nowrap">
                       {formatCivilDate(item.dueAt)}
                       {item.overdue ? (
-                        <Badge variant="outline" className="ml-2 border-amber-500/40 text-amber-700 dark:text-amber-400">
+                        <Badge variant="warning" className="ml-2">
                           <AlertTriangle className="size-3" /> Atrasado
                         </Badge>
                       ) : null}
@@ -125,6 +150,9 @@ export function TeamInterventions() {
               </TableBody>
             </Table>
           </div>
+        ) : null}
+        {data.active.length > 0 ? (
+          <ListPagination page={currentPage} pageSize={pageSize} total={data.active.length} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1) }} itemLabel={["acompanhamento", "acompanhamentos"]} />
         ) : null}
       </div>
 

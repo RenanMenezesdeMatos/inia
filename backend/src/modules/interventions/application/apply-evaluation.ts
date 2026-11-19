@@ -8,7 +8,7 @@ import { effectiveCapabilities } from "../domain/capabilities.js"
 import { buildIntelligenceReport, INTELLIGENCE_REPORT_CONTRACT, type IntelligenceReport } from "../domain/intelligence-report.js"
 import { isSensitiveType, scriptItemsOf } from "../domain/intervention-type.js"
 import { briefLead } from "../domain/leader-brief.js"
-import { continuityRuleRequiresPriorFollowUp, CONTINUITY_PRIOR_FOLLOW_UP_MESSAGE } from "../domain/policy-definition.js"
+import { continuityRuleRequiresPriorFollowUp } from "../domain/policy-definition.js"
 import type { InterventionPlan } from "../domain/intervention-plan.js"
 import { ADDRESSED_STATUSES, aggregateOutcome, INTERVENTION_POLICY_EVALUATOR_VERSION, OPENING_STATUSES, referencesOf, type DecisionStatus, type GroupTrace, type PlannedDecision } from "../domain/policy-evaluation.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
@@ -50,6 +50,14 @@ const INITIAL_STATUS: Partial<Record<DecisionStatus, string>> = { CREATED: "IN_P
 const EVIDENCE_KIND_OF: Record<string, string | null> = { FEEDBACK: "FEEDBACK", DIAGNOSIS: "DIAGNOSIS", INDICATOR_RESULT: "INDICATOR_RESULT", INTERACTION: "INTERACTION", CASE_EVIDENCE: "CASE_EVIDENCE", INTERVENTION: null, EMPLOYMENT: null }
 
 class EvaluationAlreadyRecorded extends Error {}
+
+/**
+ * Regra FIXA da continuidade na ABERTURA (QA-07): uma versão de política publicada ANTES da regra pode ter ação de continuidade
+ * sem exigir "Intervenções anteriores concluídas sem evolução". Essa ação é IGNORADA — nenhuma solicitação nasce, a decisão fica
+ * registrada como não aplicada com este motivo — e as demais ações da mesma avaliação seguem. Nunca bloqueia a execução inteira.
+ */
+export const CONTINUITY_NOT_APPLIED_NOTE =
+  "Não aplicada: esta versão da política é anterior à regra fixa da avaliação de continuidade (a regra precisa exigir um acompanhamento anterior concluído sem evolução). Nenhuma solicitação foi aberta. Revise a regra e publique a política de novo."
 
 
 /** Avaliação já gravada com esta chave → o resultado de antes (sem reavaliar, sem tocar em nada). */
@@ -226,14 +234,21 @@ export async function applyEvaluation(db: Database, input: ApplyEvaluationInput)
   const recorded = await loadRecordedEvaluation(db, organizationId, input.idempotencyKey)
   if (recorded) return recorded
   const apply = input.applyDecisions !== false
+  const ignoredContinuity = (decision: PlannedDecision) => {
+    const type = evaluation.types.get(decision.typeKey)
+    const rule = evaluation.version?.definition.rules.find((item) => item.key === decision.ruleKey)
+    return apply && CREATING.includes(decision.status) && Boolean(type && isSensitiveType(type.definition) && rule && !continuityRuleRequiresPriorFollowUp(rule))
+  }
+  // Decisões como serão APLICADAS: a de continuidade fora da regra fixa vira "não aplicada" (status sem abertura + motivo).
+  const decisions: PlannedDecision[] = evaluation.decisions.map((decision) => (ignoredContinuity(decision) ? { ...decision, status: "SUPPRESSED" as const, note: CONTINUITY_NOT_APPLIED_NOTE } : decision))
   if (apply) {
-    for (const decision of evaluation.decisions) {
+    for (const decision of decisions) {
       const problem = ADDRESSED_STATUSES.includes(decision.status) ? evaluation.assignments.get(decision.typeKey)?.problem : null
       if (problem) throw new DomainError(problem, "INTERVENTION_ASSIGNMENT_UNRESOLVED", 422)
-      // Regra FIXA, de novo na abertura (versão publicada antes dela): resultado ruim sozinho nunca leva à avaliação de continuidade.
       const type = evaluation.types.get(decision.typeKey)
-      const rule = evaluation.version?.definition.rules.find((item) => item.key === decision.ruleKey)
-      if (CREATING.includes(decision.status) && type && isSensitiveType(type.definition) && rule && !continuityRuleRequiresPriorFollowUp(rule)) throw new DomainError(CONTINUITY_PRIOR_FOLLOW_UP_MESSAGE, "CONTINUITY_REVIEW_PRIOR_FOLLOW_UP", 422)
+      // "Só avisar" também é reconferido aqui: o tipo vale pela versão publicada MAIS RECENTE, e a política pode ter sido publicada
+      // antes de ele virar avaliação de continuidade. Continuidade nunca é só um aviso (a mesma regra da publicação) — POL-05.
+      if (decision.status === "NOTIFIED" && type && isSensitiveType(type.definition)) throw new DomainError("A avaliação de continuidade não pode ser só um aviso: ela sempre abre a solicitação, que é decidida por uma pessoa autorizada.", "CONTINUITY_REVIEW_NO_NOTIFY", 422)
     }
   }
   // Resumo da liderança: lido ANTES da transação (só leitura) e só quando a avaliação decidiu algo (é o que gera relatório).
@@ -251,13 +266,13 @@ export async function applyEvaluation(db: Database, input: ApplyEvaluationInput)
         caseId = input.origin === "REEVALUATION" && input.supersedesEvaluationId
           ? ((await tx.query<{ case_id: string }>(`select case_id from intervention_reports where evaluation_id = $1`, [input.supersedesEvaluationId])).rows[0]?.case_id ?? null)
           : null
-        caseId ??= await resolveCase(tx, input, { indicatorValue: facts.value, indicatorTarget: facts.target, actionPending: evaluation.decisions.some((decision) => CREATING.includes(decision.status)) })
+        caseId ??= await resolveCase(tx, input, { indicatorValue: facts.value, indicatorTarget: facts.target, actionPending: decisions.some((decision) => CREATING.includes(decision.status)) })
       }
 
       const applied: AppliedDecision[] = []
       const interventionIds = new Map<string, string | null>()
       const notifications: (() => Promise<void>)[] = []
-      for (const decision of evaluation.decisions) {
+      for (const decision of decisions) {
         const type = evaluation.types.get(decision.typeKey)
         let status = decision.status
         let interventionId: string | null = decision.existingInterventionId
@@ -342,7 +357,7 @@ export async function applyEvaluation(db: Database, input: ApplyEvaluationInput)
       }
 
       // Resultado agregado das decisões FINAIS (uma corrida perdida vira EXISTING) — mesma regra fixa do avaliador.
-      const finalDecisions = evaluation.decisions.map((decision) => ({ ...decision, status: applied.find((item) => item.typeKey === decision.typeKey)?.status ?? decision.status }))
+      const finalDecisions = decisions.map((decision) => ({ ...decision, status: applied.find((item) => item.typeKey === decision.typeKey)?.status ?? decision.status }))
       const finalOutcome = evaluation.outcome === "NOT_APPLICABLE" ? "NOT_APPLICABLE" : aggregateOutcome(evaluation.selection, finalDecisions)
       const serialized = serializeEvaluation(evaluation)
       const inserted = await tx.query(
@@ -367,7 +382,7 @@ export async function applyEvaluation(db: Database, input: ApplyEvaluationInput)
           definition: evaluation.version!.definition,
           rules: evaluation.rules,
           selection: evaluation.selection,
-          decisions: evaluation.decisions.map((decision) => ({ ...decision, status: applied.find((item) => item.typeKey === decision.typeKey)?.status ?? decision.status, note: applied.find((item) => item.typeKey === decision.typeKey)?.note ?? decision.note })),
+          decisions: decisions.map((decision) => ({ ...decision, status: applied.find((item) => item.typeKey === decision.typeKey)?.status ?? decision.status, note: applied.find((item) => item.typeKey === decision.typeKey)?.note ?? decision.note })),
           outcome: finalOutcome,
           types: evaluation.types,
           assignments: new Map([...evaluation.assignments].map(([key, value]) => [key, { responsible: value.responsible, approver: value.approver, dueAt: value.dueAt }])),

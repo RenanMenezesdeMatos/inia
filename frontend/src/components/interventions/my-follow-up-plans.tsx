@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Circle } from "lucide-react"
 
+import { InlineError } from "@/components/ui/states"
 import { formatCivilDate } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
 import { useMarkMyStepMutation, useMyFollowUpsQuery } from "@/queries/interventions/use-intervention-queries"
@@ -68,6 +69,8 @@ function Plan({ plan }: { plan: MyFollowUp }) {
 
 export function MyFollowUpPlans() {
   const query = useMyFollowUpsQuery()
+  // Falha na consulta não é "não há acompanhamento": o colaborador vê o erro e pode tentar de novo.
+  if (query.isError) return <InlineError className="py-4" message="Não foi possível carregar o seu acompanhamento com quem lidera você." onRetry={() => void query.refetch()} />
   if (!query.data || query.data.length === 0) return null
   return (
     <div className="space-y-3 py-4" data-testid="my-follow-up-plans">

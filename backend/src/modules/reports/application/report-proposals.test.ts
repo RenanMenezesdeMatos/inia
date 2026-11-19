@@ -10,7 +10,7 @@ function card(subject: Record<string, string>, extra: Partial<QueryTableCard> = 
   return { type: "QUERY_TABLE", generatedAt: "", structure: { subject: subject as never, label: subject === OWN ? "Minha equipe" : "Equipe da Ana", description: null }, source: "OFFICIAL", title: "TOP 3 — Reincidência", scopeNote: "", period: "2026-09", indicatorCode: "REINC", columns: [{ key: "person", label: "Pessoa", numeric: false }, { key: "achievement", label: "Atingimento", numeric: true }], rows: [{ cells: { person: "Ana", achievement: "110%" }, subject: null, personId: null }], totalRows: 1, highlights: [], methods: [], limitations: [], ...extra }
 }
 
-const context = { ownSubject: OWN, lastClosedPeriod: "2026-09", question: "Quem são os TOP 3 em Reincidência do meu time?", indicatorCode: (text: string) => (/reinc/i.test(text) ? "REINC" : /tma/i.test(text) ? "TMA" : null) }
+const context = { ownSubject: OWN, lastClosedPeriod: "2026-09", today: "2026-10-16", question: "Quem são os TOP 3 em Reincidência do meu time?", indicatorCode: (text: string) => (/reinc/i.test(text) ? "REINC" : /tma/i.test(text) ? "TMA" : null) }
 
 describe("rascunho a partir da consulta do chat — preserva a intenção", () => {
   it("TOP 3 em Reincidência do meu time: ordenação, limite, agrupamento; 'meu time' = relativo; indicador pelo CÓDIGO", () => {

@@ -4,6 +4,8 @@ import { civilDateOf, myAlignmentStateOf, myAudienceLabelOf, MY_ALIGNMENTS_HISTO
 import { audienceReasonOf, type AlignmentLink, type AlignmentSubject } from "../domain/operational-alignment.js"
 import { alignmentLinksSql, loadAlignmentSubject } from "../infrastructure/operational-alignment-loaders.js"
 import { isOperatingUniverse } from "../../operating-universe/domain/operating-universe.js"
+import { alignmentReachesPersonSql } from "./structure-alignments.js"
+import { ALIGNMENT_STARTED_NOTICE_WINDOW_MS } from "./alignment-audit.js"
 
 type Queryable = Pick<Database, "query">
 
@@ -70,10 +72,12 @@ type Row = {
 
 /**
  * Versões publicadas (vigentes, futuras ou substituídas) de alinhamentos NÃO excluídos, que ainda valem, vão valer ou deixaram de
- * valer há no máximo 12 meses. Cancelada (encerrada antes de começar) e rascunho nunca entram. O público é aplicado depois, pela
- * mesma regra do chat (`audienceReasonOf`).
+ * valer há no máximo 12 meses. Cancelada (encerrada antes de começar) e rascunho nunca entram. O público é aplicado NO SQL, ANTES do
+ * teto de linhas (AL-02: o teto por organização escondia o alinhamento vigente de quem tem muitas versões de outros públicos), com o
+ * sujeito já resolvido (`me` = universo/Grupo/Subgrupo de `loadAlignmentSubject`, `org` = exigência de universo) e o mesmo predicado da
+ * leitura da liderança; a regra pura (`audienceReasonOf`, em `pickMyAlignmentVersions`) continua conferindo depois.
  */
-const SELECT_VERSIONS = `
+export const SELECT_VERSIONS = `
   select v.alignment_id, v.id version_id, v.version, v.title, v.guidance, v.justification, v.change_reason, v.affected_topic,
          (select array_agg(kd.title order by kd.title) from operational_alignment_version_documents vd join knowledge_documents kd on kd.id = vd.document_id where vd.version_id = v.id) processes,
          pn.name product_name, v.operating_universe, v.scope_type, ${alignmentLinksSql("v")} links,
@@ -86,8 +90,11 @@ const SELECT_VERSIONS = `
   left join people pr on pr.id = v.responsible_person_id
   left join people pp on pp.id = v.published_by
   left join operational_alignment_reads r on r.version_id = v.id and r.person_id = $3
+  cross join (select $4::text operating_universe, $5::uuid team_id, $6::uuid subteam_id) me
+  cross join (select case when $7::boolean then now() end operating_universe_enforced_at) org
   where v.organization_id = $1 and v.status in ('PUBLISHED', 'SUPERSEDED') and v.effective_until > v.effective_from
     and v.effective_until > $2::timestamptz - make_interval(months => ${MY_ALIGNMENTS_HISTORY_MONTHS})
+    and ${alignmentReachesPersonSql("v", "me", "org")}
   order by v.published_at desc
   limit 1000`
 
@@ -138,7 +145,7 @@ export async function listMyAlignments(db: Queryable, input: { organizationId: s
   const now = input.now ?? new Date()
   const subject = await loadAlignmentSubject(db, input.organizationId, input.personId, now)
   if (!subject) return []
-  const rows = (await db.query<Row>(SELECT_VERSIONS, [input.organizationId, now, input.personId])).rows.map(toVersion)
+  const rows = (await db.query<Row>(SELECT_VERSIONS, [input.organizationId, now, input.personId, subject.operatingUniverse, subject.teamId, subject.subteamId, subject.universeEnforced])).rows.map(toVersion)
   return pickMyAlignmentVersions(rows, subject, now).slice(0, MY_ALIGNMENTS_LIMIT).map((row) => toMyAlignment(row, subject, now))
 }
 
@@ -149,23 +156,36 @@ export async function listMyAlignments(db: Queryable, input: { organizationId: s
 export async function markMyAlignmentRead(db: Queryable, input: { organizationId: string; personId: string; alignmentId: string; versionId: string; now?: Date }): Promise<{ readAt: string }> {
   const visible = (await listMyAlignments(db, input)).find((item) => item.alignmentId === input.alignmentId && item.versionId === input.versionId)
   if (!visible || visible.state === "ENDED") throw new DomainError("Alinhamento não encontrado.", "OPERATIONAL_ALIGNMENT_NOT_FOUND", 404)
-  const row = (await db.query<{ read_at: Date }>(
+  const params = [input.organizationId, input.personId, input.alignmentId, input.versionId]
+  let row = (await db.query<{ read_at: Date }>(
     `with inserted as (
        insert into operational_alignment_reads (organization_id, person_id, alignment_id, version_id) values ($1, $2, $3, $4)
        on conflict (person_id, version_id) do nothing returning read_at
      )
      select read_at from inserted union all select read_at from operational_alignment_reads where person_id = $2 and version_id = $4 limit 1`,
-    [input.organizationId, input.personId, input.alignmentId, input.versionId],
+    params,
   )).rows[0]
-  return { readAt: new Date(row!.read_at).toISOString() }
+  // QA-06 — duas leituras simultâneas da mesma versão: a segunda cai no `do nothing` e o `select` do MESMO comando ainda não enxerga a
+  // linha que a primeira acabou de confirmar (fotografia anterior). Um segundo comando lê a leitura já gravada — nunca 500.
+  // (Sem `on conflict do update`: a tabela é só inserção, migration 227.)
+  if (!row) row = (await db.query<{ read_at: Date }>(`select read_at from operational_alignment_reads where person_id = $1 and version_id = $2`, [input.personId, input.versionId])).rows[0]
+  if (!row) throw new DomainError("Alinhamento não encontrado.", "OPERATIONAL_ALIGNMENT_NOT_FOUND", 404)
+  return { readAt: new Date(row.read_at).toISOString() }
 }
 
 /** Tipo do aviso no sino quando uma versão COMEÇA a valer. */
 export const ALIGNMENT_STARTED_ALERT_TYPE = "OPERATIONAL_ALIGNMENT_STARTED"
 /** `operational_alignment_started:<alinhamento>:<versão>:<pessoa>` — o sino abre o item do alinhamento no Acompanhamento. */
 export const alignmentStartedDedupeKey = (alignmentId: string, versionId: string, personId: string) => `operational_alignment_started:${alignmentId}:${versionId}:${personId}`
+/**
+ * O aviso `a` é de um alinhamento que foi EXCLUÍDO (AL-09): o sino não o mostra nem conta — o item não existe mais no Acompanhamento e o
+ * título ficaria visível depois da exclusão. `case` garante que a chave só é lida como uuid nos avisos deste tipo; busca pela chave
+ * primária, só para os avisos de alinhamento. Restaurado em "Itens excluídos", o aviso volta.
+ */
+export const alignmentAlertOfDeletedSql = (a: string) =>
+  `(case when ${a}.alert_type = '${ALIGNMENT_STARTED_ALERT_TYPE}' then exists (select 1 from operational_alignments oa where oa.id = nullif(split_part(${a}.dedupe_key, ':', 2), '')::uuid and oa.deleted_at is not null) else false end)`
 /** Versão que começou há mais que isto não avisa (backfill, job parado por dias): o aviso é de novidade, não de histórico. */
-const STARTED_NOTICE_WINDOW_MS = 2 * 24 * 60 * 60 * 1000
+const STARTED_NOTICE_WINDOW_MS = ALIGNMENT_STARTED_NOTICE_WINDOW_MS
 
 /**
  * Sino ao COMEÇAR a valer (decisão do usuário, 18/11): um aviso por versão × OPERADOR ativo do público naquele momento (a mesma regra

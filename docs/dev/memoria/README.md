@@ -176,3 +176,4 @@ Entrada desta geração: `CLAUDE.md` com 506102 bytes, sha256 `e762eb3f8b70a22df
 
 | [universo-de-atuacao.md](universo-de-atuacao.md) | universo de atuação B2B/B2C/B2X: regra, onde é aplicado, implantação e limitações (16/11/2026). | b | — |
 | [alinhamentos-operacionais.md](alinhamentos-operacionais.md) | alinhamentos operacionais: cadastro, regra única (chat × monitoria), precedência, diagnósticos e reprocessamento (17/11/2026). | b | — |
+| [alcance-multigrupo.md](alcance-multigrupo.md) | alcance por vários Grupos (multi-grupo): vínculos por entidade, escopo global à parte, gestão e precedência (17/11/2026, migration 223). | b | — |

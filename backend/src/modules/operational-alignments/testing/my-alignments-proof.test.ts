@@ -6,6 +6,7 @@
  * operadores do público, uma vez, com o destino no item do Acompanhamento). ZERO chamada de modelo. Tudo numa transação desfeita.
  *   INIA_DB_PROOF=1 NODE_ENV=test npx vitest run my-alignments-proof
  */
+import { randomUUID } from "node:crypto"
 import pg from "pg"
 import request from "supertest"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
@@ -177,5 +178,26 @@ describe.skipIf(!ENABLED)("Alinhamento no Acompanhamento do operador — prova P
     // Excluído (lógico) some do Acompanhamento.
     expect((await gestor.delete(`${base}/${aComecar}`).send({ reason: "Prova: retirado do ar." })).status).toBe(200)
     expect((await listMyAlignments(client, { organizationId: ORG, personId: ana.id })).map((item) => item.alignmentId)).not.toContain(aComecar)
+    // AL-09: o aviso do alinhamento excluído sai do sino (lista e contagem); a linha em `alerts` continua (volta se for restaurado).
+    const bell = new PgNotificationsRepository(client as never)
+    expect(summary.unreadCount).toBeGreaterThan(0)
+    const afterDelete = await buildNotificationSummary(bell, new PgPendingActionsRepository(client as never), { personId: ana.id, organizationId: ORG })
+    expect(afterDelete.items.find((item) => item.kind === "OPERATIONAL_ALIGNMENT" && item.target.type === "FOLLOW_UP" && item.target.itemId === `alignment:${aComecar}`)).toBeUndefined()
+    expect(afterDelete.unreadCount).toBe(summary.unreadCount - 1)
+    expect(await alerts()).toHaveLength(2)
+
+    // AL-02: 1001 versões MAIS RECENTES de outro Grupo não escondem o alinhamento da Ouvidoria — o público é aplicado antes do teto de linhas.
+    const outroId = await publish({ ...body, title: "Proof MA outro Grupo", teamId: outro })
+    const copies = Array.from({ length: 1001 }, () => ({ alignment: randomUUID(), version: randomUUID() }))
+    await client.query("insert into operational_alignments select (jsonb_populate_record(null::operational_alignments, to_jsonb(a) || jsonb_build_object('id', c.id))).* from operational_alignments a, unnest($2::uuid[]) c(id) where a.id = $1", [outroId, copies.map((copy) => copy.alignment)])
+    await client.query(
+      `insert into operational_alignment_versions
+       select (jsonb_populate_record(null::operational_alignment_versions, to_jsonb(v) || jsonb_build_object('id', c.version, 'alignment_id', c.alignment, 'published_at', now() + interval '1 minute'))).*
+       from operational_alignment_versions v, unnest($2::uuid[], $3::uuid[]) c(alignment, version) where v.alignment_id = $1`,
+      [outroId, copies.map((copy) => copy.alignment), copies.map((copy) => copy.version)],
+    )
+    await client.query("insert into operational_alignment_version_scopes (version_id, organization_id, team_id, subteam_id) select c.version, $1, $2, null from unnest($3::uuid[]) c(version)", [ORG, outro, copies.map((copy) => copy.version)])
+    expect((await listMyAlignments(client, { organizationId: ORG, personId: ana.id })).map((item) => item.alignmentId)).toContain(emVigor)
+    expect((await executeAlignmentsInForce(client, { organizationId: ORG, personId: ana.id })).text).not.toContain("Nenhum alinhamento operacional vale hoje")
   })
 })

@@ -306,6 +306,16 @@ describe("limites de requisições", () => {
     expect((await retry()).status).toBe(429)
   })
 
+  it("políticas de acompanhamento: a prévia de impacto entra no teto das ações caras por conta, como a simulação (POL-02)", async () => {
+    const app = createApp(fakeDatabase().database, { rateLimits: { adminCostlyActionsPerAccount: 2 } })
+    const cookie = await loggedInCookie(app)
+    const policy = "55555555-5555-4555-8555-555555555555"
+    const preview = () => request(app).post(`/api/v1/admin/intervention-policies/policies/${policy}/impact-preview`).set("Cookie", cookie).send({})
+    expect((await preview()).status).not.toBe(429)
+    expect((await request(app).post("/api/v1/admin/intervention-policies/simulate").set("Cookie", cookie).send({})).status).not.toBe(429)
+    expect((await preview()).status).toBe(429)
+  })
+
   it("áudio de recado/apresentação conta no teto de IA por conta mesmo com o caminho em maiúsculas", async () => {
     const app = createApp(fakeDatabase().database, { rateLimits: { aiInteractivePerAccount: 1 } })
     const cookie = await loggedInCookie(app)

@@ -1,3 +1,5 @@
+import { createDomainFactsLoader } from "./domain-facts-loader.js"
+import { domainAllowed, RESTRICTED_DOMAIN_PERMISSION, type DomainAccess, type DomainFactsLoader } from "./data-domains.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { FunctionDeclaration } from "../../assistant/infrastructure/gemini-function-calling-client.js"
@@ -17,7 +19,7 @@ import type { StatusFreshness, StatusLoader } from "./workforce.js"
 import type { HireDatesLoader, InteractionStatsLoader } from "./indicator-diagnosis.js"
 import { coveringStatusPeriodSql } from "../../people/application/employment-status-service.js"
 import { resolveEmploymentStatusFreshness } from "../../people/application/employment-status-freshness.js"
-import { executeLeadershipTool, isLeadershipTool, LEADERSHIP_ASK_TOOL, LEADERSHIP_TOOL_DECLARATIONS, type LeadershipToolDependencies, type LeadershipToolResult } from "./leadership-toolset.js"
+import { executeLeadershipTool, isLeadershipTool, LEADERSHIP_ASK_TOOL, leadershipDeclarationsFor, type LeadershipToolDependencies, type LeadershipToolResult } from "./leadership-toolset.js"
 import { processScopeOf, structureGroupsOf, type ProcessScope } from "./process-consultation.js"
 import { resolveAnalysisPeriod, resolveStructureReference, type ResolvedStructure } from "./references.js"
 import { createLeadershipPracticesLoader, type LeadershipPracticesLoader } from "../../best-practices/application/leadership-practices.js"
@@ -43,7 +45,7 @@ export type LeadershipChatContext = {
 /** Voz de quem lidera: o modelo de voz só encaminha; quem consulta os dados e escreve a resposta é a orquestração do chat. */
 export const LEADERSHIP_VOICE_RULES = [
   "Como conduzir a voz com quem lidera pessoas (essa pessoa NÃO realiza atendimentos):",
-  `- Para QUALQUER pergunta sobre a equipe/estrutura, indicadores, metas, pessoas, comparações, evolução, pendências, prioridades, como melhorar um indicador, processos para orientar a equipe, regras e políticas da empresa, benefícios, valores ou prazos, acione ${LEADERSHIP_ASK_TOOL} com a pergunta completa e o contexto da conversa (indicador, equipe e mês já falados).`,
+  `- Para QUALQUER pergunta sobre a equipe/estrutura, indicadores, metas, pessoas, atendimentos e ligações, monitoria, feedbacks, casos, escala e jornada, comunicados, uso da INIA, apoio do Anjo, comparações, evolução, pendências, prioridades, como melhorar um indicador, processos para orientar a equipe, regras e políticas da empresa, benefícios, valores ou prazos, acione ${LEADERSHIP_ASK_TOOL} com a pergunta completa e o contexto da conversa (indicador, equipe e mês já falados).`,
   `- Continuação também é uma pergunta nova e vai à ferramenta ("e nesse caso…", "e se…", "então não precisa…, né?", "vale para…?"): acione ${LEADERSHIP_ASK_TOOL} de novo com a pergunta e o contexto. Nunca deduza, complete nem confirme um número, uma regra, um valor ou um prazo a partir do que já foi dito — o que ainda não foi respondido, só a ferramenta responde. Sem acionar, só repita quando a pessoa pedir para repetir, e exatamente o que a ferramenta trouxe.`,
   "- Acione a ferramenta IMEDIATAMENTE, na mesma resposta, SEM falar nada antes (nem \"vou consultar\"): uma frase sem a chamada encerra o turno e a pessoa fica sem resposta. Nunca fale números, nomes, metas, valores, prazos, regras ou procedimentos que não vieram da ferramenta.",
   "- Nunca diga que não tem acesso, que não sabe, que as bases não cobrem o assunto ou que vai consultar sem ter acionado a ferramenta neste turno: acione e responda com o que ela trouxer.",
@@ -64,6 +66,9 @@ export type LeadershipSession = {
   loadHireDates?: HireDatesLoader
   loadBestPractices?: LeadershipPracticesLoader
   loadStructureAlignments?: (memberIds: readonly string[]) => Promise<StructureAlignment[]>
+  loadDomainFacts?: DomainFactsLoader
+  /** Escopo da conta nas permissões das telas de origem (uso da INIA: "Quem mais usa"; Apoio com Anjo: painel do apoio). */
+  domainAccess?: DomainAccess
 }
 
 /**
@@ -88,6 +93,10 @@ export async function loadLeadershipSession(
   const own = ownOutcome.kind === "OK" ? ownOutcome.value : null
   if (!own && !hasAccessGrant(scope.access)) return null
   const closure = options.closure ?? (await resolveOfficialClosure(db, scope.organizationId, options.now ?? new Date()))
+  const [usageAccess, supportAccess] = await Promise.all([
+    repository.loadAccessVisibility(user.organizationId, user.sub, RESTRICTED_DOMAIN_PERMISSION.INIA_USAGE),
+    repository.loadAccessVisibility(user.organizationId, user.sub, RESTRICTED_DOMAIN_PERMISSION.SUPPORT),
+  ])
   const pendingRepository = new PgPendingActionsRepository(db)
   return {
     repository,
@@ -122,6 +131,8 @@ export async function loadLeadershipSession(
     loadBestPractices: createLeadershipPracticesLoader(db, scope.organizationId),
     // Alinhamentos operacionais que alcançam os liderados (fase 2): em vigor e programados, com alcance e leituras.
     loadStructureAlignments: (memberIds) => listStructureAlignments(db, { organizationId: scope.organizationId, memberIds, now: closure.now, includeEnded: false }),
+    loadDomainFacts: createDomainFactsLoader(db, scope.organizationId, closure.timeZone, { now: closure.now }),
+    domainAccess: { INIA_USAGE: usageAccess, SUPPORT: supportAccess },
     statusFreshness: async () => {
       const freshness = await resolveEmploymentStatusFreshness(db, scope.organizationId, closure.now, closure.timeZone)
       return { state: freshness.state, lastSuccessLocalDate: freshness.lastSuccessLocalDate }
@@ -141,6 +152,8 @@ export function toolDependencies(session: LeadershipSession): LeadershipToolDepe
     ...(session.loadHireDates ? { loadHireDates: session.loadHireDates } : {}),
     ...(session.loadBestPractices ? { loadBestPractices: session.loadBestPractices } : {}),
     ...(session.loadStructureAlignments ? { loadStructureAlignments: session.loadStructureAlignments } : {}),
+    ...(session.loadDomainFacts ? { loadDomainFacts: session.loadDomainFacts } : {}),
+    ...(session.domainAccess ? { domainAccess: session.domainAccess } : {}),
   }
 }
 
@@ -148,11 +161,22 @@ export async function buildLeadershipChatContext(session: LeadershipSession): Pr
   const deps = toolDependencies(session)
   const context = await renderLeadershipContext(session)
   return {
-    instructions: `${context}\n${LEADERSHIP_RESPONSE_RULES}`,
+    instructions: `${context}\n${leadershipResponseRulesFor(session.domainAccess)}`,
     voiceInstructions: `${context}\n${LEADERSHIP_VOICE_RULES}`,
-    toolset: { declarations: LEADERSHIP_TOOL_DECLARATIONS, handles: isLeadershipTool, execute: (name, args) => executeLeadershipTool(deps, name, args) },
+    toolset: { declarations: leadershipDeclarationsFor(session.domainAccess), handles: isLeadershipTool, execute: (name, args) => executeLeadershipTool(deps, name, args) },
     processScope: processScopeOf(session.scope, session.own),
   }
+}
+
+const INIA_USAGE_RULE = " USO DA INIA pela equipe → leadership_inia_usage;"
+const SUPPORT_RULE = " APOIO COM ANJO (pedidos, tempo de resposta) → leadership_support;"
+
+/** As regras de resposta sem a menção às ferramentas que ESTA conta não recebe (domínios com a permissão da tela de origem). */
+export function leadershipResponseRulesFor(domainAccess: DomainAccess | undefined): string {
+  let rules = LEADERSHIP_RESPONSE_RULES
+  if (!domainAllowed(domainAccess, "INIA_USAGE")) rules = rules.replace(INIA_USAGE_RULE, "")
+  if (!domainAllowed(domainAccess, "SUPPORT")) rules = rules.replace(SUPPORT_RULE, "")
+  return rules
 }
 
 /** Regras de resposta da INIA para QUALQUER nível de liderança — um bloco só; o que muda por pessoa é o dado de escopo acima dele. */
@@ -160,7 +184,18 @@ export const LEADERSHIP_RESPONSE_RULES = [
   "Como responder a quem lidera pessoas:",
   "- Quem lidera NÃO realiza atendimentos. Oriente como gestão da equipe: onde está o desvio, quem acompanhar, que conversa ou feedback ter, que procedimento revisar com a equipe, que fluxo abrir (Pendências, caso, intervenção). Nunca diga \"aplique no seu atendimento\" nem \"procure sua liderança\".",
   "- Toda pergunta sobre equipe/estrutura, pessoas, indicadores, metas, resultados, comparações, evolução, pendências, prioridades ou \"como melhorar\" um indicador: VÁ AOS DADOS antes de responder — acione as ferramentas leadership_* (várias de uma vez, se precisar). A consulta flexível (leadership_indicator_query) responde qualquer recorte que as outras não cobrem. Nunca invente número, nome, percentual ou meta.",
-  "- Escolha a ferramenta pelo que a pessoa quer saber, não pela frase: números de resultados (piores/melhores, PRV, quartil geral, quartis e dispersão, % ou quantidade fora/dentro, comparações entre unidades/Grupos/Subgrupos, evolução e recorrência nos últimos N meses, consolidado) → consulta flexível; \"onde está o problema\" / \"o que os piores têm em comum\" / \"por que está ruim\" → diagnóstico do indicador; pessoas por situação funcional (férias, produção, afastamento, quantas pessoas) → força de trabalho; prioridades e pendências → onde atuar; alinhamentos operacionais (se há, quais valem, quem já leu) → leadership_alignments, nunca responda que não há sem ela; processos, procedimentos e o que dizem as bases → consulta de processo do Grupo (leadership_process: responde o Orquestrador do Grupo da equipe; quando a estrutura tem Grupos com bases diferentes, passe o Grupo — ou a equipe citada — ou consulte cada um).",
+  "- Escolha a ferramenta pelo DADO que responde a pergunta (cada dado tem UMA ferramenta; na dúvida entre duas, chame as duas):",
+  "  • resultado de INDICADOR oficial (meta, atingimento, fora/dentro, PRV, quartis, dispersão, evolução, ranking de pessoas, consolidado) → leadership_indicator_query; visão de um indicador com concentração → leadership_indicator_analysis; panorama de todos os indicadores → leadership_structure_overview;",
+  "  • por que um indicador está ruim / o que os piores têm em comum → leadership_indicator_diagnosis; o que os melhores fazem → leadership_best_practices;",
+  "  • ATENDIMENTOS / LIGAÇÕES (quantidade, por pessoa, mediana, duração/tempo das ligações, motivos e submotivos de contato, canal, rechamada, nota da URA, transferência, cancelamento, detrator, contestação, silêncio, desconexão) → leadership_interactions; assunto ou motivo dito em texto livre (\"contestação\", \"portabilidade\") vai em termo (o sistema procura no motivo, no submotivo e nas ocorrências); quando ele devolver opções, mostre-as e espere a pessoa escolher — nunca escolha a leitura por ela nem some linhas de uma lista;",
+  "  • MONITORIA das chamadas (critérios do procedimento cumpridos ou não, chamadas analisadas) → leadership_monitoring;",
+  "  • FEEDBACKS publicados (quantos, tipo, ciência, quem não deu ciência, concordância) → leadership_feedbacks; CASOS de acompanhamento (status, prioridade, abertos) → leadership_cases;",
+  "  • ESCALA planejada (quem está escalado, folgas, turno, horário de entrada, horas, pausas planejadas, inclusive datas futuras) → leadership_schedule; JORNADA do dia pela regra do Calendário da equipe (trabalhou, sem produção a classificar, falta confirmada, trabalho na folga, divergências; dado ausente nunca é falta) → leadership_workday;",
+  `  • COMUNICADOS recebidos pela equipe (quais, alcance; a leitura não é registrada) → leadership_communications;${INIA_USAGE_RULE}${SUPPORT_RULE}`,
+  "  • PESSOAS por situação funcional (produção, férias, afastamento, quantas pessoas) → leadership_workforce; lista de pessoas por situação no indicador → leadership_people; SPAN (pessoas ou líderes por líder) → leadership_span;",
+  "  • prioridades e pendências → leadership_priorities; alinhamentos operacionais → leadership_alignments (nunca diga que não há sem ela); processos e o que dizem as bases → leadership_process (passe o Grupo quando a estrutura tem Grupos com bases diferentes);",
+  "  • qualquer conta sobre números já trazidos (somar, dividir, % de uma parte, diferença, variação) → leadership_calculate. Estatística de uma população (média, mediana, percentil, mínimo, máximo, desvio) NUNCA sai da calculadora sobre uma lista: peça à ferramenta do dado, que calcula sobre todos os registros (a lista que você recebe pode estar cortada).",
+  "- Se nenhuma ferramenta tiver o dado pedido, diga exatamente isso e o que você consegue trazer; nunca afirme que o dado não existe nem explique a ausência com suposição sobre a operação.",
   "- Entenda o que a pergunta pede: \"quantos\" = quantidade; \"qual %\" = percentual; \"quem\" = nomes (recorte por PESSOA); \"pior quartil geral\" = Q4 de PRV; \"dispersão\" = distribuição Q1–Q4 e desvio padrão. Traga o que foi pedido e, quando ajudar, os outros dois.",
   "- Aprofunde com várias consultas quando a pergunta pedir: você pode acionar ferramentas mais de uma vez (ex.: achar os piores e depois diagnosticá-los; abrir a unidade com mais desvio; comparar meses). Filtre por estrutura (nome de liderado, Grupo ou Subgrupo), quartil, situação e indicadores.",
   "- Cite só indicadores, motivos e números que as ferramentas trouxeram: nunca dê como exemplo um indicador que não apareceu nos dados nem atribua à equipe um processo/área que os dados não mostram. Se o indicador pedido quase não tem dado na estrutura e a ferramenta indicar outro parecido com dado, use esse e diga qual usou.",
@@ -168,6 +203,7 @@ export const LEADERSHIP_RESPONSE_RULES = [
   "- \"O que os melhores fazem\" / boas práticas / como orientar a equipe num indicador: consulte também a base de boas práticas (leadership_best_practices). Separe o cumprimento do processo (procedimento) das boas práticas observadas; sem prática na base, diga que ela ainda não tem uma sustentada — nunca a substitua por conselho genérico.",
   "- Use o contexto da conversa: \"o indicador\", \"essa equipe\", \"e no mês anterior?\" referem-se ao que foi falado antes. Ao aprofundar (estrutura → unidade → pessoas), mantenha a MESMA competência: passe competencia=AAAA-MM com o código mostrado pela ferramenta, salvo pedido de outro mês.",
   "- \"Neste mês\", \"esta semana\", \"hoje\" referem-se ao período EM CURSO (veja \"Hoje\" acima), que ainda não tem fechamento oficial. Responda com as duas leituras e diga isso com clareza: o período em curso pela medição diária (a visão geral já traz o mês corrente; para outro recorte, a consulta flexível com fonte OPERACIONAL) e dentro/fora da meta pelo último fechamento oficial, dizendo qual é. Se não houver medição diária no período, diga que ainda não há dado do mês em curso.",
+  "- Nunca faça conta de cabeça: todo número que nenhuma ferramenta trouxe pronto (soma de totais, divisão, média, percentual, diferença, variação) sai da calculadora (leadership_calculate), com os valores exatos das ferramentas. Não afirme meta, padrão ou \"dimensionamento alvo\" que os dados não trazem.",
   "- Sem dado nunca é desempenho ruim. \"Desempenho ruim\" sem outra qualificação = fora da referência (meta vigente); deixe essa interpretação visível.",
   "- Peça esclarecimento só quando a ferramenta devolver ambiguidade ou quando a escolha mudar materialmente a resposta.",
   "",

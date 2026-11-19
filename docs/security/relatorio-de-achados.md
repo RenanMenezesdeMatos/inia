@@ -937,3 +937,34 @@ por ferramentas de build/teste, não pela aplicação). Linha de base regravada.
 O que segurou: escrita multi-grupo exige todos os vínculos no escopo e a FK composta segura Subgrupo de outro Grupo; candidatos
 de comunicado/alinhamento filtrados no servidor antes da IA (a IA só escolhe marcadores do catálogo recebido); "Minha jornada"
 só pela pessoa da sessão; "Ver quem" com a mesma coorte e escopo dos contadores.
+
+## Décima rodada (18–19/11/2026, run-7: skill da Cloudflare em modo delimitado, varredura AppSec, QA e arquitetura)
+
+Escopo: `3810a198..1969ced1` (Políticas de acompanhamento etapas 1–3, prévia de impacto, escopo por universo, "acesso ativo" 225,
+alinhamentos no Acompanhamento 227, filtros do Acompanhamento, exemplos da Central) e o delta `d0307864` + `7fb4695b` (consulta de
+registros da liderança, ferramentas do operador, reports com span e registros). Relatórios em
+`~/security-audit-skill/inia/run-7/agents/{sec-politicas,sec-alinhamentos-acesso,arquitetura,qa-dados,delta-lideranca-reports}/relatorio.md`.
+Nenhum achado crítico; nenhum vazamento entre organizações ou públicos confirmado. Varredura AppSec: 0 achado novo.
+
+| Id | Sev. | Achado | Situação |
+|---|---|---|---|
+| R10-01 (DL-01) | Alta | Jornada da liderança contava férias, afastamento, feriado, carga não feita e o dia de hoje como falta | Corrigido: resolvedor único do dia |
+| R10-02 (DL-02) | Média | Comunicado agendado aparecia no chat do líder e do operador | Corrigido: predicado de "no ar" |
+| R10-03 (DL-03) | Média | `my_workday` mostrava ao operador classificação da gestão e produção observada | Corrigido: ferramenta removida; plano em `my_schedule` |
+| R10-04 (DL-04) | Média | Feedbacks ignoravam `PUBLISHED` e a ocultação lógica | Corrigido |
+| R10-05 (DL-05) | Média | Uso da INIA e Apoio com Anjo por pessoa para qualquer líder | Corrigido: exigem `ai.usage_ranking.view` / `human_support.coordinate` |
+| R10-06 (DL-06/07/10/11) | Média–Baixa | Leitura sem ordem estável nem teto de período; agrupamento por nome; datas impossíveis; calculadora | Corrigido (limite de 200 mil linhas mantido) |
+| R10-07 (DL-08/09) | Média | Report com termo sem leitura fixa; período sem carga entregue como zero | Corrigido em reports (ver pendências) |
+| R10-08 | Média | `domain-facts-loader.ts` lia `human_support_*` fora do módulo do Apoio | Corrigido: `human-support/application/support-counts.ts` (só contagens) |
+| R10-09 (POL-01) | Média | Medição pelo pool dentro da transação que trava a intervenção | Corrigido |
+| R10-10 (POL-02) | Média | Prévia de impacto fora do limitador de ações caras | Corrigido |
+| R10-11 (POL-03) | Baixa | Universo de atuação não valia para visão da equipe, prévia e acesso por id | Corrigido |
+| R10-12 (POL-04/05/06) | Baixa | Passo do colaborador sem trava; "só avisar" com tipo sensível; texto de feedback no relatório | Corrigido |
+| R10-13 (AL-01) | Média | Orquestração antecipada em duplicidade na consulta de processo | Corrigido |
+| R10-14 (AL-02/04/05/06/07) | Baixa | Público depois do corte de 1000; acesso ativo na nova tentativa; título em uma linha; feed; reset da demo | Corrigido |
+| R10-15 (ARQ-01) | Alta (funcional) | "Simular" recusava a resposta quando a regra só avisa | Corrigido |
+| R10-16 (QA-01/02/04/06/07, ARQ-02/04/06/09–13/16) | Média–Baixa | Marco de evolução nos 5 últimos feedbacks; política de continuidade anterior travando o nó; sino perdido; lembrete; leituras simultâneas; padrões | Corrigido |
+
+As correções de intervenções (QA-01, QA-04, QA-07, ARQ-04, ARQ-09, ARQ-10, QA-05) foram interrompidas antes do relatório final do
+agente, a pedido do responsável; o que entrou passa em tipos, lint e testes, mas a cobertura item a item não foi conferida (R-48).
+

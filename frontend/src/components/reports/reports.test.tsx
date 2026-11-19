@@ -9,8 +9,9 @@ import { areasFor } from "@/components/layout/top-bar/area-switcher"
 import { ReportOfferAction } from "@/components/operator/operator-inia-chat/chat-message-list"
 import type { FollowUpItem } from "@/schemas/analytics/analytics.schema"
 import type { QueryTableCard } from "@/schemas/leadership/leadership.schema"
-import type { VisualizationData } from "@/schemas/reports/reports.schema"
+import { reportDefinitionSchema, type ReportOptions, type VisualizationData } from "@/schemas/reports/reports.schema"
 import { staticCompatibility } from "./report-form/form-helpers"
+import { QueryFields } from "./report-form/query-fields"
 import { ReportDeliveryView, type DeliveryViewModel } from "./report-delivery-view"
 import { ReportVisualization } from "./report-visualization"
 
@@ -109,5 +110,28 @@ describe("formulário — compatibilidade da visualização (mesma regra do back
     expect(staticCompatibility(base)).toEqual(["TABLE", "BAR"])
     expect(staticCompatibility({ ...base, period: { mode: "LAST_N_CLOSED", months: 3, display: "POR_MES" } })).toContain("LINE")
     expect(staticCompatibility({ ...base, view: "QUARTIS", groupBy: "SUPERVISOR" })).toContain("DISTRIBUTION")
+  })
+})
+
+describe("formulário — consultas de registros e span (vindas do chat)", () => {
+  const options = { indicators: [], structures: [], ownStructure: "Equipe da Sara" } as unknown as ReportOptions
+
+  it("a proposta do chat com atendimentos é aceita pelo contrato e mostra os parâmetros e o período relativo", () => {
+    const definition = reportDefinitionSchema.parse({ tool: "INTERACTIONS", structure: { mode: "RECIPIENT" }, period: { mode: "RELATIVE_DAYS", fromOffset: -7, toOffset: -1 }, queryArgs: { agrupar_por: "SUPERVISOR", medidas: ["ATENDIMENTOS_POR_PESSOA"] } })
+    render(<QueryFields definition={definition} onChange={() => undefined} catalog={options} />)
+    expect(screen.getByText("Agrupar por:")).toBeInTheDocument()
+    expect(screen.getByText(/SUPERVISOR/)).toBeInTheDocument()
+    expect(screen.getByLabelText("Dia inicial relativo")).toHaveValue(-7)
+    expect(screen.queryByLabelText("Limite de linhas")).not.toBeInTheDocument()
+  })
+
+  it("span: organograma da data da execução; registros por dia oferecem evolução, total da estrutura oferece resumo", () => {
+    const span = reportDefinitionSchema.parse({ tool: "SPAN", structure: { mode: "RECIPIENT" }, period: { mode: "TODAY" }, queryArgs: { por: "GRUPO" } })
+    render(<QueryFields definition={span} onChange={() => undefined} catalog={options} />)
+    expect(screen.getByText("Organograma na data de cada execução.")).toBeInTheDocument()
+    expect(staticCompatibility(span)).toEqual(["TABLE", "BAR"])
+    const byDay = reportDefinitionSchema.parse({ tool: "WORKDAY", structure: { mode: "RECIPIENT" }, period: { mode: "CALENDAR", unit: "WEEK", offset: -1 }, queryArgs: { agrupar_por: "DIA" } })
+    expect(staticCompatibility(byDay)).toEqual(expect.arrayContaining(["LINE", "AREA"]))
+    expect(staticCompatibility({ ...byDay, queryArgs: {} })).toContain("KPI")
   })
 })

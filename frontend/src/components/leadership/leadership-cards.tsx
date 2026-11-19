@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import type { LeadershipCard } from "@/schemas/leadership/leadership.schema"
 
 import { LeadershipLinksContext } from "./card-parts"
+import { DataChoiceCard } from "./data-choice-card"
 import { IndicatorAnalysisCard } from "./indicator-analysis-card"
 import { PrioritiesDataCard } from "./priorities-list"
 import { QueryTableCard } from "./query-table-card"
@@ -23,6 +24,8 @@ function cardTitle(card: LeadershipCard): string {
     case "PRIORITIES":
       return "Onde atuar"
     case "QUERY_TABLE":
+      return card.title
+    case "DATA_CHOICE":
       return card.title
   }
 }
@@ -48,6 +51,17 @@ export function LeadershipCards({ cards, onAsk, className, collapsible = false, 
     )
   }
   if (collapsible) {
+    // A escolha da leitura dos dados é uma pergunta à pessoa: fica aberta, fora de "Dados e links".
+    const choices = cards.filter((card) => card.type === "DATA_CHOICE")
+    if (choices.length > 0) {
+      const rest = cards.filter((card) => card.type !== "DATA_CHOICE")
+      return (
+        <div className={className ?? "mt-2 space-y-2"}>
+          <LeadershipCards cards={choices} className="space-y-2" {...(onAsk ? { onAsk } : {})} />
+          <LeadershipCards cards={rest} collapsible className="mt-0" {...(onAsk ? { onAsk } : {})} />
+        </div>
+      )
+    }
     // A pílula fica curta (as consultas podem ser muitas e repetidas); o que tem dentro aparece no tooltip, sem repetição.
     const titles = uniqueTitles(cards.map(cardTitle))
     const summary = cards.length === 1 ? "1 consulta" : `${cards.length} consultas`
@@ -90,6 +104,8 @@ export function LeadershipCards({ cards, onAsk, className, collapsible = false, 
             return <PrioritiesDataCard key={key} card={card} {...(onAsk ? { onAsk } : {})} />
           case "QUERY_TABLE":
             return <QueryTableCard key={key} card={card} />
+          case "DATA_CHOICE":
+            return <DataChoiceCard key={key} card={card} {...(onAsk ? { onAsk } : {})} />
         }
       })}
     </div>

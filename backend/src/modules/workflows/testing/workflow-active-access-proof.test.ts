@@ -23,6 +23,7 @@ import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
 import { enrollFlagWorkflows } from "../application/flag-enrollment.js"
 import { runScheduleCheck } from "../application/schedule-check.js"
 import { comparisonPopulationOf, resolveEligibleOperatorIds } from "../application/workflow-eligibility.js"
+import { confirmWorkflowRetry, previewWorkflowRetry } from "../application/workflow-retry.js"
 
 const ENABLED = process.env.INIA_DB_PROOF === "1"
 const ORG = "00000000-0000-4000-8000-000000000001"
@@ -175,6 +176,20 @@ describe.skipIf(!ENABLED)('"Somente quem tem acesso ativo à INIA" — quem entr
     const refusedRun = await admin.post(`${base}/${manualId}/manual-runs`).send({ collaboratorId: semConta2.id, idempotencyKey: `proof-acesso-${Date.now()}-a` })
     expect(refusedRun.status).toBeGreaterThanOrEqual(400)
     expect((await admin.post(`${base}/${manualId}/manual-runs`).send({ collaboratorId: comAcesso1.id, idempotencyKey: `proof-acesso-${Date.now()}-b` })).status).toBeLessThan(300)
+
+    // ── Nova tentativa (AL-04): a execução bloqueada de quem perdeu o acesso não renasce; com o acesso de volta, renasce. ──
+    const blockedId = (await client.query<{ id: string }>("select id from workflow_enrollments where workflow_id = $1 order by created_at desc limit 1", [manualId])).rows[0]!.id
+    await client.query("update workflow_enrollments set status = 'blocked', blocked_node_id = 'end', blocked_reason = 'AGENT_INACTIVE' where id = $1", [blockedId])
+    expect((await previewWorkflowRetry(client as never, ORG, blockedId)).blockers).toEqual([])
+    await client.query("update user_accounts set active = false where id = $1", [comAcesso1.accountId])
+    const withoutAccess = await previewWorkflowRetry(client as never, ORG, blockedId)
+    expect(withoutAccess.blockers.map((blocker) => blocker.code)).toEqual(["WORKFLOW_RETRY_NO_ACTIVE_ACCESS"])
+    await expect(confirmWorkflowRetry(client as never, ORG, blockedId, { fingerprint: withoutAccess.fingerprint }, { personId: geral.id, name: "Proof" })).rejects.toMatchObject({ code: "WORKFLOW_RETRY_NO_ACTIVE_ACCESS", statusCode: 409 })
+    expect((await client.query("select 1 from workflow_enrollments where retry_of_enrollment_id = $1", [blockedId])).rowCount).toBe(0)
+    await client.query("update user_accounts set active = true where id = $1", [comAcesso1.accountId])
+    const withAccess = await previewWorkflowRetry(client as never, ORG, blockedId)
+    expect(withAccess.blockers).toEqual([])
+    expect((await confirmWorkflowRetry(client as never, ORG, blockedId, { fingerprint: withAccess.fingerprint }, { personId: geral.id, name: "Proof" })).enrollmentId).toBeTruthy()
 
     // ── Consolidado: a rota desliga a opção ao trocar o modo; uma escrita direta é barrada ao publicar. ──
     const consolidated = await admin.put(`${base}/${scheduleId}/analysis-config`).send({ mode: "CONSOLIDATED", consolidatedStructure: { kind: "SUBTEAM", subteamId: subteam } })

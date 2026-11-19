@@ -40,7 +40,7 @@ import { isLeadershipTool, LEADERSHIP_ASK_DECLARATION, LEADERSHIP_ASK_TOOL, summ
 import { loadSelfChatContext, SELF_ASK_DECLARATION, SELF_ASK_TOOL, SELF_TOOL, type SelfChatContext } from "../../leadership-analytics/application/self-context.js"
 import { queryTableMarkdown } from "../../leadership-analytics/application/indicator-query.js"
 import { buildProcessConsultationToolset, combineToolsets, groupChoiceText, parseProcessClarificationScope, PROCESS_TOOL, reachableProcessOrchestrators, skippedGroupsNote, type ProcessClarificationScope, type ProcessTurnOutcome } from "../../leadership-analytics/application/process-consultation.js"
-import { classifyReply, createPostgresProposalStore, REPORT_OFFER_LINE, type ProposalRecord, type ProposalStore } from "../../reports/application/report-proposals.js"
+import { classifyReply, createPostgresProposalStore, REPORT_OFFER_LINE, REPORTABLE_TOOL_NAMES, type ProposalRecord, type ProposalStore } from "../../reports/application/report-proposals.js"
 import { createPostgresReportRuntime, type ReportRuntime } from "../../reports/application/report-runtime.js"
 import { createPostgresReportStore, type ReportStore } from "../../reports/application/report-store.js"
 import { definitionSignature } from "../../reports/domain/report-definition.js"
@@ -586,7 +586,9 @@ export function createRealtimeRouter(
               sources.push(...clarificationSources(clarified))
               return { text: clarified.content, clarification: true, trace: { knowledgeClarification: clarified.state.status, ...(speculated ? { speculativeOrchestrationDiscarded: true } : {}) } }
             }
-            const reply = await (speculated ?? orchestrate())
+            // AL-01: a orquestração deste caminho fica na MESMA variável — a decisão de relevância que resolver depois não inicia outra.
+            speculated ??= orchestrate()
+            const reply = await speculated
             if (reply.supportMaterials && reply.supportMaterials.length > 0) materials.push({ orchestratorId: resolved.orchestratorId, recommendations: reply.supportMaterials })
             sources.push(...replyComplianceSources(reply, resolved), ...(await publicationSources(input.organizationId, reply, resolved)))
             return { text: reply.text, trace: { specialists: reply.calls.map((call) => call.toolName), agentId: reply.agentId } }
@@ -639,7 +641,8 @@ export function createRealtimeRouter(
   const reportProposals = deps.reportProposals ?? createPostgresProposalStore(db)
   const reportRuntime = deps.reportRuntime ?? createPostgresReportRuntime(db)
   const reportStore = deps.reportStore ?? createPostgresReportStore(db)
-  const REPORTABLE_TOOLS = ["leadership_indicator_query", "leadership_indicator_analysis", "leadership_people", "leadership_workforce", "leadership_indicator_diagnosis"]
+  // Mesma lista da proposta (inclui span e as ferramentas de registros; nunca a calculadora).
+  const REPORTABLE_TOOLS = REPORTABLE_TOOL_NAMES
 
   /** Oferta de "criar report desta consulta" para a resposta (null = não elegível ou já oferecida). Falha nunca derruba a resposta. */
   const reportOfferFor = async (input: { organizationId: string; accountId: string; personId: string; conversationId: string; reply: Awaited<ReturnType<typeof runOrchestratedReply>>; question: string }): Promise<ProposalRecord | null> => {

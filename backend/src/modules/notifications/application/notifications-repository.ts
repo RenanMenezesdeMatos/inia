@@ -1,6 +1,7 @@
 import { EXECUTION_BLOCKED_ALERT_TYPE, executionBlockedWorkflowIdSql } from "../../workflows/application/blocked-execution-notice.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { alertOutputIdSql, CHAT_ALERT_KEY_PREFIX, recadoAlertCoveredByFollowUpSql } from "../../conversational-delivery/application/recado-follow-up-invite.js"
+import { alignmentAlertOfDeletedSql } from "../../operational-alignments/application/my-alignments.js"
 
 export type AlertRow = {
   id: string
@@ -41,7 +42,8 @@ export interface NotificationsRepository {
  * Output/artefato virou feedback publicado — quem convida é a aplicação de feedback) não aparece nem conta — é a MESMA regra
  * que tira o recado do inbox (recado-follow-up-invite.ts), então o sino nunca aponta para um convite que não existe.
  */
-const SHOWN_CONDITION = `not ${recadoAlertCoveredByFollowUpSql("a")}`
+// AL-09: aviso de alinhamento EXCLUÍDO também não aparece nem conta (lista, badge e "marcar todas" usam esta mesma condição).
+const SHOWN_CONDITION = `not ${recadoAlertCoveredByFollowUpSql("a")} and not ${alignmentAlertOfDeletedSql("a")}`
 
 /** Não lido = sem `read_at` e ainda vivo (resolvido/expirado não conta no badge) — o índice parcial `idx_alerts_recipient_unread`
  * (migration 132) tem exatamente este predicado: o badge lê só os não lidos de quem pergunta. */

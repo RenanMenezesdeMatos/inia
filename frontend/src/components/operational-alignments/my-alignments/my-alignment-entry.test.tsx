@@ -8,7 +8,9 @@ import { renderWithQuery } from "@/components/analytics/testing/render-with-quer
 import { OperatorDailyFeedbackFeed } from "@/components/operator/operator-daily-feedback-feed"
 import type { MyAlignment } from "@/schemas/operational-alignments/my-alignment.schema"
 
-import { civilWeekdayLabel, MyAlignmentEntry } from "./my-alignment-entry"
+import { ApiError } from "@/lib/api/api-client"
+
+import { MyAlignmentEntry } from "./my-alignment-entry"
 
 const service = vi.hoisted(() => ({ fetchMyAlignments: vi.fn(), markMyAlignmentRead: vi.fn() }))
 vi.mock("@/services/operational-alignments/my-alignments-service", () => service)
@@ -28,10 +30,6 @@ const base: MyAlignment = {
 }
 
 describe("cartão do alinhamento no Acompanhamento do operador", () => {
-  it("dia da semana da data civil, sem deslocar pelo fuso de quem lê", () => {
-    expect(civilWeekdayLabel("2026-11-24")).toBe("Terça-feira, 24/11")
-  })
-
   it("antes de valer: faixa em destaque \"válido a partir de\", selo \"Começa em\" e a vigência sempre visível", () => {
     renderWithQuery(<MyAlignmentEntry alignment={{ ...base, state: "UPCOMING" }} />)
     expect(screen.getByTestId("alignment-upcoming-banner")).toHaveTextContent("Alinhamento válido a partir de terça-feira, 24/11")
@@ -76,6 +74,23 @@ describe("cartão do alinhamento no Acompanhamento do operador", () => {
   it("encerrado antes do prazo diz o dia do encerramento", () => {
     renderWithQuery(<MyAlignmentEntry alignment={{ ...base, state: "ENDED", noLongerValidSince: "2026-11-27", endedEarly: true }} />)
     expect(screen.getByTestId("alignment-ended-banner")).toHaveTextContent("Encerrado antes do prazo em 27/11/2026.")
+  })
+
+  it("versão substituída antes da data final: diz o dia em que deixou de valer, nunca a data final futura", () => {
+    renderWithQuery(<MyAlignmentEntry alignment={{ ...base, state: "ENDED", noLongerValidSince: "2026-11-26", endedEarly: false }} />)
+    const banner = screen.getByTestId("alignment-ended-banner")
+    expect(banner).toHaveTextContent("Não vale mais desde 26/11/2026: foi substituído por uma nova versão.")
+    expect(banner).not.toHaveTextContent("30/11/2026")
+  })
+
+  it("404 em \"Li o alinhamento\": a lista é recarregada (o alinhamento encerrado deixa de oferecer o botão)", async () => {
+    service.fetchMyAlignments.mockResolvedValueOnce([base]).mockResolvedValue([{ ...base, state: "ENDED", noLongerValidSince: "2026-11-25", endedEarly: true }])
+    service.markMyAlignmentRead.mockRejectedValue(new ApiError("Alinhamento não encontrado.", 404, "OPERATIONAL_ALIGNMENT_NOT_FOUND"))
+    renderWithQuery(<OperatorDailyFeedbackFeed indicators={{ current: [], history: [] }} />)
+    fireEvent.click(await screen.findByRole("button", { name: "Li o alinhamento" }))
+    await waitFor(() => expect(service.fetchMyAlignments).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Li o alinhamento" })).toBeNull())
+    expect(screen.getByTestId("alignment-ended-banner")).toBeInTheDocument()
   })
 })
 

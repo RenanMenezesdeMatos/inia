@@ -86,6 +86,13 @@ export async function loadEligibleOperator(db: Database, organizationId: string,
 }
 
 /**
+ * "Somente quem tem acesso ativo à INIA" para UMA pessoa já carregada por `loadEligibleOperator`: cadastro ativo de operador (a linha
+ * existe) E conta de acesso ativa (`activeAccessSql`). Ponto único de quem cria execução — a matrícula (abaixo) e a nova tentativa
+ * (`workflow-retry.ts`, AL-04). Linha sem a informação = sem acesso.
+ */
+export const hasActiveAccess = (operator: EligibleOperatorRow | null | undefined): boolean => operator?.has_active_access === true
+
+/**
  * Decisão pontual pra UM operador (ingestão): lê só a linha dele e aplica a Abrangência; o Filtro
  * Populacional usa o mesmo resolvedor de estrutura do modo por conjunto — sem filtro (o caso
  * comum) nenhuma população é carregada. Operador inativo/inexistente ou que não é OPERATOR nunca
@@ -111,7 +118,7 @@ async function isLoadedOperatorEligible(db: Database, population: WorkflowPopula
   // Universos não se misturam: com a exigência ativa, o operador precisa ser do universo do Workflow (pendente de qualquer lado = fora).
   if (operator.universe_enforced && (population.operatingUniverse === null || operator.operating_universe !== population.operatingUniverse)) return false
   // "Somente quem tem acesso ativo à INIA": sem conta de acesso ativa a pessoa não entra (linha sem a informação = sem acesso).
-  if (population.requireActiveAccess && operator.has_active_access !== true) return false
+  if (population.requireActiveAccess && !hasActiveAccess(operator)) return false
 
   const filter = parsePopulationFilter(population.populationFilter)
   if (!filter || filter.kind === "ALL") return true

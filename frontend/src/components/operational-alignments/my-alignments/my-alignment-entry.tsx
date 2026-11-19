@@ -8,19 +8,23 @@ import { FeedbackCard, FeedbackEntryHeader } from "@/components/feedbacks/feedba
 import { IniaFeedItem } from "@/components/operator/inia-feed"
 import { Button } from "@/components/ui/button"
 import { StatusChip } from "@/components/ui/surface"
-import { formatCivilDate, formatDate, formatDateTime, formatFeedTimestamp } from "@/lib/format/date"
+import { ApiError } from "@/lib/api/api-client"
+import { formatCivilDate, formatCivilDayMonth, formatCivilWeekday, formatDate, formatDateTime, formatFeedTimestamp } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
 import { useMarkMyAlignmentReadMutation } from "@/queries/operational-alignments/use-my-alignments"
 import type { MyAlignment, StructureAlignment } from "@/schemas/operational-alignments/my-alignment.schema"
 
-/** "segunda-feira, 24/11" de uma data civil — sem passar pelo fuso de quem lê (o dia já veio resolvido no fuso da organização). */
-export function civilWeekdayLabel(date: string): string {
-  const [year, month, day] = date.slice(0, 10).split("-").map(Number)
-  const label = new Date(Date.UTC(year!, month! - 1, day!)).toLocaleDateString("pt-BR", { timeZone: "UTC", weekday: "long", day: "2-digit", month: "2-digit" })
-  return label.charAt(0).toUpperCase() + label.slice(1)
+/**
+ * Frase da faixa "não está mais vigente". Encerrado à mão → o dia do encerramento. Versão SUBSTITUÍDA (deixou de valer antes da data
+ * final cadastrada, sem encerramento: a nova versão não alcança mais esta pessoa) → o dia real em que deixou de valer, nunca a data
+ * final original, que pode ser futura. Nos demais casos a vigência terminou na data final.
+ */
+export function endedSentence(alignment: Pick<MyAlignment, "endedEarly" | "noLongerValidSince" | "endsOn">): string {
+  const since = alignment.noLongerValidSince
+  if (alignment.endedEarly && since) return `Encerrado antes do prazo em ${formatCivilDate(since)}.`
+  if (since && since.slice(0, 10) <= alignment.endsOn.slice(0, 10)) return `Não vale mais desde ${formatCivilDate(since)}: foi substituído por uma nova versão.`
+  return `A vigência terminou em ${formatCivilDate(alignment.endsOn)}.`
 }
-
-const shortCivil = (date: string) => formatCivilDate(date).slice(0, 5)
 
 /**
  * Alinhamento operacional no Acompanhamento do operador (`MY_OPERATIONAL_ALIGNMENTS_V1`, desenho aprovado em 18/11/2026):
@@ -43,19 +47,19 @@ export function MyAlignmentEntry({ alignment, highlighted = false }: { alignment
         >
           <div className="space-y-4">
             {alignment.state === "UPCOMING" ? (
-              <Banner tone="upcoming" icon={CalendarClock} title={`Alinhamento válido a partir de ${civilWeekdayLabel(alignment.startsOn).toLowerCase()}`}>
+              <Banner tone="upcoming" icon={CalendarClock} title={`Alinhamento válido a partir de ${formatCivilWeekday(alignment.startsOn).toLowerCase()}`}>
                 Até lá, siga o procedimento de hoje.
               </Banner>
             ) : null}
             {ended ? (
               <Banner tone="ended" icon={OctagonX} title="Este alinhamento não está mais vigente">
-                {alignment.endedEarly && alignment.noLongerValidSince ? `Encerrado antes do prazo em ${formatCivilDate(alignment.noLongerValidSince)}.` : `A vigência terminou em ${formatCivilDate(alignment.endsOn)}.`}
+                {endedSentence(alignment)}
               </Banner>
             ) : null}
 
             <div className="flex flex-wrap gap-2" data-testid="alignment-chips">
-              {alignment.state === "IN_FORCE" ? <StatusChip tone="success" icon={CircleCheck}>Em vigor · até {shortCivil(alignment.endsOn)}</StatusChip> : null}
-              {alignment.state === "UPCOMING" ? <StatusChip tone="warning" icon={CalendarClock}>Começa em {shortCivil(alignment.startsOn)}</StatusChip> : null}
+              {alignment.state === "IN_FORCE" ? <StatusChip tone="success" icon={CircleCheck}>Em vigor · até {formatCivilDayMonth(alignment.endsOn)}</StatusChip> : null}
+              {alignment.state === "UPCOMING" ? <StatusChip tone="warning" icon={CalendarClock}>Começa em {formatCivilDayMonth(alignment.startsOn)}</StatusChip> : null}
               {ended ? <StatusChip tone="danger" icon={OctagonX}>Não vale mais</StatusChip> : null}
               <StatusChip tone={ended ? "neutral" : "info"} icon={CalendarRange} data-testid="alignment-period">
                 Vigência {formatCivilDate(alignment.startsOn)} a {formatCivilDate(alignment.endsOn)}
@@ -159,7 +163,8 @@ function ReadControl({ alignment }: { alignment: MyAlignment }) {
         onClick={() =>
           mark.mutate(
             { alignmentId: alignment.alignmentId, versionId: alignment.versionId },
-            { onError: () => toast.error("Não foi possível registrar a leitura. Tente de novo.") },
+            // 404 = o alinhamento acabou de ser encerrado, substituído ou excluído: a lista é recarregada pelo hook e o botão some.
+            { onError: (error) => toast.error(error instanceof ApiError && error.status === 404 ? "Este alinhamento mudou ou não está mais disponível. A lista foi atualizada." : "Não foi possível registrar a leitura. Tente de novo.") },
           )
         }
       >

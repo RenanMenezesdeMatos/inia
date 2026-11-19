@@ -1,4 +1,4 @@
-import type { EmploymentStatusView, FollowUpItem, OperationalStructureSummary, OperationalTrendView, PersistedInsight } from "../domain/view-models.js"
+import type { EmploymentStatusView, FollowUpItem, FollowUpType, OperationalStructureSummary, OperationalTrendView, PersistedInsight } from "../domain/view-models.js"
 import type {
   AnalyticsReadRepository,
   FollowUpCounts,
@@ -213,14 +213,37 @@ export class InMemoryAnalyticsRepository implements AnalyticsReadRepository {
       // publicado por quem lê é da equipe, recebido é dele.
       .filter((item) => {
         if (!query.audience) return true
-        const team = item.kind === "FEEDBACK" || (item.kind === "NOTICE" && item.notice?.author.personId === query.viewerId)
+        const team = item.kind === "FEEDBACK" || item.kind === "ALIGNMENT" || (item.kind === "NOTICE" && item.notice?.author.personId === query.viewerId)
         return query.audience === "TEAM" ? team : !team
       })
+      // Filtro "Tipo" (um ou vários; vazio/ausente = tudo) — a mesma regra de `followUpTypeSql` e do ramo dos alinhamentos.
+      .filter((item) => !query.types || query.types.length === 0 || query.types.includes(followUpTypeOf(item)))
       .filter((item) => before === null || key(atOf(item), item.id) < before)
       .filter((item) => (!query.since || Date.parse(item.createdAt) >= Date.parse(query.since)) && (!query.until || Date.parse(item.createdAt) < Date.parse(query.until)))
       .sort((a, b) => key(atOf(b), b.id).localeCompare(key(atOf(a), a.id)))
     const page = items.slice(0, query.limit)
     const last = page.at(-1)
     return { items: page, nextCursor: items.length > query.limit && last ? encodeFollowUpCursor({ at: atOf(last), id: last.id }) : null }
+  }
+}
+
+/**
+ * O valor do filtro "Tipo" a que um item do feed pertence — espelho em memória de `followUpTypeSql` (feedback pelo `feedback_kind`,
+ * aviso pela família do `alert_type`, report e comunicado pelo ramo; aviso de execução de report não encaminhada conta como REPORT).
+ */
+export function followUpTypeOf(item: Pick<FollowUpItem, "kind" | "category">): FollowUpType {
+  if (item.kind === "NOTICE" || item.kind === "ALIGNMENT" || item.kind === "REPORT") return item.kind
+  if (item.kind === "FEEDBACK") return item.category === "INDICATOR" ? "INDICATOR" : "MONITORING"
+  switch (item.category) {
+    case "WORKFLOW_OUTPUT":
+      return "WORKFLOW_OUTPUT"
+    case "WORKFLOW_HUMAN_REVIEW":
+      return "HUMAN_REVIEW"
+    case "WORKFLOW_ESCALATION":
+      return "ESCALATION"
+    case "INTERVENTION":
+      return "INTERVENTION"
+    default:
+      return "OTHER"
   }
 }

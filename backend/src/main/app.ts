@@ -480,7 +480,7 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/admin/data-explorer", requireAuth, explorerAccountLimiter, can("data_hub.explore", { organizationWide: true, onDenied: auditExplorerDenied }), explorerOrganizationLimiter, createDataExplorerRouter(database, explorerLimits))
   // Políticas de acompanhamento e intervenções — permissões próprias (editar/simular/publicar/auditar; `workflows.manage` lê o
   // resumo publicado para o nó do Workflow e simula). Cada rota confere a permissão e o escopo. Montada ANTES da governança.
-  app.use("/api/v1/admin/intervention-policies", requireAuth, costly(/\/simulate$/), createInterventionAdminRouter(database))
+  app.use("/api/v1/admin/intervention-policies", requireAuth, costly(/\/(simulate|impact-preview)$/), createInterventionAdminRouter(database))
   // Experiência do líder: pendências, caso, ficha, relatório e comandos — autorização pela relação com a intervenção.
   app.use("/api/v1/interventions", requireAuth, costly(/\/(narrative|ai-draft)$/), createInterventionRouter(database))
   // Governança (assuntos proibidos, glossário) no prefixo raiz da Administração: montada DEPOIS das áreas específicas para o

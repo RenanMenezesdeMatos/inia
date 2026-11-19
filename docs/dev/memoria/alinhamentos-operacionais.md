@@ -256,7 +256,7 @@ O público passa a ter vínculos (`operational_alignment_version_scopes`, da ver
 Subgrupos de Grupos diferentes. A precedência usa o vínculo que alcança cada pessoa; conflito = vínculo idêntico. Detalhes em
 [alcance-multigrupo.md](alcance-multigrupo.md).
 
-## Alinhamento no Acompanhamento do operador — fase 1 implementada (18/11/2026, migration 227, não commitado)
+## Alinhamento no Acompanhamento do operador — fase 1 implementada (18/11/2026, migration 227, commit `1969ced1`)
 
 Motivo (usuário, 18/11): o alinhamento vale na avaliação das chamadas sem que o operador seja avisado — hoje só aparece no chat, se ele
 perguntar, e na monitoria. Decisões do usuário (pergunta com opções, 18/11): leitura simples; sino ao começar a valer; aparece já na
@@ -278,6 +278,11 @@ publicação com destaque de "válido a partir de"; um item por alinhamento, sem
 - **Antes de valer**: aparece já na publicação com faixa âmbar em destaque "Alinhamento válido a partir de ‹dia da semana›, 24/11"
   (+ "Até lá, siga o procedimento de hoje."). A faixa só existe enquanto a data civil de quem lê (fuso da organização) é anterior ao
   início; depois do início some e vale o selo "Em vigor".
+- **Frase da faixa vermelha** (`endedSentence` em `my-alignment-entry.tsx`, 19/11/2026): encerrado à mão → "Encerrado antes do prazo em
+  ‹dia›"; versão SUBSTITUÍDA cuja nova versão não alcança mais a pessoa (`endedEarly` falso e `noLongerValidSince` ≤ `endsOn`) → "Não vale
+  mais desde ‹dia›: foi substituído por uma nova versão" — nunca a data final original, que pode ser futura; nos demais, "A vigência
+  terminou em ‹endsOn›". Erro em "Li o alinhamento" recarrega a lista (`onError` do hook); no 404 o aviso diz que o alinhamento mudou.
+  Dia da semana e "dd/mm" do cartão vêm de `lib/format/date.ts` (`formatCivilWeekday`, por aritmética do calendário, sem `Date`).
 - **Leitura simples** ("Li o alinhamento", sem senha; nunca chamar de "ciência" — a palavra é da confirmação com login e senha dos
   feedbacks): tabela nova só de inserção (pessoa × VERSÃO, instante), idempotente; nova versão pede leitura de novo ("Li a nova versão");
   depois: "Você leu em …". Não muda a avaliação das chamadas nem o chat. A liderança vê "N de M leram" (fase 2, no Acompanhamento do
@@ -293,7 +298,8 @@ publicação com destaque de "válido a partir de"; um item por alinhamento, sem
   `notifyAlignmentVersionsStarted`), rota `GET /api/v1/operational-alignments/mine` e `POST /:alignmentId/versions/:versionId/read`
   (pessoa só da sessão, `presentation/my-operational-alignments-router.ts`). Migration 227 `operational_alignment_reads` (pessoa × versão,
   só inserção por trigger), aplicada em `inia` e `inia_test`. Sino: `runAlignmentLifecycle` recebe `notifyStarted` e avisa as versões
-  cujo STARTED acabou de ser gravado (`returning`); destinatários = `people.role = 'OPERATOR'` ativos do público (líder não recebe); alerta
+  que começaram e ainda não têm STARTED, ANTES de gravar o evento (QA-02, 19/11: se o envio falhar, o STARTED das versões dentro da
+  janela de 2 dias não é gravado e a próxima passada avisa de novo; fora da janela o evento é gravado de qualquer forma); destinatários = `people.role = 'OPERATOR'` ativos do público (líder não recebe); alerta
   `OPERATIONAL_ALIGNMENT_STARTED`, chave `operational_alignment_started:<alinhamento>:<versão>:<pessoa>`, kind `OPERATIONAL_ALIGNMENT`,
   destino `FOLLOW_UP` com `itemId = alignment:<id>`; versão que começou há mais de 2 dias não avisa (implantação/job parado não gera
   enxurrada; alinhamentos que já valiam antes da 227 não avisam). Frontend: `components/operational-alignments/my-alignments/
@@ -303,7 +309,7 @@ publicação com destaque de "válido a partir de"; um item por alinhamento, sem
   sino em `wiki-reference.ts`. Provas: `INIA_DB_PROOF=1 NODE_ENV=test npx vitest run my-alignments-proof` (API real, público, estados, nova
   versão, leitura, sino, excluído), `domain/my-alignments.test.ts`, `my-alignment-entry.test.tsx`. Dev não tinha nenhum alinhamento
   publicado em 18/11 (conferência visual pendente).
-- **Fase 2 — quem lidera (18/11/2026, não commitado, `STRUCTURE_OPERATIONAL_ALIGNMENTS_V1`)**: `application/structure-alignments.ts`
+- **Fase 2 — quem lidera (18/11/2026, commit `1969ced1`, `STRUCTURE_OPERATIONAL_ALIGNMENTS_V1`)**: `application/structure-alignments.ts`
   (`listStructureAlignments`): alinhamentos cujo público alcança algum liderado ativo (regra de público em SQL, `alignmentReachesPersonSql`,
   a mesma da `audienceReasonOf` pelo cadastro de hoje), um por alinhamento pela mesma escolha do operador (`pickDisplayVersions`), com
   `reach = { people, read }` (pessoas da estrutura alcançadas e quantas marcaram "Li o alinhamento" na versão mostrada).
@@ -337,3 +343,21 @@ publicação com destaque de "válido a partir de"; um item por alinhamento, sem
     estrutural: especialistas (~17 s), síntese do Orquestrador do Grupo (~11 s) e a reescrita final pelo modelo da liderança (~10 s) —
     pular a reescrita mudaria o texto e precisa de avaliação de qualidade antes (regra "qualidade acima de velocidade").
 
+## Correções da auditoria run-7 (19/11/2026, AL-01, 02, 05, 06, 07 e 09)
+
+- **AL-01**: na consulta de processo de quem lidera, a orquestração do caminho principal fica na mesma variável da antecipada
+  (`speculated ??= orchestrate()`): a decisão de relevância que resolve depois não inicia uma segunda orquestração.
+- **AL-02**: `listMyAlignments` aplica o público NO SQL, antes do `limit 1000`, com o sujeito já resolvido (`me`/`org`) e o mesmo
+  `alignmentReachesPersonSql` da liderança; `pickMyAlignmentVersions` continua conferindo. Prova: 1001 versões de outro Grupo.
+- **AL-05**: o título é gravado em UMA linha (`singleLineTitle` no schema: quebra de linha, tabulação e caractere de controle viram
+  espaço). Títulos antigos não foram reescritos; orientação e trecho continuam com várias linhas (R8-N06 segue aberto para eles).
+- **AL-06**: em página seguinte do feed do líder, os alinhamentos só são calculados se alguma versão foi publicada até o instante do
+  cursor (`hasAlignmentPublishedUpTo`, em milissegundos, como o item chega ao feed). A primeira página e a atualização ao vivo continuam
+  fazendo as duas consultas (cache não foi feito: mudaria o frescor da contagem de leituras).
+- **AL-07**: `db:seed:demo:reset` apaga as leituras (227) das pessoas demo antes das pessoas, desligando o gatilho de só inserção
+  apenas dentro da transação do reset e só quando há linha.
+- **AL-09**: o sino não mostra nem conta o aviso de alinhamento EXCLUÍDO (`alignmentAlertOfDeletedSql` na condição única da lista, do
+  badge e do "marcar todas"); a linha em `alerts` fica e volta se o alinhamento for restaurado. Quem saiu do público continua vendo o
+  aviso antigo (não corrigido: exigiria o predicado de público por aviso no caminho quente do sino).
+- Abertos: **AL-03** (comunicado como fonte na `RESPONSE_COMPLIANCE_V6`; mexe em prompt versionado e pede validação paga) e **AL-08**
+  (bordas de "acesso ativo", decisão registrada).

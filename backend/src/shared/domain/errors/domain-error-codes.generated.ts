@@ -2777,11 +2777,14 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
   {
     "code": "CONTINUITY_REVIEW_NO_NOTIFY",
     "module": "interventions",
-    "statuses": [],
+    "statuses": [
+      422
+    ],
     "messages": [
       "A avaliação de continuidade não pode ser só um aviso: ela sempre abre a solicitação, que é decidida por uma pessoa autorizada."
     ],
     "refs": [
+      "backend/src/modules/interventions/application/apply-evaluation.ts",
       "backend/src/modules/interventions/domain/policy-definition.ts"
     ]
   },
@@ -2810,12 +2813,9 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
   {
     "code": "CONTINUITY_REVIEW_PRIOR_FOLLOW_UP",
     "module": "interventions",
-    "statuses": [
-      422
-    ],
+    "statuses": [],
     "messages": [],
     "refs": [
-      "backend/src/modules/interventions/application/apply-evaluation.ts",
       "backend/src/modules/interventions/domain/policy-definition.ts"
     ]
   },
@@ -5964,9 +5964,11 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       409
     ],
     "messages": [
+      "Este acompanhamento já foi encerrado: os passos não mudam mais.",
       "Itens são concluídos durante a execução."
     ],
     "refs": [
+      "backend/src/modules/interventions/application/collaborator-view.ts",
       "backend/src/modules/interventions/application/intervention-service.ts"
     ]
   },
@@ -6268,6 +6270,19 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     "refs": [
       "backend/src/modules/interventions/application/report-narrative.ts",
       "backend/src/modules/interventions/presentation/intervention-router.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_STEP_DONE_BY_LEADER",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Este passo foi concluído por quem conduz o acompanhamento: só ele pode reabri-lo."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/collaborator-view.ts"
     ]
   },
   {
@@ -9685,6 +9700,17 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
+    "code": "REPORT_TERM_FIELD_REQUIRED",
+    "module": "reports",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/reports/application/report-service.ts"
+    ]
+  },
+  {
     "code": "REPORTS_ACCESS_REQUIRED",
     "module": "reports",
     "statuses": [
@@ -12092,6 +12118,17 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "messages": [
       "Já existe uma nova tentativa desta execução em andamento. Aguarde ela terminar."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/workflow-retry.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_RETRY_NO_ACTIVE_ACCESS",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "Este Workflow só cria execução para quem tem acesso ativo à INIA, e o colaborador desta execução não tem conta de acesso ativa. Libere o acesso dele ou publique o Workflow sem essa opção antes de tentar de novo."
     ],
     "refs": [
       "backend/src/modules/workflows/application/workflow-retry.ts"

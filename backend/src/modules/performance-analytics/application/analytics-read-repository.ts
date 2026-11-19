@@ -503,7 +503,11 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     // Alinhamentos que alcançam a estrutura (fase 2): só na PRÓPRIA estrutura (como avisos, reports e comunicados), fora de "aguardando
     // ciência" e de "Para mim" (são da equipe), e quando o tipo pedido os inclui. Calculados pela porta e unidos ao feed por instante e id.
     const wantsAlignments = query.includeViewerAlerts && !query.unacknowledgedOnly && query.audience !== "MINE" && (!query.types || query.types.length === 0 || query.types.includes("ALIGNMENT"))
-    const teamAlignments = wantsAlignments ? await this.alignments.listForStructure(this.db, query.organizationId, query.operatorIds, new Date()) : []
+    // AL-06: em página seguinte (cursor), os alinhamentos só são calculados se ALGUMA versão foi publicada até o instante do cursor — rolar o
+    // histórico para antes do primeiro alinhamento não refaz as duas consultas sobre versões × liderados a cada página.
+    const now = new Date()
+    const alignmentsPossible = wantsAlignments && (!query.before || !this.alignments.hasPublishedUpTo || (await this.alignments.hasPublishedUpTo(this.db, query.organizationId, query.before.at, now)))
+    const teamAlignments = alignmentsPossible ? await this.alignments.listForStructure(this.db, query.organizationId, query.operatorIds, now) : []
     const alignmentById = new Map(teamAlignments.map((item) => [item.alignmentId, item]))
     const alignmentIdsParam = params.push(teamAlignments.map((item) => item.alignmentId))
     const alignmentAtsParam = params.push(teamAlignments.map((item) => item.publishedAt))

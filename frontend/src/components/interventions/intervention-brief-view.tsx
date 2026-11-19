@@ -1,6 +1,8 @@
 import type { ReactNode } from "react"
 import { CheckCircle2, Clock3 } from "lucide-react"
 
+import { RichContent } from "@/components/rich-content/rich-content"
+import { SectionLabel } from "@/components/ui/surface"
 import { formatDate } from "@/lib/format/date"
 import { INTERVENTION_STATUS_LABELS, OPERATIONAL_RESULT_LABELS, type BriefFeedback, type InterventionBriefView as Brief } from "@/schemas/interventions/intervention.schema"
 
@@ -16,7 +18,7 @@ const FEEDBACK_KIND_LABEL: Record<string, string> = { INDICATOR: "Feedback de in
 function Part({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section aria-label={title} className="space-y-1.5">
-      <h5 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{title}</h5>
+      <SectionLabel as="h5">{title}</SectionLabel>
       {children}
     </section>
   )
@@ -46,7 +48,12 @@ function FeedbackLine({ feedback, withText }: { feedback: BriefFeedback; withTex
           </span>
         )}
       </p>
-      {withText && feedback.recommendation ? <blockquote className="border-l-2 border-primary/40 pl-3 text-muted-foreground">{feedback.recommendation}</blockquote> : null}
+      {/* Trecho de feedback publicado (texto de origem IA): passa pelo `rich-content`, como todo texto gerado para leitura humana. */}
+      {withText && feedback.recommendation ? (
+        <blockquote className="border-l-2 border-primary/40 pl-3 text-muted-foreground">
+          <RichContent text={feedback.recommendation} />
+        </blockquote>
+      ) : null}
     </li>
   )
 }

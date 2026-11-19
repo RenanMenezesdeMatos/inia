@@ -1,5 +1,5 @@
 import type { QueryTableCard } from "../../leadership-analytics/domain/view-models.js"
-import type { ReportVisualization, VisualizationType } from "./report-definition.js"
+import { isRecordTool, type ReportVisualization, type VisualizationType } from "./report-definition.js"
 
 /**
  * VISUALIZAÇÃO de uma entrega — calculada pela aplicação a partir do cartão da ferramenta (a mesma tabela do chat), nunca pela IA.
@@ -171,6 +171,13 @@ export function describeType(type: VisualizationType): string {
  */
 export function staticCompatibility(definition: import("./report-definition.js").ReportDefinition): VisualizationType[] {
   const types: VisualizationType[] = ["TABLE", "BAR"]
+  if (definition.tool === "SPAN" || isRecordTool(definition.tool)) {
+    // Registros e span: o agrupamento está nos parâmetros da ferramenta (`agrupar_por`; span: `por`).
+    const groupBy = definition.queryArgs?.agrupar_por
+    if (groupBy === "DIA" || groupBy === "SEMANA" || groupBy === "MES") types.push("LINE", "AREA")
+    if (definition.tool !== "SPAN" && (groupBy === undefined || groupBy === "ESTRUTURA")) types.push("KPI")
+    return types
+  }
   const temporal = definition.period.mode === "LAST_N_CLOSED" && (definition.period.display === "POR_MES" || definition.groupBy === "COMPETENCIA")
   if (temporal) types.push("LINE", "AREA")
   if (definition.view === "QUARTIS" || (definition.tool === "WORKFORCE" && !definition.listPeople)) types.push("DISTRIBUTION")

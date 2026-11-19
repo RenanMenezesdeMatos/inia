@@ -1,11 +1,25 @@
 import { describe, expect, it } from "vitest"
 
-import { describeElapsed, formatCivilDate, formatDateTime, formatElapsed, formatShortDateTime } from "./date"
+import { describeElapsed, formatCivilDate, formatCivilDayMonth, formatCivilWeekday, formatDateTime, formatElapsed, formatShortDateTime } from "./date"
 
 describe("formatCivilDate", () => {
   it("vira dd/mm/aaaa sem passar por Date (o dia nunca desloca pelo fuso)", () => {
     expect(formatCivilDate("2026-01-01")).toBe("01/01/2026")
     expect(formatCivilDate("2026-12-31T23:59:59Z")).toBe("31/12/2026")
+  })
+})
+
+describe("formatCivilWeekday e formatCivilDayMonth", () => {
+  it("dia da semana da data civil pela aritmética do calendário, sem `Date` nem fuso", () => {
+    expect(formatCivilWeekday("2026-11-24")).toBe("Terça-feira, 24/11")
+    expect(formatCivilWeekday("2026-01-01")).toBe("Quinta-feira, 01/01")
+    expect(formatCivilWeekday("2024-02-29")).toBe("Quinta-feira, 29/02")
+    expect(formatCivilWeekday("2000-01-01T00:00:00.000Z")).toBe("Sábado, 01/01")
+    expect(formatCivilWeekday("2026-11-22")).toBe("Domingo, 22/11")
+  })
+
+  it("dia e mês curtos", () => {
+    expect(formatCivilDayMonth("2026-11-30")).toBe("30/11")
   })
 })
 

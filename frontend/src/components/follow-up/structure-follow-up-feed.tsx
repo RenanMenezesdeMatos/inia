@@ -7,7 +7,7 @@ import { AnalyticsEmptyState, AnalyticsErrorState } from "@/components/analytics
 import { CommunicationEntry } from "@/components/communications/communication-entry"
 import { MyAlignmentEntry } from "@/components/operational-alignments/my-alignments/my-alignment-entry"
 import { FollowUpEntry } from "@/components/follow-up/follow-up-entry"
-import { FollowUpTypeEmpty, FollowUpTypeFilter, STRUCTURE_FOLLOW_UP_TYPES, type FollowUpType } from "@/components/follow-up/follow-up-type-filter"
+import { FollowUpTypeEmpty, FollowUpTypeFilter, STRUCTURE_FOLLOW_UP_TYPES, SUBJECT_FOLLOW_UP_TYPES, type FollowUpType } from "@/components/follow-up/follow-up-type-filter"
 import { followUpDayKey, followUpDayLabel, followUpPeriodBounds, type FollowUpPeriod } from "@/components/operator/follow-up-timeline"
 import { FollowUpPeriodEmpty } from "@/components/operator/follow-up-period"
 import { IniaFeed } from "@/components/operator/inia-feed"
@@ -51,6 +51,8 @@ export function StructureFollowUpFeed({ subject, description, employeeHref, unac
   }, [period])
   // Filtro "Tipo" (um ou vários): vai ao servidor junto com o período (o feed é paginado lá); null = tudo.
   const [types, setTypes] = useState<FollowUpType[] | null>(null)
+  // Própria estrutura = sem sujeito (ou com o filtro "Para quem", que só existe nela). Fora dela o filtro só oferece os feedbacks.
+  const ownStructure = subject === null || audienceFilter
   // Filtro "Para quem": null = tudo; vai ao servidor (o feed é paginado lá). "Aguardando ciência" é dos feedbacks da equipe, então
   // não convive com "Para mim": escolher "Para mim" desliga a ciência, e ligar a ciência volta para "Tudo".
   const [audience, setAudience] = useState<FollowUpAudience | null>(null)
@@ -82,7 +84,7 @@ export function StructureFollowUpFeed({ subject, description, employeeHref, unac
   }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage])
 
   return (
-    <IniaFeed title="Acompanhamento" description={description} period={period} onPeriodChange={setPeriod} filter={<FollowUpTypeFilter value={types} onChange={setTypes} types={STRUCTURE_FOLLOW_UP_TYPES} />}>
+    <IniaFeed title="Acompanhamento" description={description} period={period} onPeriodChange={setPeriod} filter={<FollowUpTypeFilter value={types} onChange={setTypes} types={ownStructure ? STRUCTURE_FOLLOW_UP_TYPES : SUBJECT_FOLLOW_UP_TYPES} />}>
       {audienceFilter || onUnacknowledgedOnlyChange ? (
         <div className="flex flex-wrap items-center gap-2 pt-2 pb-1">
           {audienceFilter ? (

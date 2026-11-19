@@ -55,6 +55,25 @@ type Row = {
 }
 
 /**
+ * Existe ALGUMA versão publicada (não excluída, na janela do histórico) com publicação até `publishedUpTo`? (AL-06) Condição necessária
+ * para um alinhamento caber numa página do feed anterior a esse instante — o item do feed é ordenado pela publicação da versão mostrada.
+ * Consulta de existência, sem público nem liderados: quando é falsa, o feed nem calcula os alinhamentos da estrutura. A publicação é
+ * comparada em MILISSEGUNDOS, como o item chega ao feed (`publishedAt` passa por `Date`): com microssegundos, o empate no cursor se perdia.
+ */
+export async function hasAlignmentPublishedUpTo(db: Queryable, input: { organizationId: string; publishedUpTo: Date | string; now?: Date }): Promise<boolean> {
+  const row = (await db.query<{ found: boolean }>(
+    `select exists (
+       select 1 from operational_alignment_versions v
+       join operational_alignments a on a.id = v.alignment_id and a.deleted_at is null
+       where v.organization_id = $1 and v.status in ('PUBLISHED', 'SUPERSEDED') and v.effective_until > v.effective_from
+         and v.effective_until > $2::timestamptz - make_interval(months => ${MY_ALIGNMENTS_HISTORY_MONTHS}) and date_trunc('milliseconds', v.published_at) <= $3::timestamptz
+     ) found`,
+    [input.organizationId, input.now ?? new Date(), input.publishedUpTo],
+  )).rows[0]
+  return row?.found === true
+}
+
+/**
  * Alinhamentos da estrutura (`memberIds` = os liderados já resolvidos pelo escopo de quem lê). `includeEnded = false` (chat: "quais os
  * alinhamentos do time?") devolve só os em vigor e os que vão começar.
  */

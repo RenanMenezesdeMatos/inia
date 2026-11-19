@@ -1,57 +1,20 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { KnowledgeChunk } from "../../knowledge/domain/knowledge-chunking.js"
 import { rankChunks } from "../../knowledge/domain/lexical-retrieval.js"
-import { isOperatingUniverse } from "../../operating-universe/domain/operating-universe.js"
-import { renderAlignmentsForConversation, resolveOperationalAlignments, type AlignmentCandidate, type AlignmentResolution, type AlignmentSubject } from "../../operational-alignments/domain/operational-alignment.js"
-import { loadAlignmentCandidatesAt } from "../../operational-alignments/infrastructure/operational-alignment-loaders.js"
+import { renderAlignmentsForConversation, type AlignmentCandidate, type AlignmentResolution } from "../../operational-alignments/domain/operational-alignment.js"
 import { recordAlignmentUsage } from "../../operational-alignments/application/alignment-audit.js"
 import { structureAlignmentHeader, type LeaderStructureScope } from "../domain/leader-structure.js"
 import type { PublicationRelevanceModel } from "../application/publication-relevance-model.js"
 import { loadCommunicationsForConversation } from "./communication-conversation-loader.js"
-import { structurePeopleCte } from "./structure-people-sql.js"
+import { resolveAlignmentsForStructure } from "./structure-alignment-resolution.js"
+
+// Moram em arquivo próprio (sem ciclo de import — ARQ-06); reexportados para quem já importava daqui.
+export { loadStructureSubjects, resolveAlignmentsForStructure } from "./structure-alignment-resolution.js"
 
 type Queryable = Pick<Database, "query">
 
 /** Quantos alinhamentos da estrutura entram no chat só de liderança (sem Orquestrador: sem bases autorizadas para filtrar). */
 export const MAX_STRUCTURE_ALIGNMENTS_WITHOUT_ORCHESTRATOR = 3
-
-/** Públicos distintos (Grupo, Subgrupo, universo) da estrutura — cada um é avaliado pela regra única dos alinhamentos. */
-export async function loadStructureSubjects(db: Queryable, organizationId: string, scope: LeaderStructureScope): Promise<AlignmentSubject[]> {
-  const result = await db.query<{ team_id: string | null; subteam_id: string | null; operating_universe: string | null; enforced: boolean }>(
-    `with recursive ${structurePeopleCte("$1", "$2", "$3")}
-     select distinct sp.team_id::text team_id, sp.subteam_id::text subteam_id, sp.operating_universe,
-            (select o.operating_universe_enforced_at is not null from organizations o where o.id = $1) enforced
-     from structure_people sp`,
-    [organizationId, scope.leaderPersonId, scope.teamIds ? [...scope.teamIds] : null],
-  )
-  return result.rows.map((row) => ({ teamId: row.team_id, subteamId: row.subteam_id, operatingUniverse: isOperatingUniverse(row.operating_universe) ? row.operating_universe : null, universeEnforced: row.enforced }))
-}
-
-/**
- * Alinhamentos vigentes para os públicos da estrutura: a regra única aplicada a CADA público, juntando o que vale para algum deles
- * (sem repetir versão). `documentIds` = bases autorizadas ao agente (consulta de processo); null = todos os processos (chat só de
- * liderança, que filtra depois pela pergunta).
- */
-export async function resolveAlignmentsForStructure(db: Queryable, input: { organizationId: string; scope: LeaderStructureScope; at: Date; documentIds: readonly string[] | null; usage?: { agentId?: string | null } }): Promise<AlignmentResolution | null> {
-  if (input.documentIds && input.documentIds.length === 0) return null
-  const candidates = await loadAlignmentCandidatesAt(db, input.organizationId, input.at, input.documentIds)
-  if (candidates.length === 0) return null
-  const subjects = await loadStructureSubjects(db, input.organizationId, input.scope)
-  if (subjects.length === 0) return null
-  const authorized = new Set(input.documentIds ?? candidates.flatMap((candidate) => candidate.affectedDocuments.map((document) => document.id)))
-  const applied = new Map<string, AlignmentCandidate>()
-  let base: AlignmentResolution | null = null
-  for (const subject of subjects) {
-    const resolution = resolveOperationalAlignments(candidates, subject, input.at, authorized)
-    base ??= resolution
-    for (const candidate of resolution.applied) applied.set(candidate.versionId, candidate)
-  }
-  if (!base) return null
-  const resolution: AlignmentResolution = { ...base, applied: [...applied.values()], setAside: [], productPrecedence: [] }
-  // Rastro (qual versão a IA leu), como no caminho pessoal: quem conversa é o gestor. Sem `usage`, quem chama grava depois do filtro.
-  if (input.usage) recordAlignmentUsage(db, input.organizationId, resolution, { surface: "CONVERSATION", personId: input.scope.leaderPersonId, agentId: input.usage.agentId ?? null })
-  return resolution
-}
 
 /** Mesmo bloco da regra única, com o cabeçalho de quem lidera: cada alinhamento vale para o público dele. */
 export function renderAlignmentsForStructure(resolution: AlignmentResolution, scope: LeaderStructureScope): string {

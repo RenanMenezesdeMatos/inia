@@ -190,4 +190,12 @@ export type QueryTableCard = {
   limitations: string[]
 }
 
-export type LeadershipCard = IndicatorAnalysisCard | StructureOverviewCard | PeopleCard | PrioritiesCard | QueryTableCard
+/**
+ * Escolha da leitura dos dados (`DATA_CHOICE`): o termo pedido aparece em mais de um campo (ex.: "contestação" no motivo, no submotivo e
+ * como ocorrência). O chat mostra as opções com a contagem de cada uma; a escolha volta como mensagem da pessoa (`question`), que a INIA
+ * consulta com o filtro daquela leitura. Nenhuma leitura é escolhida pela IA.
+ */
+export type DataChoiceOption = { id: string; label: string; detail: string; question: string }
+export type DataChoiceCard = { type: "DATA_CHOICE"; generatedAt: string; structure: StructureRef; title: string; prompt: string; scopeNote: string; options: DataChoiceOption[] }
+
+export type LeadershipCard = IndicatorAnalysisCard | StructureOverviewCard | PeopleCard | PrioritiesCard | QueryTableCard | DataChoiceCard

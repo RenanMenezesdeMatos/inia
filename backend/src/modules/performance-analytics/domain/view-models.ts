@@ -1,6 +1,6 @@
 import type { CommunicationView } from "../../communications/domain/communication.js"
 import type { StructureAlignment } from "../../operational-alignments/application/structure-alignments.js"
-import type { FollowUpInterventionBrief } from "../../interventions/application/follow-up-briefs.js"
+import type { FollowUpInterventionBrief } from "../../interventions/domain/leader-brief.js"
 import type { FeedbackView } from "../../reliable-feedback/domain/feedback-view.js"
 import type { PrvSupervisorView } from "../../reliable-feedback/domain/prv-closing-views.js"
 import type { FeedbackSupportMaterialView } from "../../feedbacks/application/feedback-support-materials.js"

@@ -314,15 +314,16 @@ que estava reescrevendo o modelo deles (migrations 210/211) — nesta rodada, s�
   dentro, mesma fonte); responsável e cargo no alinhamento (221) e a resposta do chat começando pela conduta e atribuindo a quem definiu
   — ver [alinhamentos-operacionais.md](alinhamentos-operacionais.md) › "Responsável, autoria no chat e Publicações".
 
-## Filtro "Tipo" do Acompanhamento (18/11/2026, não commitado)
+## Filtro "Tipo" do Acompanhamento (18/11/2026, commit `76cca49f`)
 
 Pedido do usuário: um filtro simples no Acompanhamento (colaborador e liderança) para ver só comunicados, feedbacks de monitoria, de indicador ou qualquer outro tipo; depois: "todos menos isso", discreto. `FollowUpTypeFilter` (`components/follow-up/follow-up-type-filter.tsx`, tipo `followUpTypeSchema` em `schemas/analytics/analytics.schema.ts`) é um botão leve ("Tipos" com o ícone; filtrado = "3 de 4 tipos" ou o nome do único tipo, na cor da marca) ao lado do calendário no cabeçalho do `IniaFeed` (slot `filter`), que abre um Popover com caixas: "Todos os tipos" (volta a tudo) + uma por tipo; todos marcados = sem filtro (`null`); a última caixa marcada não desmarca. Vazio próprio ("Nada nos tipos escolhidos" + "Ver todos os tipos").
 - **Colaborador** (Comunicados, Feedbacks de monitoria, Feedbacks de indicador; "Leituras do dia" saiu em 18/11/2026 a pedido do usuário — `feedback_kind` só tem MONITORING e INDICATOR, e o `reading` do mapeamento é só reserva, contado como monitoria): recorte no navegador sobre a timeline já juntada; feedback de atendimento entregue conta como monitoria; sem nenhum tipo que venha do histórico paginado (só comunicados) não busca páginas antigas; o "acompanhamento com quem lidera" (`MyFollowUpPlans`) some com o filtro ativo; "Ler feedback" de item fora do filtro volta a tudo.
 - **Liderança** (+ Resultados de workflow, Revisões pendentes, Escalonamentos, Intervenções, Reports, Outros avisos): vai ao servidor — `GET /analytics/follow-ups?types=A,B` (`listParam` do enum `FOLLOW_UP_TYPES`, inválido = 400 em `performance-analytics/domain/view-models.ts`), SQL fixo por ramo do feed, montado só do enum (`followUpTypeSql`: OR das condições dos tipos pedidos; feedback por `feedback_kind`, aviso por `alert_type`/`INTERVENTION_*`, report e comunicado pelo ramo), convive com período, ciência e cursor. Prova: `follow-up-feed-proof` (INIA_DB_PROOF).
-- **Filtro "Ciência" do colaborador** (18/11, pedido do usuário): botão discreto "Ciência" ao lado de "Tipos" (`components/follow-up/follow-up-ack-filter.tsx`, DropdownMenu com Tudo · Feedbacks sem ciência · Feedbacks com ciência). Só feedback publicado e de atendimento tem ciência (comunicados, alinhamentos e leituras saem com o filtro ativo); a ciência vem do servidor ou do mapa desta sessão (`useConfirmedReadings`). Em "Sem ciência", o que a pessoa confirma com o filtro aberto continua à vista até o filtro mudar (não some no clique). Vazio próprio com "Ver tudo".
-- **Alinhamentos operacionais não aparecem no Acompanhamento** (só no chat e na monitoria), então não há opção para eles no filtro.
+- **Filtro "Ciência" do colaborador** (18/11, pedido do usuário): botão discreto "Ciência" ao lado de "Tipos" (`components/follow-up/follow-up-ack-filter.tsx`, DropdownMenu com Tudo · Feedbacks aguardando ciência · Feedbacks com ciência — o rótulo é "Aguardando ciência", nunca "Sem ciência", que o `CLAUDE.md` proíbe por ambíguo; corrigido em 19/11/2026). Só feedback publicado e de atendimento tem ciência (comunicados, alinhamentos e leituras saem com o filtro ativo); a ciência vem do servidor ou do mapa desta sessão (`useConfirmedReadings`). Em "Aguardando ciência", o que a pessoa confirma com o filtro aberto continua à vista até o filtro mudar (não some no clique). Vazio próprio com "Ver tudo".
+- **Alinhamentos operacionais aparecem no Acompanhamento** do colaborador e de quem lidera desde o commit `1969ced1` (migration 227) e têm a opção "Alinhamentos" no filtro dos dois (`OPERATOR_FOLLOW_UP_TYPES` e `STRUCTURE_FOLLOW_UP_TYPES`); detalhes em [alinhamentos-operacionais.md](alinhamentos-operacionais.md).
+- **Fora da própria estrutura** (ficha de um colaborador, estrutura de um liderado) o filtro só oferece Feedbacks de monitoria e de indicador (`SUBJECT_FOLLOW_UP_TYPES`): o servidor não devolve ali os avisos, comunicados, alinhamentos e reports de quem lê (`includeViewerAlerts` falso), e oferecer esses tipos dava sempre vazio (19/11/2026).
 
-## Filtro "Para quem" do Acompanhamento do líder (18/11/2026, não commitado)
+## Filtro "Para quem" do Acompanhamento do líder (18/11/2026, commit `76cca49f`)
 
 Pedido do usuário: no Acompanhamento do líder, separar o que é só para ele do acompanhamento do time que aparece para ele. Alternância
 "Tudo · Para mim · Da equipe" (`ToggleGroup` do kit com pílulas próprias — contorno leve, ícone Layers/UserRound/Users, selecionada tingida na cor da marca; o bloco cinza padrão foi recusado pelo usuário por ser "cinza, estático" —, `audienceFilter` em `StructureFollowUpFeed`), na faixa acima do feed ao lado de
@@ -335,7 +336,7 @@ aviso sobre um liderado endereçado ao líder é "para mim". "Aguardando ciênci
 a ciência e ligar a ciência volta a "Tudo". Convive com Tipo, período e cursor (prova `follow-up-feed-proof`, INIA_DB_PROOF; o ramo de
 comunicado não tem caso na prova). Vazio próprio ("Nada endereçado a você" / "Nada da equipe" + "Ver tudo").
 
-## Minha jornada — a escala do próprio operador (17/11/2026, não commitado, migration 222 aplicada em inia e inia_test)
+## Minha jornada — a escala do próprio operador (17/11/2026, commit `0b9916eb`, migration 222 aplicada em inia e inia_test)
 
 Aba "Minha jornada" no perfil do Operador (capability `JOURNEY` em `view-capabilities.ts`, só para `OPERATOR`; `?tab=journey`).
 Somente leitura: `GET /api/v1/my-journey?week=AAAA-MM-DD` (`people/presentation/my-journey-router.ts`) resolve a pessoa SÓ pela sessão

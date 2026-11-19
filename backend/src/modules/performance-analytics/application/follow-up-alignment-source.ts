@@ -8,4 +8,9 @@ import type { StructureAlignment } from "../../operational-alignments/applicatio
  */
 export type FollowUpAlignmentSource = {
   listForStructure(db: Pick<Database, "query">, organizationId: string, memberIds: readonly string[], now: Date): Promise<StructureAlignment[]>
+  /**
+   * AL-06 (opcional): há alguma versão publicada até este instante? Página do feed ANTERIOR a todas as publicações não pode conter
+   * alinhamento — o feed pula `listForStructure` (duas consultas sobre versões × liderados). Ausente = sempre calcula.
+   */
+  hasPublishedUpTo?(db: Pick<Database, "query">, organizationId: string, publishedUpTo: Date | string, now: Date): Promise<boolean>
 }

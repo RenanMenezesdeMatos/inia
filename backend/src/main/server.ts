@@ -1,6 +1,6 @@
 // PRIMEIRO import: marca o processo como servidor antes de o pool do banco nascer (limites de sessão por papel).
 import "./server-database-session.js"
-import { sendOverdueReminders } from "../modules/interventions/application/team-overview.js"
+import { sendOverdueReminders } from "../modules/interventions/application/overdue-reminders.js"
 import type { Server } from "node:http"
 import { env } from "../config/env.js"
 import { databaseSession, pool } from "../infrastructure/database/pool.js"
@@ -140,11 +140,11 @@ function startProcessing() {
     { name: "knowledge-ocr", intervalMs: 15_000, run: () => processKnowledgeOcrJobs(pool), errorLabel: "Falha na leitura de PDF digitalizado:" },
     // Busca nas bases em escala: vetores das versões publicadas pelo modelo de embedding da policy (sem policy, nenhuma chamada). Ver knowledge-embedding-jobs.ts.
     { name: "knowledge-embeddings", intervalMs: 30_000, run: () => processKnowledgeEmbeddingIndex(pool).then(() => undefined), errorLabel: "Falha na indexação das bases (embedding):" },
+    // Lembrete de prazo vencido das intervenções (recomendação sem resposta, execução ou passo atrasado): no máximo um a cada 7 dias por intervenção.
+    { name: "intervention-overdue-reminders", intervalMs: 3_600_000, run: () => sendOverdueReminders(pool).then(() => undefined), errorLabel: "Falha nos lembretes de prazo das intervenções:" },
     // Reports recorrentes: agenda (cria a execução do horário vencido, uma por report × horário), fila (execução com posse e
     // até 3 tentativas) e recuperação da análise da IA (sem refazer a entrega; posse por entrega — uma chamada de IA por vez em
     // qualquer processo, inclusive junto com a análise que a execução faz logo depois de gravar). Ver docs/dev/reports-recorrentes.md.
-    // Lembrete semanal de prazo vencido das intervenções (recomendação sem resposta, execução ou passo atrasado) — idempotente pela chave do aviso.
-    { name: "intervention-overdue-reminders", intervalMs: 3_600_000, run: () => sendOverdueReminders(pool).then(() => undefined), errorLabel: "Falha nos lembretes de prazo das intervenções:" },
     { name: "report-schedule", intervalMs: 60_000, run: () => scheduleDueReports(pool, new Date()).then(() => undefined), errorLabel: "Falha na agenda de reports:" },
     { name: "report-runs", intervalMs: 15_000, run: () => processReportRuns(pool, reportExecutorDeps).then(() => undefined), errorLabel: "Falha na execução de reports:" },
     // Base de boas práticas: fila de análises (uma por rodada, com posse de 20 min e uma nova tentativa). Ver docs/dev/memoria/boas-praticas.md.

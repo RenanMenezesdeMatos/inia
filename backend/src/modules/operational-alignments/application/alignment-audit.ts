@@ -54,21 +54,36 @@ export function recordAlignmentUsage(db: Queryable, organizationId: string, reso
  * Job `operational-alignments-lifecycle`: grava, uma vez por versão, quando ela COMEÇOU a valer e quando EXPIROU pelo relógio (o
  * instante gravado é o da vigência, não o do job). Encerramento antecipado e cancelamento já foram gravados por quem os fez; versão
  * substituída antes de começar não "começa".
+ *
+ * Sino "alinhamento em vigor" (QA-02): o aviso sai ANTES do evento `STARTED`. Se o envio falhar (ou o processo cair no meio), o evento
+ * das versões ainda dentro da janela do aviso NÃO é gravado, e a próxima passada tenta de novo — o aviso é idempotente pela chave.
+ * Versão que começou há mais que a janela não avisa mais; o evento dela é gravado de qualquer forma (o rastro nunca fica preso).
  */
+export const ALIGNMENT_STARTED_NOTICE_WINDOW_MS = 2 * 24 * 60 * 60 * 1000
+
 export async function runAlignmentLifecycle(db: Queryable, now: Date = new Date(), notifyStarted: (versionIds: string[], now: Date) => Promise<unknown> = async () => undefined): Promise<{ started: number; expired: number }> {
-  const started = await db.query<{ version_id: string }>(
+  const startedFilter = `v.status in ('PUBLISHED', 'SUPERSEDED') and v.effective_from <= $1 and v.effective_until > v.effective_from`
+  const pending = (await db.query<{ version_id: string; effective_from: Date }>(
+    `select v.id version_id, v.effective_from from operational_alignment_versions v
+     where ${startedFilter}
+       and not exists (select 1 from operational_alignment_events e where e.version_id = v.id and e.event_type = 'STARTED')`,
+    [now],
+  )).rows
+  let retryLater: string[] = []
+  if (pending.length > 0) {
+    await notifyStarted(pending.map((row) => row.version_id), now).catch((error: unknown) => {
+      console.error("Falha no aviso de alinhamento em vigor (nova tentativa na próxima passada):", error)
+      retryLater = pending.filter((row) => now.getTime() - new Date(row.effective_from).getTime() <= ALIGNMENT_STARTED_NOTICE_WINDOW_MS).map((row) => row.version_id)
+    })
+  }
+  const started = await db.query(
     `insert into operational_alignment_events (organization_id, alignment_id, version_id, version, event_type, actor_person_id, occurred_at, details)
      select v.organization_id, v.alignment_id, v.id, v.version, 'STARTED', null, v.effective_from, jsonb_build_object('startsOn', v.starts_on, 'timeZone', v.time_zone)
      from operational_alignment_versions v
-     where v.status in ('PUBLISHED', 'SUPERSEDED') and v.effective_from <= $1 and v.effective_until > v.effective_from
-     on conflict do nothing
-     returning version_id`,
-    [now],
+     where ${startedFilter} and v.id <> all($2::uuid[])
+     on conflict do nothing`,
+    [now, retryLater],
   )
-  // Sino (Acompanhamento do operador, 18/11/2026): só as versões que começaram AGORA (o evento acabou de ser gravado, uma vez por
-  // versão em qualquer número de processos). Falha no aviso não desfaz o rastro.
-  const startedVersionIds = started.rows.map((row) => row.version_id)
-  if (startedVersionIds.length > 0) await notifyStarted(startedVersionIds, now).catch((error: unknown) => console.error("Falha no aviso de alinhamento em vigor:", error))
   const expired = await db.query(
     `insert into operational_alignment_events (organization_id, alignment_id, version_id, version, event_type, actor_person_id, occurred_at, details)
      select v.organization_id, v.alignment_id, v.id, v.version, 'EXPIRED', null, v.effective_until,

@@ -1,5 +1,5 @@
 import { DomainError } from "../../../shared/domain/domain-error.js"
-import { describePeriod, reportAnalysisSchema, reportAudienceSchema, reportDefinitionSchema, reportScheduleSchema, reportVisualizationSchema, toToolCall, type ReportDefinition, type ReportVisualization } from "../domain/report-definition.js"
+import { describePeriod, isRecordTool, resolveRecordPeriod, reportAnalysisSchema, reportAudienceSchema, reportDefinitionSchema, reportScheduleSchema, reportVisualizationSchema, TERM_FIELD_REQUIRED_MESSAGE, toToolCall, type ReportDefinition, type ReportVisualization } from "../domain/report-definition.js"
 import { describeSchedule, nextRunAfter, upcomingRuns } from "../domain/report-schedule.js"
 import { buildVisualizationData, compatibleVisualizations, describeType, staticCompatibility, suggestVisualization } from "../domain/visualization.js"
 import type { AnalysisWriter } from "./report-analysis.js"
@@ -38,13 +38,18 @@ async function requireOwned(deps: ReportServiceDeps, actor: ReportActor, id: str
 }
 
 const unprocessable = (message: string, code: string) => new DomainError(message, code, 422)
+/** Código estável da recusa de uma definição: trecho sem o campo onde procurar tem código próprio (a tela pede a escolha). */
+function configRefusal(what: string, issues: readonly { message: string }[]): DomainError {
+  const message = `${what}: ${issues.map((issue) => issue.message).join("; ")}`
+  return issues.some((issue) => issue.message === TERM_FIELD_REQUIRED_MESSAGE) ? new DomainError(message, "REPORT_TERM_FIELD_REQUIRED", 422) : unprocessable(message, "REPORT_CONFIG_INVALID")
+}
 
 /** Valida e normaliza uma configuração (formulário guiado → contrato). */
 export async function validateConfig(deps: ReportServiceDeps, actor: ReportActor, access: ReportAccess, input: unknown): Promise<ReportConfig> {
   const body = (input ?? {}) as Record<string, unknown>
   const parse = <T>(schema: { safeParse(value: unknown): { success: true; data: T } | { success: false; error: { issues: { message: string; path: PropertyKey[] }[] } } }, value: unknown, what: string): T => {
     const parsed = schema.safeParse(value)
-    if (!parsed.success) throw unprocessable(`${what}: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`, "REPORT_CONFIG_INVALID")
+    if (!parsed.success) throw configRefusal(what, parsed.error.issues)
     return parsed.data
   }
   const name = typeof body.name === "string" ? body.name.trim() : ""
@@ -184,12 +189,14 @@ export async function runReportNow(deps: ReportServiceDeps, actor: ReportActor, 
 export async function previewReport(deps: ReportServiceDeps, actor: ReportActor, input: { definition: unknown; visualization?: unknown }) {
   const access = await requireAccess(deps, actor)
   const parsed = reportDefinitionSchema.safeParse(input.definition)
-  if (!parsed.success) throw unprocessable(`Consulta: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`, "REPORT_CONFIG_INVALID")
+  if (!parsed.success) throw configRefusal("Consulta", parsed.error.issues)
   const definition: ReportDefinition = parsed.data
   if (!access.context) throw unprocessable("A prévia mostra os dados na SUA visão, e você não lidera uma estrutura. Cada destinatário receberá a própria estrutura.", "REPORT_PREVIEW_UNAVAILABLE")
   const structure = definition.structure.mode === "RECIPIENT" ? access.context.ownStructure : access.context.resolveFixed(definition.structure.subjectKind, definition.structure.subjectId)
   if (!structure) throw new DomainError("A estrutura escolhida não está no seu escopo.", "STRUCTURE_OUT_OF_SCOPE", 403)
-  const call = toToolCall(definition)
+  // Registros: o período relativo vira o mês/as datas de HOJE (mesma regra da execução agendada).
+  const recordPeriod = isRecordTool(definition.tool) ? resolveRecordPeriod(definition.period, { today: access.context.today, lastClosedPeriod: access.context.lastClosedPeriod }) : null
+  const call = toToolCall(definition, recordPeriod ? ("month" in recordPeriod ? { month: recordPeriod.month } : { dates: recordPeriod.dates }) : undefined)
   const result = await access.context.runTool(call.name, call.args)
   const card = result.card && result.card.type === "QUERY_TABLE" ? result.card : null
   if (!card) throw unprocessable(result.issue?.message ?? "A consulta não devolveu uma tabela.", "REPORT_PREVIEW_FAILED")
@@ -199,7 +206,7 @@ export async function previewReport(deps: ReportServiceDeps, actor: ReportActor,
   return {
     preview: true,
     structure: structure.ref.label,
-    period: describePeriod(definition.period),
+    period: recordPeriod ? `${describePeriod(definition.period)} — hoje: ${recordPeriod.label}` : describePeriod(definition.period),
     card,
     compatible: compatibleVisualizations(card).filter((type) => staticCompatibility(definition).includes(type)),
     suggested: suggestVisualization(card),

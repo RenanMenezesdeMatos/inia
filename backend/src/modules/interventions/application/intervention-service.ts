@@ -35,12 +35,14 @@ import {
 import { asksEffectiveness, EFFECTIVENESS_LABELS, EFFECTIVENESS_VALUES, OUTCOME_REASON_LABELS, OUTCOME_REASONS, type Effectiveness, type OutcomeReason } from "../domain/intervention-state.js"
 import type { Evolution } from "../domain/evolution.js"
 import { measureEvolution } from "./leader-context.js"
+import { resolveOverdueIfSettled } from "./overdue-reminders.js"
 import { isSensitiveType, scriptItemsOf, type InterventionTypeDefinition } from "../domain/intervention-type.js"
 import { recordInterventionEvent, type EvidenceItem } from "./apply-evaluation.js"
 import { loadPublishedTypes, loadTypeVersion } from "./catalog.js"
 import { sensitiveDecisionHolders } from "./evaluate-policy.js"
 import { resolveResponsibleId, unresolvedResponsibleMessage } from "./responsible.js"
 import { relationFor, canOpenFor, canSeeInterventionsOf } from "./intervention-access.js"
+import { withoutFeedbackText } from "../domain/leader-brief.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
@@ -222,9 +224,16 @@ function summaryOf(row: Row, definition: InterventionTypeDefinition, todayDate: 
   }
 }
 
+export const redactFeedbackText = (structured: IntelligenceReport, feedbackText: boolean): IntelligenceReport => (feedbackText || !structured.brief ? structured : { ...structured, brief: withoutFeedbackText(structured.brief) })
+
 export type ReportView = { id: string; evaluationId: string; createdAt: string; structured: IntelligenceReport; narrative: { status: "READY" | "FAILED" | "NONE"; attempts: number; current: ReportNarrative | null; lastError: string | null; generatedAt: string | null } }
 
-export async function loadReport(db: Queryable | Database, organizationId: string, reportId: string): Promise<ReportView | null> {
+/**
+ * `feedbackText`: o texto dos feedbacks do colaborador dentro do resumo (`brief`) só sai para quem o Acompanhamento já o
+ * entregaria — parte do acompanhamento ou a liderança do colaborador (`canReadFeedbackText`). Para os demais leitores do
+ * relatório (permissão de intervenção no escopo, sem liderança) ele é omitido; as contagens e as datas ficam (POL-06).
+ */
+export async function loadReport(db: Queryable | Database, organizationId: string, reportId: string, options: { feedbackText: boolean }): Promise<ReportView | null> {
   if (!isUuid(reportId)) return null
   const report = (await db.query<{ id: string; evaluation_id: string; created_at: Date; structured: IntelligenceReport }>(`select id, evaluation_id, created_at, structured from intervention_reports where id = $1 and organization_id = $2`, [reportId, organizationId])).rows[0]
   if (!report) return null
@@ -236,7 +245,7 @@ export async function loadReport(db: Queryable | Database, organizationId: strin
     evaluationId: report.evaluation_id,
     createdAt: report.created_at.toISOString(),
     // Relatório gravado antes da proteção do tipo de afastamento (291bd48c): protegido na leitura, nada é reescrito.
-    structured: protectStoredLeave(report.structured),
+    structured: redactFeedbackText(protectStoredLeave(report.structured), options.feedbackText),
     narrative: { status: ready ? "READY" : attempts.length > 0 ? "FAILED" : "NONE", attempts: attempts.length, current: parsed?.success ? parsed.data : null, lastError: attempts[0]?.status === "FAILED" ? attempts[0].error : null, generatedAt: ready?.created_at.toISOString() ?? null },
   }
 }
@@ -285,7 +294,7 @@ export async function getInterventionDetail(db: Database, viewer: Viewer, interv
       `select e.id, e.event_type, e.actor_kind, p.name actor_name, e.from_status, e.to_status, e.payload, e.created_at from intervention_events e left join people p on p.id = e.actor_id where e.intervention_id = $1 order by e.created_at, e.id`,
       [row.id],
     ),
-    row.report_id ? loadReport(db, viewer.organizationId, row.report_id) : Promise.resolve(null),
+    row.report_id ? loadReport(db, viewer.organizationId, row.report_id, { feedbackText: relation.isResponsible || relation.isApprover || relation.leadsSubject }) : Promise.resolve(null),
     db.query<{ id: string; evaluation_id: string; created_at: Date; outcome: string }>(
       `select r.id, r.evaluation_id, r.created_at, ev.outcome from intervention_events e join intervention_reports r on r.id = (e.payload->>'reportId')::uuid join intervention_policy_evaluations ev on ev.id = r.evaluation_id
         where e.intervention_id = $1 and e.event_type in ('SIGNAL_RECEIVED') and e.payload ? 'reportId' and e.payload->>'reportId' is not null order by r.created_at`,
@@ -471,7 +480,8 @@ export async function acceptIntervention(db: Database, viewer: Viewer, intervent
     if (to === "AWAITING_APPROVAL" && recipients.length === 0) throw new DomainError(row.sensitive ? "Ninguém além de você tem a permissão de decisão sensível no escopo deste colaborador." : "Não há aprovador disponível para esta intervenção (além de você).", "INTERVENTION_NO_APPROVER", 422)
     await bump(tx, row, `status = $3, accepted_by = $4, plan = $5, approval_recipient_ids = $6, started_at = case when $3 = 'IN_PROGRESS' then now() else started_at end`, [to, viewer.personId, JSON.stringify(plan), recipients])
     await recordInterventionEvent(tx, event(viewer, row, "ACCEPTED", to))
-    await resolveOpenAlerts(tx, viewer.organizationId, row.id, ["ASSIGNED", "RETURNED"])
+    // Aceitar responde ao lembrete de "sem resposta e o prazo venceu" (QA-04): ele não fica aberto com o pedido já atendido.
+    await resolveOpenAlerts(tx, viewer.organizationId, row.id, ["ASSIGNED", "RETURNED", "OVERDUE"])
     if (to === "AWAITING_APPROVAL") {
       await alert(tx, { organizationId: viewer.organizationId, caseId: row.case_id, interventionId: row.id, recipientIds: recipients, event: "APPROVAL", revision: row.revision + 1, alertType: row.sensitive ? "INTERVENTION_DECISION_REQUESTED" : "INTERVENTION_APPROVAL_REQUESTED", severity: "HIGH", title: row.sensitive ? "Solicitação de avaliação de continuidade" : `Aprovação pendente: ${definition.name}`, description: row.sensitive ? `Uma solicitação de avaliação de continuidade de ${row.person_name} aguarda decisão humana, com justificativa. A abertura não é uma decisão.` : `"${definition.name}" para ${row.person_name} aguarda sua aprovação.` })
     }
@@ -528,10 +538,10 @@ export async function completeIntervention(db: Database, viewer: Viewer, interve
     const counts = itemCounts(items)
     const issues = completionIssues(definition, input, counts)
     if (issues.length > 0) throw new DomainError(issues[0]!.message, "INTERVENTION_NOT_COMPLETABLE", 422, { issues })
-    // TRÊS registros separados: atividades (contadas aqui), aprendizagem e evolução operacional (declaradas, com leitura).
     // QUATRO registros lado a lado: atividades (contadas aqui), aprendizagem e evolução operacional (declaradas, com leitura),
     // "deu resultado?" com o motivo (a avaliação de quem conduziu) e a MEDIÇÃO da INIA desde o início (antes × depois).
-    const measured = await measureSinceStart(db, viewer.organizationId, row.id, new Date())
+    // Na conexão DA TRANSAÇÃO (só leitura): pedir outra ao pool com a trava da linha na mão esgota o pool numa rajada (POL-01).
+    const measured = await measureSinceStart(tx as Database, viewer.organizationId, row.id, new Date())
     const outcome = { activities: counts, learning: input.learning, operational: input.operational, worked: input.worked, reasons: [...new Set(input.reasons)], measured, note: input.note, completedBy: viewer.personId }
     await bump(tx, row, `status = $3, outcome = $4, form_values = $5, completed_at = now()`, [to, JSON.stringify(outcome), JSON.stringify({ ...row.form_values, ...input.formValues })])
     await recordInterventionEvent(tx, event(viewer, row, "COMPLETED", to, { operational: input.operational?.result ?? null, learning: input.learning?.result ?? null, worked: input.worked, measured: measured?.status ?? null }))
@@ -565,6 +575,8 @@ export async function forwardIntervention(db: Database, viewer: Viewer, interven
     const target = chain.find((person) => person.id === input.toPersonId)
     if (!target || target.id === row.responsible_id) throw new DomainError("Encaminhe para alguém acima na cadeia de gestão do colaborador (diferente do responsável atual).", "INTERVENTION_FORWARD_TARGET_INVALID", 422)
     await bump(tx, row, `responsible_id = $3`, [target.id])
+    // O lembrete de prazo era de quem respondia até aqui: encaminhar o encerra (o novo responsável recebe o dele no ciclo seguinte).
+    await resolveOpenAlerts(tx, viewer.organizationId, row.id, ["OVERDUE"])
     await recordInterventionEvent(tx, event(viewer, row, "FORWARDED", row.status, { from: row.responsible_id, to: target.id, reason }))
     await alert(tx, { organizationId: viewer.organizationId, caseId: row.case_id, interventionId: row.id, recipientIds: [target.id], event: "FORWARDED", revision: row.revision + 1, alertType: "INTERVENTION_FORWARDED", title: `Encaminhada a você: ${definition.name}`, description: `${row.responsible_name} encaminhou a você "${definition.name}" de ${row.person_name}: ${reason}` })
   })
@@ -625,10 +637,11 @@ export async function updateInterventionItem(db: Database, viewer: Viewer, inter
     if (item.kind === "CHECKPOINT" && input.status === "DONE" && input.reading.length < 5) throw new DomainError("Registre a leitura do checkpoint (o que foi observado e o valor do indicador).", "CHECKPOINT_READING_REQUIRED", 422)
     if (input.status === "SKIPPED" && input.note.length < 5) throw new DomainError("Diga por que o item foi dispensado.", "INTERVENTION_ITEM_SKIP_REASON", 422)
     // No checkpoint concluído, a INIA anexa a própria medição do indicador desde o início — ao lado da leitura de quem conduz.
-    const measured = item.kind === "CHECKPOINT" && input.status === "DONE" ? await measureSinceStart(db, viewer.organizationId, row.id, new Date()) : null
+    const measured = item.kind === "CHECKPOINT" && input.status === "DONE" ? await measureSinceStart(tx as Database, viewer.organizationId, row.id, new Date()) : null
     const result = input.status === "PENDING" ? null : { note: input.note || null, reading: input.reading || null, ...(measured ? { measured: { status: measured.status, statement: measured.statement } } : {}) }
     await tx.query(`update intervention_items set status = $2, result = $3, completed_at = case when $2 = 'PENDING' then null else now() end, completed_by = case when $2 = 'PENDING' then null else $4::uuid end, updated_at = now() where id = $1`, [item.id, input.status, result ? JSON.stringify(result) : null, viewer.personId])
     await bump(tx, row, "", [])
+    await resolveOverdueIfSettled(tx, viewer.organizationId, row.id, await today(tx, viewer.organizationId))
     await recordInterventionEvent(tx, event(viewer, row, item.kind === "CHECKPOINT" ? "CHECKPOINT_RECORDED" : "ITEM_UPDATED", row.status, { itemId: item.id, kind: item.kind, title: item.title, status: input.status, reading: input.reading || null }))
   })
 }

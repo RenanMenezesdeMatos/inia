@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import type { ResolvedStructure } from "../../leadership-analytics/application/references.js"
 import type { QueryTableCard } from "../../leadership-analytics/domain/view-models.js"
 import type { SourceState } from "../domain/delivery-decision.js"
+import type { RecordMarks } from "../domain/record-coverage.js"
 import type { AccountInfo, DistributionScope, RecipientCandidate, RecipientContext, ReportRuntime } from "../application/report-runtime.js"
 import { ABANDONED_ANALYSIS_ERROR, ANALYSIS_CLAIM_SECONDS, ANALYSIS_RECOVERY_DAYS, MAX_ANALYSIS_ATTEMPTS, type DeliveryRecord, type ReportRecord, type ReportStore, type RunRecord } from "../application/report-store.js"
 
@@ -180,12 +181,12 @@ export type FakePerson = AccountInfo & {
 }
 
 /** Adaptador falso: pessoas, escopos, cartões por estrutura e estado das bases — tudo mutável entre execuções. */
-export function createFakeRuntime(options: { people: FakePerson[]; card: (structureLabel: string, args: Record<string, unknown>) => QueryTableCard | null; sources?: () => SourceState[]; coverage?: () => number | null }) {
+export function createFakeRuntime(options: { people: FakePerson[]; card: (structureLabel: string, args: Record<string, unknown>) => QueryTableCard | null; sources?: () => SourceState[]; coverage?: () => number | null; recordMarks?: () => RecordMarks }) {
   const calls: { account: string; name: string; args: Record<string, unknown> }[] = []
   /** Lotes pedidos por execução (contas) e contextos montados a partir deles. */
   const batches: string[][] = []
   const lookups: string[] = []
-  const state = { people: options.people, sources: options.sources ?? (() => [{ source: "OFFICIAL_INDICATOR_PERFORMANCE" as const, label: "Fechamento oficial", watermark: "official:1", lastUpdatedAt: "2026-10-01T00:00:00.000Z", stale: false, detail: null }]), coverage: options.coverage ?? (() => 1) }
+  const state = { people: options.people, sources: options.sources ?? (() => [{ source: "OFFICIAL_INDICATOR_PERFORMANCE" as const, label: "Fechamento oficial", watermark: "official:1", lastUpdatedAt: "2026-10-01T00:00:00.000Z", stale: false, detail: null }]), coverage: options.coverage ?? (() => 1), recordMarks: options.recordMarks ?? ((): RecordMarks => ({ firstDay: "2000-01-01", lastDay: "2099-12-31", loadedThroughDay: null })) }
   const find = (accountId: string) => state.people.find((person) => person.accountId === accountId) ?? null
   const runtime: ReportRuntime = {
     async account(_organizationId, accountId) {
@@ -209,8 +210,10 @@ export function createFakeRuntime(options: { people: FakePerson[]; card: (struct
         },
         coverage: async () => state.coverage(),
         sources: async () => state.sources(),
+        recordMarks: async () => state.recordMarks(),
         indicatorDirection: async () => "LOWER",
         lastClosedPeriod: "2026-09",
+        today: "2026-10-16",
         structureOptions: () => Object.entries(person.reachable).map(([id, structure]) => ({ subjectKind: "SUPERVISOR_TEAM", subjectId: id, label: structure.ref.label, description: "Equipe" })),
         indicatorOptions: async () => [{ code: "TMA", name: "Tempo Médio de Atendimento", unit: "SECONDS", direction: "LOWER", active: true }],
       }

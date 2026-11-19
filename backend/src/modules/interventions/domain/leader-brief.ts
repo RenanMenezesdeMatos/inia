@@ -50,6 +50,15 @@ export type LeaderBrief = {
 }
 
 /**
+ * O resumo SEM o texto dos feedbacks (título e o que foi dito ao colaborador) — para quem lê o relatório sem ser parte do
+ * acompanhamento nem liderar o colaborador: a regra do Acompanhamento só entrega esse texto a essas pessoas (POL-06). Datas,
+ * ciência, tipo e a contagem continuam: o leitor sabe QUANTOS feedbacks houve e quando, não o que eles disseram.
+ */
+export function withoutFeedbackText(brief: LeaderBrief): LeaderBrief {
+  return { ...brief, alreadyDone: { ...brief.alreadyDone, feedbacks: brief.alreadyDone.feedbacks.map((feedback) => ({ ...feedback, title: null, recommendation: "" })) } }
+}
+
+/**
  * O que foi dito no feedback, em texto curto e limpo: tira tabelas e marcação Markdown (negrito, títulos, marcadores de lista),
  * corta em palavra inteira com reticências e NUNCA no meio de uma citação literal aberta (“…”) — se o corte cairia dentro de uma,
  * recua para antes dela. As palavras do feedback não mudam: é só o começo dele.
@@ -144,4 +153,27 @@ export function buildLeaderBrief(input: LeaderBriefInput): LeaderBrief {
     unknowns: [...new Set(input.unknowns)],
     actions: input.actions.map((action) => ({ handle: action.handle, typeKey: action.typeKey, typeName: action.typeName, sensitive: action.sensitive, status: action.status, interventionId: action.interventionId, lead: briefLead(action, input) })),
   }
+}
+
+/**
+ * O resumo como chega ao Acompanhamento de quem lidera (lido por `application/follow-up-briefs.ts`; o feed do analytics cita este
+ * contrato). Tipo puro: fica no domínio para que nenhum outro módulo importe a camada de aplicação por causa dele.
+ */
+export type FollowUpInterventionBrief = {
+  /** null = a política só avisou (nenhuma intervenção foi criada). */
+  interventionId: string | null
+  typeName: string
+  sensitive: boolean
+  /** A fala da INIA para QUEM LÊ (2ª pessoa quando é o responsável). */
+  lead: string
+  situation: string[]
+  alreadyDone: {
+    windowDays: number
+    feedbacks: BriefFeedback[]
+    feedbackCount: number
+    interventions: { id: string; typeName: string; status: string; openedAt: string; closedAt: string | null; operationalResult: string | null }[]
+  }
+  evolution: Evolution | null
+  unknowns: string[]
+  nextSteps: string[]
 }

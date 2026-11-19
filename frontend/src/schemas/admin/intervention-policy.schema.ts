@@ -1,7 +1,7 @@
 import { z } from "zod"
 
 import { teamSchema } from "@/schemas/admin/org-structure.schema"
-import { evaluationOutcomeSchema, formFieldSchema, intelligenceReportSchema } from "@/schemas/interventions/intervention.schema"
+import { decisionStatusSchema, evaluationOutcomeSchema, formFieldSchema, intelligenceReportSchema } from "@/schemas/interventions/intervention.schema"
 
 /**
  * Contratos da administração de políticas de acompanhamento (`/api/v1/admin/intervention-policies`) — espelho dos contratos
@@ -235,7 +235,7 @@ export const simulationResultSchema = z.object({
     outcome: evaluationOutcomeSchema,
     selection: z.object({ status: z.string(), blockedBy: z.string().nullable(), inconclusiveRules: z.array(z.string()) }),
     rules: z.array(z.object({ key: z.string(), name: z.string(), priority: z.number(), status: z.enum(["MET", "NOT_MET", "INCONCLUSIVE"]), trace: groupTraceSchema })),
-    decisions: z.array(z.object({ typeKey: z.string(), typeName: z.string(), ruleKey: z.string(), mode: z.enum(["MATCHED", "INCONCLUSIVE"]), status: z.string(), effectiveEffect: z.enum(["RECOMMEND", "OPEN"]), note: z.string().nullable(), alsoRequestedBy: z.array(z.string()), assignment: z.object({ responsible: z.object({ personId: z.string(), name: z.string() }).nullable(), approver: z.object({ personId: z.string(), name: z.string() }).nullable(), dueAt: z.string(), problem: z.string().nullable() }).nullable() })),
+    decisions: z.array(z.object({ typeKey: z.string(), typeName: z.string(), ruleKey: z.string(), mode: z.enum(["MATCHED", "INCONCLUSIVE"]), status: decisionStatusSchema, effectiveEffect: z.enum(POLICY_ACTION_EFFECTS), note: z.string().nullable(), alsoRequestedBy: z.array(z.string()), assignment: z.object({ responsible: z.object({ personId: z.string(), name: z.string() }).nullable(), approver: z.object({ personId: z.string(), name: z.string() }).nullable(), dueAt: z.string(), problem: z.string().nullable() }).nullable() })),
     justification: z.string(),
   }),
   report: intelligenceReportSchema.nullable(),
@@ -243,7 +243,6 @@ export const simulationResultSchema = z.object({
 export type SimulationResult = z.infer<typeof simulationResultSchema>
 
 /** Prévia de impacto (`INTERVENTION_IMPACT_PREVIEW_V1`): a soma das avaliações de uma versão sobre quem o usuário já enxerga. */
-const decisionStatusSchema = z.enum(["CREATED", "PENDING_APPROVAL", "RECOMMENDED", "NOTIFIED", "EXISTING", "SUPPRESSED", "CONFLICT"])
 export const impactPreviewSchema = z.object({
   effects: z.literal("NONE"),
   asOf: z.string(),

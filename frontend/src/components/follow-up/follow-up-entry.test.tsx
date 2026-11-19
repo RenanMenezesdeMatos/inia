@@ -187,7 +187,8 @@ describe("Acompanhamento da estrutura — o item tem a apresentação do Acompan
     expect(within(brief.getByRole("region", { name: "Situação" })).getByText("TMA: Q4 em 3 dos últimos 3 fechamentos oficiais")).toBeInTheDocument()
     const done = within(brief.getByRole("region", { name: "O que já foi feito" }))
     // O que já foi dito ao colaborador aparece como citação, com o estado da ciência; o resto do período só é contado.
-    expect(done.getByText("Avise o cliente antes de cada espera.").tagName).toBe("BLOCKQUOTE")
+    // O trecho é texto de origem IA: passa pelo rich-content (parágrafo dentro da citação), não é texto cru.
+    expect(done.getByText("Avise o cliente antes de cada espera.").closest("blockquote")).not.toBeNull()
     expect(done.getByText("Aguardando ciência do colaborador")).toBeInTheDocument()
     expect(done.getByText("Mais 2 feedback(s) anteriores no período.")).toBeInTheDocument()
     expect(done.getByText(/Orientar · Concluída em .* · resultado registrado: Sem mudança/)).toBeInTheDocument()
@@ -362,5 +363,14 @@ describe("Acompanhamento da estrutura — filtro \"Para quem\"", () => {
     expect(await screen.findByRole("heading", { name: "Contestação de cobrança" })).toBeInTheDocument()
     expect(screen.queryByTestId("follow-up-audience-filter")).toBeNull()
     expect(service.fetchFollowUpFeed.mock.lastCall?.[6]).toBeNull()
+  })
+
+  it("na ficha do colaborador o filtro de tipo só oferece os feedbacks (os outros tipos o servidor nunca devolve ali)", async () => {
+    service.fetchFollowUpFeed.mockResolvedValue({ items: [teamFeedback], nextCursor: null })
+    renderWithQuery(<StructureFollowUpFeed subject={{ kind: "EMPLOYEE", id: "op-1" }} description="Feedbacks da Ana" />)
+    expect(await screen.findByRole("heading", { name: "Contestação de cobrança" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /Filtrar o Acompanhamento por tipo/ }))
+    const popover = within(await screen.findByRole("dialog"))
+    expect(popover.getAllByRole("checkbox").map((box) => box.getAttribute("aria-label") ?? box.closest("label")?.textContent?.trim())).toEqual(["Todos os tipos", "Feedbacks de monitoria", "Feedbacks de indicador"])
   })
 })

@@ -3,7 +3,7 @@ import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { CONTINUITY_DECISIONS } from "../domain/intervention-state.js"
-import { loadAccess, canSeeInterventionsOf } from "../application/intervention-access.js"
+import { loadAccess, canReadFeedbackText, canSeeInterventionsOf } from "../application/intervention-access.js"
 import { listMyFollowUps, markMyStep } from "../application/collaborator-view.js"
 import { loadTeamOverview } from "../application/team-overview.js"
 import * as interventions from "../application/intervention-service.js"
@@ -22,14 +22,22 @@ export function createInterventionRouter(db: Database, deps: { writer?: Narrativ
   const viewerOf = async (request: Request): Promise<interventions.Viewer> => ({ organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId, access: await loadAccess(db, sessionUser(request).organizationId, sessionUser(request).sub) })
   const id = (request: Request) => String(request.params.interventionId)
 
+  /** O relatório para quem pode vê-lo (senão 404) — com o texto dos feedbacks só para quem o Acompanhamento já o entregaria (POL-06). */
+  const readableReport = async (viewer: interventions.Viewer, reportId: string): Promise<interventions.ReportView> => {
+    const full = await interventions.loadReport(db, viewer.organizationId, reportId, { feedbackText: true })
+    if (!full || !(await canSeeInterventionsOf(db, viewer.access, full.structured.subject.personId))) throw new DomainError("Relatório não encontrado.", "INTERVENTION_REPORT_NOT_FOUND", 404)
+    const feedbackText = await canReadFeedbackText(db, viewer.access, { id: full.id, personId: full.structured.subject.personId })
+    return { ...full, structured: interventions.redactFeedbackText(full.structured, feedbackText) }
+  }
+
   router.get("/pending", async (request, response) => response.json({ data: await interventions.listPendingInterventions(db, await viewerOf(request)) }))
-  // Visão da equipe: acompanhamentos em andamento da estrutura de quem vê + o resumão do que foi concluído (mesmo alcance de abrir uma intervenção).
   // O lado do colaborador: os acompanhamentos em execução de formato visível a ele e a marcação dos PRÓPRIOS passos.
   router.get("/mine", async (request, response) => response.json({ data: await listMyFollowUps(db, { organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId }) }))
   router.patch("/mine/:interventionId/steps/:itemId", async (request, response) => {
     const body = z.object({ done: z.boolean(), note: z.string().trim().max(2000).optional() }).strict().parse(request.body ?? {})
     response.json({ data: await markMyStep(db, { organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId }, String(request.params.interventionId), String(request.params.itemId), body) })
   })
+  // Visão da equipe: acompanhamentos em andamento da estrutura de quem vê + o resumão do que foi concluído (mesmo alcance de abrir uma intervenção).
   router.get("/team", async (request, response) => response.json({ data: await loadTeamOverview(db, await viewerOf(request)) }))
   // Catálogo de competências para o treinamento (configuração da organização — nenhum dado de colaborador).
   router.get("/competencies", async (request, response) => response.json({ data: await interventions.listTrainingCompetencies(db, sessionUser(request).organizationId) }))
@@ -39,17 +47,15 @@ export function createInterventionRouter(db: Database, deps: { writer?: Narrativ
 
   router.get("/reports/:reportId", async (request, response) => {
     const viewer = await viewerOf(request)
-    const report = await interventions.loadReport(db, viewer.organizationId, String(request.params.reportId))
-    if (!report || !(await canSeeInterventionsOf(db, viewer.access, report.structured.subject.personId))) throw new DomainError("Relatório não encontrado.", "INTERVENTION_REPORT_NOT_FOUND", 404)
+    const report = await readableReport(viewer, String(request.params.reportId))
     response.json({ data: report })
   })
   /** Nova tentativa da narrativa — nunca reabre nem duplica intervenções (o relatório estruturado já existe). */
   router.post("/reports/:reportId/narrative", async (request, response) => {
     const viewer = await viewerOf(request)
-    const report = await interventions.loadReport(db, viewer.organizationId, String(request.params.reportId))
-    if (!report || !(await canSeeInterventionsOf(db, viewer.access, report.structured.subject.personId))) throw new DomainError("Relatório não encontrado.", "INTERVENTION_REPORT_NOT_FOUND", 404)
+    const report = await readableReport(viewer, String(request.params.reportId))
     await generateReportNarrative(db, { organizationId: viewer.organizationId, reportId: report.id, requestedBy: viewer.personId }, deps.writer)
-    response.json({ data: await interventions.loadReport(db, viewer.organizationId, report.id) })
+    response.json({ data: await readableReport(viewer, report.id) })
   })
 
   router.get("/:interventionId", async (request, response) => response.json({ data: await interventions.getInterventionDetail(db, await viewerOf(request), id(request)) }))

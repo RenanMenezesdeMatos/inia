@@ -219,6 +219,15 @@ export async function resetDemoMass(client: Client, mass: DemoMass): Promise<Res
     await run("access_role_assignments", `delete from access_role_assignments where user_account_id in (select id from user_accounts where person_id = any($1::uuid[]))`, [personIds])
     await run("user_accounts", `delete from user_accounts where person_id = any($1::uuid[])`, [personIds])
     await run("user_role_assignments", `delete from user_role_assignments where person_id = any($1::uuid[])`, [personIds])
+    // AL-07: "Li o alinhamento" (migration 227) de pessoa demo sai com ela — a tabela é só inserção por gatilho e referencia `people`
+    // sem `on delete`, então uma única leitura fazia o reset abortar na exclusão de pessoas. O gatilho é desligado só dentro desta
+    // transação (o `alter table` é desfeito no rollback) e só quando há linha a apagar; leituras de pessoas reais nunca são tocadas.
+    const demoReads = await client.query(`select 1 from operational_alignment_reads where person_id = any($1::uuid[]) limit 1`, [personIds])
+    if ((demoReads.rowCount ?? 0) > 0) {
+      await client.query(`alter table operational_alignment_reads disable trigger operational_alignment_reads_no_update`)
+      await run("operational_alignment_reads", `delete from operational_alignment_reads where person_id = any($1::uuid[])`, [personIds])
+      await client.query(`alter table operational_alignment_reads enable trigger operational_alignment_reads_no_update`)
+    }
     // Quebra a cadeia reports_to antes de apagar (auto-referência).
     await client.query(`update people set reports_to_id = null where id = any($1::uuid[])`, [personIds])
     await run("people", `delete from people where id = any($1::uuid[])`, [personIds])

@@ -9,7 +9,7 @@ import { isOperationallyEligibleStatus } from "../../people/domain/employment-st
 import { isSensitiveLeave } from "../../org-structure/domain/management-metrics.js"
 import { PROTECTED_LEAVE_TEXT, protectLeave } from "../domain/protected-leave.js"
 import { visibleInFollowUpSql } from "../../feedbacks/application/follow-up-visibility.js"
-import { feedbackAboutIndicatorSql, loadEvolution, loadFeedbackHistory } from "./leader-context.js"
+import { feedbackAboutIndicatorSql, feedbackVerifiedSql, loadEvolution } from "./leader-context.js"
 import { judgeEvolution } from "../domain/evolution.js"
 import { NUMERIC_COMPARATOR_TEXT, numericComparatorMatches, type PolicyCondition } from "../domain/policy-definition.js"
 import type { ConditionOutcome, ConditionResolver, FactReference } from "../domain/policy-evaluation.js"
@@ -261,7 +261,7 @@ async function resolveFeedback(db: Db, subject: PolicySubject, condition: Extrac
         and f.published_at >= $3 and f.published_at <= $4 and ($5::text is null or f.feedback_kind::text = $5)
         and ${feedbackAboutIndicatorSql("f", "c", "$6")} and ${visibleInFollowUpSql("f")}
         -- Feedback sem citação conferida (síntese de IA, achado AI-02) não é evidência verificável.
-        and coalesce(f.context_snapshot->>'evidenceVerified', 'true') <> 'false'
+        and ${feedbackVerifiedSql("f")}
       order by f.published_at desc limit 50`,
     [subject.organizationId, subject.personId, since, subject.asOf, condition.feedbackKind, condition.indicatorCode],
   )
@@ -285,8 +285,8 @@ async function resolveEvolution(db: Db, subject: PolicySubject, condition: Extra
   if (!indicatorCode) return { status: "INCONCLUSIVE", summary: "Evolução desde o feedback: a condição não tem indicador.", facts: { kind: "evolution" }, reasonCode: "EVOLUTION_NO_INDICATOR", references: [] }
   const indicatorName = (await db.query<{ name: string }>(`select name from indicator_definitions where organization_id = $1 and code = $2`, [subject.organizationId, indicatorCode])).rows[0]?.name ?? indicatorCode
   const input = { organizationId: subject.organizationId, personId: subject.personId, indicatorCode, indicatorName, asOf: subject.asOf, timeZone: subject.timeZone }
-  const history = await loadFeedbackHistory(db as Database, input, condition.withinDays)
-  const evolution = await loadEvolution(db as Database, input, history.feedbacks)
+  // O marco vira evidência da regra (fonte FEEDBACK): só feedback com citação conferida, como em `resolveFeedback` (ARQ-04).
+  const evolution = await loadEvolution(db as Database, input, { days: condition.withinDays, verifiedOnly: true })
   if (!evolution) {
     return { status: "NOT_MET", summary: `Evolução de ${indicatorName} desde o último feedback: nenhum feedback publicado sobre o indicador nos últimos ${condition.withinDays} dias.`, facts: { kind: "evolution", reason: "NO_FEEDBACK", withinDays: condition.withinDays }, references: [] }
   }

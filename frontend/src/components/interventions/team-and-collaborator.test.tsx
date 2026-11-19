@@ -22,6 +22,8 @@ afterEach(() => {
 
 const OVERVIEW: TeamOverview = {
   windowDays: 180,
+  activeTotal: 1,
+  activeTruncated: false,
   active: [
     {
       id: "int-1",
@@ -77,10 +79,39 @@ describe("Acompanhamentos da estrutura (aba Equipe)", () => {
   })
 
   it("sem nada em andamento nem concluído, o bloco não aparece", async () => {
-    service.fetchTeamOverview.mockResolvedValue({ windowDays: 180, active: [], results: [] })
+    service.fetchTeamOverview.mockResolvedValue({ windowDays: 180, active: [], activeTotal: 0, activeTruncated: false, results: [] })
     renderWithQuery(<TeamInterventions />)
     await waitFor(() => expect(service.fetchTeamOverview).toHaveBeenCalled())
     expect(screen.queryByTestId("team-interventions")).toBeNull()
+  })
+
+  it("consulta que falha não some: mostra o erro com \"Tentar novamente\"", async () => {
+    service.fetchTeamOverview.mockRejectedValueOnce(new Error("500")).mockResolvedValue(OVERVIEW)
+    renderWithQuery(<TeamInterventions />)
+    const error = within(await screen.findByTestId("team-interventions-error"))
+    expect(error.getByRole("alert")).toHaveTextContent("Não foi possível carregar os acompanhamentos da sua estrutura.")
+    fireEvent.click(error.getByRole("button", { name: "Tentar novamente" }))
+    expect(await screen.findByTestId("team-interventions")).toBeInTheDocument()
+  })
+
+  const manyActive = (length: number) => Array.from({ length }, (_, index) => ({ ...OVERVIEW.active[0]!, id: `int-${index}`, overdue: false, nextStep: null }))
+
+  it("lista cortada pelo servidor: mostra o total REAL informado por ele, avisa o corte e pagina a tabela", async () => {
+    service.fetchTeamOverview.mockResolvedValue({ ...OVERVIEW, active: manyActive(200), activeTotal: 347, activeTruncated: true })
+    renderWithQuery(<TeamInterventions />)
+    const block = within(await screen.findByTestId("team-interventions"))
+    expect(block.getByTestId("team-interventions-truncated")).toHaveTextContent("A lista mostra os 200 primeiros de 347")
+    expect(block.getByText("347 em andamento na sua estrutura.")).toBeInTheDocument()
+    expect(block.getAllByRole("link", { name: "Lado a lado" })).toHaveLength(20)
+    expect(block.getByText(/1–20 de 200 acompanhamentos/)).toBeInTheDocument()
+  })
+
+  it("exatamente 200 em andamento e nada cortado: sem aviso de corte (quem decide é o servidor, não a quantidade que veio)", async () => {
+    service.fetchTeamOverview.mockResolvedValue({ ...OVERVIEW, active: manyActive(200), activeTotal: 200, activeTruncated: false })
+    renderWithQuery(<TeamInterventions />)
+    const block = within(await screen.findByTestId("team-interventions"))
+    expect(block.getByText("200 em andamento na sua estrutura.")).toBeInTheDocument()
+    expect(block.queryByTestId("team-interventions-truncated")).not.toBeInTheDocument()
   })
 })
 
@@ -120,5 +151,13 @@ describe("O acompanhamento visto pelo colaborador", () => {
     renderWithQuery(<MyFollowUpPlans />)
     await waitFor(() => expect(service.fetchMyFollowUps).toHaveBeenCalled())
     expect(screen.queryByTestId("my-follow-up-plans")).toBeNull()
+  })
+
+  it("consulta que falha mostra o erro com nova tentativa, em vez de esconder o plano", async () => {
+    service.fetchMyFollowUps.mockRejectedValueOnce(new Error("500")).mockResolvedValue([PLAN])
+    renderWithQuery(<MyFollowUpPlans />)
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível carregar o seu acompanhamento com quem lidera você.")
+    fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }))
+    expect(await screen.findByTestId("my-follow-up-plan")).toBeInTheDocument()
   })
 })

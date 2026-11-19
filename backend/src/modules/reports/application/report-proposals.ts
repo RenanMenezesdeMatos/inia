@@ -2,8 +2,8 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { normalizeForMatch } from "../../leadership-analytics/domain/analytic-rules.js"
 import type { QueryTableCard } from "../../leadership-analytics/domain/view-models.js"
 import { previousReferencePeriod } from "../../performance-analytics/domain/reference-period.js"
-import { definitionSignature, reportDefinitionSchema, reportVisualizationSchema, type ReportDefinition, type ReportVisualization } from "../domain/report-definition.js"
-import { suggestVisualization } from "../domain/visualization.js"
+import { definitionSignature, isRecordTool, recordPeriodFromArgs, REPORT_TOOL_BY_TOOL_NAME, RESERVED_QUERY_ARGS, reportDefinitionSchema, reportVisualizationSchema, type ReportDefinition, type ReportVisualization } from "../domain/report-definition.js"
+import { staticCompatibility, suggestVisualization } from "../domain/visualization.js"
 import { subjectParts, type RecipientContext } from "./report-runtime.js"
 
 /**
@@ -16,6 +16,29 @@ import { subjectParts, type RecipientContext } from "./report-runtime.js"
 export const OFFER_SPACING = 3
 export const REPORT_OFFER_LINE = "\n\n_Quer acompanhar esta consulta com frequência? Posso transformá-la num **report recorrente**, entregue no seu Acompanhamento com os dados atualizados. Responda “sim” ou use o botão abaixo._"
 
+/**
+ * Ferramentas do chat cuja consulta pode virar report: as de indicador, pessoas, força de trabalho e diagnóstico, o span de
+ * controle e as de registros (atendimentos, monitoria, feedbacks, casos, escala, jornada, comunicados, uso da INIA e Anjo). A
+ * calculadora (`leadership_calculate`) nunca entra: não tem dado próprio, só faz contas sobre o que outras ferramentas trouxeram.
+ */
+export const REPORTABLE_TOOL_NAMES: readonly string[] = ["leadership_indicator_analysis", "leadership_people", ...Object.keys(REPORT_TOOL_BY_TOOL_NAME)]
+
+/** Parâmetros da ferramenta de registros/span que ficam na definição: tudo o que a ferramenta recebeu, menos estrutura e período. */
+function queryArgsOf(args: Record<string, unknown>): Record<string, string | number | boolean | string[]> {
+  const kept: Record<string, string | number | boolean | string[]> = {}
+  for (const [key, value] of Object.entries(args)) {
+    if ((RESERVED_QUERY_ARGS as readonly string[]).includes(key) || !/^[a-z][a-z0-9_]{0,39}$/.test(key)) continue
+    if (typeof value === "string" && value.trim()) kept[key] = value.trim().slice(0, 200)
+    else if (typeof value === "number" && Number.isFinite(value)) kept[key] = value
+    else if (typeof value === "boolean") kept[key] = value
+    else if (Array.isArray(value)) {
+      const items = strings(value).map((item) => item.trim().slice(0, 200)).slice(0, 30)
+      if (items.length > 0) kept[key] = items
+    }
+  }
+  return kept
+}
+
 export type ProposalDraft = { name: string; description: string | null; definition: ReportDefinition; visualization: ReportVisualization }
 export type ProposalRecord = { id: string; organizationId: string; ownerAccountId: string; conversationId: string | null; interactionId: string | null; toolName: string; draft: ProposalDraft; signature: string; status: "OFFERED" | "ACCEPTED" | "DISMISSED" | "EXPIRED"; reportId: string | null; createdAt: string }
 
@@ -23,7 +46,7 @@ const str = (value: unknown) => (typeof value === "string" && value.trim() ? val
 const strings = (value: unknown) => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "") : [])
 
 /** Rascunho a partir de uma chamada de ferramenta do chat (null = não reproduzível como acompanhamento recorrente). */
-export function draftFromToolCall(toolName: string, args: Record<string, unknown>, card: QueryTableCard | { type: string; structure?: { subject: unknown; label: string }; title?: string; period?: string | null } | null, context: { ownSubject: unknown | null; lastClosedPeriod: string; indicatorCode: (text: string) => string | null; question: string | null }): ProposalDraft | null {
+export function draftFromToolCall(toolName: string, args: Record<string, unknown>, card: QueryTableCard | { type: string; structure?: { subject: unknown; label: string }; title?: string; period?: string | null } | null, context: { ownSubject: unknown | null; lastClosedPeriod: string; today: string; indicatorCode: (text: string) => string | null; question: string | null }): ProposalDraft | null {
   if (!card || !card.structure || (card.type !== "QUERY_TABLE" && card.type !== "INDICATOR_ANALYSIS" && card.type !== "PEOPLE")) return null
   const subject = card.structure.subject as Record<string, unknown>
   if (!subject || subject.kind === "EMPLOYEE") return null
@@ -71,13 +94,23 @@ export function draftFromToolCall(toolName: string, args: Record<string, unknown
     if (!indicator) return null
     const period = closedPeriod()
     candidate = { tool: "INDICATOR_DIAGNOSIS", structure, period: period.mode === "LAST_N_CLOSED" ? { mode: "LAST_CLOSED" } : period, indicators: codes([indicator]), ...(str(args.comparar) ? { compare: args.comparar } : {}), ...(str(args.nivel) ? { level: args.nivel } : {}), ...(typeof args.meses_de_interacoes === "number" ? { interactionMonths: Math.min(6, Math.max(1, Math.round(args.meses_de_interacoes))) } : {}) }
+  } else if (toolName === "leadership_span") {
+    candidate = { tool: "SPAN", structure, period: { mode: "TODAY" }, queryArgs: queryArgsOf(args) }
+  } else if (REPORT_TOOL_BY_TOOL_NAME[toolName] && isRecordTool(REPORT_TOOL_BY_TOOL_NAME[toolName]!)) {
+    // Registros: o período que a ferramenta executou vira a regra relativa (último mês fechado, semana passada, últimos N dias…).
+    const period = recordPeriodFromArgs(args, { today: context.today, lastClosedPeriod: context.lastClosedPeriod })
+    if (!period) return null
+    const queryArgs = queryArgsOf(args)
+    candidate = { tool: REPORT_TOOL_BY_TOOL_NAME[toolName], structure, period, ...(Object.keys(queryArgs).length > 0 ? { queryArgs } : {}) }
   } else {
     return null
   }
   const parsed = reportDefinitionSchema.safeParse(candidate)
   if (!parsed.success) return null
-  if (parsed.data.tool !== "WORKFORCE" && parsed.data.indicators.length === 0 && strings(args.indicadores).length > 0) return null
-  const visualization = card.type === "QUERY_TABLE" ? suggestVisualization(card as QueryTableCard) : reportVisualizationSchema.parse({ type: "TABLE" })
+  if ((parsed.data.tool === "INDICATOR_QUERY" || parsed.data.tool === "INDICATOR_DIAGNOSIS") && parsed.data.indicators.length === 0 && strings(args.indicadores).length > 0) return null
+  // A sugestão pelo formato dos dados só vale se a definição a sustenta a cada execução (mesma regra do salvar).
+  const suggested = card.type === "QUERY_TABLE" ? suggestVisualization(card as QueryTableCard) : null
+  const visualization = suggested && staticCompatibility(parsed.data).includes(suggested.type) ? suggested : reportVisualizationSchema.parse({ type: "TABLE" })
   return { name: (card.title ?? "Report").slice(0, 120), description: context.question ? context.question.slice(0, 500) : null, definition: parsed.data, visualization }
 }
 
@@ -112,12 +145,13 @@ export function createPostgresProposalStore(db: Database): ProposalStore {
   return {
     async prepareOffer(input) {
       if (!input.context) return null
-      const eligible = [...input.directResults].reverse().find((result) => result.card && ["leadership_indicator_query", "leadership_indicator_analysis", "leadership_people", "leadership_workforce", "leadership_indicator_diagnosis"].includes(result.toolName))
+      const eligible = [...input.directResults].reverse().find((result) => result.card && REPORTABLE_TOOL_NAMES.includes(result.toolName))
       if (!eligible) return null
       const options = await input.context.indicatorOptions()
       const draft = draftFromToolCall(eligible.toolName, eligible.args, eligible.card as QueryTableCard, {
         ownSubject: input.context.ownStructure?.subject ?? null,
         lastClosedPeriod: input.context.lastClosedPeriod,
+        today: input.context.today,
         question: input.question,
         indicatorCode: (text) => {
           const exact = options.find((option) => option.code.toUpperCase() === text.toUpperCase() || normalizeForMatch(option.name) === normalizeForMatch(text))

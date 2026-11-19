@@ -79,3 +79,41 @@ describe("cartões de dados da liderança", () => {
     expect(parseLeadershipCards(undefined)).toEqual([])
   })
 })
+
+describe("escolha da leitura dos dados (DATA_CHOICE)", () => {
+  const choice = () =>
+    parseLeadershipCards([
+      {
+        type: "DATA_CHOICE",
+        generatedAt: "2026-11-18T12:00:00.000Z",
+        structure: queryTableCard().structure,
+        title: 'Onde procurar "contestação"?',
+        prompt: '"contestação" aparece em mais de um campo dos atendimentos. Escolha a leitura que você quer:',
+        scopeNote: "Estrutura · 01/08/2026 a 31/08/2026 · 4.539 atendimentos no período",
+        options: [
+          { id: "MOTIVO", label: 'Motivo contém "contestação"', detail: "56 atendimentos · 1,2% do período", question: 'Considere os atendimentos em que o motivo contém "contestação".' },
+          { id: "SUBMOTIVO", label: 'Submotivo contém "contestação"', detail: "286 atendimentos · 6,3% do período", question: 'Considere os atendimentos em que o submotivo contém "contestação".' },
+        ],
+      },
+      queryTableCard(),
+    ])
+
+  it("fica aberta fora de \"Dados e links\" e a escolha volta como pergunta da pessoa", () => {
+    const onAsk = vi.fn()
+    render(<LeadershipCards collapsible cards={choice()} onAsk={onAsk} />)
+    const card = screen.getByTestId("data-choice-card")
+    expect(within(card).getByText("286 atendimentos · 6,3% do período")).toBeInTheDocument()
+    expect(screen.getByTestId("leadership-cards-trigger")).toHaveTextContent("1 consulta")
+    const consult = within(card).getByRole("button", { name: "Consultar" })
+    expect(consult).toBeDisabled()
+    fireEvent.click(within(card).getByLabelText(/Submotivo contém/))
+    fireEvent.click(consult)
+    expect(onAsk).toHaveBeenCalledWith('Considere os atendimentos em que o submotivo contém "contestação".')
+    expect(within(card).getByRole("button", { name: "Consultando…" })).toBeDisabled()
+  })
+
+  it("sem onAsk (histórico ou só leitura) mostra as opções sem botão", () => {
+    render(<LeadershipCards collapsible cards={choice()} />)
+    expect(within(screen.getByTestId("data-choice-card")).queryByRole("button", { name: "Consultar" })).toBeNull()
+  })
+})

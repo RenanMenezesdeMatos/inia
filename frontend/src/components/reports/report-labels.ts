@@ -20,13 +20,29 @@ export const NOT_FORWARDED_TEXT: Record<string, string> = {
 
 export const VISUALIZATION_LABELS: Record<VisualizationType, string> = { TABLE: "Tabela", KPI: "Indicadores resumidos", BAR: "Barras", LINE: "Linha (evolução)", AREA: "Área (evolução)", DISTRIBUTION: "Distribuição" }
 
-export const TOOL_LABELS: Record<ReportDefinition["tool"], string> = { INDICATOR_QUERY: "Resultados de indicadores", WORKFORCE: "Força de trabalho (situação funcional)", INDICATOR_DIAGNOSIS: "Diagnóstico de um indicador" }
+export const TOOL_LABELS: Record<ReportDefinition["tool"], string> = {
+  INDICATOR_QUERY: "Resultados de indicadores",
+  WORKFORCE: "Força de trabalho (situação funcional)",
+  INDICATOR_DIAGNOSIS: "Diagnóstico de um indicador",
+  SPAN: "Span de controle (organograma)",
+  INTERACTIONS: "Atendimentos",
+  MONITORING: "Monitoria das chamadas",
+  FEEDBACKS: "Feedbacks publicados",
+  CASES: "Casos de acompanhamento",
+  SCHEDULE: "Escala planejada",
+  WORKDAY: "Jornada realizada × escala",
+  COMMUNICATIONS: "Comunicados recebidos",
+  INIA_USAGE: "Uso da INIA",
+  SUPPORT: "Apoio com Anjo",
+}
 
 export const GROUP_BY_LABELS: Record<string, string> = { ESTRUTURA: "Estrutura inteira", UNIDADE: "Nível logo abaixo", SUPERVISOR: "Supervisor", COORDINATOR: "Coordenador", MANAGER: "Gerente", SENIOR_MANAGER: "Gerente Sênior", TEAM: "Grupo", SUBTEAM: "Subgrupo", PESSOA: "Pessoa", COMPETENCIA: "Competência (mês a mês)" }
 export const VIEW_LABELS: Record<string, string> = { INDICADOR: "Resultado de cada indicador", CONSOLIDADO: "Consolidado (todos os indicadores + PRV)", QUARTIS: "Quartis e dispersão" }
 export const SORT_LABELS: Record<string, string> = { PCT_FORA: "% fora da meta", FORA: "Quantidade fora", ATINGIMENTO: "Atingimento", VARIACAO: "Variação", Q4: "Q4", DISPERSAO: "Dispersão", NOME: "Nome" }
 export const SITUATION_LABELS: Record<string, string> = { FORA: "Fora da meta", DENTRO: "Dentro da meta", SEM_DADO: "Sem dado" }
-export const PERIOD_MODE_LABELS: Record<string, string> = { LAST_CLOSED: "Última competência fechada", LAST_N_CLOSED: "Últimas competências", FIXED_MONTH: "Competência fixa", CURRENT: "Período em curso (medição diária)", TODAY: "Data da execução" }
+export const PERIOD_MODE_LABELS: Record<string, string> = { LAST_CLOSED: "Última competência fechada", LAST_N_CLOSED: "Últimas competências", FIXED_MONTH: "Competência fixa", CURRENT: "Período em curso (medição diária)", TODAY: "Data da execução", CALENDAR: "Semana ou mês do calendário", RELATIVE_DAYS: "Dias relativos à execução", FIXED_DATES: "Datas fixas" }
+/** Nomes dos parâmetros das consultas de registros e do span (resumo no formulário). */
+export const QUERY_ARG_LABELS: Record<string, string> = { agrupar_por: "Agrupar por", medidas: "Medidas", estatisticas: "Estatísticas", ordenar_por: "Ordenar por", ordem: "Ordem", limite: "Limite de linhas", minimo_registros: "Mínimo de registros por linha", com_ocorrencia: "Só com a ocorrência", nivel: "Nível do líder", contar: "Contar abaixo", por: "Linhas por" }
 export const PERIOD_DISPLAY_LABELS: Record<string, string> = { ULTIMA: "A última, com a variação", MEDIA: "Média do período", POR_MES: "Mês a mês", RECORRENCIA: "Recorrência (meses fora / no Q4)" }
 export const WINDOW_LABELS: Record<string, string> = { MES_CORRENTE: "Mês em curso", SEMANA_CORRENTE: "Semana em curso", ULTIMOS_7_DIAS: "Últimos 7 dias" }
 export const WEEKDAY_LABELS: Record<string, string> = { MON: "Seg", TUE: "Ter", WED: "Qua", THU: "Qui", FRI: "Sex", SAT: "Sáb", SUN: "Dom" }

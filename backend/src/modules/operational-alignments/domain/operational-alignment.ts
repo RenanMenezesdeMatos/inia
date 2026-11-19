@@ -44,6 +44,13 @@ export function isCivilDate(value: string): boolean {
 
 const civilDateSchema = z.string().trim().refine(isCivilDate, "Data inválida (use AAAA-MM-DD).")
 const text = (min: number, max: number, label: string) => z.string().trim().min(min, `${label}: mínimo de ${min} caracteres.`).max(max, `${label}: máximo de ${max} caracteres.`)
+/**
+ * Título em UMA linha (AL-05, amplia o R8-N06): quebras de linha, tabulações e caracteres de controle viram um espaço ANTES de gravar.
+ * O título entra em cabeçalhos de uma linha lidos pelo modelo (ferramentas do chat, seção do alinhamento) e no sino — uma segunda linha
+ * escrita pelo autor passaria por outra linha do registro.
+ */
+const singleLineTitle = (min: number, max: number, label: string) =>
+  z.string().transform((value) => value.replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").replace(/\s+/g, " ").trim()).pipe(z.string().min(min, `${label}: mínimo de ${min} caracteres.`).max(max, `${label}: máximo de ${max} caracteres.`))
 
 /** Processos por alinhamento (cada um é conferido no banco: organização, base ativa, universo). */
 export const MAX_ALIGNMENT_PROCESSES = 300
@@ -70,7 +77,7 @@ function legacyScopeToLinks(value: unknown): unknown {
 
 export const alignmentInputSchema = z.preprocess(legacyScopeToLinks, z
   .object({
-    title: text(3, 160, "Título"),
+    title: singleLineTitle(3, 160, "Título"),
     guidance: text(10, 8000, "Orientação"),
     // Processos (bases de procedimento) a que o alinhamento se aplica: 1 ou mais, sem repetição (211).
     affectedDocumentIds: z.array(z.string().uuid()).min(1, "Inclua ao menos um processo.").max(MAX_ALIGNMENT_PROCESSES, `Até ${MAX_ALIGNMENT_PROCESSES} processos por alinhamento.`).transform((ids) => [...new Set(ids)]),

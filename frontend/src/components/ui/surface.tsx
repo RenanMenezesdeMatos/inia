@@ -51,7 +51,7 @@ export const toneChip = (tone: Tone) => TONES[tone].chip
 export const toneSurface = (tone: Tone) => cn("rounded-2xl border", TONES[tone].surface)
 
 /** Rótulo curto de seção, em caixa alta (ex.: "ATENDIMENTOS EM ANDAMENTO"). É o título da seção para leitores de tela. */
-export function SectionLabel({ children, className, as: Tag = "h2", ...props }: ComponentProps<"h2"> & { as?: "h2" | "h3" | "p" }) {
+export function SectionLabel({ children, className, as: Tag = "h2", ...props }: ComponentProps<"h2"> & { as?: "h2" | "h3" | "h4" | "h5" | "p" }) {
   return (
     <Tag className={cn("text-xs font-semibold tracking-wider text-muted-foreground uppercase", className)} {...props}>
       {children}

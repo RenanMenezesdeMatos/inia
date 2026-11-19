@@ -1,7 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
-import type { Evolution } from "../domain/evolution.js"
 import type { IntelligenceReport } from "../domain/intelligence-report.js"
-import type { BriefFeedback } from "../domain/leader-brief.js"
+import type { FollowUpInterventionBrief } from "../domain/leader-brief.js"
 import { protectStoredLeave } from "../domain/protected-leave.js"
 
 /**
@@ -13,24 +12,8 @@ import { protectStoredLeave } from "../domain/protected-leave.js"
  * destinatário da decisão). Quem deixou de ser (encaminhou a outro, por exemplo) continua vendo o aviso curto, sem o resumo.
  * Relatório anterior ao resumo (V1) não tem o que devolver: o aviso aparece como antes.
  */
-export type FollowUpInterventionBrief = {
-  /** null = a política só avisou (nenhuma intervenção foi criada). */
-  interventionId: string | null
-  typeName: string
-  sensitive: boolean
-  /** A fala da INIA para QUEM LÊ (2ª pessoa quando é o responsável). */
-  lead: string
-  situation: string[]
-  alreadyDone: {
-    windowDays: number
-    feedbacks: BriefFeedback[]
-    feedbackCount: number
-    interventions: { id: string; typeName: string; status: string; openedAt: string; closedAt: string | null; operationalResult: string | null }[]
-  }
-  evolution: Evolution | null
-  unknowns: string[]
-  nextSteps: string[]
-}
+// O contrato do resumo vive no domínio (`leader-brief.ts`): outros módulos o citam sem depender desta camada (ARQ-09).
+export type { FollowUpInterventionBrief }
 
 const OPENING_ALERT_TYPES = ["INTERVENTION_ASSIGNED", "INTERVENTION_APPROVAL_REQUESTED", "INTERVENTION_DECISION_REQUESTED"]
 

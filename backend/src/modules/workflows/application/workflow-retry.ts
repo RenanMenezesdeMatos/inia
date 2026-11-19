@@ -10,6 +10,7 @@ import { inTransaction } from "../../../shared/infrastructure/database/transacti
 import { flowGraphSchema, type FlowGraph } from "../domain/graph-schema.js"
 import type { OutputTarget } from "../domain/output-schema.js"
 import { loadUnavailableReferences, type ManualRunBlocker } from "./manual-run.js"
+import { hasActiveAccess, loadEligibleOperator } from "./workflow-eligibility.js"
 
 /**
  * NOVA TENTATIVA de uma execução bloqueada, por agente (PEN-073, PEN-074, PEN-075 — decididas em 03/11/2026) ou por revisão sem revisor
@@ -106,6 +107,8 @@ type OriginalRow = {
   workflow_name: string
   workflow_active: boolean
   active_version_id: string | null
+  /** "Somente quem tem acesso ativo à INIA" PUBLICADA do Workflow (migration 225). */
+  require_active_access: boolean
 }
 
 type Queryable = Pick<Database, "query">
@@ -115,7 +118,7 @@ async function loadOriginal(db: Queryable, organizationId: string, enrollmentId:
     `select e.id, e.organization_id, e.workflow_id, e.version_id, e.status, e.parent_enrollment_id, e.fan_out_node_id, p.status parent_status, p.current_node_id parent_node_id, e.blocked_node_id, e.blocked_reason, e.blocked_details,
             e.interaction_id, e.indicator_measurement_id, e.scheduled_subject_id, e.scheduled_for, e.matched_flag_name, e.matched_value_boolean,
             e.matched_value_numeric, e.node_outputs, e.variables, e.indicator_diagnostic_strategy_version_id,
-            w.name workflow_name, w.active workflow_active, w.active_version_id
+            w.name workflow_name, w.active workflow_active, w.active_version_id, w.require_active_access
        from workflow_enrollments e join workflows w on w.id = e.workflow_id left join workflow_enrollments p on p.id = e.parent_enrollment_id
       where e.id = $1 and e.organization_id = $2 ${lock ? "for update of e" : ""}`,
     [enrollmentId, organizationId],
@@ -188,6 +191,15 @@ async function buildPreview(db: Database, client: Queryable, original: OriginalR
   if (original.indicator_measurement_id) {
     const cancelled = await client.query(`select 1 from indicator_measurements_all where id = $1 and cancelled_at is not null`, [original.indicator_measurement_id])
     if ((cancelled.rowCount ?? 0) > 0) blockers.push({ code: "WORKFLOW_RETRY_RECORD_CANCELLED", message: "A medição desta execução foi cancelada na Central de Dados. Ela precisa voltar a valer, por uma carga ou por Reativar, antes de uma nova tentativa." })
+  }
+  // AL-04: "Somente quem tem acesso ativo à INIA" (225) vale no momento em que a execução NASCE — a nova tentativa também nasce. Mesma
+  // definição da matrícula (`loadEligibleOperator` + `hasActiveAccess`). Filha de "Selecionar colaboradores" fica de fora, como na
+  // matrícula: a opção não corta a população de comparação. Abrangência e Filtro seguem sem reconferência aqui (como antes da 225).
+  if (original.active_version_id && original.require_active_access === true && !original.parent_enrollment_id) {
+    const operatorId = await resolveEnrollmentOperatorId({ db: client as Database, enrollment: { interactionId: original.interaction_id, indicatorMeasurementId: original.indicator_measurement_id, scheduledSubjectId: original.scheduled_subject_id } })
+    if (operatorId && !hasActiveAccess(await loadEligibleOperator(client as Database, original.organization_id, operatorId))) {
+      blockers.push({ code: "WORKFLOW_RETRY_NO_ACTIVE_ACCESS", message: "Este Workflow só cria execução para quem tem acesso ativo à INIA, e o colaborador desta execução não tem conta de acesso ativa. Libere o acesso dele ou publique o Workflow sem essa opção antes de tentar de novo." })
+    }
   }
   if (original.active_version_id) blockers.push(...(await loadUnavailableReferences(db, original.organization_id, original.active_version_id)))
   const currentGraph = original.active_version_id ? flowGraphSchema.safeParse((await client.query<{ graph: unknown }>(`select graph from workflow_versions where id = $1`, [original.active_version_id])).rows[0]?.graph) : null

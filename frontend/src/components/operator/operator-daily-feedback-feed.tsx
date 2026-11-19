@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import { InlineError } from "@/components/ui/states"
 import type { OperatorIndicatorsData, OperatorIndicatorsHistoryKind } from "@/schemas/operator"
 import { RichContent } from "@/components/rich-content/rich-content"
 import { OperatorFeedbackDetail, type FeedbackAcknowledgement } from "./operator-feedback-detail"
@@ -64,7 +65,7 @@ export function OperatorDailyFeedbackFeed({ indicators, highlightItemKey = null 
   // histórico paginado (ex.: só comunicados), não busca páginas antigas à toa.
   const [types, setTypesState] = useState<FollowUpType[] | null>(null)
   const setTypes = (next: FollowUpType[] | null) => { setTypesState(next); setVisibleCount(PAGE_SIZE) }
-  // Filtro "Ciência" (null = tudo): só feedbacks, pela ciência do servidor ou confirmada nesta sessão. Em "Sem ciência", o que a
+  // Filtro "Ciência" (null = tudo): só feedbacks, pela ciência do servidor ou confirmada nesta sessão. Em "Aguardando ciência", o que a
   // pessoa confirma com o filtro aberto continua à vista (com a confirmação no rodapé) até o filtro mudar — não some no clique.
   const confirmedReadings = useConfirmedReadings()
   const [ack, setAckState] = useState<{ value: FollowUpAckFilterValue; since: number } | null>(null)
@@ -179,9 +180,9 @@ export function OperatorDailyFeedbackFeed({ indicators, highlightItemKey = null 
       {/* O acompanhamento em execução com quem lidera (só formatos visíveis ao colaborador) — some quando não há nenhum, e com o filtro de tipo ativo. */}
       {types || ack ? null : <MyFollowUpPlans/>}
       {delivered.isPending ? <div className="flex gap-3 py-5" aria-busy="true" aria-label="Carregando feedbacks de atendimento"><Skeleton className="size-9 shrink-0 rounded-full"/><div className="flex-1 space-y-2"><Skeleton className="h-4 w-40"/><Skeleton className="h-4 w-full"/></div></div> : null}
-      {alignments.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os alinhamentos. <button type="button" className="underline" onClick={() => void alignments.refetch()}>Tentar novamente</button></p> : null}
-      {notices.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os comunicados. <button type="button" className="underline" onClick={() => void notices.refetch()}>Tentar novamente</button></p> : null}
-      {delivered.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os feedbacks de atendimento. <button type="button" className="underline" onClick={() => void delivered.refetch()}>Tentar novamente</button></p> : null}
+      {alignments.isError ? <InlineError className="py-4" message="Não foi possível carregar os alinhamentos." onRetry={() => void alignments.refetch()}/> : null}
+      {notices.isError ? <InlineError className="py-4" message="Não foi possível carregar os comunicados." onRetry={() => void notices.refetch()}/> : null}
+      {delivered.isError ? <InlineError className="py-4" message="Não foi possível carregar os feedbacks de atendimento." onRetry={() => void delivered.refetch()}/> : null}
       {delivered.isSuccess && timeline.length === 0 && !hasMore ? (ack ? <FollowUpAckEmpty value={ack.value} onClear={() => { setAck(null); setTypes(null) }}/> : types ? <FollowUpTypeEmpty onClear={() => setTypes(null)}/> : bounds ? <FollowUpPeriodEmpty onClear={() => setPeriod({})}/> : <p className="py-8 text-center text-sm text-muted-foreground">Nenhum feedback por enquanto.</p>) : null}
       {timeline.slice(0, visibleCount).map((entry, index, visible) => {
         const previous = visible[index - 1]
@@ -193,7 +194,7 @@ export function OperatorDailyFeedbackFeed({ indicators, highlightItemKey = null 
           <div className={cn("-mx-3 rounded-2xl px-3 transition-[background-color,box-shadow] duration-500 motion-reduce:transition-none", active && "bg-primary/5 ring-1 ring-primary/30", flashKey === entry.key && "bg-primary/10 ring-2 ring-primary/50")}>{renderEntry(entry)}</div>
         </div>
       })}
-      {loadMoreError ? <p role="alert" className="py-4 text-center text-sm text-muted-foreground">Não foi possível carregar feedbacks mais antigos. <button type="button" className="underline" onClick={loadMoreHistory}>Tentar novamente</button></p>
+      {loadMoreError ? <InlineError className="justify-center py-4" message="Não foi possível carregar feedbacks mais antigos." onRetry={loadMoreHistory}/>
       : hasMore ? <div ref={loaderRef} className="space-y-3 py-5" aria-live="polite"><div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="size-2 animate-pulse rounded-full bg-primary"/>Carregando feedbacks...</div><div className="flex gap-3"><Skeleton className="size-9 shrink-0 rounded-full"/><div className="flex-1 space-y-2"><Skeleton className="h-4 w-32"/><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-3/4"/></div></div></div> : timeline.length > 0 ? <p className="py-5 text-center text-xs text-muted-foreground">{bounds ? "Fim das ações deste período." : "Fim dos feedbacks."}</p> : null}
   </IniaFeed></div>
 }

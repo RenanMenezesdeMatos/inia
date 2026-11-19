@@ -4,7 +4,10 @@ import { queryTableCardSchema } from "@/schemas/leadership/leadership.schema"
 
 /** Reports recorrentes — contrato da API `/api/v1/reports` (tipos sempre via `z.infer`). */
 
-export const REPORT_TOOLS = ["INDICATOR_QUERY", "WORKFORCE", "INDICATOR_DIAGNOSIS"] as const
+/** Consultas de registros da liderança (motor de fatos): parâmetros em `queryArgs`, período por mês ou por datas. */
+export const RECORD_REPORT_TOOLS = ["INTERACTIONS", "MONITORING", "FEEDBACKS", "CASES", "SCHEDULE", "WORKDAY", "COMMUNICATIONS", "INIA_USAGE", "SUPPORT"] as const
+export const REPORT_TOOLS = ["INDICATOR_QUERY", "WORKFORCE", "INDICATOR_DIAGNOSIS", "SPAN", ...RECORD_REPORT_TOOLS] as const
+export const isRecordTool = (tool: string) => (RECORD_REPORT_TOOLS as readonly string[]).includes(tool)
 export const VISUALIZATION_TYPES = ["TABLE", "KPI", "BAR", "LINE", "AREA", "DISTRIBUTION"] as const
 export const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const
 export const PLATFORM_LEVELS = ["OPERATOR", "SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER", "DIRECTOR"] as const
@@ -20,6 +23,9 @@ export const reportPeriodSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("FIXED_MONTH"), month: z.string() }),
   z.object({ mode: z.literal("CURRENT"), window: z.enum(["MES_CORRENTE", "SEMANA_CORRENTE", "ULTIMOS_7_DIAS"]) }),
   z.object({ mode: z.literal("TODAY") }),
+  z.object({ mode: z.literal("CALENDAR"), unit: z.enum(["WEEK", "MONTH"]), offset: z.number().int(), toDate: z.boolean().optional() }),
+  z.object({ mode: z.literal("RELATIVE_DAYS"), fromOffset: z.number().int(), toOffset: z.number().int() }),
+  z.object({ mode: z.literal("FIXED_DATES"), from: z.string(), to: z.string() }),
 ])
 
 export const reportDefinitionSchema = z.object({
@@ -41,6 +47,8 @@ export const reportDefinitionSchema = z.object({
   compare: z.enum(["FORA_X_DENTRO", "Q4_X_Q1"]).optional(),
   level: z.enum(["SUBMOTIVO", "MOTIVO"]).optional(),
   interactionMonths: z.number().int().optional(),
+  /** Parâmetros da consulta de registros/span como o chat os usou (sem estrutura nem período). */
+  queryArgs: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.array(z.string())])).optional(),
 })
 export type ReportDefinition = z.infer<typeof reportDefinitionSchema>
 

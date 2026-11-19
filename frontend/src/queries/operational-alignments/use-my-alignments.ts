@@ -12,7 +12,10 @@ export function useMyAlignmentsQuery() {
   return useQuery({ queryKey: myAlignmentsKey, queryFn: fetchMyAlignments, refetchOnWindowFocus: true })
 }
 
-/** "Li o alinhamento": grava e atualiza o item na hora (a fonte de verdade continua o servidor). */
+/**
+ * "Li o alinhamento": grava e atualiza o item na hora (a fonte de verdade continua o servidor). Em erro, a lista é recarregada: o 404
+ * de um alinhamento que acabou de ser encerrado, substituído ou excluído não pode deixar na tela um botão que sempre falha.
+ */
 export function useMarkMyAlignmentReadMutation() {
   const client = useQueryClient()
   return useMutation({
@@ -20,5 +23,6 @@ export function useMarkMyAlignmentReadMutation() {
     onSuccess: ({ readAt }, { versionId }) => {
       client.setQueryData<MyAlignment[]>(myAlignmentsKey, (items) => items?.map((item) => (item.versionId === versionId ? { ...item, readAt } : item)))
     },
+    onError: () => void client.invalidateQueries({ queryKey: myAlignmentsKey }),
   })
 }

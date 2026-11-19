@@ -20,7 +20,7 @@ import * as config from "../application/config-service.js"
 import { evaluatePolicy } from "../application/evaluate-policy.js"
 import { loadInterventionBriefsForAlerts } from "../application/follow-up-briefs.js"
 import { listMyFollowUps } from "../application/collaborator-view.js"
-import { sendOverdueReminders } from "../application/team-overview.js"
+import { sendOverdueReminders } from "../application/overdue-reminders.js"
 import { generateReportNarrative } from "../application/report-narrative.js"
 import type { InterventionPolicyNodeOutput } from "../../workflows/application/intervention-policy-executor.js"
 

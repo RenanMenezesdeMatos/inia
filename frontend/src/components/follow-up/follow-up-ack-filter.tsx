@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils"
  */
 export type FollowUpAckFilterValue = "PENDING" | "DONE"
 
-const LABELS: Record<FollowUpAckFilterValue, string> = { PENDING: "Sem ciência", DONE: "Com ciência" }
+const LABELS: Record<FollowUpAckFilterValue, string> = { PENDING: "Aguardando ciência", DONE: "Com ciência" }
 const ALL = "ALL"
 
 export function FollowUpAckFilter({ value, onChange }: { value: FollowUpAckFilterValue | null; onChange: (value: FollowUpAckFilterValue | null) => void }) {
@@ -25,11 +25,11 @@ export function FollowUpAckFilter({ value, onChange }: { value: FollowUpAckFilte
           {value ? LABELS[value] : "Ciência"}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
+      <DropdownMenuContent align="end" className="w-60">
         <DropdownMenuRadioGroup value={value ?? ALL} onValueChange={(next) => onChange(next === ALL ? null : (next as FollowUpAckFilterValue))}>
           <DropdownMenuRadioItem value={ALL}>Tudo</DropdownMenuRadioItem>
           <DropdownMenuSeparator />
-          <DropdownMenuRadioItem value="PENDING">Feedbacks sem ciência</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="PENDING">Feedbacks aguardando ciência</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="DONE">Feedbacks com ciência</DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>

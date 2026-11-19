@@ -15,6 +15,25 @@ export function formatCivilDate(date: string): string {
   return `${day}/${month}/${year}`
 }
 
+/** Data civil → "dd/mm" (selos curtos: "Em vigor · até 30/11"), sem conversão de fuso. */
+export function formatCivilDayMonth(date: string): string {
+  return formatCivilDate(date).slice(0, 5)
+}
+
+const CIVIL_WEEKDAYS = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"] as const
+const WEEKDAY_MONTH_OFFSETS = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4] as const
+
+/**
+ * Data civil → "Terça-feira, 24/11". O dia da semana sai da aritmética do calendário gregoriano (congruência de Sakamoto), não de
+ * um `Date`: a data civil já veio resolvida no fuso da organização e não pode ser deslocada pelo fuso de quem lê.
+ */
+export function formatCivilWeekday(date: string): string {
+  const [year, month, day] = date.slice(0, 10).split("-").map(Number) as [number, number, number]
+  const y = month < 3 ? year - 1 : year
+  const weekday = (y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) + WEEKDAY_MONTH_OFFSETS[month - 1]! + day) % 7
+  return `${CIVIL_WEEKDAYS[weekday]}, ${formatCivilDayMonth(date)}`
+}
+
 /** Instante ISO → "dd/mm/aaaa, hh:mm" no fuso do navegador. */
 export function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", DATE_TIME_OPTIONS)

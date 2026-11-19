@@ -14,6 +14,7 @@ import {
   type RelevanceSelection,
 } from "../domain/publication-relevance.js"
 import { communicationLiveSql, communicationVisibleToSql, segmentPersonSql } from "./postgres-communication-store.js"
+import { resolveAlignmentsForStructure } from "./structure-alignment-resolution.js"
 import { structurePeopleCte } from "./structure-people-sql.js"
 
 type Queryable = Pick<Database, "query">
@@ -120,10 +121,9 @@ async function decide(db: Queryable, input: ConversationPublicationsInput, model
     loadLiveCommunications(db, input),
     // Gestor sobre a estrutura (18/11/2026): os alinhamentos em vigor para os PÚBLICOS da estrutura (a mesma regra do bloco próprio,
     // `resolveAlignmentsForStructure`) também entram na decisão — sem eles, a resposta das bases à consulta de processo do gestor encerrava o
-    // turno mesmo com um alinhamento que muda aquele processo para parte da equipe (caso real do diretor). Import adiado: o módulo da
-    // estrutura usa este aqui (ciclo).
+    // turno mesmo com um alinhamento que muda aquele processo para parte da equipe (caso real do diretor).
     input.structure
-      ? import("./leader-structure-context.js").then(({ resolveAlignmentsForStructure }) => resolveAlignmentsForStructure(db, { organizationId: input.organizationId, scope: input.structure!, at, documentIds: null })).then((resolution) => resolution?.applied ?? [])
+      ? resolveAlignmentsForStructure(db, { organizationId: input.organizationId, scope: input.structure, at, documentIds: null }).then((resolution) => resolution?.applied ?? [])
       : loadAlignmentsInForceFor(db, input.organizationId, input.personId, at),
   ])
   const alignments = alignmentsInForce.map((item) => ({ alignmentId: item.alignmentId, title: item.title, guidance: item.guidance, processes: item.affectedDocuments.map((document) => document.title), startsOn: item.startsOn, endsOn: item.endsOn }))

@@ -1,6 +1,6 @@
 import express, { type ErrorRequestHandler } from "express"
 import request from "supertest"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { InteractiveOrchestratorScope, ResolvedOrchestrator } from "../../assistant/application/resolve-orchestrator.js"
@@ -21,6 +21,16 @@ import { createRealtimeRouter } from "./realtime-router.js"
  * dados; a escolha no formulário continua no mesmo Orquestrador, direto pelo serviço. Catálogo, navegação e contrato REAIS sobre as bases
  * fictícias de `testing/`; só a IA do esclarecimento e a orquestração da liderança são roteirizadas.
  */
+// AL-01: a decisão de relevância (comunicados/alinhamentos) só é trocada no teste que a roteiriza; nos demais vale a real.
+const publicationsDecision = vi.hoisted(() => ({ scripted: null as null | (() => Promise<unknown>) }))
+vi.mock("../../communications/infrastructure/conversation-publications.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../communications/infrastructure/conversation-publications.js")>()
+  return { ...original, conversationPublicationsFor: (...args: Parameters<typeof original.conversationPublicationsFor>) => (publicationsDecision.scripted ? publicationsDecision.scripted() : original.conversationPublicationsFor(...args)) }
+})
+afterEach(() => {
+  publicationsDecision.scripted = null
+})
+
 const NOW = new Date("2026-10-20T12:00:00.000Z")
 const leader: AuthTokenPayload = { sub: "acc-lider", personId: TEST_PERSON, organizationId: TEST_ORG, role: "COORDINATOR", name: "Pessoa que lidera", email: "l@inia.com", avatarUrl: null, jobTitle: null, teamId: null, teamName: null }
 const emptyDb = { query: async () => ({ rows: [], rowCount: 0 }) } as unknown as Database
@@ -282,5 +292,14 @@ describe("consulta de processo de quem lidera — esclarecimento pelas bases do 
     expect(second.body.data.clarification).toMatchObject({ id: view.id, status: "ANSWERED", sources: [{ documentId: "kb-fic-tt-empresa" }] })
     expect(second.body.data.clarification.steps[0].answer).toMatchObject({ via: "FORM" })
     expect(second.body.data.modelText).toContain("Não leia os marcadores de fonte")
+  })
+
+  it("AL-01: a decisão de relevância que resolve DEPOIS de a consulta já ter ido ao Orquestrador do Grupo não inicia uma segunda orquestração", async () => {
+    // O esclarecimento devolve a vez (NOT_APPLICABLE) antes de a decisão escolher um alinhamento: a orquestração é uma só.
+    publicationsDecision.scripted = () => new Promise((resolve) => setTimeout(() => resolve({ communications: [], alignments: [], alignmentsInForce: [], selection: { communicationIds: [], alignmentIds: ["alinhamento-escolhido"] }, consulted: true }), 50))
+    const { ask, orchestrated } = setup(() => ({ decision: "NOT_APPLICABLE" }))
+    await ask("Como orientar a equipe sobre troca de titularidade no Grupo A?")
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    expect(orchestrated.filter((id) => id === "orch-a")).toHaveLength(1)
   })
 })

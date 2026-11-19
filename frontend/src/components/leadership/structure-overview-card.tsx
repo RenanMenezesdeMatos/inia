@@ -115,7 +115,7 @@ export function PeopleCard({ card }: { card: People }) {
                   {member.indicator ? `atingimento ${formatPercent(member.indicator.achievementPercent)}` : member.attentionIndicators.length > 0 ? member.attentionIndicators.map((indicator) => indicator.name).join(", ") : SITUATION_LABELS[member.situation]}
                 </p>
               </div>
-              {member.awaitingAcknowledgement > 0 ? <span className="text-muted-foreground">{member.awaitingAcknowledgement} sem ciência</span> : null}
+              {member.awaitingAcknowledgement > 0 ? <span className="text-muted-foreground">{member.awaitingAcknowledgement} aguardando ciência</span> : null}
               {member.pendingReviews > 0 ? <span className="text-muted-foreground">{member.pendingReviews} revisão</span> : null}
             </li>
           ))}
