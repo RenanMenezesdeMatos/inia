@@ -43,7 +43,8 @@ export class ReportRunReads extends PgAnalyticsReadRepository {
   private constructor(
     db: Database,
     private readonly organizationId: string,
-    private readonly visibilities: ReadonlyMap<string, VisibilityFilter>,
+    /** Por conta, a visibilidade de QUALQUER permissão a partir do contexto de acesso já lido em lote (os domínios restritos da liderança pedem outras além de `indicators.view`). */
+    private readonly visibilities: ReadonlyMap<string, (permission: Permission) => VisibilityFilter>,
     private readonly universeRules: ReadonlyMap<string, PersonUniverseRule>,
   ) {
     super(db, { peopleGraphCache: new PinnedPeopleGraphCache() })
@@ -62,7 +63,7 @@ export class ReportRunReads extends PgAnalyticsReadRepository {
     const own = new Map<string, OperatingUniverse | null>(universes.rows.filter((row) => row.person_id).map((row) => [row.person_id!, isOperatingUniverse(row.operating_universe) ? row.operating_universe : null]))
     const rules = new Map<string, PersonUniverseRule>()
     for (const [accountId, context] of contexts) if (context.personId) rules.set(`${accountId}:${context.personId}`, personRuleFor(context, enforced, own.get(context.personId) ?? null))
-    return new ReportRunReads(db, organizationId, new Map([...contexts].map(([accountId, context]) => [accountId, visibilityOf(context, "indicators.view")])), rules)
+    return new ReportRunReads(db, organizationId, new Map([...contexts].map(([accountId, context]) => [accountId, (permission: Permission) => visibilityOf(context, permission)])), rules)
   }
 
   override async loadUniverseRule(organizationId: string, accountId: string, personId: string): Promise<PersonUniverseRule> {
@@ -71,7 +72,7 @@ export class ReportRunReads extends PgAnalyticsReadRepository {
   }
 
   override async loadAccessVisibility(organizationId: string, accountId: string, permission: Permission): Promise<VisibilityFilter> {
-    const prefetched = organizationId === this.organizationId && permission === "indicators.view" ? this.visibilities.get(accountId) : undefined
+    const prefetched = organizationId === this.organizationId ? this.visibilities.get(accountId)?.(permission) : undefined
     return prefetched ?? super.loadAccessVisibility(organizationId, accountId, permission)
   }
 
