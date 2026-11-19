@@ -116,9 +116,10 @@ describe("leituras de uma execução de report", () => {
     log.length = 0
     await reads.loadUniverseRule(ORG, "acc-off", "p-op3")
     expect(log.sort()).toEqual(["accounts", "enforced", "universe"])
-    // Outra permissão não foi carregada no lote: lê como sempre.
+    // Outra permissão sai do MESMO contexto de acesso já lido no lote (domínios restritos da liderança): nenhuma consulta a mais.
     log.length = 0
-    await reads.loadAccessVisibility(ORG, "acc-adm", "calendar.manage")
-    expect(log).toEqual(["accounts", "assignments"])
+    const other = await reads.loadAccessVisibility(ORG, "acc-adm", "calendar.manage")
+    expect(log).toEqual([])
+    expect(other).toBeDefined()
   })
 })
