@@ -799,7 +799,13 @@ describe.skipIf(!ENABLED)("Consulta de dados da Central — prova Postgres", () 
     it("cada exportação registra início e fim, com quantidade e duração", async () => {
       await dados.post(`${API}/export`).send({ dataset: "groups" })
       const started = await lastAudit("DATA_HUB_EXPLORER_EXPORT_STARTED", ids.dados!)
-      const finished = await lastAudit("DATA_HUB_EXPLORER_EXPORT_FINISHED", ids.dados!)
+      // O registro de fim é gravado depois que a resposta termina de ser enviada: num runner mais lento a consulta chegava antes
+      // dele e lia o fim da exportação ANTERIOR (outro conjunto). Espera o fim DESTA exportação.
+      let finished = await lastAudit("DATA_HUB_EXPLORER_EXPORT_FINISHED", ids.dados!)
+      for (let attempt = 0; attempt < 50 && finished?.payload.dataset !== "groups"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        finished = await lastAudit("DATA_HUB_EXPLORER_EXPORT_FINISHED", ids.dados!)
+      }
       expect(started?.payload).toMatchObject({ dataset: "groups", result: "OK", scope: "ORGANIZATION", accountId: accountIds.dados })
       expect(finished?.payload).toMatchObject({ dataset: "groups", result: "OK", rows: 1 })
       expect(finished?.payload.bytes).toEqual(expect.any(Number))
