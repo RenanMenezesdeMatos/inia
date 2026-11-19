@@ -13,14 +13,13 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { ApiError } from "@/lib/api/api-client"
 import { formatDateTime } from "@/lib/format/date"
 import { reportKeys, useReportOptionsQuery, useReportProposalQuery, useReportQuery } from "@/queries/reports/use-reports"
 import type { ReportConfig, ReportOptions, ReportPreview } from "@/schemas/reports/reports.schema"
 import { createReport, previewReport, updateReport } from "@/services/reports/reports-service"
 import { AudienceFields } from "./report-form/audience-fields"
 import { Field, OptionSelect } from "./report-form/form-controls"
-import { cleanDefinition, defaultConfig, staticCompatibility } from "./report-form/form-helpers"
+import { cleanDefinition, defaultConfig, reportErrorMessage, staticCompatibility } from "./report-form/form-helpers"
 import { QueryFields } from "./report-form/query-fields"
 import { ScheduleFields } from "./report-form/schedule-fields"
 import { VISUALIZATION_LABELS } from "./report-labels"
@@ -65,7 +64,7 @@ function ReportForm({ catalog, initial, reportId, revision, proposalId, fromChat
     setConfig((current) => ({ ...current, definition, visualization: allowed.includes(current.visualization.type) ? current.visualization : { type: "TABLE" } }))
     if (preview) setPreviewStale(true)
   }
-  const fail = (cause: unknown) => setError(cause instanceof ApiError ? cause.message : "Não foi possível concluir. Tente de novo.")
+  const fail = (cause: unknown) => setError(reportErrorMessage(cause))
 
   const runPreview = async () => {
     setBusy("preview")

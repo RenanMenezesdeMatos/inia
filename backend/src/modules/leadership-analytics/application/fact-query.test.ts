@@ -164,4 +164,14 @@ describe("busca por trecho e escolha da leitura (atendimentos)", () => {
     expect("facts" in single && single.facts.map((item) => item.key)).toEqual(["3"])
     expect(narrowByText(facts, { termo: "portabilidade" }, flags, await context())).toHaveProperty("error")
   })
+
+  it("DC-04: termo achado num campo só — a ferramenta devolve o campo usado no rastro (a proposta de report o guarda)", async () => {
+    expect(narrowByText(facts, { termo: "segunda via" }, flags, await context())).toMatchObject({ resolvedField: "SUBMOTIVO" })
+    expect(narrowByText(facts, { termo: "contestação", termo_em: ["SUBMOTIVO"] }, flags, await context())).not.toHaveProperty("resolvedField")
+    const [a] = operatorsOf(1)
+    const calls: DomainFactsLoader = async (domain, ids) => ({ truncated: false, flags: [], facts: domain === "INTERACTIONS" ? [{ personId: a!, key: "k1", dims: { MOTIVO: "Fatura", SUBMOTIVO: "Segunda via", CANAL: "VOICE", DIA: "2026-08-03" }, measures: { DURACAO: 100 } }].filter((item) => ids.includes(item.personId)) : [] })
+    const result = await executeLeadershipTool({ ...(await deps()), loadDomainFacts: calls }, "leadership_interactions", { estrutura: "Sara", termo: "segunda via", competencia: "2026-08" })
+    expect(result.card?.type).toBe("QUERY_TABLE")
+    expect(result.trace).toEqual({ resolvedTermFields: ["SUBMOTIVO"] })
+  })
 })

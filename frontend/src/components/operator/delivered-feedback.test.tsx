@@ -59,7 +59,9 @@ describe("Acompanhamento — feedback de atendimento (V1.5.6)", () => {
     first.unmount()
     service.fetchMyDeliveredFeedback.mockRejectedValue(new ApiError("Falha", 500, null))
     renderFeed()
-    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível carregar os feedbacks de atendimento")
+    // Pelo texto, não por `findByRole("alert")`: outras seções do feed também mostram o seu aviso de erro quando a consulta
+    // delas falha, e no runner (mais lento) dois avisos chegavam a estar na tela ao mesmo tempo.
+    await waitFor(() => expect(screen.getAllByRole("alert").some((alert) => alert.textContent?.includes("Não foi possível carregar os feedbacks de atendimento"))).toBe(true))
   })
 
   it("ponto positivo: tipo, data do atendimento, blocos só existentes e trecho mascarado ao abrir", async () => {

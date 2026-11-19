@@ -304,7 +304,7 @@ export async function applyEvaluation(db: Database, input: ApplyEvaluationInput)
             for (const [position, item] of content.items.entries()) {
               await tx.query(`insert into intervention_items (organization_id, intervention_id, kind, title, description, owner_id, due_at, position) values ($1,$2,$3,$4,$5,$6,$7,$8)`, [organizationId, inserted.id, item.kind, item.title, item.description, item.ownerId, item.dueAt, position])
             }
-            await recordInterventionEvent(tx, { organizationId, interventionId: inserted.id, caseId, eventType: "OPENED", actorKind, actorId, fromStatus: null, toStatus: initialStatus, payload: { evaluationId, reportId, ruleKey: decision.ruleKey, decision: decision.status, typeVersion: type.version, policyVersion: evaluation.version!.version } })
+            await recordInterventionEvent(tx, { organizationId, interventionId: inserted.id, caseId, eventType: "OPENED", actorKind, actorId, fromStatus: null, toStatus: initialStatus, payload: { evaluationId, reportId, ruleKey: decision.ruleKey, decision: decision.status, typeVersion: type.version, policyVersion: evaluation.version!.version, ...(assignment.recipientsOutsideUniverse ? { recipientsOutsideUniverse: true } : {}) } })
             const id = inserted.id
             const person = evaluation.person.name
             notifications.push(async () => {

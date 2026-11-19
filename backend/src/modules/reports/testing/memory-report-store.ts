@@ -1,3 +1,4 @@
+import type { DomainAccess } from "../../leadership-analytics/application/data-domains.js"
 import { randomUUID } from "node:crypto"
 import type { ResolvedStructure } from "../../leadership-analytics/application/references.js"
 import type { QueryTableCard } from "../../leadership-analytics/domain/view-models.js"
@@ -176,6 +177,8 @@ export type FakePerson = AccountInfo & {
   reachable: Record<string, ResolvedStructure>
   /** Pessoas além dos operadores que o escopo dela alcança abaixo da âncora (líderes) — padrão: nenhuma. */
   visibleBelow?: string[]
+  /** Permissão das telas de origem dos domínios restritos (uso da INIA, Apoio com Anjo) — padrão: nenhuma. */
+  domainAccess?: DomainAccess
   distribution?: DistributionScope | null
   level?: string
 }
@@ -201,6 +204,7 @@ export function createFakeRuntime(options: { people: FakePerson[]; card: (struct
         ownStructure: person.own,
         resolveFixed: (_kind, id) => person.reachable[id] ?? null,
         visibleBelow: (structure) => [...structure.resolved.members.map((member) => member.id), ...(person.visibleBelow ?? [])],
+        ...(person.domainAccess ? { domainAccess: person.domainAccess } : {}),
         runTool: async (name, args) => {
           calls.push({ account: accountId, name, args })
           const fixedId = typeof args.subject_id === "string" ? args.subject_id : null

@@ -35,8 +35,10 @@ function lifecycleDb(versions: { id: string; effectiveFrom: Date }[]) {
       const begun = versions.filter((version) => version.effectiveFrom.getTime() <= now.getTime())
       if (sql.trimStart().startsWith("select")) return { rows: begun.filter((version) => !startedEvents.has(version.id)).map((version) => ({ version_id: version.id, effective_from: version.effectiveFrom })), rowCount: 0 }
       if (sql.includes("'STARTED'")) {
-        const held = params[1] as string[]
-        const fresh = begun.filter((version) => !held.includes(version.id) && !startedEvents.has(version.id))
+        // O insert só pode marcar as versões cujos ids recebeu (as lidas e avisadas nesta passada).
+        if (!/v\.id = any\(\$2::uuid\[\]\)/.test(sql)) throw new Error("O insert de STARTED precisa restringir pelos ids avisados.")
+        const notified = params[1] as string[]
+        const fresh = begun.filter((version) => notified.includes(version.id) && !startedEvents.has(version.id))
         for (const version of fresh) startedEvents.add(version.id)
         return { rows: [], rowCount: fresh.length }
       }
@@ -64,6 +66,20 @@ describe("job do ciclo de vida: aviso de alinhamento em vigor (QA-02)", () => {
     expect(await runAlignmentLifecycle(db, now, notify)).toMatchObject({ started: 0 })
     expect(notify).toHaveBeenCalledTimes(2)
     errors.mockRestore()
+  })
+
+  it("DC-03: versão publicada DURANTE o envio do aviso não ganha STARTED sem sino — é avisada na passada seguinte", async () => {
+    const versions = [{ id: "v-lida", effectiveFrom: new Date("2026-11-19T11:00:00Z") }]
+    const { db, startedEvents } = lifecycleDb(versions)
+    const notify = vi.fn<(versionIds: string[], at: Date) => Promise<unknown>>(async () => {
+      // Publicada para começar hoje enquanto o aviso das outras está saindo (uma vez só).
+      if (!versions.some((version) => version.id === "v-durante")) versions.push({ id: "v-durante", effectiveFrom: new Date("2026-11-19T03:00:00Z") })
+    })
+    expect(await runAlignmentLifecycle(db, now, notify)).toMatchObject({ started: 1 })
+    expect([...startedEvents]).toEqual(["v-lida"])
+    expect(await runAlignmentLifecycle(db, now, notify)).toMatchObject({ started: 1 })
+    expect(notify.mock.calls.map((call) => call[0])).toEqual([["v-lida"], ["v-durante"]])
+    expect([...startedEvents].sort()).toEqual(["v-durante", "v-lida"])
   })
 
   it("versão que começou há mais que a janela do aviso tem o evento gravado mesmo com o envio falhando (o rastro não fica preso)", async () => {

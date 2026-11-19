@@ -93,9 +93,11 @@ export async function loadLeadershipSession(
   const own = ownOutcome.kind === "OK" ? ownOutcome.value : null
   if (!own && !hasAccessGrant(scope.access)) return null
   const closure = options.closure ?? (await resolveOfficialClosure(db, scope.organizationId, options.now ?? new Date()))
-  const [usageAccess, supportAccess] = await Promise.all([
+  // Uso da INIA: "Minha estrutura" vale como na tela "Quem mais usa" (população = a própria subárvore). Apoio com Anjo: não vale.
+  const [usageAccess, supportAccess, usageInOwnStructure] = await Promise.all([
     repository.loadAccessVisibility(user.organizationId, user.sub, RESTRICTED_DOMAIN_PERMISSION.INIA_USAGE),
     repository.loadAccessVisibility(user.organizationId, user.sub, RESTRICTED_DOMAIN_PERMISSION.SUPPORT),
+    repository.loadStructureScopedGrant?.(user.organizationId, user.sub, RESTRICTED_DOMAIN_PERMISSION.INIA_USAGE) ?? Promise.resolve(false),
   ])
   const pendingRepository = new PgPendingActionsRepository(db)
   return {
@@ -132,7 +134,7 @@ export async function loadLeadershipSession(
     // Alinhamentos operacionais que alcançam os liderados (fase 2): em vigor e programados, com alcance e leituras.
     loadStructureAlignments: (memberIds) => listStructureAlignments(db, { organizationId: scope.organizationId, memberIds, now: closure.now, includeEnded: false }),
     loadDomainFacts: createDomainFactsLoader(db, scope.organizationId, closure.timeZone, { now: closure.now }),
-    domainAccess: { INIA_USAGE: usageAccess, SUPPORT: supportAccess },
+    domainAccess: { INIA_USAGE: usageInOwnStructure ? { ...usageAccess, ownStructureIds: scope.structureIds ?? new Set<string>() } : usageAccess, SUPPORT: supportAccess },
     statusFreshness: async () => {
       const freshness = await resolveEmploymentStatusFreshness(db, scope.organizationId, closure.now, closure.timeZone)
       return { state: freshness.state, lastSuccessLocalDate: freshness.lastSuccessLocalDate }

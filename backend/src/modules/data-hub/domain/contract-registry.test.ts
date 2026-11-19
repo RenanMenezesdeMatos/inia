@@ -87,6 +87,23 @@ describe("registro de contratos", () => {
     for (const contract of DATA_CONTRACTS) expect(contract.examples.length, contract.key).toBeGreaterThanOrEqual(3)
   })
 
+  it("exemplos coerentes entre si (QA-05): chave natural sem repetição e toda chave estrangeira aponta para um exemplo que existe", () => {
+    const filled = (value: unknown) => value !== null && value !== undefined && value !== ""
+    for (const contract of DATA_CONTRACTS) {
+      const naturalKeys = contract.examples.map((example) => JSON.stringify(contract.naturalKey.map((field) => example[field] ?? null)))
+      expect(new Set(naturalKeys).size, `${contract.key}: chave natural repetida nos exemplos`).toBe(naturalKeys.length)
+      for (const foreignKey of contract.foreignKeys) {
+        // Referência a catálogo que não é contrato (ex.: cadastro feito na tela) não tem tabela de exemplo para conferir.
+        if (!foreignKey.references.every((reference) => "contract" in reference)) continue
+        const known = new Set(foreignKey.references.flatMap((reference) => ("contract" in reference ? requireDataContract(reference.contract).examples.map((example) => example[reference.field]) : [])))
+        for (const example of contract.examples) {
+          const value = example[foreignKey.field]
+          if (filled(value)) expect([...known], `${contract.key}.${foreignKey.field} = ${String(value)} não existe nos exemplos do contrato apontado`).toContain(value)
+        }
+      }
+    }
+  })
+
   it("chave natural e campo identidade existem entre os campos", () => {
     for (const contract of DATA_CONTRACTS) {
       const keys = new Set(contract.fields.map((field) => field.key))

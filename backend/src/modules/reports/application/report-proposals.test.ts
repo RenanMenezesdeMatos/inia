@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type { QueryTableCard } from "../../leadership-analytics/domain/view-models.js"
 import { toToolCall } from "../domain/report-definition.js"
-import { classifyReply, draftFromToolCall } from "./report-proposals.js"
+import { argsWithResolvedTerm, classifyReply, draftFromToolCall } from "./report-proposals.js"
 
 const OWN = { kind: "SUPERVISOR_TEAM", supervisorId: "00000000-0000-4000-8000-000000000001" }
 const OTHER = { kind: "SUPERVISOR_TEAM", supervisorId: "00000000-0000-4000-8000-000000000002" }
@@ -45,6 +45,21 @@ describe("rascunho a partir da consulta do chat — preserva a intenção", () =
     expect(draftFromToolCall("leadership_indicator_query", { indicadores: ["XYZ", "ABC"] }, card(OWN, { indicatorCode: null }), context)).toBeNull()
     expect(draftFromToolCall("leadership_indicator_query", { indicadores: ["TMA"], fonte: "OPERACIONAL", janela: "TRIMESTRE" }, card(OWN), context)).toBeNull()
     expect(draftFromToolCall("leadership_indicator_query", {}, card({ kind: "EMPLOYEE", employeeId: "x" }), context)).toBeNull()
+  })
+})
+
+describe("DC-04 — trecho resolvido num campo só: a oferta guarda o campo e não some", () => {
+  const args = { termo: "contestação", agrupar_por: "SUPERVISOR" }
+  it("sem o campo a definição não é reproduzível (sem oferta); com o campo que a ferramenta usou, a proposta nasce com `termo_em`", () => {
+    expect(draftFromToolCall("leadership_interactions", args, card(OWN), context)).toBeNull()
+    const draft = draftFromToolCall("leadership_interactions", argsWithResolvedTerm(args, { resolvedTermFields: ["SUBMOTIVO"] }), card(OWN), context)!
+    expect(draft.definition.queryArgs).toEqual({ termo: "contestação", termo_em: ["SUBMOTIVO"], agrupar_por: "SUPERVISOR" })
+  })
+  it("campo dito pela pessoa nunca é trocado; sem rastro ou sem termo, os argumentos ficam como vieram", () => {
+    const declared = { termo: "contestação", termo_em: ["MOTIVO"] }
+    expect(argsWithResolvedTerm(declared, { resolvedTermFields: ["SUBMOTIVO"] })).toBe(declared)
+    expect(argsWithResolvedTerm(args, undefined)).toBe(args)
+    expect(argsWithResolvedTerm({ agrupar_por: "SUPERVISOR" }, { resolvedTermFields: ["SUBMOTIVO"] })).toEqual({ agrupar_por: "SUPERVISOR" })
   })
 })
 

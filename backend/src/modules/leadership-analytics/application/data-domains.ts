@@ -179,10 +179,17 @@ export function domainSpec(domain: DataDomain, flags: readonly ChannelFlagSpec[]
  */
 export const RESTRICTED_DOMAIN_PERMISSION = { INIA_USAGE: "ai.usage_ranking.view", SUPPORT: "human_support.coordinate" } as const satisfies Partial<Record<DataDomain, Permission>>
 export type RestrictedDomain = keyof typeof RESTRICTED_DOMAIN_PERMISSION
-export type DomainAccess = Partial<Record<RestrictedDomain, VisibilityFilter>>
+/**
+ * Onde a conta tem a permissão do domínio. `ownStructureIds` = a permissão com escopo "Minha estrutura" (a subárvore de quem tem o
+ * papel) — só no uso da INIA, como a tela "Quem mais usa" aceita (DC-06); no Apoio com Anjo "Minha estrutura" não vale e nunca é preenchido.
+ */
+export type DomainGrant = VisibilityFilter & { ownStructureIds?: ReadonlySet<string> }
+export type DomainAccess = Partial<Record<RestrictedDomain, DomainGrant>>
 export const isRestrictedDomain = (domain: DataDomain): domain is RestrictedDomain => domain in RESTRICTED_DOMAIN_PERMISSION
 /** A conta tem a permissão do domínio em algum escopo? Ausente = não (nega por padrão). */
-export const domainAllowed = (access: DomainAccess | undefined, domain: DataDomain): boolean => !isRestrictedDomain(domain) || (access?.[domain] !== undefined && hasAccessGrant(access[domain]))
+export const domainAllowed = (access: DomainAccess | undefined, domain: DataDomain): boolean => !isRestrictedDomain(domain) || (access?.[domain] !== undefined && (hasAccessGrant(access[domain]) || access[domain].ownStructureIds !== undefined))
+/** A permissão do domínio alcança esta pessoa? Organização/Grupo/Subgrupo da permissão ou, em "Minha estrutura", a própria subárvore. */
+export const domainGrantCovers = (granted: DomainGrant, person: { id: string; teamId: string | null; subteamId: string | null }): boolean => accessCovers(granted, person) || (granted.ownStructureIds?.has(person.id) ?? false)
 
 export const DOMAIN_OF_TOOL: Record<string, DataDomain> = { leadership_interactions: "INTERACTIONS", leadership_monitoring: "MONITORING", leadership_feedbacks: "FEEDBACKS", leadership_cases: "CASES", leadership_schedule: "SCHEDULE", leadership_workday: "WORKDAY", leadership_communications: "COMMUNICATIONS", leadership_inia_usage: "INIA_USAGE", leadership_support: "SUPPORT" }
 
@@ -191,12 +198,12 @@ export async function runDomainQuery(
   scope: ViewerScope,
   /** `includeAnyRole`: a população é a própria pessoa da sessão, qualquer que seja o papel (ferramentas do operador). */
   input: { domain: DataDomain; structure: ResolvedStructure; args: Record<string, unknown>; load: DomainFactsLoader; lastClosedPeriod: string; now: Date; includeAnyRole?: boolean; domainAccess?: DomainAccess },
-): Promise<{ card: QueryTableCard } | { choice: DataChoiceCard; summary: string } | { error: string }> {
+): Promise<{ card: QueryTableCard; resolvedTermFields?: string[] } | { choice: DataChoiceCard; summary: string } | { error: string }> {
   if (!domainAllowed(input.domainAccess, input.domain)) return { error: `Você não tem permissão para consultar ${domainSpec(input.domain).title.toLowerCase()} por aqui. Diga isso à pessoa; não estime nem use outro dado no lugar.` }
   const period = resolveFactPeriod(input.args, input.lastClosedPeriod)
   if ("error" in period) return { error: period.error }
   const granted = isRestrictedDomain(input.domain) ? input.domainAccess![input.domain]! : null
-  const population = input.structure.resolved.members.filter((person) => (input.includeAnyRole || person.role === "OPERATOR") && person.active && (!granted || accessCovers(granted, person)))
+  const population = input.structure.resolved.members.filter((person) => (input.includeAnyRole || person.role === "OPERATOR") && person.active && (!granted || domainGrantCovers(granted, person)))
   const loaded = await input.load(input.domain, population.map((person) => person.id), period.from, period.toExclusive)
   const spec = domainSpec(input.domain, loaded.flags ?? [])
   const filters: Record<string, string[]> = {}
@@ -215,12 +222,15 @@ export async function runDomainQuery(
   // campo dito pela pessoa = escolha da leitura (cartão DATA_CHOICE), nunca uma leitura escolhida pela IA.
   let facts = loaded.facts
   const criteria: string[] = []
+  // `termo` sem `termo_em` que só apareceu em UM campo: o campo usado volta para quem chamou (a proposta de report o guarda — DC-04).
+  let resolvedTermFields: string[] | null = null
   if (input.domain === "INTERACTIONS") {
     const narrowed = narrowByText(facts, input.args, loaded.flags ?? [], { structure: input.structure, periodNote: period.note, now: input.now })
     if ("error" in narrowed) return narrowed
     if ("choice" in narrowed) return narrowed
     facts = narrowed.facts
     criteria.push(...narrowed.criteria)
+    if (narrowed.resolvedField) resolvedTermFields = [narrowed.resolvedField]
   }
   const measureKeys = parseStringList(input.args.medidas).map((value) => {
     const match = spec.measures.find((measure) => [measure.key, measure.label].some((candidate) => candidate.toLowerCase() === value.toLowerCase()))
@@ -251,7 +261,7 @@ export async function runDomainQuery(
     truncated: loaded.truncated,
     now: input.now,
   })
-  return { card }
+  return { card, ...(resolvedTermFields ? { resolvedTermFields } : {}) }
 }
 
 const foldText = (text: string) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase()
@@ -269,7 +279,7 @@ export function narrowByText(
   args: Record<string, unknown>,
   flags: readonly ChannelFlagSpec[],
   context: { structure: ResolvedStructure; periodNote: string; now: Date },
-): { facts: Fact[]; criteria: string[] } | { choice: DataChoiceCard; summary: string } | { error: string } {
+): { facts: Fact[]; criteria: string[]; resolvedField?: TextField } | { choice: DataChoiceCard; summary: string } | { error: string } {
   const text = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null)
   const matcher = (field: TextField, term: string) => {
     const wanted = foldText(term)
@@ -300,7 +310,7 @@ export function narrowByText(
   }
   const counts = TEXT_FIELDS.map((field) => ({ field, count: current.filter(matcher(field, term)).length })).filter((item) => item.count > 0)
   if (counts.length === 0) return { error: `"${term}" não aparece no motivo, no submotivo nem nas ocorrências dos atendimentos do período. Diga isso à pessoa; não troque por outro termo.` }
-  if (counts.length === 1) return { facts: current.filter(matcher(counts[0]!.field, term)), criteria: [...criteria, describe(counts[0]!.field, term)] }
+  if (counts.length === 1) return { facts: current.filter(matcher(counts[0]!.field, term)), criteria: [...criteria, describe(counts[0]!.field, term)], resolvedField: counts[0]!.field }
   const total = current.length
   const share = (count: number) => `${count.toLocaleString("pt-BR")} atendimentos · ${total > 0 ? ((count / total) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) : "0"}% do período`
   const any = current.filter((fact) => counts.some((item) => matcher(item.field, term)(fact))).length

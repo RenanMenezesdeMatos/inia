@@ -114,6 +114,18 @@ export function draftFromToolCall(toolName: string, args: Record<string, unknown
   return { name: (card.title ?? "Report").slice(0, 120), description: context.question ? context.question.slice(0, 500) : null, definition: parsed.data, visualization }
 }
 
+/**
+ * `termo` sem o campo onde procurar: quando a ferramenta achou o trecho num campo só e respondeu direto, ela devolve esse campo no
+ * rastro (`resolvedTermFields`) e a proposta o guarda em `termo_em` — a definição fica reproduzível e a oferta não some (DC-04). Campo
+ * dito pela pessoa (ou escolhido no cartão) nunca é trocado; sem o rastro nada muda (a definição continua recusada).
+ */
+export function argsWithResolvedTerm(args: Record<string, unknown>, trace: Record<string, unknown> | undefined): Record<string, unknown> {
+  const resolved = Array.isArray(trace?.resolvedTermFields) ? trace.resolvedTermFields.filter((value): value is string => typeof value === "string") : []
+  if (resolved.length === 0 || typeof args.termo !== "string" || !args.termo.trim()) return args
+  const declared = Array.isArray(args.termo_em) ? args.termo_em.length > 0 : typeof args.termo_em === "string" && args.termo_em.trim() !== ""
+  return declared ? args : { ...args, termo_em: resolved }
+}
+
 const AFFIRMATIVE = /^(sim|s|isso|claro|pode|ok|okay|beleza|bora|vamos|quero|fechado|por favor|crie|cria|criar|perfeito|aceito)\b/
 const NEGATIVE = /^(nao|n|agora nao|deixa|dispensa|sem report|nao precisa|nao quero|nao obrigad)\b/
 
@@ -132,7 +144,7 @@ const PROPOSAL_COLUMNS = "id, organization_id, owner_account_id, conversation_id
 
 export type ProposalStore = {
   /** Oferta para a última resposta, se couber (elegível, espaçada, inédita na conversa e sem report ativo igual). */
-  prepareOffer(input: { organizationId: string; accountId: string; personId: string; conversationId: string; directResults: { toolName: string; args: Record<string, unknown>; card: unknown | null }[]; question: string | null; context: RecipientContext | null; activeSignatures: () => Promise<Set<string>> }): Promise<ProposalRecord | null>
+  prepareOffer(input: { organizationId: string; accountId: string; personId: string; conversationId: string; directResults: { toolName: string; args: Record<string, unknown>; card: unknown | null; trace?: Record<string, unknown> | undefined }[]; question: string | null; context: RecipientContext | null; activeSignatures: () => Promise<Set<string>> }): Promise<ProposalRecord | null>
   attach(proposalId: string, interactionId: string): Promise<void>
   /** A proposta OFERECIDA na última resposta da INIA desta conversa (o "sim" só vale para ela). */
   pendingForConversation(organizationId: string, accountId: string, conversationId: string): Promise<ProposalRecord | null>
@@ -148,7 +160,7 @@ export function createPostgresProposalStore(db: Database): ProposalStore {
       const eligible = [...input.directResults].reverse().find((result) => result.card && REPORTABLE_TOOL_NAMES.includes(result.toolName))
       if (!eligible) return null
       const options = await input.context.indicatorOptions()
-      const draft = draftFromToolCall(eligible.toolName, eligible.args, eligible.card as QueryTableCard, {
+      const draft = draftFromToolCall(eligible.toolName, argsWithResolvedTerm(eligible.args, eligible.trace), eligible.card as QueryTableCard, {
         ownSubject: input.context.ownStructure?.subject ?? null,
         lastClosedPeriod: input.context.lastClosedPeriod,
         today: input.context.today,

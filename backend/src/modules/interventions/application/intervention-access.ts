@@ -19,7 +19,7 @@ export async function loadAccess(db: Database, organizationId: string, accountId
 /**
  * UNIVERSO DE ATUAÇÃO (POL-03, decisão de 19/11/2026): a mesma regra de PESSOAS da aba Equipe (`personAllowedByUniverse`), como
  * na visão da equipe e na prévia de impacto. O universo limita o que vem dos PAPÉIS (permissão na organização, no Grupo ou no
- * Subgrupo) — nunca quem lidera a pessoa pela estrutura nem quem é parte da intervenção. Organização sem universos ativados e
+ * Subgrupo) — nunca quem lidera a pessoa pela estrutura nem quem é parte da intervenção (a decisão sensível, que exige a permissão, fica com os destinatários escolhidos pela mesma regra — DC-01). Organização sem universos ativados e
  * `operating_universes.all` no escopo: nada muda. Só é consultado quando o alcance dependeria de papel.
  */
 async function rolesReachPersonInUniverse(db: Queryable | Database, access: AccessContext, person: { personId: string; teamId: string | null; subteamId: string | null }): Promise<boolean> {
@@ -49,7 +49,9 @@ export async function relationFor(db: Queryable | Database, access: AccessContex
     isOpener: parties.openedBy === viewer || parties.acceptedBy === viewer,
     isSubject: parties.personId === viewer,
     leadsSubject: inStructure,
-    can: reachedByRole ? byRole : NO_ROLE_REACH,
+    // DC-01: a decisão sensível segue a MESMA regra de quem a recebe (`resolveSensitiveDecisionRecipients`). Quem foi escolhido como
+    // destinatário e tem a permissão no escopo decide — inclusive quando o corte por universo não deixou mais ninguém.
+    can: reachedByRole ? byRole : byRole.sensitiveDecide && parties.approvalRecipientIds.includes(viewer) ? { ...NO_ROLE_REACH, sensitiveDecide: true } : NO_ROLE_REACH,
   }
 }
 

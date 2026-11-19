@@ -4,6 +4,7 @@ import { createPostgresAccessRepository } from "../../access/infrastructure/post
 import type { AuthTokenPayload, PlatformRole } from "../../auth/infrastructure/jwt.js"
 import { computeFeedFreshness, type Cadence } from "../../data-hub/domain/freshness.js"
 import { resolveOfficialClosure, type OfficialClosureContext } from "../../indicators/application/official-closure.js"
+import type { DomainAccess } from "../../leadership-analytics/application/data-domains.js"
 import { loadLeadershipSession, toolDependencies, type LeadershipSession } from "../../leadership-analytics/application/leadership-context.js"
 import { executeLeadershipTool, type LeadershipToolResult } from "../../leadership-analytics/application/leadership-toolset.js"
 import { resolveIndicatorReference, resolveStructureReference, structureCandidates, type ResolvedStructure } from "../../leadership-analytics/application/references.js"
@@ -40,6 +41,8 @@ export type RecipientContext = {
   /** Pessoas ativas abaixo da âncora da estrutura que o escopo DESTA pessoa alcança (líderes inclusive) — o que as ferramentas
    * leem além dos operadores; entra na chave que junta destinatários numa entrega (achado C15 da 4ª auditoria). */
   visibleBelow(structure: ResolvedStructure): string[]
+  /** Onde a conta tem a permissão das telas de origem dos domínios restritos (uso da INIA, Apoio com Anjo). Ausente = nenhuma. */
+  domainAccess?: DomainAccess
   indicatorDirection(code: string | null): Promise<"HIGHER" | "LOWER" | "TARGET" | null>
   /** Competência fechada mais recente (para o rótulo do período e o "último mês fechado" das consultas de registros). */
   lastClosedPeriod: string
@@ -225,6 +228,7 @@ export function createPostgresReportRuntime(db: Database, clock: () => Date = ()
       sources: async (structure, definition) => sourceStates(organizationId, structure, definition, await organizationSources(definition)),
       recordMarks: async (structure, definition) => recordMarks(organizationId, structure, await organizationSources(definition)),
       visibleBelow: (structure) => peopleBelow(session.scope, structure).map((person) => person.id),
+      ...(session.domainAccess ? { domainAccess: session.domainAccess } : {}),
       indicatorDirection: async (code) => {
         if (!code) return null
         const definition = (await reads.loadIndicatorDefinitions(organizationId)).find((item) => item.code === code)

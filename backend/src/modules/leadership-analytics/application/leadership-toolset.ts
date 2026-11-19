@@ -471,7 +471,7 @@ export async function executeLeadershipTool(deps: LeadershipToolDependencies, na
       const outcome = await runDomainQuery(scope, { domain, structure, args, load: deps.loadDomainFacts, lastClosedPeriod: closure.lastClosedPeriod, now: closure.now, ...(deps.domainAccess ? { domainAccess: deps.domainAccess } : {}) })
       if ("error" in outcome) return { text: `Consulta não feita: ${outcome.error}`, card: null, issue: { kind: "INVALID", message: outcome.error, candidates: [] } }
       if ("choice" in outcome) return { text: outcome.summary, card: outcome.choice, issue: { kind: "AMBIGUOUS", message: outcome.choice.prompt, candidates: outcome.choice.options.map((option) => option.label) } }
-      return { text: renderQueryTable(outcome.card), card: outcome.card }
+      return { text: renderQueryTable(outcome.card), card: outcome.card, ...(outcome.resolvedTermFields ? { trace: { resolvedTermFields: outcome.resolvedTermFields } } : {}) }
     }
     if (name === "leadership_span") {
       const level: SpanLevel = (["SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER"] as const).find((value) => value === args.nivel) ?? "SUPERVISOR"

@@ -10,7 +10,9 @@ import { ReportOfferAction } from "@/components/operator/operator-inia-chat/chat
 import type { FollowUpItem } from "@/schemas/analytics/analytics.schema"
 import type { QueryTableCard } from "@/schemas/leadership/leadership.schema"
 import { reportDefinitionSchema, type ReportOptions, type VisualizationData } from "@/schemas/reports/reports.schema"
-import { staticCompatibility } from "./report-form/form-helpers"
+import { ApiError } from "@/lib/api/api-client"
+import { reportErrorMessage, staticCompatibility } from "./report-form/form-helpers"
+import { runOutcome } from "./report-detail-page"
 import { QueryFields } from "./report-form/query-fields"
 import { ReportDeliveryView, type DeliveryViewModel } from "./report-delivery-view"
 import { ReportVisualization } from "./report-visualization"
@@ -133,5 +135,19 @@ describe("formulário — consultas de registros e span (vindas do chat)", () =>
     const byDay = reportDefinitionSchema.parse({ tool: "WORKDAY", structure: { mode: "RECIPIENT" }, period: { mode: "CALENDAR", unit: "WEEK", offset: -1 }, queryArgs: { agrupar_por: "DIA" } })
     expect(staticCompatibility(byDay)).toEqual(expect.arrayContaining(["LINE", "AREA"]))
     expect(staticCompatibility({ ...byDay, queryArgs: {} })).toContain("KPI")
+  })
+})
+
+describe("DC-04 — busca por trecho sem o campo onde procurar", () => {
+  it("execução bloqueada por definição não reproduzível mostra o motivo, nunca \"—\"", () => {
+    const message = "A consulta deste report precisa ser refeita: A busca por trecho precisa dizer onde procurar (motivo, submotivo ou ocorrência)."
+    expect(runOutcome({ outcome: { reason: "DEFINITION_NOT_REPRODUCIBLE", message }, errorMessage: null })).toBe(message)
+    expect(runOutcome({ outcome: { reason: "DEFINITION_NOT_REPRODUCIBLE" }, errorMessage: null })).toContain("precisa ser refeita")
+  })
+
+  it("salvar ou pré-visualizar recusado com REPORT_TERM_FIELD_REQUIRED explica o que fazer; outros erros mantêm a mensagem do servidor", () => {
+    expect(reportErrorMessage(new ApiError("Configuração inválida.", 422, "REPORT_TERM_FIELD_REQUIRED"))).toContain("Refaça a pergunta no chat dizendo onde procurar")
+    expect(reportErrorMessage(new ApiError("Nome obrigatório.", 422, "REPORT_CONFIG_INVALID"))).toBe("Nome obrigatório.")
+    expect(reportErrorMessage(new Error("rede"))).toBe("Não foi possível concluir. Tente de novo.")
   })
 })

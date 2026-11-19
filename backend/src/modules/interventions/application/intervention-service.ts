@@ -39,7 +39,7 @@ import { resolveOverdueIfSettled } from "./overdue-reminders.js"
 import { isSensitiveType, scriptItemsOf, type InterventionTypeDefinition } from "../domain/intervention-type.js"
 import { recordInterventionEvent, type EvidenceItem } from "./apply-evaluation.js"
 import { loadPublishedTypes, loadTypeVersion } from "./catalog.js"
-import { sensitiveDecisionHolders } from "./evaluate-policy.js"
+import { resolveSensitiveDecisionRecipients } from "./evaluate-policy.js"
 import { resolveResponsibleId, unresolvedResponsibleMessage } from "./responsible.js"
 import { relationFor, canOpenFor, canSeeInterventionsOf } from "./intervention-access.js"
 import { withoutFeedbackText } from "../domain/leader-brief.js"
@@ -470,16 +470,19 @@ export async function acceptIntervention(db: Database, viewer: Viewer, intervent
     if (issues.length > 0) throw new DomainError(issues[0]!.message, "INTERVENTION_NOT_READY", 422, { issues })
     const to = nextStatus("ACCEPT", row, definition)
     let recipients = row.approval_recipient_ids
+    let outsideUniverse = false
     if (to === "AWAITING_APPROVAL" && row.sensitive) {
       // Decisão sensível: os destinatários são recalculados na hora (quem tem a permissão HOJE no escopo do colaborador).
       const person = (await tx.query<{ team_id: string | null; subteam_id: string | null }>(`select team_id, subteam_id from people where id = $1`, [row.person_id])).rows[0]
-      recipients = await sensitiveDecisionHolders(tx, viewer.organizationId, { id: row.person_id, teamId: person?.team_id ?? null, subteamId: person?.subteam_id ?? null })
+      const resolved = await resolveSensitiveDecisionRecipients(tx, viewer.organizationId, { id: row.person_id, teamId: person?.team_id ?? null, subteamId: person?.subteam_id ?? null })
+      recipients = resolved.ids
+      outsideUniverse = resolved.outsideUniverse
     }
     // Quem aceita não decide a própria proposta: sai da lista de destinatários.
     recipients = recipients.filter((id) => id !== viewer.personId)
     if (to === "AWAITING_APPROVAL" && recipients.length === 0) throw new DomainError(row.sensitive ? "Ninguém além de você tem a permissão de decisão sensível no escopo deste colaborador." : "Não há aprovador disponível para esta intervenção (além de você).", "INTERVENTION_NO_APPROVER", 422)
     await bump(tx, row, `status = $3, accepted_by = $4, plan = $5, approval_recipient_ids = $6, started_at = case when $3 = 'IN_PROGRESS' then now() else started_at end`, [to, viewer.personId, JSON.stringify(plan), recipients])
-    await recordInterventionEvent(tx, event(viewer, row, "ACCEPTED", to))
+    await recordInterventionEvent(tx, event(viewer, row, "ACCEPTED", to, outsideUniverse ? { recipientsOutsideUniverse: true } : {}))
     // Aceitar responde ao lembrete de "sem resposta e o prazo venceu" (QA-04): ele não fica aberto com o pedido já atendido.
     await resolveOpenAlerts(tx, viewer.organizationId, row.id, ["ASSIGNED", "RETURNED", "OVERDUE"])
     if (to === "AWAITING_APPROVAL") {
@@ -748,9 +751,12 @@ export async function openManualIntervention(db: Database, viewer: Viewer, raw: 
   if (!responsibleId) throw new DomainError(unresolvedResponsibleMessage(type.definition.responsibleRole, person.name, type.definition.name, "ser responsável por"), "INTERVENTION_ASSIGNMENT_UNRESOLVED", 422)
   let approverId: string | null = null
   let recipients: string[] = []
+  let recipientsOutsideUniverse = false
   if (type.definition.approval.required) {
     approverId = (await resolveByRoleChain(db, input.personId, [type.definition.approval.approverRole]))[0]?.id ?? null
-    recipients = isSensitiveType(type.definition) ? await sensitiveDecisionHolders(db, viewer.organizationId, { id: input.personId, teamId: person.team_id, subteamId: person.subteam_id }) : approverId ? [approverId] : []
+    const resolved = isSensitiveType(type.definition) ? await resolveSensitiveDecisionRecipients(db, viewer.organizationId, { id: input.personId, teamId: person.team_id, subteamId: person.subteam_id }) : null
+    recipients = resolved ? resolved.ids : approverId ? [approverId] : []
+    recipientsOutsideUniverse = resolved?.outsideUniverse ?? false
     if (isSensitiveType(type.definition) && approverId && !recipients.includes(approverId)) approverId = null
   }
   const todayDate = await today(db, viewer.organizationId, now)
@@ -778,7 +784,7 @@ export async function openManualIntervention(db: Database, viewer: Viewer, raw: 
     for (const [position, item] of scriptItemsOf(type.definition, { openedDay: todayDate, dueAt, responsibleId, personId: input.personId }).entries()) {
       await tx.query(`insert into intervention_items (organization_id, intervention_id, kind, title, description, owner_id, due_at, position) values ($1,$2,$3,$4,$5,$6,$7,$8)`, [viewer.organizationId, interventionId, item.kind, item.title, item.description, item.ownerId, item.dueAt, position])
     }
-    await recordInterventionEvent(tx, { organizationId: viewer.organizationId, interventionId, caseId, eventType: "OPENED", actorKind: "HUMAN", actorId: viewer.personId, fromStatus: null, toStatus: "PROPOSED", payload: { manual: true, typeVersion: type.version } })
+    await recordInterventionEvent(tx, { organizationId: viewer.organizationId, interventionId, caseId, eventType: "OPENED", actorKind: "HUMAN", actorId: viewer.personId, fromStatus: null, toStatus: "PROPOSED", payload: { manual: true, typeVersion: type.version, ...(recipientsOutsideUniverse ? { recipientsOutsideUniverse: true } : {}) } })
     if (responsibleId !== viewer.personId) await alert(tx, { organizationId: viewer.organizationId, caseId, interventionId, recipientIds: [responsibleId], event: "ASSIGNED", revision: 0, alertType: "INTERVENTION_ASSIGNED", title: `Nova intervenção: ${type.definition.name}`, description: `"${type.definition.name}" foi aberta para ${person.name}. Você é o responsável.` })
     return interventionId
   })

@@ -83,6 +83,8 @@ export const EMPLOYEES_CONTRACT: DataContract = {
     { externalEmployeeId: "OP-10234", name: "Mariana Alves", role: "OPERATOR", jobTitle: "Analista de Atendimento I", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: "B2C_RETENCAO/PREMIUM", reportsToExternalId: "SUP-0042", hiredAt: "2024-03-11", active: true, email: null, currentStatus: "EM PRODUÇÃO", statusEffectiveFrom: null, sourceUpdatedAt: null, operationalCapitalCode: "FORTALEZA", operatingUniverse: null, operatingUniverseEffectiveFrom: null },
     { externalEmployeeId: "SUP-0042", name: "Carlos Menezes", role: "SUPERVISOR", jobTitle: "Supervisor de Atendimento", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: null, reportsToExternalId: "GER-0007", hiredAt: "2021-08-02", active: true, email: null, currentStatus: "FERIAS", statusEffectiveFrom: "2026-09-09", sourceUpdatedAt: "2026-09-15T08:00:00-03:00", operationalCapitalCode: "RECIFE", operatingUniverse: null, operatingUniverseEffectiveFrom: null },
     { externalEmployeeId: "OP-20871", name: "Bruno Tavares", role: "OPERATOR", jobTitle: "Analista de Atendimento I", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: "B2C_RETENCAO/PADRAO", reportsToExternalId: "SUP-0042", hiredAt: "2025-02-03", active: true, email: null, currentStatus: "EM PRODUÇÃO", statusEffectiveFrom: null, sourceUpdatedAt: null, operationalCapitalCode: "FORTALEZA", operatingUniverse: null, operatingUniverseEffectiveFrom: null },
+    // O gestor citado nos exemplos acima também é uma linha da tabela (a legenda da tela diz que ele precisa existir aqui); topo da cadeia = sem gestor.
+    { externalEmployeeId: "GER-0007", name: "Helena Prado", role: "MANAGER", jobTitle: "Gerente de Operações", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: null, reportsToExternalId: null, hiredAt: "2019-05-06", active: true, email: null, currentStatus: "EM PRODUÇÃO", statusEffectiveFrom: null, sourceUpdatedAt: null, operationalCapitalCode: "RECIFE", operatingUniverse: null, operatingUniverseEffectiveFrom: null },
   ],
 }
 
@@ -114,6 +116,7 @@ export const ORGANIZATIONAL_STRUCTURE_CONTRACT: DataContract = {
     { externalEmployeeId: "OP-10234", reportsToExternalId: "SUP-0042", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: "B2C_RETENCAO/PREMIUM" },
     { externalEmployeeId: "OP-20871", reportsToExternalId: "SUP-0042", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: "B2C_RETENCAO/PADRAO" },
     { externalEmployeeId: "SUP-0042", reportsToExternalId: "GER-0007", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: null },
+    { externalEmployeeId: "GER-0007", reportsToExternalId: null, groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: null },
   ],
 }
 

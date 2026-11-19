@@ -28,6 +28,7 @@ import { loadAnalyticsVersions, type AnalyticsVersions } from "../infrastructure
 import type { VisibilityFilter } from "../../access/application/access-repository.js"
 import { visibilityOf } from "../../access/application/access-service.js"
 import type { Permission } from "../../access/domain/permissions.js"
+import { scopesWithPermission, type AccessContext } from "../../access/domain/access-decision.js"
 import { createPostgresAccessRepository } from "../../access/infrastructure/postgres-access-repository.js"
 import { visibleInFollowUpSql } from "../../feedbacks/application/follow-up-visibility.js"
 import { recadoAlertCoveredByFollowUpSql } from "../../conversational-delivery/application/recado-follow-up-invite.js"
@@ -110,6 +111,9 @@ export type FollowUpFeedQuery = {
   audience?: FollowUpAudience | null
 }
 
+/** A permissão vem (também) de uma atribuição com escopo "Minha estrutura"? */
+export const hasStructureScopedGrant = (access: AccessContext, permission: Permission): boolean => scopesWithPermission(access, permission).some((scope) => scope.type === "MY_STRUCTURE")
+
 export interface AnalyticsReadRepository {
   loadPerson(organizationId: string, personId: string): Promise<PersonNode | null>
   /** Todos os descendentes (ativos ou não) da pessoa, em qualquer profundidade — sem a própria. */
@@ -119,6 +123,8 @@ export interface AnalyticsReadRepository {
    * cargo/nível hierárquico. Vazio = só a visão operacional da própria estrutura (reports_to).
    */
   loadAccessVisibility(organizationId: string, accountId: string, permission: Permission): Promise<VisibilityFilter>
+  /** A CONTA tem a permissão com escopo "Minha estrutura"? (`VisibilityFilter` só conhece organização/Grupo/Subgrupo.) Ausente = não. */
+  loadStructureScopedGrant?(organizationId: string, accountId: string, permission: Permission): Promise<boolean>
   /** Pessoas (ativas ou não) cobertas por uma visibilidade de acesso: organização inteira, Grupo (inclui seus Subgrupos) ou Subgrupo. */
   loadPeopleInVisibility(organizationId: string, visibility: VisibilityFilter): Promise<PersonNode[]>
   /** Abrangência de universos da conta (universo do cadastro + onde ela tem `operating_universes.all`) e se a organização já ativou o filtro. */
@@ -242,6 +248,10 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
 
   async loadAccessVisibility(organizationId: string, accountId: string, permission: Permission): Promise<VisibilityFilter> {
     return visibilityOf(await createPostgresAccessRepository(this.db).loadContext(organizationId, accountId), permission)
+  }
+
+  async loadStructureScopedGrant(organizationId: string, accountId: string, permission: Permission): Promise<boolean> {
+    return hasStructureScopedGrant(await createPostgresAccessRepository(this.db).loadContext(organizationId, accountId), permission)
   }
 
   async loadUniverseRule(organizationId: string, accountId: string, personId: string): Promise<PersonUniverseRule> {

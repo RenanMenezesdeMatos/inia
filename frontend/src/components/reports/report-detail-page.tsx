@@ -20,7 +20,7 @@ import type { ReportRun } from "@/schemas/reports/reports.schema"
 import { deleteReport, runReportNow, setReportStatus } from "@/services/reports/reports-service"
 import { BLOCKED_REASON_LABELS, DENIED_REASON_LABELS, LEVEL_LABELS, NOT_FORWARDED_TEXT, RUN_STATUS_LABELS, TOOL_LABELS, VISUALIZATION_LABELS } from "./report-labels"
 
-function runOutcome(run: ReportRun): string {
+export function runOutcome(run: Pick<ReportRun, "outcome" | "errorMessage">): string {
   const outcome = run.outcome ?? {}
   const parts: string[] = []
   if (typeof outcome.delivered === "number" && outcome.delivered > 0) parts.push(`${outcome.delivered} pessoa(s) receberam`)
@@ -32,7 +32,9 @@ function runOutcome(run: ReportRun): string {
   }
   const failed = Array.isArray(outcome.failed) ? (outcome.failed as { message: string }[]) : []
   if (failed.length > 0) parts.push(`Consulta inválida: ${failed[0]!.message}`)
-  if (typeof outcome.reason === "string" && BLOCKED_REASON_LABELS[outcome.reason]) parts.push(BLOCKED_REASON_LABELS[outcome.reason]!)
+  // Definição que não é mais reproduzível: o servidor diz o que falta (ex.: onde procurar o trecho); sem o texto, o rótulo geral.
+  if (outcome.reason === "DEFINITION_NOT_REPRODUCIBLE" && typeof outcome.message === "string" && outcome.message.trim()) parts.push(outcome.message)
+  else if (typeof outcome.reason === "string" && BLOCKED_REASON_LABELS[outcome.reason]) parts.push(BLOCKED_REASON_LABELS[outcome.reason]!)
   if (run.errorMessage) parts.push(`Erro: ${run.errorMessage}`)
   return parts.join(" · ") || "—"
 }

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { domainAllowed, domainGrantCovers, isRestrictedDomain, type RestrictedDomain } from "../../leadership-analytics/application/data-domains.js"
 import type { ResolvedStructure } from "../../leadership-analytics/application/references.js"
 import type { QueryTableCard } from "../../leadership-analytics/domain/view-models.js"
 import { longPeriodLabel, previousReferencePeriod } from "../../performance-analytics/domain/reference-period.js"
@@ -37,12 +38,19 @@ const MAX_DENIED_LISTED = 50
  * menos nunca recebe a entrega calculada para quem enxerga mais (achado C15 da 4ª auditoria). Sem ninguém além dos operadores, a
  * chave é a de sempre (o histórico de entregas continua o mesmo).
  */
-export function scopeKeyOf(structure: ResolvedStructure, visibleBelow: readonly string[] = []): string {
+export function scopeKeyOf(structure: ResolvedStructure, visibleBelow: readonly string[] = [], restrictedCoverage: readonly string[] | null = null): string {
   const members = structure.resolved.members.map((member) => member.id).sort()
   const memberIds = new Set(members)
   const beyondMembers = [...new Set(visibleBelow)].filter((id) => !memberIds.has(id)).sort()
-  return createHash("sha256").update(JSON.stringify({ subject: structure.subject, members, ...(beyondMembers.length > 0 ? { visibleBelow: beyondMembers } : {}) })).digest("hex").slice(0, 32)
+  // Domínio restrito (uso da INIA, Apoio com Anjo): a permissão da tela de origem pode alcançar só parte da estrutura. Quem tem
+  // recorte menor nunca entra na chave de quem tem recorte maior (DC-02); com a estrutura inteira coberta, a chave é a de sempre.
+  const covered = restrictedCoverage ? [...new Set(restrictedCoverage)].filter((id) => memberIds.has(id)).sort() : null
+  const restricted = covered && covered.length < members.length ? { restricted: covered } : {}
+  return createHash("sha256").update(JSON.stringify({ subject: structure.subject, members, ...(beyondMembers.length > 0 ? { visibleBelow: beyondMembers } : {}), ...restricted })).digest("hex").slice(0, 32)
 }
+
+/** Domínio restrito que a ferramenta do report consulta (null = ferramenta sem permissão própria). */
+const restrictedDomainOf = (definition: ReportDefinition): RestrictedDomain | null => (isRecordTool(definition.tool) && isRestrictedDomain(definition.tool) ? definition.tool : null)
 
 function shiftMonths(period: string, months: number): string {
   let current = period
@@ -158,6 +166,7 @@ export async function executeReportRun(deps: ExecutorDeps, run: RunRecord): Prom
   // Destinatários agrupados pela chave de escopo — cada um só com o que o escopo DELE alcança; a ferramenta roda uma vez por chave.
   const groups = new Map<string, ScopeGroup>()
   const denied: RecipientOutcome[] = []
+  const restrictedDomain = restrictedDomainOf(definition)
   for (const recipient of recipients) {
     const { account, context } = ownerLookup && recipient.accountId === report.ownerAccountId ? ownerLookup : await contexts.lookup(recipient.accountId)
     if (!context) {
@@ -170,7 +179,13 @@ export async function executeReportRun(deps: ExecutorDeps, run: RunRecord): Prom
       denied.push({ personId: recipient.personId, name: recipient.name, reason: definition.structure.mode === "RECIPIENT" ? "NO_STRUCTURE" : "ACCESS_DENIED" })
       continue
     }
-    const key = scopeKeyOf(structure, context.visibleBelow(structure))
+    // Uso da INIA / Apoio com Anjo: sem a permissão da tela de origem a pessoa não recebe a entrega de quem tem (DC-02).
+    const granted = restrictedDomain ? context.domainAccess?.[restrictedDomain] : undefined
+    if (restrictedDomain && (!granted || !domainAllowed(context.domainAccess, restrictedDomain))) {
+      denied.push({ personId: recipient.personId, name: recipient.name, reason: "ACCESS_DENIED" })
+      continue
+    }
+    const key = scopeKeyOf(structure, context.visibleBelow(structure), granted ? structure.resolved.members.filter((member) => domainGrantCovers(granted, member)).map((member) => member.id) : null)
     const group = groups.get(key) ?? { key, structure, context, recipients: [] }
     group.recipients.push({ personId: recipient.personId, accountId: recipient.accountId })
     groups.set(key, group)

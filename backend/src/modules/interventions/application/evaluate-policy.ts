@@ -4,6 +4,7 @@ import { resolveOrganizationTimezone } from "../../workflows/application/organiz
 import { localDateOf } from "../../workflows/application/time-window.js"
 import { resolveByRoleChain } from "../../workflows/application/enrollment-subject.js"
 import { rolesWithPermission } from "../../access/domain/roles.js"
+import { ALL_UNIVERSES_PERMISSION, isUniverseEnforced, personUniverse } from "../../operating-universe/application/universe-access.js"
 import { ADDRESSED_STATUSES, aggregateOutcome, buildJustification, evaluateGroup, planDecisions, selectRules, type EvaluationOutcome, type PlannedDecision, type RuleSelection, type RuleTrace, type SentNotice } from "../domain/policy-evaluation.js"
 import { addCivilDays } from "../domain/evolution.js"
 import { isSensitiveType } from "../domain/intervention-type.js"
@@ -27,6 +28,8 @@ export type Assignment = {
   /** Para quem a aprovação/decisão é endereçada (Pendências). Decisão sensível: só quem tem a permissão sensível no escopo. */
   approvalRecipientIds: string[]
   dueAt: string
+  /** Decisão sensível: o corte por universo não deixou ninguém e valeu a regra anterior ao universo (vai para o evento). */
+  recipientsOutsideUniverse?: boolean
   /** Responsável (ou aprovador) não encontrado na cadeia do colaborador — impede abrir, nunca escolhe "alguém". */
   problem: string | null
 }
@@ -64,21 +67,38 @@ async function loadPerson(db: Db, organizationId: string, personId: string): Pro
   return row ? { id: row.id, name: row.name, teamId: row.team_id, subteamId: row.subteam_id, teamName: row.team_name, active: row.active, role: row.role } : null
 }
 
-/** Pessoas que podem tomar a decisão SENSÍVEL sobre o colaborador: conta ativa com a permissão num escopo que o alcança. */
-export async function sensitiveDecisionHolders(db: Db, organizationId: string, person: Pick<EvaluationPerson, "id" | "teamId" | "subteamId">): Promise<string[]> {
-  const rows = await db.query<{ id: string }>(
-    `select distinct p.id from access_role_assignments a
+/**
+ * Pessoas que podem tomar a decisão SENSÍVEL sobre o colaborador: conta ativa com a permissão num escopo que o alcança E, com
+ * universos de atuação ativados, dentro da MESMA regra de `can.sensitiveDecide` (`personAllowedByUniverse`): quem lidera o
+ * colaborador pela estrutura, quem tem `operating_universes.all` onde ele está ou quem é do mesmo universo (DC-01). A decisão
+ * nunca fica sem ninguém: se o corte por universo esvaziar a lista, vale a regra anterior ao universo e `outsideUniverse`
+ * avisa quem chama, que registra isso no evento — esses destinatários decidem por serem os escolhidos (`relationFor`).
+ */
+export async function resolveSensitiveDecisionRecipients(db: Db, organizationId: string, person: Pick<EvaluationPerson, "id" | "teamId" | "subteamId">): Promise<{ ids: string[]; outsideUniverse: boolean }> {
+  const rows = (await db.query<{ id: string; operating_universe: string | null; in_structure: boolean; cross_universe: boolean }>(
+    `with recursive chain as (select reports_to_id id from people where id = $3 union select x.reports_to_id from people x join chain c on x.id = c.id where x.reports_to_id is not null)
+     select distinct p.id, p.operating_universe, exists (select 1 from chain where chain.id = p.id) in_structure,
+            exists (select 1 from access_role_assignments c
+                     where c.organization_id = a.organization_id and c.user_account_id = a.user_account_id and c.revoked_at is null and c.role_code = any($6::text[])
+                       and (c.scope_type = 'ORGANIZATION' or (c.scope_type = 'GROUP' and c.team_id = $4) or (c.scope_type = 'SUBGROUP' and c.subteam_id = $5))) cross_universe
+       from access_role_assignments a
        join user_accounts ua on ua.id = a.user_account_id and ua.organization_id = a.organization_id and ua.active
        join people p on p.id = ua.person_id and p.active
       where a.organization_id = $1 and a.revoked_at is null and a.role_code = any($2::text[]) and p.id <> $3
         and (a.scope_type = 'ORGANIZATION' or (a.scope_type = 'GROUP' and a.team_id = $4) or (a.scope_type = 'SUBGROUP' and a.subteam_id = $5)
-             or (a.scope_type = 'MY_STRUCTURE' and exists (
-               with recursive chain as (select reports_to_id id from people where id = $3 union select x.reports_to_id from people x join chain c on x.id = c.id where x.reports_to_id is not null)
-               select 1 from chain where chain.id = p.id)))
+             or (a.scope_type = 'MY_STRUCTURE' and exists (select 1 from chain where chain.id = p.id)))
       order by p.id`,
-    [organizationId, rolesWithPermission("interventions.sensitive_decide"), person.id, person.teamId, person.subteamId],
-  )
-  return rows.rows.map((row) => row.id)
+    [organizationId, rolesWithPermission("interventions.sensitive_decide"), person.id, person.teamId, person.subteamId, rolesWithPermission(ALL_UNIVERSES_PERMISSION)],
+  )).rows
+  const all = rows.map((row) => row.id)
+  if (all.length === 0 || !(await isUniverseEnforced(db, organizationId))) return { ids: all, outsideUniverse: false }
+  const theirs = await personUniverse(db, organizationId, person.id)
+  const inUniverse = rows.filter((row) => row.in_structure || row.cross_universe || (row.operating_universe !== null && row.operating_universe === theirs)).map((row) => row.id)
+  return inUniverse.length > 0 ? { ids: inUniverse, outsideUniverse: false } : { ids: all, outsideUniverse: true }
+}
+
+export async function sensitiveDecisionHolders(db: Db, organizationId: string, person: Pick<EvaluationPerson, "id" | "teamId" | "subteamId">): Promise<string[]> {
+  return (await resolveSensitiveDecisionRecipients(db, organizationId, person)).ids
 }
 
 async function personName(db: Db, id: string): Promise<ReportPerson> {
@@ -98,12 +118,15 @@ export async function resolveAssignments(db: Db, organizationId: string, person:
     let problem: string | null = responsibleId ? null : unresolvedResponsibleMessage(type.definition.responsibleRole, person.name, type.definition.name, "ser responsável por")
     let approver: ReportPerson | null = null
     let approvalRecipientIds: string[] = []
+    let recipientsOutsideUniverse = false
     // Só avisar não abre nada: não há aprovação a resolver.
     if (type.definition.approval.required && decision.status !== "NOTIFIED") {
       const approverId = (await resolveByRoleChain(db as Database, person.id, [type.definition.approval.approverRole]))[0]?.id ?? null
       if (isSensitiveType(type.definition)) {
         // Decisão sensível: endereçada a quem tem a permissão (o aprovador designado só entra se também a tiver).
-        const holders = await sensitiveDecisionHolders(db, organizationId, person)
+        const resolved = await resolveSensitiveDecisionRecipients(db, organizationId, person)
+        const holders = resolved.ids
+        recipientsOutsideUniverse = resolved.outsideUniverse
         approvalRecipientIds = holders
         approver = approverId && holders.includes(approverId) ? await personName(db, approverId) : null
         if (holders.length === 0) problem ??= `Ninguém tem a permissão de decisão sensível no escopo de ${person.name}: a solicitação não pode ser aberta.`
@@ -115,7 +138,7 @@ export async function resolveAssignments(db: Db, organizationId: string, person:
         }
       }
     }
-    assignments.set(decision.typeKey, { responsible: responsibleId ? await personName(db, responsibleId) : null, approver, approvalRecipientIds, dueAt, problem })
+    assignments.set(decision.typeKey, { responsible: responsibleId ? await personName(db, responsibleId) : null, approver, approvalRecipientIds, dueAt, problem, ...(recipientsOutsideUniverse ? { recipientsOutsideUniverse } : {}) })
   }
   return assignments
 }

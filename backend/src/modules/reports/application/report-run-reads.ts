@@ -5,7 +5,7 @@ import type { Permission } from "../../access/domain/permissions.js"
 import { loadAccessContexts } from "../../access/infrastructure/postgres-access-repository.js"
 import { personRuleFor, type PersonUniverseRule } from "../../operating-universe/application/universe-access.js"
 import { isOperatingUniverse, type OperatingUniverse } from "../../operating-universe/domain/operating-universe.js"
-import { PgAnalyticsReadRepository, type AnalyticsReadRepository, type IndicatorDefinitionRow, type IndicatorPerformanceRow, type PrvPerformanceRow } from "../../performance-analytics/application/analytics-read-repository.js"
+import { hasStructureScopedGrant, PgAnalyticsReadRepository, type AnalyticsReadRepository, type IndicatorDefinitionRow, type IndicatorPerformanceRow, type PrvPerformanceRow } from "../../performance-analytics/application/analytics-read-repository.js"
 import { PinnedPeopleGraphCache } from "../../performance-analytics/infrastructure/organization-people-graph.js"
 
 /** O que a cobertura de um report lê do fechamento oficial. */
@@ -46,6 +46,8 @@ export class ReportRunReads extends PgAnalyticsReadRepository {
     /** Por conta, a visibilidade de QUALQUER permissão a partir do contexto de acesso já lido em lote (os domínios restritos da liderança pedem outras além de `indicators.view`). */
     private readonly visibilities: ReadonlyMap<string, (permission: Permission) => VisibilityFilter>,
     private readonly universeRules: ReadonlyMap<string, PersonUniverseRule>,
+    /** Por conta, se a permissão vem com escopo "Minha estrutura" — do mesmo contexto de acesso do lote (DC-06). */
+    private readonly structureGrants: ReadonlyMap<string, (permission: Permission) => boolean> = new Map(),
   ) {
     super(db, { peopleGraphCache: new PinnedPeopleGraphCache() })
   }
@@ -63,7 +65,7 @@ export class ReportRunReads extends PgAnalyticsReadRepository {
     const own = new Map<string, OperatingUniverse | null>(universes.rows.filter((row) => row.person_id).map((row) => [row.person_id!, isOperatingUniverse(row.operating_universe) ? row.operating_universe : null]))
     const rules = new Map<string, PersonUniverseRule>()
     for (const [accountId, context] of contexts) if (context.personId) rules.set(`${accountId}:${context.personId}`, personRuleFor(context, enforced, own.get(context.personId) ?? null))
-    return new ReportRunReads(db, organizationId, new Map([...contexts].map(([accountId, context]) => [accountId, (permission: Permission) => visibilityOf(context, permission)])), rules)
+    return new ReportRunReads(db, organizationId, new Map([...contexts].map(([accountId, context]) => [accountId, (permission: Permission) => visibilityOf(context, permission)])), rules, new Map([...contexts].map(([accountId, context]) => [accountId, (permission: Permission) => hasStructureScopedGrant(context, permission)])))
   }
 
   override async loadUniverseRule(organizationId: string, accountId: string, personId: string): Promise<PersonUniverseRule> {
@@ -74,6 +76,11 @@ export class ReportRunReads extends PgAnalyticsReadRepository {
   override async loadAccessVisibility(organizationId: string, accountId: string, permission: Permission): Promise<VisibilityFilter> {
     const prefetched = organizationId === this.organizationId ? this.visibilities.get(accountId)?.(permission) : undefined
     return prefetched ?? super.loadAccessVisibility(organizationId, accountId, permission)
+  }
+
+  override async loadStructureScopedGrant(organizationId: string, accountId: string, permission: Permission): Promise<boolean> {
+    const prefetched = organizationId === this.organizationId ? this.structureGrants.get(accountId)?.(permission) : undefined
+    return prefetched ?? super.loadStructureScopedGrant(organizationId, accountId, permission)
   }
 
   override loadIndicatorDefinitions(organizationId: string): Promise<IndicatorDefinitionRow[]> {

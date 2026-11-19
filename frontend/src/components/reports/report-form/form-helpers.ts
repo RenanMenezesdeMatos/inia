@@ -1,3 +1,5 @@
+import { ApiError } from "@/lib/api/api-client"
+import { REPORT_ERROR_MESSAGES } from "../report-labels"
 import { isRecordTool, type ReportConfig, type ReportDefinition, type VisualizationType } from "@/schemas/reports/reports.schema"
 
 /** Padrões e regras de tela do formulário de report (o backend revalida tudo). */
@@ -42,4 +44,10 @@ export function switchTool(definition: ReportDefinition, tool: ReportDefinition[
 /** Remove os campos opcionais sem valor antes de enviar. */
 export function cleanDefinition(definition: ReportDefinition): ReportDefinition {
   return Object.fromEntries(Object.entries(definition).filter(([, value]) => value !== undefined)) as ReportDefinition
+}
+
+/** Mensagem de erro do salvar e da prévia: a própria da tela para os códigos conhecidos, senão a do servidor. */
+export function reportErrorMessage(cause: unknown): string {
+  if (!(cause instanceof ApiError)) return "Não foi possível concluir. Tente de novo."
+  return (cause.code && REPORT_ERROR_MESSAGES[cause.code]) || cause.message
 }

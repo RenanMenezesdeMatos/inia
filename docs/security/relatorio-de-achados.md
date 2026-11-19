@@ -968,3 +968,15 @@ Nenhum achado crítico; nenhum vazamento entre organizações ou públicos confi
 As correções de intervenções (QA-01, QA-04, QA-07, ARQ-04, ARQ-09, ARQ-10, QA-05) foram interrompidas antes do relatório final do
 agente, a pedido do responsável; o que entrou passa em tipos, lint e testes, mas a cobertura item a item não foi conferida (R-48).
 
+### Delta das correções (19/11/2026)
+
+Conferência item a item das correções de intervenções (todas presentes com teste; faltava o `GER-0007` dos exemplos da Central,
+corrigido) e auditoria do delta `7fb4695b..79292ff8` (`~/security-audit-skill/inia/run-7/agents/delta-correcoes/relatorio.md`).
+A execução em lote dos reports lia as permissões dos domínios restritos conta a conta (prova `report-run-batch-proof`): corrigido.
+
+| Id | Sev. | Achado | Situação |
+|---|---|---|---|
+| R10-17 (DC-01) | Média | Destinatário da decisão de continuidade escolhido sem universo e barrado por universo ao decidir | Corrigido: mesma regra; lista vazia volta à regra anterior, com registro |
+| R10-18 (DC-02) | Média | Report de uso da INIA / Apoio entregue a destinatário sem a permissão | Corrigido: `ACCESS_DENIED` |
+| R10-19 (DC-03/04/06) | Baixa | `STARTED` sem sino em versão publicada durante o envio; oferta de report com termo; "Minha estrutura" em uso da INIA | Corrigido |
+

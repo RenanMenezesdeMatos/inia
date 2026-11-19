@@ -30,7 +30,7 @@ export type InMemoryOrg = {
   operationalSummary?: OperationalStructureSummary | null
   employmentStatuses?: Record<string, EmploymentStatusView>
   /** V1.5.8: visibilidade por CONTA (id da sessão, `sub`) × permissão — o que as atribuições de papel dariam. Ausente = nenhuma. */
-  access?: Record<string, Partial<Record<Permission, Partial<VisibilityFilter>>>>
+  access?: Record<string, Partial<Record<Permission, Partial<VisibilityFilter> & { myStructure?: boolean }>>>
 }
 
 export const ORG = "00000000-0000-4000-8000-000000000001"
@@ -91,6 +91,10 @@ export class InMemoryAnalyticsRepository implements AnalyticsReadRepository {
     this.calls.push("loadAccessVisibility")
     const grant = this.org.access?.[accountId]?.[permission]
     return { organizationWide: grant?.organizationWide ?? false, teamIds: grant?.teamIds ?? [], subteamIds: grant?.subteamIds ?? [] }
+  }
+
+  async loadStructureScopedGrant(_organizationId: string, accountId: string, permission: Permission): Promise<boolean> {
+    return this.org.access?.[accountId]?.[permission]?.myStructure ?? false
   }
 
   async loadPeopleInVisibility(_organizationId: string, visibility: VisibilityFilter) {

@@ -58,6 +58,7 @@ export function recordAlignmentUsage(db: Queryable, organizationId: string, reso
  * Sino "alinhamento em vigor" (QA-02): o aviso sai ANTES do evento `STARTED`. Se o envio falhar (ou o processo cair no meio), o evento
  * das versões ainda dentro da janela do aviso NÃO é gravado, e a próxima passada tenta de novo — o aviso é idempotente pela chave.
  * Versão que começou há mais que a janela não avisa mais; o evento dela é gravado de qualquer forma (o rastro nunca fica preso).
+ * O evento é gravado só para as versões lidas (e avisadas) nesta passada, pela lista de ids — nunca reaplicando o filtro (DC-03).
  */
 export const ALIGNMENT_STARTED_NOTICE_WINDOW_MS = 2 * 24 * 60 * 60 * 1000
 
@@ -80,9 +81,11 @@ export async function runAlignmentLifecycle(db: Queryable, now: Date = new Date(
     `insert into operational_alignment_events (organization_id, alignment_id, version_id, version, event_type, actor_person_id, occurred_at, details)
      select v.organization_id, v.alignment_id, v.id, v.version, 'STARTED', null, v.effective_from, jsonb_build_object('startsOn', v.starts_on, 'timeZone', v.time_zone)
      from operational_alignment_versions v
-     where ${startedFilter} and v.id <> all($2::uuid[])
+     where ${startedFilter} and v.id = any($2::uuid[])
      on conflict do nothing`,
-    [now, retryLater],
+    // Só as versões LIDAS nesta passada e já avisadas (DC-03): versão publicada durante o envio não ganha `STARTED` sem sino — ela
+    // entra em `pending` na passada seguinte.
+    [now, pending.map((row) => row.version_id).filter((id) => !retryLater.includes(id))],
   )
   const expired = await db.query(
     `insert into operational_alignment_events (organization_id, alignment_id, version_id, version, event_type, actor_person_id, occurred_at, details)
