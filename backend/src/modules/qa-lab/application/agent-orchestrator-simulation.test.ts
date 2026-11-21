@@ -60,7 +60,7 @@ function fakeDatabase(options: { agentActive?: boolean; invocationMode?: string 
       return { rows: [{ id: "k1", title: "Manual de PRV", versionId: "k1-v1", version: 1, organizationId: "org-qa", content: "## PRV\nO PRV é o programa de remuneração variável." }], rowCount: 1 }
     }
     // Bases da VERSÃO em execução (retrieve-knowledge.ts com o agente no contexto de versão).
-    if (text.includes("from knowledge_documents kd cross join agent_scope a")) {
+    if (text.includes("where kd.id = any($1::uuid[]) and kd.organization_id = $2")) {
       return (params[0] as string[]).includes(PRV_MANUAL_ID)
         ? { rows: [{ id: "k1", title: "Manual de PRV", documentType: "MANUAL", versionId: "k1-v1", version: 1, organizationId: "org-qa" }], rowCount: 1 }
         : { rows: [], rowCount: 0 }

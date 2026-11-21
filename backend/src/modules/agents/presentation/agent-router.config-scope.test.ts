@@ -108,8 +108,8 @@ function appFor(admin: "GROUP_B" | "ORGANIZATION", draft: AgentConfig | null | (
     const read = readAnswer(sql, params, versionConfigs)
     if (read) return read
     const ids = Array.isArray(params[0]) ? (params[0] as string[]) : []
-    if (sql.includes("select id from knowledge_documents where id = any")) return { rows: ids.filter((id) => DOC_TEAM[id]).map((id) => ({ id })) }
-    if (sql.includes("with agent as")) return { rows: ids.filter((id) => DOC_TEAM[id] === params[3]).map((id) => ({ id })) }
+    // `assertKnowledge`: bases existentes e se cabem no Grupo do agente ($3 alcance, $4 Grupo) — knowledge-agent-fit.ts.
+    if (sql.includes("from knowledge_documents d where d.id = any")) return { rows: ids.filter((id) => DOC_TEAM[id]).map((id) => ({ id, fits: params[2] === "ALL_TEAMS" || DOC_TEAM[id] === params[3] })) }
     if (sql.includes("select id, title from knowledge_documents")) return { rows: ids.map((id) => ({ id, title: id === DOC_A ? "Procedimentos do Grupo A" : "Procedimentos do Grupo B" })) }
     if (sql.includes('"next" from agent_versions')) return { rows: [{ next: 3 }] }
     if (sql.includes("insert into agent_versions")) return { rows: [{ id: "e0000000-0000-4000-8000-000000000003", number: 3 }] }

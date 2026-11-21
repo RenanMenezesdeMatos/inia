@@ -136,7 +136,7 @@ describe("Base de Conhecimento — escopo do administrador", () => {
     const { app, query } = appFor("GROUP_A")
     expect((await request(app).get("/")).status).toBe(200)
     const listSql = query.mock.calls.map(([sql]) => String(sql)).find((sql) => sql.includes("select q.*"))!
-    expect(listSql).toContain("os.scope_type = 'ALL_TEAMS' or os.team_id = any(")
+    expect(listSql).toContain("read_os.scope_type = 'ALL_TEAMS' or read_os.team_id = any(") // `readableDocumentSql`
   })
 
   it("administrador de Grupo altera só bases do Grupo dele — nunca a global, a de outro Grupo, nem promove a sua para global", async () => {

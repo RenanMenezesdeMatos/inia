@@ -5,7 +5,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { createMemoryConversationStore } from "../../assistant/testing/memory-conversation-store.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 import { FEEDBACK_PRESENTATION_CUE } from "../../feedback-application/domain/application-presentation.js"
-import type { ClarificationOutcome, ClarificationRequest } from "../../knowledge-clarification/application/knowledge-clarification-service.js"
+import { CLARIFICATION_RULES, type ClarificationOutcome, type ClarificationRequest } from "../../knowledge-clarification/application/knowledge-clarification-service.js"
 import { CLARIFICATION_TOOL_NAME, KNOWLEDGE_CLARIFICATION_VERSION, optionIdFor, stepIdFor, type ClarificationState } from "../../knowledge-clarification/domain/clarification-state.js"
 import { createRealtimeRouter } from "./realtime-router.js"
 
@@ -40,7 +40,7 @@ function productQuestion(): ClarificationState {
     updatedAt: NOW.toISOString(),
   }
 }
-const TRACE = { version: KNOWLEDGE_CLARIFICATION_VERSION, mode: "NEW" as const, decision: "CLARIFY" as const, navigation: null, rejectedOptions: [], plannerAttempts: 1, answerAttempts: 0, issues: [] }
+const TRACE = { version: KNOWLEDGE_CLARIFICATION_VERSION, rules: CLARIFICATION_RULES, mode: "NEW" as const, decision: "CLARIFY" as const, navigation: null, rejectedOptions: [], plannerAttempts: 1, answerAttempts: 0, issues: [] }
 
 function setup(outcomes: ClarificationOutcome[], options: { productContext?: string | null } = {}) {
   const memory = createMemoryConversationStore()

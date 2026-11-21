@@ -19,7 +19,7 @@ import type { StatusFreshness, StatusLoader } from "./workforce.js"
 import type { HireDatesLoader, InteractionStatsLoader } from "./indicator-diagnosis.js"
 import { coveringStatusPeriodSql } from "../../people/application/employment-status-service.js"
 import { resolveEmploymentStatusFreshness } from "../../people/application/employment-status-freshness.js"
-import { HIERARCHY_RULE } from "./org-hierarchy.js"
+import { HIERARCHY_LEADERSHIP_RULE } from "./org-hierarchy.js"
 import { executeLeadershipTool, isLeadershipTool, LEADERSHIP_ASK_TOOL, leadershipDeclarationsFor, type LeadershipToolDependencies, type LeadershipToolResult } from "./leadership-toolset.js"
 import { processScopeOf, structureGroupsOf, type ProcessScope } from "./process-consultation.js"
 import { resolveAnalysisPeriod, resolveStructureReference, type ResolvedStructure } from "./references.js"
@@ -197,7 +197,7 @@ export const LEADERSHIP_RESPONSE_RULES = [
   `  • COMUNICADOS recebidos pela equipe (quais, alcance; a leitura não é registrada) → leadership_communications;${INIA_USAGE_RULE}${SUPPORT_RULE}`,
   "  • PESSOAS por situação funcional (produção, férias, afastamento, quantas pessoas) → leadership_workforce; lista de pessoas por situação no indicador → leadership_people; SPAN (pessoas ou líderes por líder) → leadership_span;",
   "  • prioridades e pendências → leadership_priorities; alinhamentos operacionais → leadership_alignments (nunca diga que não há sem ela); processos e o que dizem as bases → leadership_process (passe o Grupo quando a estrutura tem Grupos com bases diferentes);",
-  `  • ${HIERARCHY_RULE.slice(2)} Fora da estrutura de quem pergunta, ela é a única ferramenta que alcança outras pessoas, e só no organograma;`,
+  `  • ${HIERARCHY_LEADERSHIP_RULE.slice(2)} Fora da estrutura de quem pergunta, ela é a única ferramenta que alcança outras pessoas, e só no organograma, no cadastro (ativo/inativo) e na situação funcional;`,
   "  • qualquer conta sobre números já trazidos (somar, dividir, % de uma parte, diferença, variação) → leadership_calculate. Estatística de uma população (média, mediana, percentil, mínimo, máximo, desvio) NUNCA sai da calculadora sobre uma lista: peça à ferramenta do dado, que calcula sobre todos os registros (a lista que você recebe pode estar cortada).",
   "- Se nenhuma ferramenta tiver o dado pedido, diga exatamente isso e o que você consegue trazer; nunca afirme que o dado não existe nem explique a ausência com suposição sobre a operação.",
   "- Entenda o que a pergunta pede: \"quantos\" = quantidade; \"qual %\" = percentual; \"quem\" = nomes (recorte por PESSOA); \"pior quartil geral\" = Q4 de PRV; \"dispersão\" = distribuição Q1–Q4 e desvio padrão. Traga o que foi pedido e, quando ajudar, os outros dois.",

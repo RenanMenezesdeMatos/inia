@@ -1,6 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
-import { OPERATING_UNIVERSE_LABELS, isOperatingUniverse, type OperatingUniverse } from "../domain/operating-universe.js"
+import { OPERATING_UNIVERSE_LABELS, asOperatingUniverse, type OperatingUniverse } from "../domain/operating-universe.js"
 
 /**
  * VÍNCULOS × UNIVERSO — produto pertence a exatamente um universo; base de conhecimento ligada a produtos ("Vale para", abrangência em vigor em
@@ -21,7 +21,6 @@ export type UniverseLinkConflict = {
   viaCategoryId: string | null
 }
 
-const asUniverse = (value: string | null): OperatingUniverse | null => (isOperatingUniverse(value) ? value : null)
 
 /** Produtos (diretos ou dentro das categorias escolhidas) com universo diferente de `universe`. */
 export async function incompatibleProducts(db: Queryable, organizationId: string, nodeIds: readonly string[], universe: OperatingUniverse | null): Promise<{ id: string; name: string; operatingUniverse: OperatingUniverse; viaCategoryId: string | null }[]> {
@@ -84,10 +83,10 @@ export async function existingUniverseConflicts(db: Queryable, organizationId: s
       sourceKind: row.source_kind,
       sourceId: row.source_id,
       sourceName: row.source_name,
-      sourceUniverse: filter.overrideSourceUniverse !== undefined && row.source_id === filter.sourceId ? filter.overrideSourceUniverse : asUniverse(row.source_universe),
+      sourceUniverse: filter.overrideSourceUniverse !== undefined && row.source_id === filter.sourceId ? filter.overrideSourceUniverse : asOperatingUniverse(row.source_universe),
       productId: row.product_id,
       productName: row.product_name,
-      productUniverse: asUniverse(row.product_universe),
+      productUniverse: asOperatingUniverse(row.product_universe),
       viaCategoryId: row.via,
     }))
     .filter((row) => row.sourceUniverse !== null && row.productUniverse !== null && row.sourceUniverse !== row.productUniverse)

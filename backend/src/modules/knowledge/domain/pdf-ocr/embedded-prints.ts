@@ -24,9 +24,21 @@ import type { OcrBox } from "./hocr.js"
  * V2 (20/11/2026, run-8, SB-01): página com operações ou imagens demais (PDF montado para prender o leitor) não é classificada pelas imagens —
  * segue a regra da tinta, como a página digitalizada (`maxPageOperators`, `maxPlacements`), e só os primeiros `maxPrintsPerPage` prints são
  * recortados à tinta. Páginas normais (manuais, "Print To PDF") têm resultado igual ao da V1.
+ *
+ * V3 (21/11/2026, QA-07 da run-8, comprovado com `scripts/dev/pdf-ocr-eval/gerar-digitalizado.ts`): digitalização cuja imagem NÃO cobre 85% da
+ * página (app de celular, Carta impressa em A4, margem branca do scanner — no teste, 70% da área) era tomada por um print só e a página inteira
+ * saía do texto (539 de 539 palavras perdidas). Agora, depois da primeira leitura, a página `EMBEDDED` volta a ser `SCAN` quando uma imagem cobre
+ * ao menos `scanLikeAreaShare` da página e quase todo o texto lido está dentro das imagens (fora delas, menos de `scanLikeOutsideWords` das
+ * palavras). No "Print To PDF" o texto contornado fica FORA das imagens, então ele continua `EMBEDDED`.
  */
 export const PDF_EMBEDDED_PRINT_RULE = {
-  version: "PDF_EMBEDDED_PRINTS_V2",
+  version: "PDF_EMBEDDED_PRINTS_V3",
+  /** V3: a maior imagem cobre ao menos isto da área da página… */
+  scanLikeAreaShare: 0.35,
+  /** …e menos que isto das palavras lidas está fora de todas as imagens: a imagem é a página digitalizada, não um print. */
+  scanLikeOutsideWords: 0.1,
+  /** Com menos palavras lidas que isto, a página não tem texto para decidir: fica como estava. */
+  scanLikeMinWords: 15,
   /** Acima disto, a lista de operações da página não é percorrida: a página segue a regra da tinta. */
   maxPageOperators: 300_000,
   /** Acima disto (antes de emendar as tiras), idem — o emendar é quadrático. */
@@ -103,4 +115,21 @@ export function classifyScannedPage(placements: readonly PdfImagePlacement[], pa
     .filter((box) => box.right - box.left >= rule.minSide && box.bottom - box.top >= rule.minSide && (box.right - box.left) * (box.bottom - box.top) >= pageWidth * pageHeight * rule.minPageShare)
     .map(({ left, top, right, bottom }) => ({ left, top, right, bottom }))
   return { source: "EMBEDDED", prints: dropContained(prints).sort((a, b) => a.top - b.top || a.left - b.left) }
+}
+
+/**
+ * V3: a página que a posição das imagens chamou de `EMBEDDED` é, na verdade, digitalização com margem? Decide pelo texto da primeira leitura:
+ * imagem grande + quase nenhuma palavra fora das imagens = o texto do documento está dentro da imagem, e cortá-la como print apagaria a página.
+ */
+export function embeddedLooksScanned(prints: readonly OcrBox[], words: readonly OcrBox[], pageWidth: number, pageHeight: number): boolean {
+  const rule = PDF_EMBEDDED_PRINT_RULE
+  if (prints.length === 0 || words.length < rule.scanLikeMinWords) return false
+  const largest = Math.max(...prints.map((box) => (box.right - box.left) * (box.bottom - box.top)))
+  if (largest < pageWidth * pageHeight * rule.scanLikeAreaShare) return false
+  const inside = (word: OcrBox) => prints.some((box) => {
+    const x = (word.left + word.right) / 2
+    const y = (word.top + word.bottom) / 2
+    return x >= box.left && x <= box.right && y >= box.top && y <= box.bottom
+  })
+  return words.filter((word) => !inside(word)).length < words.length * rule.scanLikeOutsideWords
 }

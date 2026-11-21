@@ -14,7 +14,24 @@ export async function pendingMigrations(db: Pick<pg.ClientBase, "query">, direct
   return files.filter((file) => !applied.has(file))
 }
 
-/** Aplica as migrations pendentes (schema_migrations), em ordem, cada uma na própria transação. Erro propaga. */
+/**
+ * Pendentes com número MENOR que a mais nova já aplicada (run-8, ARQ-11). Numa instalação nova ela rodaria antes das seguintes; num banco
+ * já atualizado, depois — duas ordens diferentes para o mesmo esquema. Só contam as aplicadas que ainda existem no diretório (uma
+ * renumerada sai do cálculo).
+ */
+export function outOfOrderMigrations(files: readonly string[], applied: ReadonlySet<string>): string[] {
+  const newest = files.filter((file) => applied.has(file)).sort().at(-1)
+  return newest ? files.filter((file) => !applied.has(file) && file < newest) : []
+}
+
+export class MigrationOrderError extends Error {
+  constructor(readonly migrations: readonly string[]) {
+    super(`Migration fora de ordem: ${migrations.join(", ")} tem número menor que uma já aplicada neste banco. Renumere para depois da última antes de aplicar — nada foi aplicado.`)
+    this.name = "MigrationOrderError"
+  }
+}
+
+/** Aplica as migrations pendentes (schema_migrations), em ordem, cada uma na própria transação. Fora de ordem = recusa antes de aplicar qualquer uma. Erro propaga. */
 export async function runMigrations(client: pg.PoolClient, log: (message: string) => void, directory = MIGRATIONS_DIRECTORY): Promise<string[]> {
   await client.query(`
     create table if not exists schema_migrations (
@@ -24,9 +41,11 @@ export async function runMigrations(client: pg.PoolClient, log: (message: string
   `)
   const applied: string[] = []
   const files = (await readdir(directory)).filter((file) => file.endsWith(".sql")).sort()
+  const alreadyApplied = new Set((await client.query<{ name: string }>("select name from schema_migrations")).rows.map((row) => row.name))
+  const outOfOrder = outOfOrderMigrations(files, alreadyApplied)
+  if (outOfOrder.length > 0) throw new MigrationOrderError(outOfOrder)
   for (const file of files) {
-    const done = await client.query("select 1 from schema_migrations where name = $1", [file])
-    if (done.rowCount) continue
+    if (alreadyApplied.has(file)) continue
     await client.query("begin")
     try {
       // Migration nunca herda limite de comando/transação de quem a chama (um índice sobre tabela grande passa de minutos).

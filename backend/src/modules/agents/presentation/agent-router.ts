@@ -2,40 +2,30 @@ import { Router, type Request } from "express"
 import { OPERATING_UNIVERSES, optionalOperatingUniverseSchema } from "../../operating-universe/domain/operating-universe.js"
 import { assertUniverseRequiredFor } from "../../operating-universe/application/universe-access.js"
 import { z } from "zod"
-import { INVESTIGATION_CAPABILITY_LABELS, investigationCapabilitySchema, normalizeCapabilities, type InvestigationCapability } from "../../investigation/domain/capabilities.js"
+import { investigationCapabilitySchema, normalizeCapabilities } from "../../investigation/domain/capabilities.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
 import { applyManageableScopeFilter, canManageScope, getManageableScopes, normalizeScopedTarget, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
-import { agentBusinessDomainJoin, agentBusinessDomainJson, assertBusinessDomainsSelectable, resolveBusinessDomainRefs } from "../../business-domains/application/business-domain-lookup.js"
+import { agentBusinessDomainJoin, agentBusinessDomainJson } from "../../business-domains/application/business-domain-lookup.js"
 import { businessDomainCodeSchema } from "../../business-domains/domain/business-domain.js"
 import { agentTextSchema } from "../domain/agent-field-limits.js"
-import { actionLimitsProblem, describeActionLimits, type AgentActionLimits } from "../domain/action-limits.js"
-import { describeSpecialtyProblem, legacySpecialtyFor, legacySpecialtySchema, resolveAgentSpecialty, specialtyKindSchema, type AgentSpecialty } from "../domain/agent-specialty.js"
+import type { AgentActionLimits } from "../domain/action-limits.js"
+import { legacySpecialtySchema, specialtyKindSchema } from "../domain/agent-specialty.js"
 import type { AgentConfig } from "../domain/agent-config.js"
 import { runAgent } from "../application/run-agent.js"
 import { buildSystemPrompt } from "../application/build-system-prompt.js"
 import { withAgentSnapshots } from "../application/agent-runtime-context.js"
-import {
-  assertDraftRevision,
-  discardAgentDraft,
-  listAgentVersions,
-  loadAgentLifecycle,
-  loadAgentVersion,
-  loadLiveAgentConfig,
-  publishAgentDraft,
-  resolveAgentDraftForTest,
-  revertAgentToVersion,
-  saveAgentDraft,
-  writeLiveAgentConfig,
-  type AgentActor,
-  type AgentLifecycleRow,
-} from "../application/agent-versions.js"
+import { assertDraftRevision, discardAgentDraft, listAgentVersions, loadAgentLifecycle, loadAgentVersion, loadLiveAgentConfig, resolveAgentDraftForTest, revertAgentToVersion, writeLiveAgentConfig, type AgentActor } from "../application/agent-versions.js"
 import { assessAgentDeletion, deleteAgentIfUnused } from "../application/agent-deletion.js"
 import { computePublishImpact } from "../application/agent-publish-impact.js"
-import { draftHasOtherChanges, knowledgeIdsAfter, loadKnowledgeLinkCandidates, loadKnowledgeLinkContext, pageKnowledgeLinkCandidates, type KnowledgeLinkCandidate, type KnowledgeLinkContext } from "../application/agent-knowledge-links.js"
-import { sameAgentConfig } from "../domain/agent-config.js"
+import { loadKnowledgeLinkCandidates, loadKnowledgeLinkContext, pageKnowledgeLinkCandidates } from "../application/agent-knowledge-links.js"
+import { applyKnowledgeLinks, MAX_KNOWLEDGE_LINK_CHANGES, previewKnowledgeLinks } from "../application/agent-knowledge-link-changes.js"
+import { actionLimitsText, agentNotFound, assertActionLimits, assertKnowledge, assertNameAvailable, authorizeAgentConfig, canReadAgentConfig, lifecycleForWrite, nextConfig, rethrowNameTaken, specialtyFields, specialtyFromInput } from "../application/agent-config-rules.js"
+import { fieldChange, NON_CONFIG_HISTORY_FIELDS, readableHistoryEntry, recordAgentHistory, versionLabel, type StoredFieldChange } from "../application/agent-history.js"
+import { configScopeSql, readableRun, readsEveryAgentScope, type AgentRunRow } from "../application/agent-read-access.js"
+import { publishCheckedDraft, saveDraftWithHistory } from "../application/agent-draft-writes.js"
 import { applyUniverseListFilter, universeListParam } from "../../operating-universe/application/universe-list-filter.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 
@@ -125,64 +115,6 @@ const revisionSchema = z.object({ expectedDraftRevision: z.number().int().nonneg
 const revertSchema = revisionSchema.extend({ discardDraft: z.boolean().default(false) })
 const referencesSchema = z.object({ ids: z.string().optional() })
 
-/** Texto vazio dos limites vira null (o interruptor desligado guarda o texto que houver). */
-const actionLimitsText = (value: string | null | undefined) => (value?.trim() ? value.trim() : null)
-
-/** Ligado sem texto: 422 antes de gravar (o banco também recusa — agents_action_limits_check). */
-function assertActionLimits(limits: AgentActionLimits) {
-  const problem = actionLimitsProblem(limits)
-  if (problem) throw new DomainError(problem, "AGENT_ACTION_LIMITS_REQUIRED", 422)
-}
-
-type SpecialtyInput = { specialtyKind?: string | null | undefined; businessDomainId?: string | null | undefined; domain?: string | null | undefined; capability?: string | null | undefined; consolidatedInput?: boolean | undefined; specialty?: string | null | undefined }
-
-/**
- * Entrada → especialidade tipada: a forma nova (`specialtyKind`…) prevalece; sem ela, a forma
- * legada (`specialty`) é traduzida pelo dual-read. `current` é o estado persistido (PATCH parcial).
- * O domínio de negócio é SEMPRE resolvido contra o catálogo (`business_domains`): por id
- * (`businessDomainId`), por código (`domain`) ou pelo código legado em `specialty`. Inexistente ⇒
- * 422 BUSINESS_DOMAIN_NOT_FOUND; inativo só passa se for o domínio que o Agent já tinha.
- */
-async function specialtyFromInput(db: Pick<Database, "query">, organizationId: string, input: SpecialtyInput, current?: AgentSpecialty): Promise<AgentSpecialty | undefined> {
-  const touchesNew = input.specialtyKind !== undefined || input.businessDomainId !== undefined || input.domain !== undefined || input.capability !== undefined || input.consolidatedInput !== undefined
-  if (!touchesNew && input.specialty === undefined) return undefined
-  const legacyOnly = !touchesNew ? resolveAgentSpecialty({ specialty: input.specialty }) : null
-  const base = current ?? { kind: null, domain: null, capability: null, acceptsConsolidated: false }
-  const kind = input.specialtyKind !== undefined ? input.specialtyKind : legacyOnly ? legacyOnly.kind : base.kind
-  const domainSelector = input.businessDomainId !== undefined || input.domain !== undefined ? { ids: input.businessDomainId ? [input.businessDomainId] : [], codes: !input.businessDomainId && input.domain ? [input.domain] : [] } : legacyOnly ? { codes: legacyOnly.domain ? [legacyOnly.domain.code] : [] } : null
-  let domain = base.domain
-  if (domainSelector) {
-    const refs = await resolveBusinessDomainRefs(db as Database, organizationId, domainSelector)
-    assertBusinessDomainsSelectable(refs, base.domain ? [base.domain.code] : [])
-    domain = refs[0] ?? null
-  }
-  const resolved: AgentSpecialty = {
-    kind: kind === "DOMAIN" || kind === "CROSS_CUTTING" || kind === "PERFORMANCE" || kind === "SYNTHESIS" ? kind : null,
-    domain: kind === "DOMAIN" ? domain : null,
-    capability: kind === "CROSS_CUTTING" ? (input.capability !== undefined ? input.capability : base.capability) : null,
-    acceptsConsolidated: kind === "SYNTHESIS" || Boolean(input.consolidatedInput ?? base.acceptsConsolidated),
-  }
-  const problem = describeSpecialtyProblem({ ...resolved, domain: kind === "DOMAIN" ? domain : resolved.domain })
-  if (problem) throw new DomainError(problem, "AGENT_SPECIALTY_INVALID", 422)
-  return resolved
-}
-
-/** Especialidade de uma configuração (rascunho/versão), com o domínio lido do catálogo. */
-async function specialtyOfConfig(db: Pick<Database, "query">, config: AgentConfig): Promise<AgentSpecialty> {
-  const domain = config.businessDomainId ? (await db.query<{ id: string; code: string; name: string; active: boolean }>(`select id, code, name, active from business_domains where id = $1`, [config.businessDomainId])).rows[0] : undefined
-  return resolveAgentSpecialty({
-    specialty: config.specialty,
-    specialty_kind: config.specialtyKind,
-    domain: config.domain,
-    capability: config.capability,
-    consolidated_input: config.consolidatedInput,
-    business_domain_id: domain?.id ?? null,
-    business_domain_code: domain?.code ?? null,
-    business_domain_name: domain?.name ?? null,
-    business_domain_active: domain?.active ?? null,
-  })
-}
-
 const listAgentsSchema = orgScopeFilterSchema.extend({
   search: searchParam,
   agentType: listParam(z.enum(AGENT_TYPES)),
@@ -224,246 +156,9 @@ const AGENT_SELECT = `
   where a.organization_id = $1
 `
 
-const FIELD_LABELS: Record<string, string> = {
-  name: "Nome",
-  agentType: "Tipo",
-  objective: "Objetivo",
-  description: "Descrição",
-  contextPrompt: "Contexto",
-  active: "Status",
-  scopeType: "Alcance",
-  knowledgeDocumentIds: "Bases de conhecimento",
-  actionLimits: "Limites de atuação",
-  investigationCapabilities: "Ferramentas de investigação",
-  specialty: "Especialidade",
-  recommendSupportMaterials: "Recomendar materiais",
-  version: "Versão",
-  draft: "Rascunho",
-}
-
-type FieldChange = { field: string; label: string; from: string; to: string }
-
-function diffIdList(field: string, before: string[], after: string[]): FieldChange | null {
-  const added = after.filter((id) => !before.includes(id))
-  const removed = before.filter((id) => !after.includes(id))
-  if (!added.length && !removed.length) return null
-  const parts: string[] = []
-  if (added.length) parts.push(`+${added.length}`)
-  if (removed.length) parts.push(`-${removed.length}`)
-  return { field, label: FIELD_LABELS[field]!, from: "", to: parts.join(" ") }
-}
-
-const capabilityLabel = (list: string[]) => (list.length === 0 ? "Nenhuma" : list.map((capability) => INVESTIGATION_CAPABILITY_LABELS[capability as InvestigationCapability] ?? capability).join(", "))
-const scopeLabel = (config: Pick<AgentConfig, "scopeType">) => config.scopeType
-
-/** Diferenças entre duas configurações completas (rascunho anterior → rascunho novo). */
-function diffConfigs(before: AgentConfig, after: AgentConfig): FieldChange[] {
-  const changes: FieldChange[] = []
-  for (const field of ["name", "agentType", "objective", "description", "contextPrompt"] as const) {
-    if (before[field] !== after[field]) changes.push({ field, label: FIELD_LABELS[field]!, from: String(before[field]), to: String(after[field]) })
-  }
-  if (before.scopeType !== after.scopeType || before.teamId !== after.teamId || before.subteamId !== after.subteamId) {
-    changes.push({ field: "scopeType", label: FIELD_LABELS.scopeType!, from: scopeLabel(before), to: scopeLabel(after) })
-  }
-  const knowledgeChange = diffIdList("knowledgeDocumentIds", before.knowledgeDocumentIds, after.knowledgeDocumentIds)
-  if (knowledgeChange) changes.push(knowledgeChange)
-  const limitsBefore = describeActionLimits({ enabled: before.actionLimitsEnabled, text: before.actionLimits })
-  const limitsAfter = describeActionLimits({ enabled: after.actionLimitsEnabled, text: after.actionLimits })
-  if (limitsBefore !== limitsAfter) changes.push({ field: "actionLimits", label: FIELD_LABELS.actionLimits!, from: limitsBefore, to: limitsAfter })
-  const capabilitiesBefore = normalizeCapabilities(before.investigationCapabilities)
-  const capabilitiesAfter = normalizeCapabilities(after.investigationCapabilities)
-  if (capabilitiesBefore.join(",") !== capabilitiesAfter.join(",")) changes.push({ field: "investigationCapabilities", label: FIELD_LABELS.investigationCapabilities!, from: capabilityLabel(capabilitiesBefore), to: capabilityLabel(capabilitiesAfter) })
-  if (before.specialtyKind !== after.specialtyKind || before.businessDomainId !== after.businessDomainId || before.capability !== after.capability || before.consolidatedInput !== after.consolidatedInput) {
-    changes.push({ field: "specialty", label: FIELD_LABELS.specialty!, from: before.specialty ?? before.specialtyKind ?? "—", to: after.specialty ?? after.specialtyKind ?? "—" })
-  }
-  if (before.recommendSupportMaterials !== after.recommendSupportMaterials) {
-    changes.push({ field: "recommendSupportMaterials", label: FIELD_LABELS.recommendSupportMaterials!, from: before.recommendSupportMaterials ? "Sim" : "Não", to: after.recommendSupportMaterials ? "Sim" : "Não" })
-  }
-  return changes
-}
-
-type HistoryAction = "CREATED" | "UPDATED" | "DUPLICATED" | "PUBLISHED" | "REVERTED" | "DRAFT_DISCARDED"
-
-/** `configs`: as configurações cujos valores a alteração mostra (antes e depois) — o alcance delas decide quem lê os valores. */
-async function recordAgentHistory(client: Pick<Database, "query">, organizationId: string, input: { agentId: string; action: HistoryAction; actor: AgentActor; changes: FieldChange[]; configs?: AgentConfig[] }) {
-  const configScopes = input.configs?.map((config) => ({ scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId }))
-  const changes: StoredFieldChange[] = configScopes ? input.changes.map((change) => ({ ...change, configScopes })) : input.changes
-  await client.query(
-    `insert into agent_history(organization_id, agent_id, action, changed_by_person_id, changed_by_name, changes)
-     values ($1,$2,$3,$4,$5,$6)`,
-    [organizationId, input.agentId, input.action, input.actor.personId, input.actor.name, JSON.stringify(changes)],
-  )
-}
-
-/** Segurança de KB por código, não por confiança no id enviado pelo frontend: só bases da
- * organização e não excluídas podem ser autorizadas para um agente. */
-async function assertKnowledgeDocumentsExist(client: Pick<Database, "query">, organizationId: string, knowledgeDocumentIds: string[]) {
-  const uniqueIds = [...new Set(knowledgeDocumentIds)]
-  if (uniqueIds.length === 0) return
-  const found = await client.query<{ id: string }>(
-    `select id from knowledge_documents where id = any($1::uuid[]) and organization_id = $2 and deleted_at is null`,
-    [uniqueIds, organizationId],
-  )
-  if (found.rows.length !== uniqueIds.length) {
-    throw new DomainError("Uma das bases de conhecimento selecionadas não existe ou foi excluída.", "AGENT_KNOWLEDGE_NOT_FOUND", 422)
-  }
-}
-
-/**
- * Base de outro Grupo não entra num Agent de Grupo (achado A-F07): o conteúdo dela iria parar nas respostas que o Agent dá
- * para gente de fora do Grupo da base. Agent de Grupo/Subgrupo aceita base global ou do MESMO Grupo; Agent "todos os
- * Grupos" (só quem administra a organização cria) aceita qualquer base da organização. Conferido contra o alcance da
- * CONFIGURAÇÃO (rascunho, ou versão a publicar) — não mais o da linha gravada.
- */
-async function assertKnowledgeDocumentsCompatible(client: Pick<Database, "query">, organizationId: string, scope: Pick<AgentConfig, "scopeType" | "teamId" | "subteamId">, knowledgeDocumentIds: string[]) {
-  const uniqueIds = [...new Set(knowledgeDocumentIds)]
-  if (uniqueIds.length === 0 || scope.scopeType === "ALL_TEAMS") return
-  const compatible = await client.query<{ id: string }>(
-    `with agent as (select case when $3 = 'SUBTEAM' then (select st.team_id from subteams st where st.id = $5::uuid) else $4::uuid end team_id)
-     select d.id from knowledge_documents d, agent
-      where d.id = any($1::uuid[]) and d.organization_id = $2 and d.deleted_at is null
-        and exists (
-          select 1 from knowledge_document_org_scopes os left join subteams st on st.id = os.subteam_id
-           where os.knowledge_document_id = d.id and (os.scope_type = 'ALL_TEAMS' or coalesce(os.team_id, st.team_id) = agent.team_id))`,
-    [uniqueIds, organizationId, scope.scopeType, scope.teamId, scope.subteamId],
-  )
-  if (compatible.rows.length !== uniqueIds.length) {
-    throw new DomainError("Uma das bases de conhecimento selecionadas vale para outro Grupo — escolha bases globais ou do Grupo deste agente.", "AGENT_KNOWLEDGE_SCOPE_FORBIDDEN", 422)
-  }
-}
-
-async function assertKnowledge(client: Pick<Database, "query">, organizationId: string, config: AgentConfig) {
-  await assertKnowledgeDocumentsExist(client, organizationId, config.knowledgeDocumentIds)
-  await assertKnowledgeDocumentsCompatible(client, organizationId, config, config.knowledgeDocumentIds)
-}
-
-/** Outro agente da organização já usa o nome (a unicidade vale para a linha viva; conferida também no rascunho). */
-async function assertNameAvailable(client: Pick<Database, "query">, organizationId: string, name: string, agentId: string | null) {
-  const taken = await client.query(`select 1 from agents where organization_id = $1 and name = $2 and ($3::uuid is null or id <> $3::uuid)`, [organizationId, name, agentId])
-  if (taken.rows[0]) throw new DomainError("Já existe um agente com esse nome.", "AGENT_NAME_TAKEN", 409)
-}
-
-const scopeForbidden = () => new DomainError("Você não tem permissão para mover o agente para esse escopo.", "AGENT_SCOPE_FORBIDDEN", 403)
-
-/**
- * Rascunho e versões guardam o PRÓPRIO alcance, que pode ser maior que o da linha viva conferida por `authorizeAgent` (o agente
- * já foi "todos os Grupos" numa versão anterior, ou quem administra a organização preparou o rascunho). Quem age sobre uma
- * configuração — prévia das instruções, teste, prévia da publicação, publicar, reverter, salvar ou descartar o rascunho — precisa
- * alcançar também o alcance DELA, a mesma regra de mover o agente no PATCH. Sem isso, quem administra um Grupo montava o prompt
- * (com as bases) de uma versão de todos os Grupos, a testava ou a publicava de novo. Sem configuração (null) não há o que conferir.
- */
-function authorizeAgentConfig(scopes: ManageableScopes, config: ScopedTarget | null | undefined): void {
-  if (!canReadAgentConfig(scopes, config)) throw scopeForbidden()
-}
-
-/**
- * Regra de LEITURA do módulo (a de `authorizeAgent`: administrar agentes no alcance) aplicada ao alcance de uma configuração. Quem
- * lê o agente pelo alcance da linha viva não lê, só por isso, o rascunho, uma versão ou o conteúdo testado de outro alcance: o
- * contexto, as bases, as ferramentas e os limites deles saem só com id, número, situação, datas, autor e `restricted: true` (como
- * as Bases fazem com a versão restrita). Sem configuração (null) não há o que esconder.
- */
-function canReadAgentConfig(scopes: ManageableScopes, config: ScopedTarget | null | undefined): boolean {
-  return !config || canManageScope(scopes, config)
-}
-
-/** Alcance de uma configuração guardada em JSON (versão, conteúdo testado), sem o resto dela. */
-const configScopeSql = (config: string) =>
-  `case when ${config} is null then null else jsonb_build_object('scopeType', ${config}->>'scopeType', 'teamId', ${config}->>'teamId', 'subteamId', ${config}->>'subteamId') end`
-
-/**
- * Alteração do histórico com o alcance das configurações envolvidas (antes e depois) — o histórico guarda os valores completos
- * (contexto, limites). Quem não alcança uma delas vê só quem alterou, quando e quais campos (`restricted`). Registro gravado antes
- * de 09/11/2026 não guarda o alcance: falha fechado — os valores de configuração dele só aparecem para quem alcança TODOS os
- * alcances que o agente já teve (`readsEveryAgentScope`). Situação, versão e rascunho não são configuração e saem sempre.
- */
-type StoredFieldChange = FieldChange & { configScopes?: ScopedTarget[] }
-
-const NON_CONFIG_HISTORY_FIELDS = new Set(["active", "version", "draft"])
-
-function readableHistoryEntry(scopes: ManageableScopes, entry: { changes: StoredFieldChange[] }, readsLegacyValues: boolean) {
-  const restricted = entry.changes.some((change) =>
-    change.configScopes ? change.configScopes.some((scope) => !canReadAgentConfig(scopes, scope)) : !readsLegacyValues && !NON_CONFIG_HISTORY_FIELDS.has(change.field),
-  )
-  return {
-    ...entry,
-    changes: entry.changes.map((change) => ({ field: change.field, label: change.label, from: restricted ? "" : change.from, to: restricted ? "" : change.to })),
-    restricted,
-  }
-}
-
-/** Quem lê alcança todos os alcances que o agente já teve: o da linha viva, o do rascunho e o de cada versão publicada. */
-async function readsEveryAgentScope(db: Pick<Database, "query">, organizationId: string, agentId: string, access: { scope: ScopedTarget; scopes: ManageableScopes }): Promise<boolean> {
-  if (access.scopes.unrestricted || access.scopes.allTeams) return true
-  const versions = await db.query<ScopedTarget>(
-    `select distinct v.config->>'scopeType' "scopeType", v.config->>'teamId' "teamId", v.config->>'subteamId' "subteamId"
-       from agent_versions v where v.agent_id = $1 and v.organization_id = $2`,
-    [agentId, organizationId],
-  )
-  const draft = (await loadAgentLifecycle(db, organizationId, agentId))?.draftConfig ?? null
-  return [access.scope, draft, ...versions.rows].every((scope) => canReadAgentConfig(access.scopes, scope))
-}
-
-type AgentRunRow = {
-  id: string; source: string; inputContext: string | null; outputText: string | null; status: string; errorMessage: string | null; model: string | null; caseId: string | null
-  createdAt: string; completedAt: string | null; agentVersionId: string | null; agentVersionNumber: number | null; runTarget: string | null; hasTestedConfig: boolean; configScope: ScopedTarget | null
-}
-
-/**
- * Execução de uma configuração de outro alcance: só id, origem, situação, datas e versão — a entrada e a saída também ficam de fora.
- * Execução anterior à migration 164 (sem versão nem conteúdo testado) não guarda o alcance da configuração com que rodou: falha
- * fechado como o histórico antigo — o conteúdo dela só sai para quem alcança TODOS os alcances que o agente já teve
- * (`readsLegacyRuns` = `readsEveryAgentScope`).
- */
-function readableRun(scopes: ManageableScopes, { configScope, ...run }: AgentRunRow, readsLegacyRuns: boolean) {
-  if (configScope ? canReadAgentConfig(scopes, configScope) : readsLegacyRuns) return { ...run, restricted: false }
-  return { ...run, inputContext: null, outputText: null, errorMessage: null, model: null, caseId: null, hasTestedConfig: false, restricted: true }
-}
-
-/** Configuração seguinte = a editável + o que veio no pedido, validada como um cadastro inteiro (inclusive o alcance resultante). */
-async function nextConfig(client: Pick<Database, "query">, organizationId: string, scopes: ManageableScopes, base: AgentConfig, input: z.infer<typeof updateAgentSchema>): Promise<AgentConfig> {
-  let scope: ScopedTarget = { scopeType: base.scopeType, teamId: base.teamId, subteamId: base.subteamId }
-  if (input.scopeType !== undefined) {
-    const normalized = await normalizeScopedTarget(client, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })
-    if (!normalized) throw scopeForbidden()
-    scope = normalized
-  }
-  authorizeAgentConfig(scopes, scope)
-  const specialty = await specialtyFromInput(client, organizationId, input, await specialtyOfConfig(client, base))
-  const actionLimits: AgentActionLimits = {
-    enabled: input.actionLimitsEnabled ?? base.actionLimitsEnabled,
-    text: input.actionLimits !== undefined ? actionLimitsText(input.actionLimits) : base.actionLimits,
-  }
-  assertActionLimits(actionLimits)
-  const config: AgentConfig = {
-    ...base,
-    name: input.name ?? base.name,
-    agentType: input.agentType ?? base.agentType,
-    objective: input.objective ?? base.objective,
-    description: input.description ?? base.description,
-    contextPrompt: input.contextPrompt ?? base.contextPrompt,
-    scopeType: scope.scopeType as AgentConfig["scopeType"],
-    teamId: scope.teamId,
-    subteamId: scope.subteamId,
-    ...(specialty
-      ? { specialty: legacySpecialtyFor(specialty), specialtyKind: specialty.kind, domain: specialty.domain?.code ?? null, capability: specialty.capability, consolidatedInput: specialty.acceptsConsolidated, businessDomainId: specialty.domain?.id ?? null }
-      : {}),
-    recommendSupportMaterials: input.recommendSupportMaterials ?? base.recommendSupportMaterials,
-    investigationCapabilities: input.investigationCapabilities ? normalizeCapabilities(input.investigationCapabilities) : base.investigationCapabilities,
-    actionLimitsEnabled: actionLimits.enabled,
-    actionLimits: actionLimits.text,
-    knowledgeDocumentIds: input.knowledgeDocumentIds ? [...new Set(input.knowledgeDocumentIds)].sort() : base.knowledgeDocumentIds,
-  }
-  await assertKnowledge(client, organizationId, config)
-  return config
-}
-
-const notFound = () => new DomainError("Agente não encontrado.", "AGENT_NOT_FOUND", 404)
 const inactiveRestricted = () =>
   new DomainError("Este agente está inativo. Só administradores consultam o cadastro, o histórico completo e as execuções de agentes inativos, e podem reativá-los ou excluí-los.", "AGENT_INACTIVE_RESTRICTED", 403)
 
-/** Associação a partir da base (agent-knowledge-links.ts): ligar/desligar a base em cada agente escolhido. Até 50 agentes por vez (run-8, SB-03: cada
- * agente custa ~15 consultas e trava a linha dele até o fim da transação). */
-const MAX_KNOWLEDGE_LINK_CHANGES = 50
 const knowledgeLinksQuerySchema = z.object({
   knowledgeDocumentId: z.string().uuid(),
   tab: z.enum(["LINKED", "AVAILABLE"]).default("LINKED"),
@@ -489,60 +184,6 @@ const knowledgeLinksSchema = z.object({
   })).min(1).max(MAX_KNOWLEDGE_LINK_CHANGES).refine((changes) => new Set(changes.map((change) => change.agentId)).size === changes.length, { message: "Cada agente só pode aparecer uma vez." }),
 })
 
-type KnowledgeLinkOutcome = "UNCHANGED" | "DRAFT_SAVED" | "PUBLISHED" | "DRAFT_ONLY_OTHER_CHANGES"
-
-type KnowledgeLinkPlan = {
-  candidate: KnowledgeLinkCandidate
-  base: AgentConfig
-  config: AgentConfig
-  outcome: KnowledgeLinkOutcome
-  firstPublication: boolean
-  /** A configuração em edição muda (a base entra ou sai do rascunho). */
-  changesDraft: boolean
-}
-
-/**
- * O que acontece em UM agente — a mesma conta na prévia e na gravação. A configuração seguinte sai de `nextConfig` (a validação do
- * PATCH: alcance, bases existentes e compatíveis), a revisão é conferida (PEN-050) e o universo da base precisa ser o do agente.
- */
-async function planKnowledgeLink(
-  client: Pick<Database, "query">,
-  organizationId: string,
-  context: KnowledgeLinkContext,
-  candidate: KnowledgeLinkCandidate,
-  lifecycle: AgentLifecycleRow,
-  change: { linked: boolean; expectedDraftRevision: number },
-  mode: "DRAFT" | "PUBLISH",
-): Promise<KnowledgeLinkPlan> {
-  assertDraftRevision(lifecycle, change.expectedDraftRevision)
-  const live = lifecycle.currentVersionId ? await loadLiveAgentConfig(client, organizationId, lifecycle.id) : null
-  const base = lifecycle.draftConfig ?? live
-  if (!base) throw notFound()
-  authorizeAgentConfig(context.scopes, base)
-  const config = await nextConfig(client, organizationId, context.scopes, base, { knowledgeDocumentIds: knowledgeIdsAfter(base.knowledgeDocumentIds, context.knowledgeDocumentId, change.linked) })
-  if (change.linked && context.knowledgeUniverse !== null && candidate.operatingUniverse !== null && context.knowledgeUniverse !== candidate.operatingUniverse) {
-    throw new DomainError(`A base é do universo ${context.knowledgeUniverse} e o agente "${candidate.name}", do ${candidate.operatingUniverse} — universos não se misturam.`, "OPERATING_UNIVERSE_LINK_CONFLICT", 409)
-  }
-  const firstPublication = lifecycle.currentVersionId === null
-  const changesDraft = !sameAgentConfig(base, config)
-  let outcome: KnowledgeLinkOutcome = changesDraft ? "DRAFT_SAVED" : "UNCHANGED"
-  if (mode === "PUBLISH") {
-    const pendingAfter = firstPublication || !live || !sameAgentConfig(live, config)
-    if (pendingAfter) outcome = draftHasOtherChanges(live, lifecycle.draftConfig) ? "DRAFT_ONLY_OTHER_CHANGES" : "PUBLISHED"
-  }
-  return { candidate, base, config, outcome, firstPublication, changesDraft }
-}
-
-/** Agentes pedidos, cada um no alcance de quem pede (fora dele = 404, como no cadastro), na ordem dos ids (travas sem impasse). */
-async function knowledgeLinkCandidatesFor(db: Pick<Database, "query">, organizationId: string, context: KnowledgeLinkContext, agentIds: string[]): Promise<KnowledgeLinkCandidate[]> {
-  const candidates = new Map((await loadKnowledgeLinkCandidates(db, organizationId, context, agentIds)).map((candidate) => [candidate.id, candidate]))
-  return [...agentIds].sort().map((agentId) => {
-    const candidate = candidates.get(agentId)
-    if (!candidate) throw notFound()
-    return candidate
-  })
-}
-
 type AgentAccess = { scope: ScopedTarget; active: boolean; scopes: ManageableScopes; canManageInactive: boolean }
 
 /**
@@ -555,10 +196,10 @@ async function authorizeAgent(db: Database, request: Request, agentId: string): 
     `select scope_type "scopeType", team_id "teamId", subteam_id "subteamId", active from agents where id = $1 and organization_id = $2`,
     [agentId, user.organizationId],
   )).rows[0]
-  if (!row) throw notFound()
+  if (!row) throw agentNotFound()
   const scopes = await getManageableScopes(db, user, "agents.manage")
   const scope = { scopeType: row.scopeType, teamId: row.teamId, subteamId: row.subteamId }
-  if (!canManageScope(scopes, scope)) throw notFound()
+  if (!canManageScope(scopes, scope)) throw agentNotFound()
   const canManageInactive = canManageScope(await getManageableScopes(db, user, "agents.inactive.manage"), scope)
   if (!row.active && !canManageInactive) throw inactiveRestricted()
   return { scope, active: row.active, scopes, canManageInactive }
@@ -566,17 +207,6 @@ async function authorizeAgent(db: Database, request: Request, agentId: string): 
 
 function actorOf(request: Request): AgentActor {
   return { personId: request.user?.personId ?? null, name: request.user?.name ?? "Sistema" }
-}
-
-async function lifecycleForWrite(client: Pick<Database, "query">, organizationId: string, agentId: string): Promise<AgentLifecycleRow> {
-  const lifecycle = await loadAgentLifecycle(client, organizationId, agentId, { forUpdate: true })
-  if (!lifecycle) throw notFound()
-  return lifecycle
-}
-
-function rethrowNameTaken(error: unknown): never {
-  if ((error as { code?: string }).code === "23505") throw new DomainError("Já existe um agente com esse nome.", "AGENT_NAME_TAKEN", 409)
-  throw error
 }
 
 export function createAgentRouter(db: Database) {
@@ -647,67 +277,18 @@ export function createAgentRouter(db: Database) {
     const user = sessionUser(request)
     const input = knowledgeLinksSchema.parse(request.body)
     const context = await loadKnowledgeLinkContext(db, user, input.knowledgeDocumentId)
-    const byId = new Map(input.changes.map((change) => [change.agentId, change]))
-    const candidates = await knowledgeLinkCandidatesFor(db, user.organizationId, context, [...byId.keys()])
-    const agents = []
-    for (const candidate of candidates) {
-      const lifecycle = await loadAgentLifecycle(db, user.organizationId, candidate.id)
-      if (!lifecycle) throw notFound()
-      try {
-        const plan = await planKnowledgeLink(db, user.organizationId, context, candidate, lifecycle, byId.get(candidate.id)!, input.mode)
-        const impact = plan.outcome === "PUBLISHED"
-          ? await computePublishImpact(db, user, candidate.id, { nextConfig: plan.config, authorizeTarget: (config) => authorizeAgentConfig(context.scopes, config) })
-          : null
-        agents.push({ agentId: candidate.id, name: candidate.name, outcome: plan.outcome, firstPublication: plan.firstPublication, problem: null, impact })
-      } catch (error) {
-        if (!(error instanceof DomainError)) throw error
-        agents.push({ agentId: candidate.id, name: candidate.name, outcome: null, firstPublication: lifecycle.currentVersionId === null, problem: { code: error.code, message: error.message }, impact: null })
-      }
-    }
-    response.json({ data: { mode: input.mode, agents } })
+    response.json({ data: await previewKnowledgeLinks(db, user, context, input) })
   })
 
   /**
-   * Grava a associação em todos os agentes pedidos numa transação só (tudo ou nada): rascunho de cada um pelo `saveAgentDraft`, e,
-   * no modo PUBLISH, a publicação pelo `publishAgentDraft` — com a mesma revalidação da rota de publicar (bases, nome, universo).
-   * Agente publicado com outras alterações pendentes no rascunho recebe a base só no rascunho (não publica o que não é da base).
+   * Grava a associação em todos os agentes pedidos numa transação só (tudo ou nada), no rascunho de cada um ou publicando. Agente
+   * publicado com outras alterações pendentes no rascunho recebe a base só no rascunho (não publica o que não é da base).
    */
   router.post("/knowledge-links", async (request, response) => {
     const user = sessionUser(request)
-    const organizationId = user.organizationId
     const input = knowledgeLinksSchema.parse(request.body)
     const context = await loadKnowledgeLinkContext(db, user, input.knowledgeDocumentId)
-    const byId = new Map(input.changes.map((change) => [change.agentId, change]))
-    const candidates = await knowledgeLinkCandidatesFor(db, organizationId, context, [...byId.keys()])
-    const actor = actorOf(request)
-    const results = await inTransaction(db, async (client) => {
-      const outcomes: { agentId: string; name: string; outcome: KnowledgeLinkOutcome; versionNumber: number | null }[] = []
-      for (const candidate of candidates) {
-        const lifecycle = await lifecycleForWrite(client, organizationId, candidate.id)
-        const plan = await planKnowledgeLink(client, organizationId, context, candidate, lifecycle, byId.get(candidate.id)!, input.mode)
-        if (plan.changesDraft) {
-          await saveAgentDraft(client, lifecycle, plan.config, actor)
-          if (!lifecycle.currentVersionId) await writeLiveAgentConfig(client, organizationId, candidate.id, plan.config)
-          const diff = diffConfigs(plan.base, plan.config)
-          if (diff.length > 0) await recordAgentHistory(client, organizationId, { agentId: candidate.id, action: "UPDATED", actor, changes: diff, configs: [plan.base, plan.config] })
-        }
-        let versionNumber: number | null = null
-        if (plan.outcome === "PUBLISHED") {
-          const saved = await lifecycleForWrite(client, organizationId, candidate.id)
-          if (saved.draftConfig) {
-            authorizeAgentConfig(context.scopes, saved.draftConfig)
-            await assertKnowledge(client, organizationId, saved.draftConfig)
-            await assertNameAvailable(client, organizationId, saved.draftConfig.name, candidate.id)
-            const published = await publishAgentDraft(client, saved, actor)
-            await recordAgentHistory(client, organizationId, { agentId: candidate.id, action: "PUBLISHED", actor, changes: [{ field: "version", label: FIELD_LABELS.version!, from: saved.currentVersionNumber ? `Versão ${saved.currentVersionNumber}` : "Não publicado", to: `Versão ${published.number}` }] })
-            versionNumber = published.number
-          }
-        }
-        outcomes.push({ agentId: candidate.id, name: candidate.name, outcome: plan.outcome, versionNumber })
-      }
-      return outcomes
-    }).catch(rethrowNameTaken)
-    response.json({ data: { mode: input.mode, results } })
+    response.json({ data: await applyKnowledgeLinks(db, user.organizationId, context, input, actorOf(request)) })
   })
 
   router.get("/references", async (request, response) => {
@@ -831,7 +412,7 @@ export function createAgentRouter(db: Database) {
     const organizationId = sessionUser(request).organizationId
     const input = testAgentSchema.parse(request.body)
     const lifecycle = await loadAgentLifecycle(db, organizationId, request.params.id!)
-    if (!lifecycle) throw notFound()
+    if (!lifecycle) throw agentNotFound()
     const target = input.target ?? (input.versionId || lifecycle.currentVersionId ? "VERSION" : "DRAFT")
     if (target === "VERSION" && !input.versionId && !lifecycle.currentVersionId) {
       throw new DomainError("Este agente ainda não tem versão publicada: teste o rascunho.", "AGENT_NOT_PUBLISHED", 422)
@@ -875,12 +456,7 @@ export function createAgentRouter(db: Database) {
       scopeType: scope.scopeType as AgentConfig["scopeType"],
       teamId: scope.teamId,
       subteamId: scope.subteamId,
-      specialty: legacySpecialtyFor(specialty),
-      specialtyKind: specialty.kind,
-      domain: specialty.domain?.code ?? null,
-      capability: specialty.capability,
-      consolidatedInput: specialty.acceptsConsolidated,
-      businessDomainId: specialty.domain?.id ?? null,
+      ...specialtyFields(specialty),
       recommendSupportMaterials: input.recommendSupportMaterials ?? false,
       investigationCapabilities: normalizeCapabilities(input.investigationCapabilities),
       actionLimitsEnabled: actionLimits.enabled,
@@ -922,20 +498,16 @@ export function createAgentRouter(db: Database) {
       if (touchesConfig) {
         assertDraftRevision(lifecycle, expectedDraftRevision)
         const base = lifecycle.draftConfig ?? (await loadLiveAgentConfig(client, organizationId, agentId))
-        if (!base) throw notFound()
+        if (!base) throw agentNotFound()
         // Sobrescrever o rascunho é agir sobre ele (como descartá-lo); `nextConfig` confere o alcance resultante.
         authorizeAgentConfig(access.scopes, base)
         const config = await nextConfig(client, organizationId, access.scopes, base, changes)
         await assertNameAvailable(client, organizationId, config.name, agentId)
-        await saveAgentDraft(client, lifecycle, config, actorOf(request))
-        // Nunca publicado: não há versão em uso a proteger — a linha viva acompanha o rascunho.
-        if (!lifecycle.currentVersionId) await writeLiveAgentConfig(client, organizationId, agentId, config)
-        const diff = diffConfigs(base, config)
-        if (diff.length > 0) await recordAgentHistory(client, organizationId, { agentId, action: "UPDATED", actor: actorOf(request), changes: diff, configs: [base, config] })
+        await saveDraftWithHistory(client, lifecycle, base, config, actorOf(request))
       }
       if (active !== undefined && active !== lifecycle.active) {
         await client.query(`update agents set active = $3, updated_at = now() where id = $1 and organization_id = $2`, [agentId, organizationId, active])
-        await recordAgentHistory(client, organizationId, { agentId, action: "UPDATED", actor: actorOf(request), changes: [{ field: "active", label: FIELD_LABELS.active!, from: lifecycle.active ? "Ativo" : "Inativo", to: active ? "Ativo" : "Inativo" }] })
+        await recordAgentHistory(client, organizationId, { agentId, action: "UPDATED", actor: actorOf(request), changes: [fieldChange("active", lifecycle.active ? "Ativo" : "Inativo", active ? "Ativo" : "Inativo")] })
       }
     }).catch(rethrowNameTaken)
     response.json({ data: await respondAgent(organizationId, agentId, access.scopes) })
@@ -966,14 +538,7 @@ export function createAgentRouter(db: Database) {
     const version = await inTransaction(db, async (client) => {
       const lifecycle = await lifecycleForWrite(client, organizationId, agentId)
       assertDraftRevision(lifecycle, expectedDraftRevision)
-      authorizeAgentConfig(access.scopes, lifecycle.draftConfig)
-      if (lifecycle.draftConfig) {
-        await assertKnowledge(client, organizationId, lifecycle.draftConfig)
-        await assertNameAvailable(client, organizationId, lifecycle.draftConfig.name, agentId)
-      }
-      const published = await publishAgentDraft(client, lifecycle, actorOf(request))
-      await recordAgentHistory(client, organizationId, { agentId, action: "PUBLISHED", actor: actorOf(request), changes: [{ field: "version", label: FIELD_LABELS.version!, from: lifecycle.currentVersionNumber ? `Versão ${lifecycle.currentVersionNumber}` : "Não publicado", to: `Versão ${published.number}` }] })
-      return published
+      return publishCheckedDraft(client, lifecycle, access.scopes, actorOf(request))
     }).catch(rethrowNameTaken)
     response.status(201).json({ data: { version, agent: await respondAgent(organizationId, agentId, access.scopes) } })
   })
@@ -990,7 +555,7 @@ export function createAgentRouter(db: Database) {
       authorizeAgentConfig(access.scopes, lifecycle.draftConfig)
       if (!lifecycle.draftConfig) return
       await discardAgentDraft(client, lifecycle, actorOf(request))
-      await recordAgentHistory(client, organizationId, { agentId, action: "DRAFT_DISCARDED", actor: actorOf(request), changes: [{ field: "draft", label: FIELD_LABELS.draft!, from: "Alterações não publicadas", to: `Descartadas (volta à versão ${lifecycle.currentVersionNumber})` }] })
+      await recordAgentHistory(client, organizationId, { agentId, action: "DRAFT_DISCARDED", actor: actorOf(request), changes: [fieldChange("draft", "Alterações não publicadas", `Descartadas (volta à versão ${lifecycle.currentVersionNumber})`)] })
     })
     response.json({ data: await respondAgent(organizationId, agentId, access.scopes) })
   })
@@ -1013,8 +578,8 @@ export function createAgentRouter(db: Database) {
       await assertNameAvailable(client, organizationId, source.config.name, agentId)
       const reverted = await revertAgentToVersion(client, lifecycle, { id: source.summary.id, config: source.config }, actorOf(request), { discardDraft })
       await recordAgentHistory(client, organizationId, { agentId, action: "REVERTED", actor: actorOf(request), changes: [
-        { field: "version", label: FIELD_LABELS.version!, from: lifecycle.currentVersionNumber ? `Versão ${lifecycle.currentVersionNumber}` : "Não publicado", to: `Versão ${reverted.number} (configuração da versão ${source.summary.number})` },
-        ...(reverted.discardedDraft ? [{ field: "draft", label: FIELD_LABELS.draft!, from: "Alterações não publicadas", to: "Descartadas na reversão" }] : []),
+        fieldChange("version", versionLabel(lifecycle.currentVersionNumber), `Versão ${reverted.number} (configuração da versão ${source.summary.number})`),
+        ...(reverted.discardedDraft ? [fieldChange("draft", "Alterações não publicadas", "Descartadas na reversão")] : []),
       ] })
       return reverted
     }).catch(rethrowNameTaken)

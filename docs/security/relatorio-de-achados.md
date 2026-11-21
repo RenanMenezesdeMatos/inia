@@ -1009,3 +1009,18 @@ aberta), ARQ-01 (zero conta), teto de 3 respostas em andamento por pessoa e praz
 gravação, conferência de publicar inline no cartão (pedido explícito de evitar janelas soltas). Aceitos como estão (decisões de produto já
 registradas): SB-04 (publicar daqui um agente nunca publicado é a primeira publicação dele inteiro, avisada na prévia) e SB-05 (o seletor de
 bases do agente lê bases só com `agents.manage`). Em aberto: R-49.
+
+Revisões de 21/11/2026 (com o responsável de volta):
+
+- **SL-03 revisto para a liderança** (pedido: "líderes devem conseguir ver todas as hierarquias de ativos e inativos, inclusive a situação
+  funcional"): pelo caminho da liderança, `org_hierarchy` mostra ativos e inativos (`cadastro`), a marca de inativo e a situação funcional de
+  hoje da organização inteira. Afastamento sensível sai como "Afastamento (motivo protegido)" (AI-04 mantido); o operador continua sem
+  inativos e sem situação. Ver `docs/dev/memoria/liderancas.md`.
+- **QA-07 confirmado e corrigido**: o PDF digitalizado de teste (`gerar-digitalizado.ts`) com a imagem em 70% da página perdia 539 de 539
+  palavras. `PDF_EMBEDDED_PRINTS_V3` devolve a página à digitalização quando quase todo o texto lido está dentro da imagem grande; depois,
+  93,7% das palavras e nenhuma cortada. Fica registrado (sem mudança, regra travada): com sombra da lombada e poeira, a regra da tinta não
+  acha print nenhum (o texto das telas entra no corpo, com aviso de conferência).
+- **Refatorações adiadas feitas** (ARQ-02, ARQ-03, ARQ-06, ARQ-07, ARQ-11): ver R-49 em `pendencias-e-riscos.md` e
+  `docs/dev/memoria/agentes-e-conhecimento.md` § "Associar agentes a partir da base". Sem mudança de comportamento; provas de banco das
+  áreas tocadas rodadas uma a uma (associação, alcance das bases, multi-grupo, opções do seletor, envio com acompanhamento, OCR, imagens,
+  ciclo de versão, universo) e a prova nova `knowledge-agent-fit-proof`.

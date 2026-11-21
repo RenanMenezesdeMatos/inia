@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { createMemoryConversationStore } from "../../assistant/testing/memory-conversation-store.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
-import type { ClarificationOutcome, ClarificationRequest } from "../../knowledge-clarification/application/knowledge-clarification-service.js"
+import { CLARIFICATION_RULES, type ClarificationOutcome, type ClarificationRequest } from "../../knowledge-clarification/application/knowledge-clarification-service.js"
 import { CLARIFICATION_ANSWER_TOOL_NAME, CLARIFICATION_TOOL_NAME, KNOWLEDGE_CLARIFICATION_VERSION, optionIdFor, stepIdFor, type ClarificationState } from "../../knowledge-clarification/domain/clarification-state.js"
 import type { LeadershipChatContext } from "../../leadership-analytics/application/leadership-context.js"
 import { OrchestrationSuperseded } from "../../assistant/application/run-orchestrated-reply.js"
@@ -41,7 +41,7 @@ function openState(): ClarificationState {
     updatedAt: NOW.toISOString(),
   }
 }
-const TRACE = { version: KNOWLEDGE_CLARIFICATION_VERSION, mode: "NEW" as const, decision: "CLARIFY" as const, navigation: null, rejectedOptions: [], plannerAttempts: 1, answerAttempts: 0, issues: [] }
+const TRACE = { version: KNOWLEDGE_CLARIFICATION_VERSION, rules: CLARIFICATION_RULES, mode: "NEW" as const, decision: "CLARIFY" as const, navigation: null, rejectedOptions: [], plannerAttempts: 1, answerAttempts: 0, issues: [] }
 
 function setup(outcomes: ClarificationOutcome[], options: { leadership?: boolean; orchestrator?: boolean; accessible?: (id: string) => boolean; supportHelpRoute?: (input: { organizationId: string; personId: string }) => Promise<"SUPPORT" | "LEADERSHIP"> } = {}) {
   const memory = createMemoryConversationStore()

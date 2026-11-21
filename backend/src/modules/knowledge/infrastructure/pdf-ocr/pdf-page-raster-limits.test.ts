@@ -5,7 +5,7 @@ import { PDF_EMBEDDED_PRINT_RULE } from "../../domain/pdf-ocr/embedded-prints.js
 import { placementsOf } from "./pdf-page-raster.js"
 
 /**
- * Tetos da regra PDF_EMBEDDED_PRINTS_V2 (run-8, SB-01): página montada com operações ou imagens demais não é lida pelas imagens — `null`, e o
+ * Tetos da regra PDF_EMBEDDED_PRINTS_V2+ (run-8, SB-01): página montada com operações ou imagens demais não é lida pelas imagens — `null`, e o
  * leitor aplica a regra da tinta como numa digitalização. Página normal continua devolvendo as posições.
  */
 const pageWith = (fnArray: number[]) =>

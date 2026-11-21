@@ -1,6 +1,8 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { escapeLike, SqlFilter } from "../../../shared/presentation/list-query.js"
 import type { ManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { knowledgeFitsAgentSql } from "../../knowledge/application/knowledge-agent-fit.js"
+import { readableDocumentSql } from "../../knowledge/application/knowledge-document-read-access.js"
 import { foldSearchTerm, foldSql, type KnowledgeOptionsCursor } from "../domain/knowledge-options-cursor.js"
 
 /**
@@ -9,7 +11,7 @@ import { foldSearchTerm, foldSql, type KnowledgeOptionsCursor } from "../domain/
  * página por posição (keyset em `(título dobrado, id)`, `limit + 1`). As mesmas condições servem à lista, aos ids filtrados
  * ("selecionar as filtradas" e a pré-seleção pelo Grupo do agente) e à leitura das escolhidas pelo id.
  *
- * O que a tela oferece segue as regras de quem SALVA (agent-router): universo do agente (base pendente cabe), e para agente de
+ * O que a tela oferece segue as regras de quem SALVA (`agent-config-rules.ts` e `knowledge-agent-fit.ts`): universo do agente (base pendente cabe), e para agente de
  * Grupo/Subgrupo só bases globais ou do mesmo Grupo. O que já está ligado e saiu dessas regras continua visível pela leitura por id.
  * Visibilidade: o alcance de `agents.manage` de quem pede, com a mesma regra de leitura da lista de Bases (global, Grupo, Subgrupo ou o
  * Grupo-pai de um Subgrupo administrado).
@@ -61,20 +63,14 @@ export const TITLE_KEY_SQL = foldSql("d.title")
 /** Condições sobre `knowledge_documents d` (sem ordem nem posição). `$1` = organização. */
 export function knowledgeOptionsWhere(organizationId: string, scopes: ManageableScopes, filter: KnowledgeOptionsFilter): SqlFilter {
   const sql = new SqlFilter([organizationId])
-  if (!scopes.unrestricted && !scopes.allTeams) {
-    const teamIds = sql.param([...scopes.teamIds])
-    const subteamIds = sql.param([...scopes.subteamIds])
-    sql.add(SCOPE_EXISTS(`os.scope_type = 'ALL_TEAMS' or os.team_id = any(${teamIds}::uuid[]) or os.subteam_id = any(${subteamIds}::uuid[]) or (os.scope_type = 'TEAM' and os.team_id in (select st.team_id from subteams st where st.id = any(${subteamIds}::uuid[])))`))
-  }
+  const readable = readableDocumentSql("d.id", scopes, (value) => sql.param(value))
+  if (readable) sql.add(readable)
   if (filter.agentUniverse) sql.add(`(d.operating_universe is null or d.operating_universe = ${sql.param(filter.agentUniverse)})`)
   if (filter.universe === "PENDING") sql.add(`d.operating_universe is null`)
   else if (filter.universe) sql.add(`d.operating_universe = ${sql.param(filter.universe)}`)
   const agentScope = filter.agentScope
   if (agentScope && agentScope.scopeType !== "ALL_TEAMS") {
-    const agentTeam = agentScope.scopeType === "SUBTEAM"
-      ? `(select st.team_id from subteams st where st.id = ${sql.param(agentScope.subteamId ?? null)}::uuid)`
-      : `${sql.param(agentScope.teamId ?? null)}::uuid`
-    sql.add(SCOPE_EXISTS(`os.scope_type = 'ALL_TEAMS' or coalesce(os.team_id, (select st.team_id from subteams st where st.id = os.subteam_id)) = ${agentTeam}`))
+    sql.add(knowledgeFitsAgentSql("d.id", { scopeType: `${sql.param(agentScope.scopeType)}::text`, teamId: `${sql.param(agentScope.teamId ?? null)}::uuid`, subteamId: `${sql.param(agentScope.subteamId ?? null)}::uuid` }))
   }
   if (filter.subteamId) {
     const subteam = sql.param(filter.subteamId)

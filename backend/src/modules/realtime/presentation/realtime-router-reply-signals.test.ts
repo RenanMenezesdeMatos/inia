@@ -9,7 +9,7 @@ import type { OrchestratedReply } from "../../assistant/application/run-orchestr
 import { createMemoryConversationStore } from "../../assistant/testing/memory-conversation-store.js"
 import { answerAgentVersionQuery } from "../../agents/testing/agent-version-fakes.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
-import type { ClarificationOutcome } from "../../knowledge-clarification/application/knowledge-clarification-service.js"
+import { CLARIFICATION_RULES, type ClarificationOutcome } from "../../knowledge-clarification/application/knowledge-clarification-service.js"
 import { KNOWLEDGE_CLARIFICATION_VERSION } from "../../knowledge-clarification/domain/clarification-state.js"
 import type { SelfChatContext } from "../../leadership-analytics/application/self-context.js"
 import { createRealtimeRouter } from "./realtime-router.js"
@@ -28,7 +28,7 @@ const activeAgentsDb = { query: async (text: string, params: unknown[] = []) => 
 const emptyDb = { query: async () => ({ rows: [], rowCount: 0 }) } as unknown as Database
 const orchestrator = { organizationId: ORG, orchestratorId: "orch-1", orchestratorName: "INIA", orchestratorAgentId: "agent-orch", systemPrompt: "PROMPT", specialists: [{ agentId: "agent-esp", toolName: "agent_esp" }], tools: [], outputInstructions: null, structuredOutput: null, recommendSupportMaterials: false }
 const self = { instructions: "REGRAS", voiceInstructions: "", toolset: { declarations: [], handles: (name: string) => name === "my_results", execute: async () => ({ text: "", card: null }) } } as unknown as SelfChatContext
-const TRACE = { version: KNOWLEDGE_CLARIFICATION_VERSION, mode: "NEW" as const, decision: null, navigation: null, rejectedOptions: [], plannerAttempts: 1, answerAttempts: 0, issues: [] }
+const TRACE = { version: KNOWLEDGE_CLARIFICATION_VERSION, rules: CLARIFICATION_RULES, mode: "NEW" as const, decision: null, navigation: null, rejectedOptions: [], plannerAttempts: 1, answerAttempts: 0, issues: [] }
 const errorHandler: ErrorRequestHandler = (error, _req, res, next) => {
   void next
   if (error instanceof DomainError) return void res.status(error.statusCode).json({ error: { code: error.code, message: error.message } })

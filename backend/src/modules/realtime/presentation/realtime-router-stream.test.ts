@@ -6,7 +6,7 @@ import type { OrchestrationConversationHooks, OrchestratedReply } from "../../as
 import { OrchestrationSuperseded } from "../../assistant/application/run-orchestrated-reply.js"
 import { createMemoryConversationStore } from "../../assistant/testing/memory-conversation-store.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
-import type { ClarificationOutcome, ClarificationRequest } from "../../knowledge-clarification/application/knowledge-clarification-service.js"
+import { CLARIFICATION_RULES, type ClarificationOutcome, type ClarificationRequest } from "../../knowledge-clarification/application/knowledge-clarification-service.js"
 import { KNOWLEDGE_CLARIFICATION_VERSION } from "../../knowledge-clarification/domain/clarification-state.js"
 import type { SelfChatContext } from "../../leadership-analytics/application/self-context.js"
 import { createChatTurnMetrics, setChatTurnMetrics } from "../../../shared/application/observability/chat-turn-trace.js"
@@ -26,7 +26,7 @@ const user: AuthTokenPayload = { sub: "acc-1", personId: PERSON, organizationId:
 const emptyDb = { query: async () => ({ rows: [], rowCount: 0 }) } as unknown as Database
 const orchestrator = { organizationId: ORG, orchestratorId: "orch-1", orchestratorName: "INIA", orchestratorAgentId: "agent-orch", systemPrompt: "PROMPT", specialists: [{ agentId: "agent-esp", toolName: "agent_esp" }], tools: [], outputInstructions: null, structuredOutput: null, recommendSupportMaterials: false }
 const self = { instructions: "REGRAS", voiceInstructions: "", toolset: { declarations: [], handles: (name: string) => name === "my_results", execute: async () => ({ text: "", card: null }) } } as unknown as SelfChatContext
-const TRACE = { version: KNOWLEDGE_CLARIFICATION_VERSION, mode: "NEW" as const, decision: null, navigation: null, rejectedOptions: [], plannerAttempts: 1, answerAttempts: 0, issues: [] }
+const TRACE = { version: KNOWLEDGE_CLARIFICATION_VERSION, rules: CLARIFICATION_RULES, mode: "NEW" as const, decision: null, navigation: null, rejectedOptions: [], plannerAttempts: 1, answerAttempts: 0, issues: [] }
 
 type Fake = (hooks: OrchestrationConversationHooks) => Promise<Partial<OrchestratedReply>>
 const baseReply = { agentId: null, calls: [], results: [], structuredResult: null, supportMaterialCandidates: [] }

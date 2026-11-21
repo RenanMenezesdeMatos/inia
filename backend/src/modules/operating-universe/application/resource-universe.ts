@@ -1,7 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { Permission } from "../../access/domain/permissions.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
-import { isOperatingUniverse, type OperatingUniverse } from "../domain/operating-universe.js"
+import { asOperatingUniverse, type OperatingUniverse } from "../domain/operating-universe.js"
 import { existingUniverseConflicts } from "./universe-links.js"
 
 /**
@@ -48,7 +48,6 @@ export const UNIVERSE_RESOURCES: Record<UniverseResourceKind, ResourceDefinition
 export type LinkedResource = { kind: UniverseResourceKind | "PRODUCT_VIA_CATEGORY"; id: string; name: string; operatingUniverse: OperatingUniverse | null }
 export type ResourceConflict = { kind: UniverseResourceKind; id: string; name: string; operatingUniverse: OperatingUniverse }
 
-const asUniverse = (value: string | null | undefined): OperatingUniverse | null => (isOperatingUniverse(value) ? value : null)
 
 // Grafos de Workflow que contam: rascunho e versão em uso (versões antigas em execução continuam como estavam — histórico).
 const WORKFLOW_GRAPHS = `(select w.id, w.draft_graph doc from workflows w where w.organization_id = $1
@@ -141,7 +140,7 @@ export async function crossUniverseLinks(db: Queryable, organizationId: string):
 
 export async function linkedResources(db: Queryable, organizationId: string, kind: UniverseResourceKind, id: string): Promise<LinkedResource[]> {
   const rows = (await db.query<{ kind: UniverseResourceKind; id: string; name: string; operating_universe: string | null }>(NEIGHBORS[kind], [organizationId, id])).rows
-  return rows.map((row) => ({ kind: row.kind, id: row.id, name: row.name, operatingUniverse: asUniverse(row.operating_universe) }))
+  return rows.map((row) => ({ kind: row.kind, id: row.id, name: row.name, operatingUniverse: asOperatingUniverse(row.operating_universe) }))
 }
 
 /** Vínculos que FICARIAM com universos diferentes se o recurso tivesse `universe` (inclui produtos pela abrangência em vigor). */
@@ -174,14 +173,14 @@ export function resourceConflictError(kind: UniverseResourceKind, conflicts: rea
 /** Depois de gravar vínculos (dentro da transação de quem salva): se algum atravessa universos, recusa — e a transação desfaz. */
 export async function assertResourceLinksCompatible(db: Queryable, organizationId: string, kind: UniverseResourceKind, id: string): Promise<void> {
   const def = UNIVERSE_RESOURCES[kind]
-  const universe = asUniverse((await db.query<{ operating_universe: string | null }>(`select operating_universe from ${def.read} where id = $1 and organization_id = $2`, [id, organizationId])).rows[0]?.operating_universe)
+  const universe = asOperatingUniverse((await db.query<{ operating_universe: string | null }>(`select operating_universe from ${def.read} where id = $1 and organization_id = $2`, [id, organizationId])).rows[0]?.operating_universe)
   const conflicts = await resourceLinkConflicts(db, organizationId, kind, id, universe)
   if (conflicts.length > 0) throw resourceConflictError(kind, conflicts)
 }
 
 export async function resourceUniverse(db: Queryable, organizationId: string, kind: UniverseResourceKind, id: string): Promise<OperatingUniverse | null> {
   const def = UNIVERSE_RESOURCES[kind]
-  return asUniverse((await db.query<{ operating_universe: string | null }>(`select operating_universe from ${def.read} where id = $1 and organization_id = $2`, [id, organizationId])).rows[0]?.operating_universe)
+  return asOperatingUniverse((await db.query<{ operating_universe: string | null }>(`select operating_universe from ${def.read} where id = $1 and organization_id = $2`, [id, organizationId])).rows[0]?.operating_universe)
 }
 
 /**

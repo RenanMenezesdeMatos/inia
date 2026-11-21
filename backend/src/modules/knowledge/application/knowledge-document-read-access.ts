@@ -25,6 +25,19 @@ export async function canReadDocument(db: Pick<Database, "query">, scopes: Manag
     (scope.subteamId !== null && scopes.subteamIds.has(scope.subteamId)))
 }
 
+/**
+ * A mesma regra de `canReadDocument` em SQL, para filtrar listas — a de Bases e a do seletor de bases do agente (run-8, ARQ-03): `null` = quem pede lê todas as bases. `param` guarda
+ * um valor como parâmetro da consulta e devolve o marcador dele (`SqlFilter.param`).
+ */
+export function readableDocumentSql(documentId: string, scopes: ManageableScopes, param: (value: unknown) => string): string | null {
+  if (scopes.unrestricted || scopes.allTeams) return null
+  const teamIds = param([...scopes.teamIds])
+  const subteamIds = param([...scopes.subteamIds])
+  return `exists (select 1 from knowledge_document_org_scopes read_os where read_os.knowledge_document_id = ${documentId} and (
+    read_os.scope_type = 'ALL_TEAMS' or read_os.team_id = any(${teamIds}::uuid[]) or read_os.subteam_id = any(${subteamIds}::uuid[])
+    or (read_os.scope_type = 'TEAM' and read_os.team_id in (select read_st.team_id from subteams read_st where read_st.id = any(${subteamIds}::uuid[])))))`
+}
+
 /** Alcances atuais do documento NA organização (null = não existe nela ou foi excluído). */
 export async function loadDocumentScopes(db: Pick<Database, "query">, organizationId: string, id: string): Promise<DocumentScope[] | null> {
   if (!z.string().uuid().safeParse(id).success) return null

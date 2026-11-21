@@ -1624,7 +1624,7 @@ já diz a regra; a família do status diz como investigar.
 
 **Recuperação:** Restabelecer a dependência; repetir a ação. **Escalar para:** Infraestrutura da VM (servidor, IIS, PostgreSQL). Sem solução em 30 min: equipe de desenvolvimento da INIA com a referência, o horário UTC e as linhas do log.
 
-## Códigos dos módulos (969)
+## Códigos dos módulos (968)
 
 ### Módulo `access`
 
@@ -1729,7 +1729,7 @@ já diz a regra; a família do status diz como investigar.
 | Código | Status | Família | Mensagem | Onde |
 | --- | --- | --- | --- | --- |
 | `AGENT_ACCESS_NOT_AUTHORIZED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/agents/application/agent-execution-authorization.ts` |
-| `AGENT_ACTION_LIMITS_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/agents/presentation/agent-router.ts` |
+| `AGENT_ACTION_LIMITS_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/agents/application/agent-config-rules.ts` |
 | `AGENT_DELETE_BLOCKED` | 409 | FAMILIA-CONFLITO | (mensagem montada no código) | `backend/src/modules/agents/application/agent-deletion.ts` |
 | `AGENT_DRAFT_CONFLICT` | 409 | FAMILIA-CONFLITO | Outra pessoa alterou o rascunho deste agente depois que você o abriu. Atualize para ver a versão atual; o que você digitou continua na tela. | `backend/src/modules/agents/application/agent-versions.ts` |
 | `AGENT_DRAFT_PENDING` | 409 | FAMILIA-CONFLITO | Este agente tem um rascunho em andamento. Reverter publica a configuração escolhida como versão nova e descarta o rascunho — confirme para continuar. | `backend/src/modules/agents/application/agent-versions.ts` |
@@ -1740,15 +1740,15 @@ já diz a regra; a família do status diz como investigar.
 | `AGENT_EXECUTION_TIMEOUT` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/agents/infrastructure/gemini-agent-client.ts` |
 | `AGENT_INACTIVE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Este agente está inativo. | `backend/src/modules/agents/domain/agent-inactive-error.ts`<br>`backend/src/modules/indicator-diagnosis/application/simulate-diagnostic-strategy.ts`<br>`backend/src/modules/qa-lab/application/run-agent-simulation.ts` |
 | `AGENT_INACTIVE_RESTRICTED` | 403 | FAMILIA-ACESSO | Este agente está inativo. Só administradores consultam o cadastro, o histórico completo e as execuções de agentes inativos, e podem reativá-los ou excluí-los. | `backend/src/modules/agents/presentation/agent-router.ts` |
-| `AGENT_KNOWLEDGE_NOT_FOUND` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Uma das bases de conhecimento selecionadas não existe ou foi excluída. | `backend/src/modules/agents/presentation/agent-router.ts` |
-| `AGENT_KNOWLEDGE_SCOPE_FORBIDDEN` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Uma das bases de conhecimento selecionadas vale para outro Grupo — escolha bases globais ou do Grupo deste agente. | `backend/src/modules/agents/presentation/agent-router.ts` |
-| `AGENT_NAME_TAKEN` | 409 | FAMILIA-CONFLITO | Já existe um agente com esse nome. | `backend/src/modules/agents/presentation/agent-router.ts` |
-| `AGENT_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Agente não encontrado. | `backend/src/modules/agents/application/agent-deletion.ts`<br>`backend/src/modules/agents/application/agent-versions.ts`<br>`backend/src/modules/agents/application/run-agent.ts`<br>`backend/src/modules/agents/presentation/agent-router.ts`<br>`backend/src/modules/indicator-diagnosis/application/simulate-diagnostic-strategy.ts`<br>`backend/src/modules/indicator-diagnosis/presentation/diagnostic-strategy-router.ts` |
+| `AGENT_KNOWLEDGE_NOT_FOUND` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Uma das bases de conhecimento selecionadas não existe ou foi excluída. | `backend/src/modules/agents/application/agent-config-rules.ts` |
+| `AGENT_KNOWLEDGE_SCOPE_FORBIDDEN` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Uma das bases de conhecimento selecionadas vale para outro Grupo — escolha bases globais ou do Grupo deste agente. | `backend/src/modules/agents/application/agent-config-rules.ts` |
+| `AGENT_NAME_TAKEN` | 409 | FAMILIA-CONFLITO | Já existe um agente com esse nome. | `backend/src/modules/agents/application/agent-config-rules.ts` |
+| `AGENT_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Agente não encontrado. | `backend/src/modules/agents/application/agent-config-rules.ts`<br>`backend/src/modules/agents/application/agent-deletion.ts`<br>`backend/src/modules/agents/application/agent-versions.ts`<br>`backend/src/modules/agents/application/run-agent.ts`<br>`backend/src/modules/indicator-diagnosis/application/simulate-diagnostic-strategy.ts`<br>`backend/src/modules/indicator-diagnosis/presentation/diagnostic-strategy-router.ts` |
 | `AGENT_NOT_PUBLISHED` | 409, 422 | FAMILIA-CONFLITO | Este agente ainda não foi publicado: o rascunho é tudo o que existe dele. | `backend/src/modules/agents/application/agent-versions.ts`<br>`backend/src/modules/agents/presentation/agent-router.ts` |
 | `AGENT_NOTHING_TO_PUBLISH` | 409 | FAMILIA-CONFLITO | Não há alterações em rascunho para publicar. | `backend/src/modules/agents/application/agent-versions.ts` |
 | `AGENT_RUN_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Execução não encontrada. | `backend/src/modules/agents/presentation/agent-router.ts` |
-| `AGENT_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem permissão para mover o agente para esse escopo. | `backend/src/modules/agents/presentation/agent-router.ts` |
-| `AGENT_SPECIALTY_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/agents/presentation/agent-router.ts` |
+| `AGENT_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem permissão para mover o agente para esse escopo. | `backend/src/modules/agents/application/agent-config-rules.ts`<br>`backend/src/modules/agents/presentation/agent-router.ts` |
+| `AGENT_SPECIALTY_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/agents/application/agent-config-rules.ts` |
 | `AGENT_UNEXPECTED_RESPONSE` | 502 | FAMILIA-DEPENDENCIA | Resposta inesperada do agente no reparo de cobertura. | `backend/src/modules/agents/application/run-agent.ts` |
 | `AGENT_VERSION_NOT_FOUND` | 404, 422 | FAMILIA-NAO-ENCONTRADO | A versão do agente referenciada não existe. | `backend/src/modules/agents/application/agent-versions.ts`<br>`backend/src/modules/agents/presentation/agent-router.ts` |
 | `APPLICABILITY_INVALID` | — | FAMILIA-DEPENDENCIA | Entrada de aplicabilidade fora do contrato (a aplicabilidade decide quais etapas podem ser julgadas). | `backend/src/modules/agents/domain/process-assessment-contract.ts` |
@@ -2660,10 +2660,10 @@ já diz a regra; a família do status diz como investigar.
 | `KNOWLEDGE_ARCHIVED_REACTIVATION_REQUIRED` | 409 | FAMILIA-CONFLITO | Esta base está arquivada. Publicar faz com que ela volte a valer para a IA: confirme a reativação para continuar. | `backend/src/modules/knowledge/application/knowledge-versions.ts` |
 | `KNOWLEDGE_DRAFT_ONLY` | 409 | FAMILIA-CONFLITO | Esta base só tem o rascunho: para retirá-la, exclua a base. | `backend/src/modules/knowledge/application/knowledge-versions.ts` |
 | `KNOWLEDGE_DRAFT_PENDING` | 409 | FAMILIA-CONFLITO | Há um rascunho em edição. Reverter descarta esse rascunho: confirme para continuar. | `backend/src/modules/knowledge/application/knowledge-versions.ts`<br>`backend/src/modules/knowledge/presentation/knowledge-router.ts` |
-| `KNOWLEDGE_EXTRACTION_BUSY` | 503 | FAMILIA-DEPENDENCIA | Há muitos arquivos sendo lidos agora. Tente de novo em instantes. | `backend/src/modules/knowledge/presentation/knowledge-router.ts` |
-| `KNOWLEDGE_EXTRACTION_FAILED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Não foi possível extrair texto do arquivo enviado. | `backend/src/modules/knowledge/presentation/knowledge-router.ts` |
+| `KNOWLEDGE_EXTRACTION_BUSY` | 503 | FAMILIA-DEPENDENCIA | Há muitos arquivos sendo lidos agora. Tente de novo em instantes. | `backend/src/modules/knowledge/application/knowledge-file-upload.ts` |
+| `KNOWLEDGE_EXTRACTION_FAILED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Não foi possível extrair texto do arquivo enviado. | `backend/src/modules/knowledge/application/knowledge-file-upload.ts`<br>`backend/src/modules/knowledge/presentation/knowledge-router.ts` |
 | `KNOWLEDGE_FILE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Arquivo original não encontrado para este material. | `backend/src/modules/knowledge/presentation/knowledge-material-router.ts`<br>`backend/src/modules/knowledge/presentation/knowledge-router.ts` |
-| `KNOWLEDGE_FILE_TYPE_MISMATCH` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O arquivo foi recusado: a leitura passou do limite de memória ou de tempo. Confira se ele não está corrompido ou envie uma versão menor. | `backend/src/modules/knowledge/presentation/knowledge-router.ts` |
+| `KNOWLEDGE_FILE_TYPE_MISMATCH` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O arquivo foi recusado: a leitura passou do limite de memória ou de tempo. Confira se ele não está corrompido ou envie uma versão menor. | `backend/src/modules/knowledge/application/knowledge-file-upload.ts`<br>`backend/src/modules/knowledge/presentation/knowledge-router.ts` |
 | `KNOWLEDGE_IMAGE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Esta imagem não faz parte desta versão. | `backend/src/modules/knowledge/presentation/knowledge-router.ts` |
 | `KNOWLEDGE_IMAGES_FAILED` | — | FAMILIA-DEPENDENCIA | Não foi possível separar as imagens do PDF. O texto segue, e os prints continuam no PDF original. | `backend/src/modules/knowledge/infrastructure/text-extractor.ts` |
 | `KNOWLEDGE_MARKDOWN_FAILED` | — | FAMILIA-DEPENDENCIA | Não foi possível converter o PDF para Markdown: o texto ficou corrido, sem títulos nem tabelas. | `backend/src/modules/knowledge/infrastructure/text-extractor.ts` |
@@ -2678,7 +2678,7 @@ já diz a regra; a família do status diz como investigar.
 | `KNOWLEDGE_OCR_LIMIT` | — | FAMILIA-DEPENDENCIA | A leitura do PDF passou do limite de memória ou de tempo do servidor. Divida o arquivo em partes menores e envie de novo. | `backend/src/modules/knowledge/application/knowledge-ocr-jobs.ts` |
 | `KNOWLEDGE_OCR_NO_TEXT` | — | FAMILIA-DEPENDENCIA | O OCR não encontrou texto nas páginas digitalizadas. Confira se o PDF está legível ou digite o conteúdo. | `backend/src/modules/knowledge/application/knowledge-ocr-jobs.ts` |
 | `KNOWLEDGE_OCR_RUNNING` | 409 | FAMILIA-CONFLITO | O PDF ainda está sendo lido (OCR). Espere a leitura terminar e confira o texto antes de editar ou publicar. | `backend/src/modules/knowledge/application/knowledge-versions.ts` |
-| `KNOWLEDGE_OCR_UNAVAILABLE` | — | FAMILIA-DEPENDENCIA | ${pagesWord(scannedFound)} ficaram sem texto: a leitura por OCR não está disponível neste servidor. | `backend/src/modules/knowledge/application/knowledge-ocr-jobs.ts`<br>`backend/src/modules/knowledge/presentation/knowledge-router.ts` |
+| `KNOWLEDGE_OCR_UNAVAILABLE` | — | FAMILIA-DEPENDENCIA | ${pagesWord(scannedFound)} ficaram sem texto: a leitura por OCR não está disponível neste servidor. | `backend/src/modules/knowledge/application/knowledge-file-upload.ts`<br>`backend/src/modules/knowledge/application/knowledge-ocr-jobs.ts` |
 | `KNOWLEDGE_PREVIEW_FAILED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Não foi possível gerar a prévia deste documento. | `backend/src/modules/knowledge/presentation/knowledge-material-router.ts`<br>`backend/src/modules/knowledge/presentation/knowledge-router.ts` |
 | `KNOWLEDGE_PREVIEW_TOO_LARGE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/knowledge/presentation/knowledge-material-router.ts`<br>`backend/src/modules/knowledge/presentation/knowledge-router.ts` |
 | `KNOWLEDGE_PREVIEW_UNSUPPORTED` | 415 | FAMILIA-LIMITE | Este formato não tem prévia em HTML. | `backend/src/modules/knowledge/presentation/knowledge-material-router.ts`<br>`backend/src/modules/knowledge/presentation/knowledge-router.ts` |
@@ -2701,7 +2701,6 @@ já diz a regra; a família do status diz como investigar.
 | `KNOWLEDGE_VERSION_NOT_REVERTIBLE` | 409 | FAMILIA-CONFLITO | Só é possível reverter para uma versão que já ficou pronta. | `backend/src/modules/knowledge/application/knowledge-versions.ts` |
 | `KNOWLEDGE_VERSION_RESTRICTED` | 403 | FAMILIA-ACESSO | Esta versão valia para Grupos fora do seu escopo. | `backend/src/modules/knowledge/presentation/knowledge-router.ts` |
 | `ORGANIZATION_SCOPE_REQUIRED` | 403 | FAMILIA-ACESSO | Esta configuração vale para a organização inteira: só quem a administra em toda a organização pode alterá-la. | `backend/src/modules/access/presentation/require-permission.ts`<br>`backend/src/modules/governance/presentation/governance-router.ts`<br>`backend/src/modules/indicator-rules/presentation/indicator-rule-router.ts`<br>`backend/src/modules/interventions/presentation/intervention-admin-router.ts`<br>`backend/src/modules/knowledge/application/knowledge-versions.ts`<br>`backend/src/modules/knowledge/presentation/knowledge-router.ts` |
-| `PDF` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/knowledge/presentation/knowledge-router.ts` |
 
 ### Módulo `notifications`
 
@@ -2716,7 +2715,7 @@ já diz a regra; a família do status diz como investigar.
 | `OPERATING_UNIVERSE_ACTIVATION_UNCONFIRMED` | 409 | FAMILIA-CONFLITO | Ainda há ${pending} pendência(s) de universo. Confirme a ativação informando esse número, ou classifique antes. | `backend/src/modules/operating-universe/application/universe-administration.ts` |
 | `OPERATING_UNIVERSE_EFFECTIVE_FROM_FUTURE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A data de vigência do universo não pode ser futura. | `backend/src/modules/operating-universe/application/universe-units.ts` |
 | `OPERATING_UNIVERSE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem acesso a este universo de atuação. | `backend/src/modules/operating-universe/application/universe-access.ts`<br>`backend/src/modules/operating-universe/domain/operating-universe.ts` |
-| `OPERATING_UNIVERSE_LINK_CONFLICT` | 409 | FAMILIA-CONFLITO | A base é do universo ${context.knowledgeUniverse} e o agente "${candidate.name}", do ${candidate.operatingUniverse} — universos não se misturam. | `backend/src/modules/agents/presentation/agent-router.ts`<br>`backend/src/modules/argument-scripts/application/argument-script-service.ts`<br>`backend/src/modules/operating-universe/application/resource-universe.ts`<br>`backend/src/modules/operating-universe/application/universe-links.ts` |
+| `OPERATING_UNIVERSE_LINK_CONFLICT` | 409 | FAMILIA-CONFLITO | A base é do universo ${context.knowledgeUniverse} e o agente "${candidate.name}", do ${candidate.operatingUniverse} — universos não se misturam. | `backend/src/modules/agents/application/agent-knowledge-link-changes.ts`<br>`backend/src/modules/argument-scripts/application/argument-script-service.ts`<br>`backend/src/modules/operating-universe/application/resource-universe.ts`<br>`backend/src/modules/operating-universe/application/universe-links.ts` |
 | `OPERATING_UNIVERSE_PRODUCT_INCOMPATIBLE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Estes produtos são de outro universo de atuação e não podem ser ligados a um recurso ${OPERATING_UNIVERSE_LABELS[universe!]}: ${direct.map((product) =>  | `backend/src/modules/operating-universe/application/universe-links.ts` |
 | `OPERATING_UNIVERSE_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escolha o universo de atuação (B2B, B2C ou B2X) do Workflow antes de publicar. | `backend/src/modules/operating-universe/application/resource-universe.ts`<br>`backend/src/modules/operating-universe/application/universe-administration.ts`<br>`backend/src/modules/operating-universe/domain/operating-universe.ts`<br>`backend/src/modules/product-catalog/application/product-catalog-service.ts` |
 | `OPERATING_UNIVERSE_RESOURCE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | ${def.label} não encontrado. | `backend/src/modules/operating-universe/application/universe-administration.ts` |

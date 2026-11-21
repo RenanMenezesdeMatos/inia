@@ -16,7 +16,7 @@ import { WORKDAY_CLASSIFICATION_LABELS } from "../../people/domain/workday-class
 import { RESOLVED_WORKDAY_STATE_LABELS } from "../../people/domain/workday-resolution.js"
 import { PERSON_GROUPINGS, STATISTICS, TIME_GROUPINGS } from "./fact-query.js"
 import { ARITHMETIC_OPERATIONS, calculate, CALCULATION_TRACE, parseCalculations, renderCalculations } from "./arithmetic.js"
-import { executeHierarchyTool, HIERARCHY_DECLARATION, HIERARCHY_TOOL } from "./org-hierarchy.js"
+import { executeHierarchyTool, HIERARCHY_LEADERSHIP_DECLARATION, HIERARCHY_TOOL } from "./org-hierarchy.js"
 import { buildWorkforce, WORKFORCE_STATUS_FILTERS, type StatusFreshness, type StatusLoader } from "./workforce.js"
 import { buildIndicatorDiagnosis, type HireDatesLoader, type InteractionStatsLoader } from "./indicator-diagnosis.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
@@ -368,7 +368,7 @@ LEADERSHIP_TOOL_DECLARATIONS.push({
 
 /** Voz: UMA ferramenta que leva a pergunta ao mesmo raciocínio do chat de texto (dados da estrutura + especialistas), no backend. */
 // Hierarquia aberta a todos (fora do escopo de acesso): a mesma declaração que o operador recebe.
-LEADERSHIP_TOOL_DECLARATIONS.push(HIERARCHY_DECLARATION)
+LEADERSHIP_TOOL_DECLARATIONS.push(HIERARCHY_LEADERSHIP_DECLARATION)
 
 export const LEADERSHIP_ASK_TOOL = "leadership_ask"
 export const LEADERSHIP_ASK_DECLARATION: FunctionDeclaration = {
@@ -423,8 +423,12 @@ function clarification<T>(outcome: ReferenceOutcome<T>, what: string): Leadershi
 export async function executeLeadershipTool(deps: LeadershipToolDependencies, name: string, args: Record<string, unknown>): Promise<LeadershipToolResult> {
   const { repository, scope, closure } = deps
   try {
-    // Hierarquia: organograma da organização inteira, aberto a todos — NÃO passa pelo escopo de acesso (ver `org-hierarchy.ts`).
-    if (name === HIERARCHY_TOOL) return executeHierarchyTool(repository, { organizationId: scope.organizationId, viewer: scope.viewer, args, now: closure.now })
+    // Hierarquia: organograma da organização inteira, aberto a todos — NÃO passa pelo escopo de acesso (ver `org-hierarchy.ts`). Na
+    // liderança, com ativos e inativos no cadastro e a situação funcional de hoje (decisão de 21/11/2026).
+    if (name === HIERARCHY_TOOL) {
+      const leadership = deps.loadStatuses ? { loadStatuses: deps.loadStatuses, date: localDateOf(closure.now, closure.timeZone) } : undefined
+      return executeHierarchyTool(repository, { organizationId: scope.organizationId, viewer: scope.viewer, args, now: closure.now, ...(leadership ? { leadership } : {}) })
+    }
     if (name === "leadership_calculate") {
       const parsed = parseCalculations(args.calculos)
       if ("error" in parsed) return { text: `Cálculo não feito: ${parsed.error}`, card: null, issue: { kind: "INVALID", message: parsed.error, candidates: [] } }

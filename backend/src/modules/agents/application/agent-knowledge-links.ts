@@ -2,6 +2,8 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { canManageScope, getManageableScopes, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
 import { canReadDocument, loadDocumentScopes, type DocumentScope } from "../../knowledge/application/knowledge-document-read-access.js"
+import { asOperatingUniverse, universesCompatible, type OperatingUniverse } from "../../operating-universe/domain/operating-universe.js"
+import { knowledgeFitsAgentSql } from "../../knowledge/application/knowledge-agent-fit.js"
 import { parseAgentConfig, sameAgentConfig, type AgentConfig } from "../domain/agent-config.js"
 
 /**
@@ -48,7 +50,7 @@ export type KnowledgeLinkCandidate = {
   name: string
   agentType: string
   active: boolean
-  operatingUniverse: string | null
+  operatingUniverse: OperatingUniverse | null
   scopeType: string
   /** Grupo do alcance em edição (o Grupo-pai, quando o agente é de Subgrupo) e o Subgrupo — para o filtro por Grupo. */
   teamId: string | null
@@ -98,7 +100,7 @@ type CandidateRow = {
 export type KnowledgeLinkContext = {
   knowledgeDocumentId: string
   knowledgeTitle: string
-  knowledgeUniverse: string | null
+  knowledgeUniverse: OperatingUniverse | null
   scopes: ManageableScopes
   inactiveScopes: ManageableScopes
 }
@@ -129,7 +131,7 @@ export async function loadKnowledgeLinkContext(db: Database, user: { organizatio
   return {
     knowledgeDocumentId,
     knowledgeTitle: base.title,
-    knowledgeUniverse: base.operating_universe,
+    knowledgeUniverse: asOperatingUniverse(base.operating_universe),
     scopes: await getManageableScopes(db, user, "agents.manage"),
     inactiveScopes: await getManageableScopes(db, user, "agents.inactive.manage"),
   }
@@ -137,7 +139,7 @@ export async function loadKnowledgeLinkContext(db: Database, user: { organizatio
 
 /**
  * Agentes que a pessoa administra, com a situação da base em cada um. O alcance considerado para a compatibilidade é o da
- * configuração EM EDIÇÃO (rascunho, ou a vigente), o mesmo que `assertKnowledgeDocumentsCompatible` confere ao gravar. Inativo só
+ * configuração EM EDIÇÃO (rascunho, ou a vigente), a mesma regra que `assertKnowledge` confere ao gravar (`knowledge-agent-fit.ts`). Inativo só
  * aparece para quem administra inativos naquele alcance (a regra da lista de agentes). `onlyIds` restringe aos agentes pedidos.
  */
 export async function loadKnowledgeLinkCandidates(db: Pick<Database, "query">, organizationId: string, context: KnowledgeLinkContext, onlyIds?: readonly string[]): Promise<KnowledgeLinkCandidate[]> {
@@ -164,12 +166,7 @@ export async function loadKnowledgeLinkCandidates(db: Pick<Database, "query">, o
             coalesce(s.edit_team_id, (select st.team_id from subteams st where st.id = s.edit_subteam_id)) edit_group_team_id,
             (select name from teams where id = coalesce(s.edit_team_id, (select st.team_id from subteams st where st.id = s.edit_subteam_id))) edit_team_name,
             (select name from subteams where id = s.edit_subteam_id) edit_subteam_name,
-            case when s.edit_scope_type = 'ALL_TEAMS' then true else exists (
-              select 1 from knowledge_document_org_scopes os left join subteams ost on ost.id = os.subteam_id
-               where os.knowledge_document_id = $2
-                 and (os.scope_type = 'ALL_TEAMS' or coalesce(os.team_id, ost.team_id) =
-                      case when s.edit_scope_type = 'SUBTEAM' then (select st.team_id from subteams st where st.id = s.edit_subteam_id) else s.edit_team_id end)
-            ) end scope_compatible
+            ${knowledgeFitsAgentSql("$2::uuid", { scopeType: "s.edit_scope_type", teamId: "s.edit_team_id", subteamId: "s.edit_subteam_id" })} scope_compatible
        from scoped s
       order by s.name, s.id`,
     [organizationId, context.knowledgeDocumentId, onlyIds ? [...onlyIds] : null],
@@ -186,7 +183,7 @@ export async function loadKnowledgeLinkCandidates(db: Pick<Database, "query">, o
       // também o esconde com `restricted: true`). A linha mostra o agente como está em uso e fica bloqueada.
       if (draftRestricted) {
         return {
-          id: row.id, name: row.name, agentType: row.agent_type, active: row.active, operatingUniverse: row.operating_universe,
+          id: row.id, name: row.name, agentType: row.agent_type, active: row.active, operatingUniverse: asOperatingUniverse(row.operating_universe),
           scopeType: row.scope_type, teamId: row.scope_type === "ALL_TEAMS" ? null : row.live_group_team_id, subteamId: row.scope_type === "SUBTEAM" ? row.subteam_id : null,
           teamName: row.live_team_name, subteamName: row.live_subteam_name,
           linkedInUse: row.linked_in_use, linkedInDraft: row.linked_in_use, published: row.current_version_id !== null, currentVersionNumber: row.current_version_number,
@@ -196,14 +193,14 @@ export async function loadKnowledgeLinkCandidates(db: Pick<Database, "query">, o
       }
       const editing = draft ?? live
       const linkedInDraft = editing ? editing.knowledgeDocumentIds.includes(context.knowledgeDocumentId) : row.linked_in_use
-      const universeMismatch = context.knowledgeUniverse !== null && row.operating_universe !== null && context.knowledgeUniverse !== row.operating_universe
+      const universeMismatch = !universesCompatible(context.knowledgeUniverse, asOperatingUniverse(row.operating_universe))
       const block: KnowledgeLinkBlock | null = !linkedInDraft && !row.scope_compatible ? "SCOPE" : !linkedInDraft && universeMismatch ? "UNIVERSE" : null
       return {
         id: row.id,
         name: row.name,
         agentType: row.agent_type,
         active: row.active,
-        operatingUniverse: row.operating_universe,
+        operatingUniverse: asOperatingUniverse(row.operating_universe),
         scopeType: row.edit_scope_type,
         teamId: row.edit_scope_type === "ALL_TEAMS" ? null : row.edit_group_team_id,
         subteamId: row.edit_scope_type === "SUBTEAM" ? row.edit_subteam_id : null,

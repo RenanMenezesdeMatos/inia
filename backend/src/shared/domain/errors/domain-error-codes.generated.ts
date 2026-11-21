@@ -234,7 +234,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "messages": [],
     "refs": [
-      "backend/src/modules/agents/presentation/agent-router.ts"
+      "backend/src/modules/agents/application/agent-config-rules.ts"
     ]
   },
   {
@@ -389,7 +389,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "Uma das bases de conhecimento selecionadas não existe ou foi excluída."
     ],
     "refs": [
-      "backend/src/modules/agents/presentation/agent-router.ts"
+      "backend/src/modules/agents/application/agent-config-rules.ts"
     ]
   },
   {
@@ -402,7 +402,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "Uma das bases de conhecimento selecionadas vale para outro Grupo — escolha bases globais ou do Grupo deste agente."
     ],
     "refs": [
-      "backend/src/modules/agents/presentation/agent-router.ts"
+      "backend/src/modules/agents/application/agent-config-rules.ts"
     ]
   },
   {
@@ -415,7 +415,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "Já existe um agente com esse nome."
     ],
     "refs": [
-      "backend/src/modules/agents/presentation/agent-router.ts"
+      "backend/src/modules/agents/application/agent-config-rules.ts"
     ]
   },
   {
@@ -429,10 +429,10 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "Agent não encontrado para este colaborador."
     ],
     "refs": [
+      "backend/src/modules/agents/application/agent-config-rules.ts",
       "backend/src/modules/agents/application/agent-deletion.ts",
       "backend/src/modules/agents/application/agent-versions.ts",
       "backend/src/modules/agents/application/run-agent.ts",
-      "backend/src/modules/agents/presentation/agent-router.ts",
       "backend/src/modules/indicator-diagnosis/application/simulate-diagnostic-strategy.ts",
       "backend/src/modules/indicator-diagnosis/presentation/diagnostic-strategy-router.ts"
     ]
@@ -491,6 +491,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "Você não tem permissão para criar agentes nesse escopo."
     ],
     "refs": [
+      "backend/src/modules/agents/application/agent-config-rules.ts",
       "backend/src/modules/agents/presentation/agent-router.ts"
     ]
   },
@@ -502,7 +503,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "messages": [],
     "refs": [
-      "backend/src/modules/agents/presentation/agent-router.ts"
+      "backend/src/modules/agents/application/agent-config-rules.ts"
     ]
   },
   {
@@ -6727,7 +6728,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "Há muitos arquivos sendo lidos agora. Tente de novo em instantes."
     ],
     "refs": [
-      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+      "backend/src/modules/knowledge/application/knowledge-file-upload.ts"
     ]
   },
   {
@@ -6738,10 +6739,11 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "messages": [
       "Não foi possível extrair texto do arquivo enviado.",
-      "Nenhuma página deste PDF tem texto para a IA ler. Nada foi alterado.",
-      "Não foi possível extrair texto do arquivo. Ele entra no rascunho sem texto: digite o texto ou troque o arquivo."
+      "Não foi possível extrair texto do arquivo. Ele entra no rascunho sem texto: digite o texto ou troque o arquivo.",
+      "Nenhuma página deste PDF tem texto para a IA ler. Nada foi alterado."
     ],
     "refs": [
+      "backend/src/modules/knowledge/application/knowledge-file-upload.ts",
       "backend/src/modules/knowledge/presentation/knowledge-router.ts"
     ]
   },
@@ -6773,6 +6775,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "O arquivo original não passou na conferência de segurança."
     ],
     "refs": [
+      "backend/src/modules/knowledge/application/knowledge-file-upload.ts",
       "backend/src/modules/knowledge/presentation/knowledge-router.ts"
     ]
   },
@@ -6958,8 +6961,8 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "${pagesWord(scannedFound)} ficaram sem texto: a leitura por OCR não está disponível neste servidor."
     ],
     "refs": [
-      "backend/src/modules/knowledge/application/knowledge-ocr-jobs.ts",
-      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+      "backend/src/modules/knowledge/application/knowledge-file-upload.ts",
+      "backend/src/modules/knowledge/application/knowledge-ocr-jobs.ts"
     ]
   },
   {
@@ -7499,7 +7502,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "${UNIVERSE_RESOURCES[kind].label} e recursos ligados ficariam em universos diferentes — universos não se misturam. Resolva estes vínculos antes de salvar: ${lines.join(\"; \")}${conflicts.length > 10 ? "
     ],
     "refs": [
-      "backend/src/modules/agents/presentation/agent-router.ts",
+      "backend/src/modules/agents/application/agent-knowledge-link-changes.ts",
       "backend/src/modules/argument-scripts/application/argument-script-service.ts",
       "backend/src/modules/operating-universe/application/resource-universe.ts",
       "backend/src/modules/operating-universe/application/universe-links.ts"
@@ -8178,17 +8181,6 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "refs": [
       "backend/src/main/app.ts"
-    ]
-  },
-  {
-    "code": "PDF",
-    "module": "knowledge",
-    "statuses": [
-      422
-    ],
-    "messages": [],
-    "refs": [
-      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
     ]
   },
   {

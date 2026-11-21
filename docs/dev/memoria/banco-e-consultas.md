@@ -121,3 +121,12 @@ Relatório completo (achados, medições antes × depois, o que ficou de fora): 
 
 **Provas desta frente:** `employee-performance-organization-proof` (nova), `analytics-read-model-proof`, `dynamic-indicator-proof`,
 `data-hub-proof` e as de Workflow/estratégia listadas no relatório.
+
+### Ordem das migrations (21/11/2026, run-8 ARQ-11)
+
+A numeração pulou de 227 para 243 e 245: os números 228–242 e 244 não foram usados por nenhuma branch nem worktree (conferido em 21/11) e
+ficam vagos — 243 e 245 já estão aplicadas no dev, no teste e publicadas, e renumerar faria os bancos as aplicarem de novo com outro nome.
+Para a lacuna não virar ordem diferente entre instalação nova e banco atualizado, `runMigrations` recusa antes de aplicar qualquer coisa a
+pendente com número menor que a mais nova já aplicada (`outOfOrderMigrations`, `MigrationOrderError`; teste `run-migrations.test.ts`).
+Migration nova entra sempre depois da última aplicada (hoje, 246 em diante). O `inia_holdout_v2`, congelado, tem pendências fora de ordem
+desde a homologação e nunca é migrado.

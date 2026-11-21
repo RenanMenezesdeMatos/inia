@@ -28,6 +28,9 @@ export const optionalOperatingUniverseSchema = operatingUniverseSchema.nullish()
 
 export const isOperatingUniverse = (value: unknown): value is OperatingUniverse => typeof value === "string" && (OPERATING_UNIVERSES as readonly string[]).includes(value)
 
+/** Valor gravado → universo; desconhecido ou vazio = pendente (null). */
+export const asOperatingUniverse = (value: string | null | undefined): OperatingUniverse | null => (isOperatingUniverse(value) ? value : null)
+
 /** Texto livre de uma carga (Central de Dados): aceita o código com qualquer caixa/espaços; outro valor = inválido (nunca adivinhado). */
 export function parseOperatingUniverse(raw: unknown): OperatingUniverse | null | "INVALID" {
   if (raw === null || raw === undefined) return null
@@ -71,7 +74,7 @@ export function resourceUsableIn(access: UniverseAccess, resourceUniverse: Opera
   return resourceUniverse !== null && access.universes.includes(resourceUniverse)
 }
 
-/** Recurso × produto vinculados: universos iguais (pendente de qualquer lado não é conflito declarado — é pendência a classificar). */
+/** Dois recursos vinculados (base × produto, base × agente): universos iguais (pendente de qualquer lado não é conflito declarado — é pendência a classificar). */
 export function universesCompatible(resource: OperatingUniverse | null, product: OperatingUniverse | null): boolean {
   return resource === null || product === null || resource === product
 }

@@ -1,4 +1,4 @@
-import { classifyScannedPage, PDF_EMBEDDED_PRINT_RULE, type ScannedPageSource } from "../../domain/pdf-ocr/embedded-prints.js"
+import { classifyScannedPage, embeddedLooksScanned, PDF_EMBEDDED_PRINT_RULE, type ScannedPageSource } from "../../domain/pdf-ocr/embedded-prints.js"
 import { parseHocr, wordsOf, type OcrBox, type OcrLine } from "../../domain/pdf-ocr/hocr.js"
 import { reviewOcrPage, type OcrPageReview } from "../../domain/pdf-ocr/ocr-page-checks.js"
 import { OCR_MAX_PAGES, type OcrPageInput } from "../../domain/pdf-ocr/ocr-layout.js"
@@ -69,7 +69,10 @@ export async function readScannedPages(
         await pause()
         const bands = inkBands(rendered.pixels(), rendered.pixelWidth, rendered.pixelHeight, rendered.scale)
         await pause()
-        first.push({ page: number, width: rendered.width, height: rendered.height, lines: await readPage(engine, rendered), bands, source: classified.source, embeddedPrints: classified.prints })
+        const lines = await readPage(engine, rendered)
+        // V3 (QA-07): digitalização com margem — a "imagem" é a página e o texto todo está dentro dela; vira SCAN e segue a regra da tinta.
+        const scanned = classified.source === "EMBEDDED" && embeddedLooksScanned(classified.prints, wordsOf({ lines }), rendered.width, rendered.height)
+        first.push({ page: number, width: rendered.width, height: rendered.height, lines, bands, source: scanned ? "SCAN" : classified.source, embeddedPrints: scanned ? [] : classified.prints })
       } catch (error) {
         // Sem o motor não há o que fazer nas outras páginas: o erro sobe para quem pediu a leitura.
         if (error instanceof Error && error.name === "OcrEngineUnavailableError") throw error

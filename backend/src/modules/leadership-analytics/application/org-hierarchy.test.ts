@@ -4,7 +4,7 @@ import { InMemoryAnalyticsRepository, person } from "../../performance-analytics
 import type { QueryTableCard } from "../domain/view-models.js"
 import { CLOSURE, L, leaderUser, leadershipOrg, operatorsOf } from "../testing/leadership-fixture.js"
 import { executeLeadershipTool } from "./leadership-toolset.js"
-import { HIERARCHY_DECLARATION, HIERARCHY_TOOL, runHierarchyQuery } from "./org-hierarchy.js"
+import { HIERARCHY_DECLARATION, HIERARCHY_LEADERSHIP_DECLARATION, HIERARCHY_TOOL, hierarchyStatusLabel, runHierarchyQuery } from "./org-hierarchy.js"
 
 const org = leadershipOrg()
 const byId = (id: string) => org.people.find((item) => item.id === id)!
@@ -105,5 +105,79 @@ describe("org_hierarchy — organograma aberto a todos", () => {
     expect(properties).not.toContain("indicador")
     expect(properties).not.toContain("competencia")
     expect(byId(L.gabriel).role).toBe("MANAGER")
+  })
+})
+
+describe("org_hierarchy — visão da liderança: ativos, inativos e situação funcional (21/11/2026)", () => {
+  const inactiveOperator = operatorsOf(3)[0]!
+  const people = org.people.map((item) => (item.id === inactiveOperator || item.id === L.carla ? { ...item, active: false } : item))
+  const statuses = new Map<string, string | null>([[operatorsOf(1)[0]!, "FERIAS"], [operatorsOf(1)[1]!, "INSS"], [operatorsOf(1)[2]!, "VACATION"], [L.sara, "EM_PRODUCAO"]])
+  const lead = (viewerId: string, args: Record<string, unknown>) => runHierarchyQuery({ people, viewer: people.find((item) => item.id === viewerId)!, args, now: CLOSURE.now, leadership: { statuses, dateLabel: "21/11/2026" } })
+
+  it("rótulo da situação: afastamento sensível protegido, legado canonizado, ausente = Não informada (nunca Em produção)", () => {
+    expect(hierarchyStatusLabel("INSS")).toBe("Afastamento (motivo protegido)")
+    expect(hierarchyStatusLabel("MATERNIDADE")).toBe("Afastamento (motivo protegido)")
+    expect(hierarchyStatusLabel("VACATION")).toBe("FÉRIAS")
+    expect(hierarchyStatusLabel(null)).toBe("Não informada")
+    expect(hierarchyStatusLabel("QUALQUER")).toBe("Não informada")
+  })
+
+  it("lista com cadastro TODOS traz ativos e inativos, com colunas de cadastro e situação", () => {
+    const card = table(lead(L.gabriel, { consulta: "DIRETOS", pessoa: "Sara Silva", cadastro: "TODOS" }))
+    expect(card.columns.map((item) => item.key)).toEqual(["name", "role", "team", "subteam", "registry", "status", "below"])
+    const byName = Object.fromEntries(card.rows.map((row) => [row.cells.name, row.cells]))
+    expect(byName[org.people.find((item) => item.id === operatorsOf(1)[0])!.name]!.status).toBe("FÉRIAS")
+    expect(byName[org.people.find((item) => item.id === operatorsOf(1)[1])!.name]!.status).toBe("Afastamento (motivo protegido)")
+    expect(byName[org.people.find((item) => item.id === operatorsOf(1)[3])!.name]!.status).toBe("Não informada")
+    expect(JSON.stringify(card.rows)).not.toContain("INSS")
+  })
+
+  it("padrão ATIVOS conta só ativos e avisa quantos inativos ficaram fora; INATIVOS lista só os inativos", () => {
+    const active = table(lead(L.gabriel, { consulta: "ABAIXO", agrupar_por: "NENHUM" }))
+    expect(active.rows[0]!.cells.count).toBe("18")
+    expect(active.highlights.join(" ")).toContain("Fora da contagem: 2 pessoas inativas no cadastro")
+    const inactive = table(lead(L.gabriel, { consulta: "ABAIXO", listar_pessoas: true, cadastro: "INATIVOS" }))
+    expect(inactive.totalRows).toBe(2)
+    expect(inactive.rows.every((row) => row.cells.registry === "Inativo")).toBe(true)
+  })
+
+  it("cadeia marca o líder inativo e traz a situação; a ficha mostra cadastro e situação da pessoa; acha inativo pelo nome", () => {
+    const card = table(lead(operatorsOf(1)[0]!, {}))
+    expect(column(card, "name")).toContain("Carla Coordenadora (inativo no cadastro)")
+    expect(card.highlights.join(" ")).toContain("Cadastro: ativo · situação funcional em 21/11/2026: FÉRIAS.")
+    const carla = lead(L.gabriel, { pessoa: "Carla Coordenadora" })
+    expect(carla.issue).toBeUndefined()
+    expect(table(carla).highlights.join(" ")).toContain("Cadastro: inativo")
+  })
+
+  it("agrupar por SITUACAO conta por situação funcional, com o sensível no bucket protegido", () => {
+    const card = table(lead(L.gabriel, { consulta: "ABAIXO", cargos: ["OPERADOR"], agrupar_por: "SITUACAO" }))
+    const counts = Object.fromEntries(card.rows.map((row) => [row.cells.group, row.cells.count]))
+    expect(counts["FÉRIAS"]).toBe("2")
+    expect(counts["Afastamento (motivo protegido)"]).toBe("1")
+    expect(Object.keys(counts)).not.toContain("INSS")
+  })
+
+  it("operador continua sem inativos nem situação; a declaração da liderança tem cadastro e SITUACAO, a do operador não", () => {
+    const operatorView = table(runHierarchyQuery({ people, viewer: people.find((item) => item.id === operatorsOf(1)[0])!, args: { cadastro: "TODOS" }, now: CLOSURE.now }))
+    expect(JSON.stringify([operatorView.rows, operatorView.columns, operatorView.highlights])).not.toMatch(/inativ|FÉRIAS|Situação funcional/i)
+    expect(Object.keys((HIERARCHY_DECLARATION.parameters as { properties: Record<string, unknown> }).properties)).not.toContain("cadastro")
+    const leadProps = (HIERARCHY_LEADERSHIP_DECLARATION.parameters as { properties: Record<string, { enum?: string[] }> }).properties
+    expect(leadProps.cadastro?.enum).toEqual(["ATIVOS", "INATIVOS", "TODOS"])
+    expect(leadProps.agrupar_por?.enum).toContain("SITUACAO")
+  })
+
+  it("pelo caminho da liderança, a situação vem do leitor da força de trabalho, na data de hoje", async () => {
+    const repository = new InMemoryAnalyticsRepository(org)
+    const scope = await loadViewerScope(repository, leaderUser(L.sara, "SUPERVISOR"))
+    const dates: string[] = []
+    const result = await executeLeadershipTool(
+      { repository, scope, closure: CLOSURE, loadPendingActions: async () => ({ pending: [], history: [], pendingCount: 0 }), loadStatuses: async (ids, date) => { dates.push(date); return new Map(ids.map((id) => [id, "FERIAS"])) } },
+      HIERARCHY_TOOL,
+      { pessoa: "Hugo Reis" },
+    )
+    expect(dates).toHaveLength(1)
+    expect(table(result).highlights.join(" ")).toContain("situação funcional em")
+    expect(result.text).toContain("visão da liderança")
   })
 })

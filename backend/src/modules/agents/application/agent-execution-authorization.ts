@@ -2,6 +2,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { scopesAreCompatible, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
 import type { AgentRuntimeSnapshot } from "../domain/agent-config.js"
+import { knowledgeFitsAgentSql } from "../../knowledge/application/knowledge-agent-fit.js"
 
 /**
  * Condição de segurança da revisão aprovada da PEN-002/PEN-076 (03/11/2026): com a atualização automática, a versão VIGENTE de
@@ -46,12 +47,8 @@ export async function executionDenialFor(db: Database, snapshot: AgentRuntimeSna
   const ids = [...new Set(snapshot.config.knowledgeDocumentIds)]
   if (ids.length === 0) return null
   const rows = (await db.query<{ id: string; same_org: boolean; allowed: boolean }>(
-    `with agent_scope as (select $3::text scope_type, case when $3 = 'SUBTEAM' then (select st.team_id from subteams st where st.id = $5::uuid) else $4::uuid end team_id)
-     select d.id, d.organization_id = $2 same_org,
-            (a.scope_type = 'ALL_TEAMS' or exists (
-              select 1 from knowledge_document_org_scopes os left join subteams st on st.id = os.subteam_id
-               where os.knowledge_document_id = d.id and (os.scope_type = 'ALL_TEAMS' or coalesce(os.team_id, st.team_id) = a.team_id))) allowed
-       from knowledge_documents d cross join agent_scope a
+    `select d.id, d.organization_id = $2 same_org, ${knowledgeFitsAgentSql("d.id", { scopeType: "$3::text", teamId: "$4::uuid", subteamId: "$5::uuid" })} allowed
+       from knowledge_documents d
       where d.id = any($1::uuid[]) and d.deleted_at is null`,
     [ids, snapshot.organizationId, snapshot.config.scopeType, snapshot.config.teamId, snapshot.config.subteamId],
   )).rows

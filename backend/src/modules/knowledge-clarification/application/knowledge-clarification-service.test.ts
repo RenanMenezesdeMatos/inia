@@ -566,3 +566,14 @@ describe("esclarecimento pelas bases — para onde a resposta \"insuficiente\" a
     expect(asked).toBe(0)
   })
 })
+
+describe("rastro com as versões das regras (run-8, ARQ-07)", () => {
+  it("a resposta grava as versões dos prompts, da rota de ajuda e do texto das imagens", async () => {
+    const { ask } = setup((call) => clarify("Produto", "Você se refere à mudança de endereço de qual produto?", [
+      { label: "Linha básica", evidence: [refOf(call.prompt, "Linha básica")] },
+      { label: "LP de Dados", evidence: [refOf(call.prompt, "LP de Dados")] },
+    ]))
+    const outcome = reply(await ask("Como faço uma mudança de endereço?"))
+    expect(outcome.trace.rules).toEqual({ prompts: "KNOWLEDGE_CLARIFICATION_PROMPTS_V6", helpRoute: "HELP_ROUTE_V1", imageStepText: "IMAGE_STEP_TEXT_V1" })
+  })
+})

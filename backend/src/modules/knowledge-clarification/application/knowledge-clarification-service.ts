@@ -10,7 +10,7 @@ import type { CatalogSource } from "../../knowledge/domain/knowledge-catalog.js"
 import { planSectionPrefill } from "../../knowledge/domain/section-prefill.js"
 import { createAnswerStream } from "../domain/answer-stream.js"
 import { CONVERGENCE_ISSUES, validateAnswerOutput, validatePlannerOutput, type AnswerValidation, type PlannerIssue, type PlannerValidation, type PlannerValidationContext, type PresentedEvidence, type RejectedOption, type ValidatedPlan } from "../domain/clarification-contract.js"
-import { ANSWER_SYSTEM, renderAnswerInput, renderCorrection, renderPlannerInput, renderPlannerSystem, SESSION_ANSWER_RULE, type AnswerSection, type PlannerInput } from "../domain/clarification-prompts.js"
+import { ANSWER_SYSTEM, KNOWLEDGE_CLARIFICATION_PROMPT_VERSION, renderAnswerInput, renderCorrection, renderPlannerInput, renderPlannerSystem, SESSION_ANSWER_RULE, type AnswerSection, type PlannerInput } from "../domain/clarification-prompts.js"
 import {
   KNOWLEDGE_CLARIFICATION_VERSION,
   MAX_CLARIFICATION_STEPS,
@@ -27,7 +27,8 @@ import {
   type ClarificationStep,
   type QuestionFact,
 } from "../domain/clarification-state.js"
-import { insufficientHelpSentence, type HelpRoute } from "../domain/help-route.js"
+import { HELP_ROUTE_VERSION, insufficientHelpSentence, type HelpRoute } from "../domain/help-route.js"
+import { IMAGE_STEP_TEXT_VERSION } from "../../knowledge/domain/image-step-text.js"
 import { DEFAULT_NAVIGATION_BUDGET, KnowledgeWorkspace, describeProducts, type NavigationBudget } from "../domain/knowledge-workspace.js"
 import type { ClarificationModel } from "./clarification-model.js"
 
@@ -111,9 +112,15 @@ export const MAX_READ_ROUNDS = 2
 /** Quanto a leitura da rota de ajuda pode atrasar a resposta "insuficiente" antes de cair na liderança. */
 export const HELP_ROUTE_TIMEOUT_MS = 1_500
 
+export const CLARIFICATION_RULES = { prompts: KNOWLEDGE_CLARIFICATION_PROMPT_VERSION, helpRoute: HELP_ROUTE_VERSION, imageStepText: IMAGE_STEP_TEXT_VERSION } as const
+export type ClarificationRules = typeof CLARIFICATION_RULES
+
 /** Rastro auditável (gravado com a resposta; nunca prompt nem texto das bases). */
 export type ClarificationTrace = {
   version: typeof KNOWLEDGE_CLARIFICATION_VERSION
+  /** Versões das regras que produziram esta resposta (run-8, ARQ-07): prompts, texto fixo da resposta "insuficiente" e texto das
+   * imagens das fontes. Resposta gravada antes de 21/11/2026 não tem. */
+  rules: ClarificationRules
   mode: ClarificationMode
   decision: ValidatedPlan["decision"] | "NOT_CONVERGED" | null
   /** O que a IA viu e consultou: bases listadas, abertas (títulos), seções lidas, rodadas de consulta. */
@@ -189,7 +196,7 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
   }
 
   function trace(mode: ClarificationMode): ClarificationTrace {
-    return { version: KNOWLEDGE_CLARIFICATION_VERSION, mode, decision: null, navigation: null, rejectedOptions: [], plannerAttempts: 0, answerAttempts: 0, issues: [] }
+    return { version: KNOWLEDGE_CLARIFICATION_VERSION, rules: CLARIFICATION_RULES, mode, decision: null, navigation: null, rejectedOptions: [], plannerAttempts: 0, answerAttempts: 0, issues: [] }
   }
 
   /** `question`: o que a busca em escala procura (a pergunta; numa continuação, a pergunta original com a mensagem nova). */

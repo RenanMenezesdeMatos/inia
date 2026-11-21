@@ -2,7 +2,8 @@
  * O texto da própria base junto de uma imagem (print de instrução de trabalho), para a tela mostrar embaixo da imagem ampliada. É sempre o texto
  * literal do material, nunca gerado: texto de IA não é evidência. Sem texto por perto, null, e a tela não mostra descrição.
  *
- * Regra `IMAGE_STEP_TEXT_V1` (a mesma em `frontend/src/lib/knowledge/image-step-text.ts`; os testes dos dois lados usam os mesmos casos):
+ * Regra `IMAGE_STEP_TEXT_V1` (a mesma em `frontend/src/lib/knowledge/image-step-text.ts`; as duas respondem o caderno único
+ * `backend/src/modules/knowledge/testing/image-step-text-cases.ts` em `image-step-text.parity.test.ts`):
  *   - a imagem entra no fim da linha do último texto acima dela (`placeImages`), então o passo que ela ilustra é o bloco que termina ali: o item
  *     de lista (com as linhas de continuação) ou o parágrafo;
  *   - se antes dela só há título, tabela ou nada, vale o primeiro bloco depois dela (a legenda ou o passo seguinte);

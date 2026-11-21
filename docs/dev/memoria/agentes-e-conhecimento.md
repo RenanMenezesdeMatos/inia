@@ -271,7 +271,7 @@ Pedido do responsável depois de testar na VM: na imagem ampliada do material de
 - **Texto da base junto da imagem — regra `IMAGE_STEP_TEXT_V1`** (`imageStepText`, código puro, duas cópias com os mesmos casos de teste: `backend/src/modules/knowledge/domain/image-step-text.ts` e `frontend/src/lib/knowledge/image-step-text.ts`). A imagem entra no fim da linha do último texto acima dela (`placeImages`), então vale o bloco que termina ali: o item de lista com as linhas de continuação, ou o parágrafo. Se antes só há título, linha de tabela ou nada, vale o primeiro bloco depois (a legenda ou o passo seguinte). Tira `**`, `__` e crase, junta espaços, corta em 400 caracteres numa palavra. Sem bloco = sem descrição. Na tela: "No material, junto desta imagem". Não há detecção de "Figura N" por palavra: a legenda entra quando é o bloco antes ou depois.
 - **Onde é calculado:** no chat, pelo servidor (`sectionImagesOf` em `knowledge-catalog.ts`, com o texto do trecho e a posição `at` da imagem; imagem no começo de um trecho olha o fim do trecho anterior da mesma seção) e gravado em `images[].description` no estado do esclarecimento (`clarification-state.ts`, opcional, até 400). Na leitura e em "O que a IA lê", pelo navegador, com o texto que a tela já tem e a mesma posição em que a imagem é desenhada.
 - **Limitações:** resposta do chat gravada antes de 19/11/2026 não tem `description` e mostra a imagem sem texto (as setas funcionam). A posição `at` dentro do trecho é aproximada quando o trecho foi recomposto com espaços (mesma limitação do "O que a IA lê"). O chat não foi visto no navegador com uma resposta real (pediria uma chamada de IA); a leitura do material foi, com a IT-INIA-008 de teste do dev (92 prints).
-- **Provas:** `image-step-text.test.ts` (backend e frontend), `knowledge-workspace.test.ts`, `knowledge-image-viewer.test.tsx` (setas, pontas, teclado, Esc com foco de volta, toque, sem descrição, imagem sozinha), `knowledge-source-images.test.tsx` (conjunto além do "Ver mais" com texto do servidor) e `knowledge-reading-view.test.tsx` (texto da base, e nenhum depois da tabela).
+- **Provas:** `image-step-text.parity.test.ts` (caderno único `knowledge/testing/image-step-text-cases.ts` rodado contra a cópia do servidor e a do navegador — run-8, ARQ-06), `knowledge-workspace.test.ts`, `knowledge-image-viewer.test.tsx` (setas, pontas, teclado, Esc com foco de volta, toque, sem descrição, imagem sozinha), `knowledge-source-images.test.tsx` (conjunto além do "Ver mais" com texto do servidor) e `knowledge-reading-view.test.tsx` (texto da base, e nenhum depois da tabela).
 
 ### PDF digitalizado: leitura por OCR (2026-11-07, migration 179)
 
@@ -346,11 +346,14 @@ Pedido: uma IT da base de conhecimento impressa do portal pelo navegador ("Micro
 - **Medido (20/11, 10 primeiras páginas).** IT do Vantive: os 21 passos limpos, 12 prints recortados, nenhuma conferência. Manuais inéditos IT-001/006/008/016 (nunca usados para ajustar): `objetos` 24 de 24 prints, 0 palavra real cortada; `digitalizado` (regra da tinta, sem mudança) 13 de 24 prints, 0 palavra real cortada, e as conferências apontaram as 10 de 10 páginas com print perdido, com 3 alarmes a mais. Nos três usados para ajustar (IT-002/005/013): IT-005 4 de 4 páginas, IT-013 nenhum alarme, IT-002 2 de 4 com 2 alarmes a mais. O gabarito de prints do modo `objetos` usa a mesma leitura de posição do produto (é circular para prints; não para palavras).
 - **Limitação que continua:** na digitalização de verdade, a regra da tinta acha cerca de metade dos prints (tela de fundo cinza claro some no papel tingido e sai em pedaços). Agora isso é AVISADO por página, não corrigido; mudar a regra exige medição declarada antes, com a ferramenta acima. O rodapé repetido lido diferente pelo OCR ("2/9" → "219") não sai como repetição.
 
-Provas: `embedded-prints.test.ts`, `ocr-page-checks.test.ts`, `pdf-ocr-embedded.test.ts` (página "impressa" com print em tiras e margem branca), `pdf-ocr-reader.test.ts` (digitalização, motor real) e `knowledge-ai-preview.test.tsx`. Uso:
+- **V3 — digitalização com margem (21/11/2026, QA-07 da run-8).** PDF digitalizado de teste gerado por `backend/scripts/dev/pdf-ocr-eval/gerar-digitalizado.ts` (IT fictícia da "Operadora Exemplo", 4 páginas: títulos, parágrafos acentuados, passos, tabela com grade, aviso em caixa, 3 prints de sistema, foto de celular, gráfico e carimbo; "scanner" com papel tingido, inclinação, desfoque, ruído, sombra da lombada, poeira e JPEG; páginas em cor e em cinza; gabarito de palavras e prints em pontos). Variantes `pagina-inteira`, `limpo` (sem sombra/poeira), `com-margem` (imagem em 70% da área) e `misto` (1 e 3 com camada de texto). **Antes (V2):** `com-margem` tomou cada página por um print só — 539 de 539 palavras fora do texto. **Correção** `PDF_EMBEDDED_PRINTS_V3` (`embeddedLooksScanned`): depois da primeira leitura, página `EMBEDDED` com imagem ≥ 35% da área e < 10% das palavras fora das imagens (mínimo 15 palavras) vira `SCAN`. **Depois:** `com-margem` 93,7% das palavras, 0 cortada. Manuais em modo `objetos` (Print To PDF simulado) iguais à V2 (ver medição na seção). **Achado que continua (regra da tinta, travada):** com sombra da lombada e poeira, 0 de 6 prints achados (o texto das telas entra no corpo, as páginas 1–2 são apontadas `SMALL_TEXT_LEFT`); sem elas, 3 de 6. A sombra na borda põe tinta em toda linha e a página vira uma faixa só. Nenhuma palavra perdida. Mudar a regra exige medição declarada antes.
+
+Provas: `embedded-prints.test.ts` (com a V3), `ocr-page-checks.test.ts`, `pdf-ocr-embedded.test.ts` (página "impressa" com print em tiras e margem branca), `pdf-ocr-reader.test.ts` (digitalização, motor real) e `knowledge-ai-preview.test.tsx`. Uso:
 
 ```bash
 cd backend
 npx tsx scripts/dev/pdf-ocr-eval/validar-ocr.ts /tmp/validacao-ocr <pdf-ou-pasta>... --modos=producao,objetos,digitalizado --max-paginas=20
+npx tsx scripts/dev/pdf-ocr-eval/gerar-digitalizado.ts ../output/pdf-ocr-digitalizado   # PDF digitalizado de teste + gabarito + notas
 ```
 
 ### PENDÊNCIA OBRIGATÓRIA antes da VM — busca nas bases em escala (registrada 2026-11-13; implementada 2026-11-16 — ver a seção seguinte)
@@ -473,7 +476,7 @@ conteúdo de cada base (`regexp_replace` no texto todo) — não aguentava a esc
   unaccent) em título, nome do arquivo, assunto e produto/família. Visibilidade = alcance de `agents.manage` com a mesma regra de
   leitura da lista de Bases. Situação: `IN_USE` (versão publicada), `ARCHIVED` (inativa), `NO_VERSION`.
 - **Só oferece o que o salvar aceita**: universo do agente (pendente cabe) e, em agente de Grupo/Subgrupo, bases globais ou do mesmo
-  Grupo (a regra de `assertKnowledgeDocumentsCompatible`, que antes a tela não aplicava — oferecia e o salvar recusava com
+  Grupo (a regra de `knowledge-agent-fit.ts`, que antes a tela não aplicava — oferecia e o salvar recusava com
   `AGENT_KNOWLEDGE_SCOPE_FORBIDDEN`). O salvar continua a autoridade.
 - **Pré-seleção pelo Grupo** — regra de sempre, agora no servidor: Grupo = globais + bases do Grupo (inclusive por Subgrupo);
   Subgrupo = globais + bases do próprio Subgrupo (não as do Grupo-pai inteiro — mantido como era); "todos os Grupos" = nada; só na
@@ -525,6 +528,21 @@ consulta a base e abrem "Associar agentes" — só para quem tem `agents.manage`
   falha com `ORCHESTRATOR_SCOPE_TAKEN` (as duas criam orquestrador). Tela conferida em 20/11 numa pilha isolada (`kb.localhost`, API no
   `inia_test`): criar base → associar → publicar (versão 2, "Em uso") e salvar no rascunho de agente nunca publicado ("No rascunho");
   celular sem rolagem lateral. Dados de QA apagados.
+- **Organização do código (21/11/2026, refatorações adiadas da run-8, sem mudar comportamento)**: o router de agentes (1.040 → 605 linhas)
+  ficou só com entrada, autorização da rota e resposta. Regras de uma configuração (alcance, especialidade, limites, bases, nome, `nextConfig`)
+  em `agents/application/agent-config-rules.ts`; histórico (`diffConfigs`, `recordAgentHistory`, leitura por alcance) em `agent-history.ts`;
+  leitura de execuções e alcances antigos em `agent-read-access.ts`; as duas escritas repetidas — salvar rascunho com histórico e publicar com
+  revalidação — em `agent-draft-writes.ts` (`saveDraftWithHistory`, `publishCheckedDraft`), usadas pelo cadastro e pela associação; o caso de
+  uso da associação (plano por agente, prévia, gravação em lote, teto de 50) em `agent-knowledge-link-changes.ts` (ARQ-02). O envio de arquivo
+  de base saiu do router de bases para `knowledge/application/knowledge-file-upload.ts` (`readUploadedFile`, `trackUpload`,
+  `createKnowledgeDocument`, `replaceDraftFile`); o tipo de conteúdo do arquivo foi para `knowledge/domain/knowledge-file-type.ts`.
+- **"A base cabe no agente" é uma regra só** (ARQ-03): `knowledge/application/knowledge-agent-fit.ts` (`knowledgeFitsAgentSql`) nos cinco
+  usos — salvar o agente (`assertKnowledge`), a autorização de cada execução (`agent-execution-authorization.ts`, cópia que a auditoria não
+  tinha contado), a lista da base, o seletor do agente e a recuperação a cada pergunta. A leitura de base por alcance em lista é
+  `readableDocumentSql`, ao lado de `canReadDocument` (lista de Bases e seletor do agente); universo base × agente é `universesCompatible` (com
+  `asOperatingUniverse` no domínio, no lugar de duas cópias privadas). A cópia da tela (`picker-rules.ts`, só aviso) e a SQL respondem o
+  caderno `knowledge/testing/knowledge-agent-fit-cases.ts`: `knowledge-agent-fit.parity.test.ts` (tela, suíte normal) e
+  `INIA_DB_PROOF=1 npx vitest run knowledge-agent-fit-proof` (SQL, banco de teste, transação desfeita).
 - **Seletor inline, fechado por padrão (20/11, 2ª rodada, pedido do usuário: "nos moldes do agente, com filtro e paginação, sem
   sheets soltos"; depois "não vir aberto"):** o diálogo saiu. Cartão `knowledge-agents-picker.tsx` (largura inteira embaixo do editor e na
   página da base, escondido em base arquivada) nasce FECHADO com o resumo (quantos e os 5 primeiros, mesma consulta do resumo da lateral);

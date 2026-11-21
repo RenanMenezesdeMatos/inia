@@ -23,7 +23,11 @@ function agentTeamId(scope: AgentKnowledgeScope | undefined, teams: readonly Tea
   return scope.teamId ?? teams?.find((team) => (team.subteams ?? []).some((subteam) => subteam.id === scope.subteamId))?.id ?? null
 }
 
-/** A base cabe no Grupo do agente? Agente de todos os Grupos (ou sem Grupo ainda) aceita qualquer uma; o de Grupo, global ou do mesmo Grupo. */
+/**
+ * A base cabe no Grupo do agente? Agente de todos os Grupos (ou sem Grupo ainda) aceita qualquer uma; o de Grupo, global ou do mesmo Grupo.
+ * Cópia da regra do servidor (`backend/src/modules/knowledge/application/knowledge-agent-fit.ts`) só para avisar antes de salvar; as duas
+ * respondem o caderno `backend/src/modules/knowledge/testing/knowledge-agent-fit-cases.ts` (run-8, ARQ-03).
+ */
 export function fitsAgentScope(option: Pick<KnowledgeOption, "orgScopes">, scope: AgentKnowledgeScope | undefined, teams: readonly Team[] | undefined): boolean {
   const teamId = agentTeamId(scope, teams)
   if (!teamId) return true
