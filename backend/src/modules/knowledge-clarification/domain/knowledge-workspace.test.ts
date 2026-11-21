@@ -78,7 +78,8 @@ describe("imagens das fontes de uma resposta", () => {
     const workspace = new KnowledgeWorkspace([base])
     const view = workspace.render()
     const section = [...view.evidence.values()].find((ref) => ref.chunkIndex === 1 && ref.heading !== ref.documentTitle)!
-    expect(workspace.withImages(section).images).toEqual([{ id: IMAGE.id, page: 3, width: 800, height: 400 }])
+    // Imagem logo depois do título: o texto junto dela é o primeiro parágrafo depois, literal da base.
+    expect(workspace.withImages(section).images).toEqual([{ id: IMAGE.id, page: 3, width: 800, height: 400, description: "Texto da seção 2 de Base com imagens (fictícia)." }])
     const first = [...view.evidence.values()].find((ref) => ref.chunkIndex === 0 && ref.heading !== ref.documentTitle)!
     expect(workspace.withImages(first)).toEqual(first)
     expect(workspace.withImages(view.evidence.get("B1")!)).toEqual(view.evidence.get("B1"))

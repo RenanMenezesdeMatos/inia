@@ -42,11 +42,16 @@ vi.mock("@/services/admin/agent-service", () => service)
 // Resultados estáveis entre renderizações, como os do React Query (o formulário compara a referência dos Grupos).
 const lookups = vi.hoisted(() => ({
   teams: { data: { unrestricted: false, teams: [{ id: "team-b", name: "Grupo B", operationId: "op-1", subteams: [] }] } },
-  knowledge: { data: [] },
   domains: { data: [], isPending: false },
 }))
 vi.mock("@/queries/admin/use-org-structure-queries", () => ({ useManageableTeamsQuery: () => lookups.teams }))
-vi.mock("@/queries/admin/use-knowledge-queries", () => ({ useKnowledgeDocumentsQuery: () => lookups.knowledge }))
+vi.mock("@/services/admin/agent-knowledge-options-service", () => ({
+  searchKnowledgeOptions: async () => ({ items: [], nextCursor: null, total: 0 }),
+  fetchKnowledgeOptionIds: async () => ({ ids: [], total: 0, truncated: false }),
+  fetchGroupDefaultKnowledgeIds: async () => ({ ids: [], total: 0, truncated: false }),
+  lookupKnowledgeOptions: async () => [],
+  fetchKnowledgeOptionFacets: async () => ({ products: [], subjects: [] }),
+}))
 vi.mock("@/queries/admin/use-business-domain-queries", () => ({ useBusinessDomainsQuery: () => lookups.domains }))
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }), useSearchParams: () => new URLSearchParams() }))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))

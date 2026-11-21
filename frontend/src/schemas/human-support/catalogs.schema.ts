@@ -109,3 +109,5 @@ export const SUPPORT_ROOM_NOTICE = "A INIA não lê esta conversa. A coordenaç�
 /** Para o operador, quem atende é "o Apoio" (pedido do responsável em 16/11/2026). */
 export const SUPPORT_BUTTON_LABEL = "Falar com o Apoio"
 export const SUPPORT_BUTTON_HINT = "Pedir ajuda a uma pessoa da equipe de apoio"
+/** Descurtida com "ainda preciso de ajuda" sem o apoio ligado para a pessoa: a dúvida segue com a liderança (`docs/dev/apoio-ou-lideranca.md`). */
+export const SUPPORT_UNAVAILABLE_TEXT = "O Apoio ainda não está disponível para sua equipe. Se a dúvida continuar, procure a sua liderança imediata."

@@ -117,7 +117,17 @@ export const pdfExtractionSchema = z.object({
   imagesOmitted: z.number().optional(),
   /** Páginas digitalizadas lidas pelo OCR: o texto delas veio da imagem da página e pode ter erros de leitura. Ausente = nenhuma. */
   ocr: z
-    .object({ version: z.string(), engine: z.string(), printRule: z.string(), pages: z.array(z.number()), failedPages: z.array(z.number()), skippedPages: z.array(z.number()), prints: z.number() })
+    .object({
+      version: z.string(),
+      engine: z.string(),
+      printRule: z.string(),
+      pages: z.array(z.number()),
+      failedPages: z.array(z.number()),
+      skippedPages: z.array(z.number()),
+      prints: z.number(),
+      /** Páginas a conferir com o PDF e o motivo. Ausente = leitura anterior às conferências (20/11/2026), não "nada a conferir". */
+      reviews: z.array(z.object({ page: z.number(), reasons: z.array(z.string()) })).optional().catch(undefined),
+    })
     .optional()
     .catch(undefined),
 })

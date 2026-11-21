@@ -4,6 +4,16 @@ import type { AgentSpecialty, SpecialtyKind } from "@/schemas/admin/orchestrator
 import { z } from "zod"
 
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
+import {
+  knowledgeLinksPreviewSchema,
+  knowledgeLinksResultSchema,
+  knowledgeLinksSchema,
+  type KnowledgeLinks,
+  type KnowledgeLinksParams,
+  type KnowledgeLinksPreview,
+  type KnowledgeLinksRequest,
+  type KnowledgeLinksResult,
+} from "@/schemas/admin/agent-knowledge-links.schema"
 import { pageResultSchema, toQueryString, type DateRangeFilter, type ListParams, type OrgScopeFilter, type PageResult } from "@/lib/admin/list-query"
 import {
   agentDeletionCheckSchema,
@@ -185,4 +195,21 @@ export async function deleteAgent(id: string): Promise<void> {
 export async function fetchAgentPromptPreview(id: string, versionId?: string): Promise<string> {
   const result = await adminGet<{ prompt: string }>(`/api/v1/admin/agents/${id}/preview-prompt${toQueryString({ versionId })}`)
   return result.prompt
+}
+
+/** Associação a partir da base: agentes que a pessoa administra e a situação da base em cada um. */
+export async function fetchAgentKnowledgeLinks(params: KnowledgeLinksParams): Promise<KnowledgeLinks> {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== "") query.set(key, String(value))
+  return knowledgeLinksSchema.parse(await adminGet(`/api/v1/admin/agents/knowledge-links?${query.toString()}`))
+}
+
+/** Prévia (nada gravado): o resultado em cada agente e, para quem seria publicado, a prévia de impacto da publicação. */
+export async function previewAgentKnowledgeLinks(input: KnowledgeLinksRequest): Promise<KnowledgeLinksPreview> {
+  return knowledgeLinksPreviewSchema.parse(await adminSend("/api/v1/admin/agents/knowledge-links/preview", "POST", input))
+}
+
+/** Grava a associação em todos os agentes numa transação só (e publica, no modo PUBLISH). */
+export async function applyAgentKnowledgeLinks(input: KnowledgeLinksRequest): Promise<KnowledgeLinksResult> {
+  return knowledgeLinksResultSchema.parse(await adminSend("/api/v1/admin/agents/knowledge-links", "POST", input))
 }

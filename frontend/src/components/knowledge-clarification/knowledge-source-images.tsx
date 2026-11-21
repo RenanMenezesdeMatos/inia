@@ -4,6 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 
 import { KnowledgeDocumentImage } from "@/components/knowledge-reading/knowledge-document-image"
+import type { ViewerImage } from "@/components/knowledge-reading/knowledge-image-viewer"
 import { Button } from "@/components/ui/button"
 import { knowledgeMaterialImageSrc } from "@/lib/knowledge/knowledge-image-src"
 import { buildKnowledgeMaterialPageHref } from "@/lib/knowledge/material-href"
@@ -13,6 +14,8 @@ import type { ClarificationSource } from "@/schemas/knowledge-clarification/clar
 const VISIBLE_IMAGES = 4
 
 type SourceImage = { source: ClarificationSource; image: NonNullable<ClarificationSource["images"]>[number] }
+
+const captionOf = (source: ClarificationSource, page: number) => `${source.documentTitle} · p. ${page}`
 
 function imagesOf(sources: readonly ClarificationSource[]): SourceImage[] {
   const seen = new Set<string>()
@@ -31,6 +34,7 @@ function imagesOf(sources: readonly ClarificationSource[]): SourceImage[] {
 /**
  * Os prints das seções usadas como fonte, abaixo da resposta, para a pessoa ver a tela sem abrir o PDF. A seleção vem do sistema, pela posição das
  * imagens no documento: a IA não as recebe nem escolhe. Imagem que não está mais no material em vigor (resposta antiga) simplesmente não aparece.
+ * Ampliada, cada uma traz embaixo o texto da base junto dela (`description`, calculado no servidor por `imageStepText`), quando há.
  */
 export function KnowledgeSourceImages({ sources }: { sources: readonly ClarificationSource[] }) {
   const [expanded, setExpanded] = useState(false)
@@ -39,24 +43,35 @@ export function KnowledgeSourceImages({ sources }: { sources: readonly Clarifica
   if (images.length === 0) return null
   const shown = expanded ? images : images.slice(0, VISIBLE_IMAGES)
   const hidden = images.length - shown.length
+  // A ampliada percorre TODAS as imagens da resposta, inclusive as que ainda estão atrás do "Ver mais".
+  const gallery: ViewerImage[] = images.map(({ source, image }) => ({
+    key: `${source.documentId}-${image.id}`,
+    src: knowledgeMaterialImageSrc(source.documentId, image.id),
+    page: image.page,
+    width: image.width,
+    height: image.height,
+    caption: captionOf(source, image.page),
+    description: image.description,
+    footer: (
+      <Link href={buildKnowledgeMaterialPageHref(source.documentId, { page: image.page, versionId: source.versionId })} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline-offset-2 hover:underline">
+        Abrir o material nesta página
+      </Link>
+    ),
+  }))
   return (
     <section aria-label="Imagens do material" className="space-y-1.5" data-testid="knowledge-source-images">
       <div className="grid grid-cols-2 gap-2">
-        {shown.map(({ source, image }) => (
+        {shown.map(({ source, image }, index) => (
           <KnowledgeDocumentImage
             key={`${source.documentId}-${image.id}`}
             thumbnail
-            src={knowledgeMaterialImageSrc(source.documentId, image.id)}
+            src={gallery[index]!.src}
             page={image.page}
             width={image.width}
             height={image.height}
-            caption={`${source.documentTitle} · p. ${image.page}`}
+            caption={gallery[index]!.caption}
+            gallery={{ images: gallery, index }}
             onUnavailable={() => setUnavailable((current) => new Set(current).add(image.id))}
-            footer={
-              <Link href={buildKnowledgeMaterialPageHref(source.documentId, { page: image.page, versionId: source.versionId })} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline-offset-2 hover:underline">
-                Abrir o material nesta página
-              </Link>
-            }
           />
         ))}
       </div>

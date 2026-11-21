@@ -73,6 +73,18 @@ describe("PDF lido como conteúdo", () => {
     expect(screen.getByTestId("reading-ocr").textContent).toContain("pode ter erros de leitura")
   })
 
+  it("ampliada, a imagem traz embaixo o passo do próprio texto junto dela e anda entre as imagens do material", () => {
+    const second = { id: "def", page: 3, offset: CONTENT.length, width: 800, height: 400 }
+    render(<KnowledgeReadingView content={CONTENT} extraction={{ ...extraction, images: [extraction.images![0]!, second] }} title="Manual" imageSrc={(id) => `/imagem/${id}`} onOpenPage={vi.fn()} />)
+    fireEvent.click(screen.getByRole("button", { name: "Ampliar a imagem da página 1 (imagem 1 de 2)" }))
+    const dialog = screen.getByRole("dialog")
+    expect(within(dialog).getByTestId("knowledge-image-viewer-description").textContent).toContain("1. Abrir a tela.")
+    fireEvent.keyDown(dialog, { key: "ArrowRight" })
+    expect(within(dialog).getByRole("img").getAttribute("src")).toBe("/imagem/def")
+    // Depois da tabela, sem texto por perto: nenhuma descrição inventada.
+    expect(within(dialog).queryByTestId("knowledge-image-viewer-description")).toBeNull()
+  })
+
   it("tem a âncora da página citada e rola até ela", () => {
     const scroll = vi.fn()
     window.HTMLElement.prototype.scrollIntoView = scroll

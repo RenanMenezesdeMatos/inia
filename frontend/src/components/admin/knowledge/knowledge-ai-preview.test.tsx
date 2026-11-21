@@ -60,6 +60,20 @@ describe("cobertura do PDF", () => {
     expect(onOpenPage).toHaveBeenCalledWith(3)
   })
 
+  it("páginas apontadas na conferência do OCR: diz o motivo e leva a cada uma; leitura antiga, sem conferência, não mostra nada", () => {
+    const onOpenPage = vi.fn()
+    const ocr = { version: "PDF_OCR_V1", engine: "Tesseract", printRule: "PDF_PRINT_RULE_V1", pages: [2, 3], failedPages: [], skippedPages: [], prints: 1, reviews: [{ page: 3, reasons: ["SMALL_TEXT_LEFT"] }] }
+    const { unmount } = render(<KnowledgeCoverageSummary extraction={extraction([page(1, "TEXT"), page(2, "TEXT"), page(3, "TEXT")], { ocr })} onOpenPage={onOpenPage} />)
+    const review = screen.getByTestId("knowledge-ocr-review")
+    expect(review.textContent).toContain("Confira com atenção p. 3: letra de tela que ficou no texto")
+    fireEvent.click(within(review).getByRole("button", { name: "Abrir a página 3 do PDF" }))
+    expect(onOpenPage).toHaveBeenCalledWith(3)
+    unmount()
+    const before = { ...ocr, reviews: undefined }
+    render(<KnowledgeCoverageSummary extraction={extraction([page(1, "TEXT")], { ocr: before })} onOpenPage={() => undefined} />)
+    expect(screen.queryByTestId("knowledge-ocr-review")).toBeNull()
+  })
+
   it("texto editado depois da conversão fica dito", () => {
     render(<KnowledgeCoverageSummary extraction={extraction([page(1, "TEXT")], { edited: true })} onOpenPage={() => undefined} />)
     expect(screen.getByText(/editado depois da conversão/)).toBeTruthy()

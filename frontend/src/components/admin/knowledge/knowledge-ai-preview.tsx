@@ -4,6 +4,7 @@ import { useState } from "react"
 import { FileSearch, FileWarning, RefreshCw, ScanText } from "lucide-react"
 
 import { KnowledgeDocumentImage } from "@/components/knowledge-reading/knowledge-document-image"
+import type { ViewerImage } from "@/components/knowledge-reading/knowledge-image-viewer"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { imageInsertAt } from "@/lib/knowledge/document-inserts"
+import { imageStepText } from "@/lib/knowledge/image-step-text"
 import { knowledgeVersionImageSrc } from "@/lib/knowledge/knowledge-image-src"
 import { useKnowledgeAiPreviewQuery, useReprocessKnowledgeMutation } from "@/queries/admin/use-knowledge-queries"
 import { hasRestrictedDraft, type KnowledgeAiPreview as KnowledgeAiPreviewData, type KnowledgeDocumentDetail, type PdfExtraction, type PdfPageStatus } from "@/schemas/admin/knowledge.schema"
@@ -42,6 +44,19 @@ export function ocrNoticeText(ocr: NonNullable<PdfExtraction["ocr"]>): string {
   const prints = ocr.prints > 0 ? ` ${ocr.prints} ${ocr.prints === 1 ? "print foi separado" : "prints foram separados"} como imagem, sem o texto de dentro.` : ""
   const skipped = ocr.skippedPages.length > 0 ? ` ${ocr.skippedPages.length} ${ocr.skippedPages.length === 1 ? "página ficou" : "páginas ficaram"} sem leitura pelo limite por documento.` : ""
   return `Lidas por OCR, da imagem da página: ${pages}. O texto dessas páginas pode ter erros de leitura: confira com o PDF, principalmente números, prazos e valores.${prints}${skipped}`
+}
+
+/** Por que a página foi apontada na conferência depois do OCR (`ocr-page-checks.ts` no backend). Motivo desconhecido aparece como genérico. */
+const OCR_REVIEW_REASONS: Record<string, string> = {
+  SUSPECT_PRINT_TEXT: "um trecho lido com pouca confiança, que parece texto de print de tela",
+  SMALL_TEXT_LEFT: "letra de tela que ficou no texto, de um print que não saiu inteiro como imagem",
+  LOW_CONFIDENCE: "boa parte das palavras lida com pouca confiança",
+  NOTHING_READ: "nada foi lido, embora a página tenha conteúdo",
+}
+
+export function ocrReviewText(reviews: readonly { page: number; reasons: readonly string[] }[]): string {
+  const reasons = [...new Set(reviews.flatMap((review) => review.reasons))].map((reason) => OCR_REVIEW_REASONS[reason] ?? "leitura duvidosa")
+  return `Confira com atenção ${pageList(reviews.slice(0, 8).map((review) => review.page))}${reviews.length > 8 ? ` e outras ${reviews.length - 8}` : ""}: ${reasons.join("; ")}. Corrija o texto ou apague o que veio da tela antes de publicar.`
 }
 
 function PageButtons({ pages, onOpenPage }: { pages: readonly number[]; onOpenPage: (page: number) => void }) {
@@ -77,6 +92,15 @@ export function KnowledgeCoverageSummary({ extraction, onOpenPage }: { extractio
           <div className="min-w-0">
             <p>{ocrNoticeText(extraction.ocr)}</p>
             <PageButtons pages={extraction.ocr.pages} onOpenPage={onOpenPage} />
+          </div>
+        </div>
+      ) : null}
+      {extraction.ocr?.reviews && extraction.ocr.reviews.length > 0 ? (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50/60 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100" data-testid="knowledge-ocr-review">
+          <FileWarning aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+          <div className="min-w-0">
+            <p>{ocrReviewText(extraction.ocr.reviews)}</p>
+            <PageButtons pages={extraction.ocr.reviews.map((review) => review.page)} onOpenPage={onOpenPage} />
           </div>
         </div>
       ) : null}
@@ -138,12 +162,17 @@ function ReprocessButton({ document }: { document: KnowledgeDocumentDetail }) {
 
 const pagesLabel = (pages: { from: number; to: number }) => (pages.from === pages.to ? `p. ${pages.from}` : `p. ${pages.from}–${pages.to}`)
 
+const aiPreviewCaption = (page: number) => `Imagem da página ${page}. A IA não lê imagens: ela recebe só o texto deste trecho.`
+
 function ChunkRow({ chunk, onOpenPage, imageSrc }: { chunk: KnowledgeAiPreviewData["chunks"][number]; onOpenPage: ((page: number) => void) | undefined; imageSrc: (imageId: string) => string }) {
   const shownText = chunk.displayText ?? chunk.text
-  const inserts = (chunk.images ?? []).map((image, index) => ({
-    at: imageInsertAt(shownText, image.at),
+  const placed = (chunk.images ?? []).map((image, index) => ({ image, index, at: imageInsertAt(shownText, image.at) }))
+  // As imagens do trecho formam o conjunto da ampliada; embaixo de cada uma, o texto do trecho junto dela.
+  const gallery: ViewerImage[] = placed.map(({ image, index, at }) => ({ key: `${image.id}-${index}`, src: imageSrc(image.id), page: image.page, width: image.width, height: image.height, caption: aiPreviewCaption(image.page), description: imageStepText(shownText, at) }))
+  const inserts = placed.map(({ image, index, at }) => ({
+    at,
     key: `${image.id}-${index}`,
-    node: <KnowledgeDocumentImage src={imageSrc(image.id)} page={image.page} width={image.width} height={image.height} caption={`Imagem da página ${image.page}. A IA não lê imagens: ela recebe só o texto deste trecho.`} />,
+    node: <KnowledgeDocumentImage src={imageSrc(image.id)} page={image.page} width={image.width} height={image.height} caption={aiPreviewCaption(image.page)} gallery={{ images: gallery, index }} />,
   }))
   return (
     <AccordionItem value={String(chunk.index)} className="group/chunk overflow-hidden rounded-lg border border-border">

@@ -46,6 +46,7 @@ import { createKnowledgeRouter } from "../modules/knowledge/presentation/knowled
 import { createCheckpointRegistryRouter } from "../modules/checkpoint-registry/presentation/checkpoint-registry-router.js"
 import { createKnowledgeMaterialRouter } from "../modules/knowledge/presentation/knowledge-material-router.js"
 import { createAgentRouter } from "../modules/agents/presentation/agent-router.js"
+import { createAgentKnowledgeOptionsRouter } from "../modules/agents/presentation/agent-knowledge-options-router.js"
 import { createBusinessDomainRouter } from "../modules/business-domains/presentation/business-domain-router.js"
 import { createProductCatalogRouter } from "../modules/product-catalog/presentation/product-catalog-router.js"
 import { createOperatingUniverseRouter } from "../modules/operating-universe/presentation/operating-universe-router.js"
@@ -101,7 +102,7 @@ import { createAiManagementRouter } from "../modules/ai-management/presentation/
 import { createUsageEventsRouter } from "../modules/usage-analytics/presentation/usage-events-router.js"
 import { createUsabilityRouter } from "../modules/usage-analytics/presentation/usability-router.js"
 import { mountUsageServerTaps } from "../modules/usage-analytics/presentation/server-fact-taps.js"
-import { createSuggestionRecorder } from "../modules/human-support/application/suggestions.js"
+import { createHelpRouteResolver, createSuggestionRecorder } from "../modules/human-support/application/suggestions.js"
 import type { WaiterRegistry } from "../modules/human-support/application/waiters.js"
 import { createHumanSupportAdminRouter } from "../modules/human-support/presentation/human-support-admin-router.js"
 import { createHumanSupportMonitoringRouter } from "../modules/human-support/presentation/human-support-monitoring-router.js"
@@ -424,7 +425,10 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/admin/checkpoints", can("knowledge.manage", { organizationWide: true }), createCheckpointRegistryRouter(database))
   // Leitor de material para qualquer usuário autenticado — acesso pelo alcance da base (backend é a autoridade).
   app.use("/api/v1/knowledge-materials", requireAuth, previews, createKnowledgeMaterialRouter(database))
-  app.use("/api/v1/admin/agents", can("agents.manage"), costly(/^\/[^/]+\/test$/), createAgentRouter(database))
+  // Seletor de bases do formulário do Agent (busca, filtros e posição no servidor — ~1000 bases grandes); antes de "/:id" do router de agentes.
+  app.use("/api/v1/admin/agents/knowledge-options", can("agents.manage"), createAgentKnowledgeOptionsRouter(database))
+  // Ações caras dos agentes: o teste (IA) e a associação a partir da base (prévia e gravação em lote, várias consultas por agente — run-8, SB-03).
+  app.use("/api/v1/admin/agents", can("agents.manage"), costly(/^\/([^/]+\/test|knowledge-links(\/preview)?)$/), createAgentRouter(database))
   // Catálogo administrável de domínios de negócio (classifica Agents DOMAIN e restringe Orquestradores DOMAINS).
   // Catálogos da organização inteira: lê com a permissão em qualquer escopo, altera só com escopo de organização.
   const orgWideWrites = writesRequireOrganization("configuration.manage")
@@ -501,10 +505,13 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use(
     "/api/v1/realtime",
     requireAuth,
-    onlyMethods(["POST"], aiPerAccount),
+    // O "Parar" não gasta IA e é justamente o que alivia o limite: nunca barrado por ele (run-8, QA-04 — com o limite estourado, o 429 era
+    // engolido, o indicador sumia e a resposta continuava sendo gerada e gravada).
+    (request, response, next) => (request.method === "POST" && /^\/messages\/[^/]+\/cancel$/.test(routePath(request)) ? next() : onlyMethods(["POST"], aiPerAccount)(request, response, next)),
     (request, response, next) => (request.method === "POST" && routePath(request) === "/sessions" ? voiceSessionsPerAccount(request, response, next) : next()),
-    // A sugestão elegível de falar com um Anjo é do módulo `human-support`, injetada aqui: o `assistant` nunca o importa.
-    createRealtimeRouter(database, createVoiceSessionStarter(createEphemeralRealtimeSession), createChatStreamer(streamTextReply), { recordSuggestion: createSuggestionRecorder(database) }),
+    // A sugestão elegível de falar com um Anjo e a rota de ajuda do esclarecimento (Apoio ou liderança) são do módulo `human-support`,
+    // injetadas aqui: o `assistant` nunca o importa.
+    createRealtimeRouter(database, createVoiceSessionStarter(createEphemeralRealtimeSession), createChatStreamer(streamTextReply), { recordSuggestion: createSuggestionRecorder(database), supportHelpRoute: createHelpRouteResolver(database) }),
   )
   // Apoio com Anjo — operador e Anjo. Limites por conta: pedidos (prévia e criação) por hora, mensagens e presença por minuto.
   app.use(

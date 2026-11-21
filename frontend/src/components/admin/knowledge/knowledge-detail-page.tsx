@@ -25,6 +25,8 @@ import { KnowledgeDocumentActionBar } from "./knowledge-document-actions"
 import { KnowledgeFilePreview, useDownloadKnowledgeFile } from "./knowledge-file-preview"
 import { RestrictedEditableNotice } from "./knowledge-restricted-draft"
 import { KnowledgeStatusPanel } from "./knowledge-status-panel"
+import { KnowledgeAgentsPicker } from "./knowledge-agents/knowledge-agents-picker"
+import { SURFACE_CARD } from "@/components/ui/surface"
 import { KnowledgeVersionHistory } from "./knowledge-version-history"
 import { ProductScopeCard } from "@/components/admin/product-catalog/product-scope-field"
 
@@ -148,7 +150,6 @@ function DetailHeader({ document, children, narrow }: { document: KnowledgeDocum
       </div>
       <ScopeTags document={document} />
       <KnowledgeStatusPanel document={document} />
-      <ProductScopeCard kind="KNOWLEDGE_DOCUMENT" sourceId={document.id} canEdit={canEditDraft} />
       <KnowledgeDocumentActionBar document={document} canEdit={canEditDraft} onDeleted={() => router.push(LIST_HREF)} />
     </header>
   )
@@ -298,6 +299,12 @@ export function KnowledgeDetailPage({ documentId }: { documentId: string }) {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Depois do conteúdo: os vínculos da base — produtos ("Vale para") e os agentes que a consultam. */}
+      <section aria-label="Produtos da base" className={cn(SURFACE_CARD, "px-4 py-4 empty:hidden sm:px-6")}>
+        <ProductScopeCard kind="KNOWLEDGE_DOCUMENT" sourceId={document.id} canEdit={!document.editable?.restricted} />
+      </section>
+      {document.archived ? null : <KnowledgeAgentsPicker documentId={document.id} title={document.title} baseInUse={Boolean(document.inUse)} />}
     </div>
   )
 }

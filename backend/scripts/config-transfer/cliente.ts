@@ -12,6 +12,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync }
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 
+/** Em HTTPS o servidor usa `__Host-inia_session` (R-33, auth/presentation/session-cookie.ts); em HTTP, `inia_session`. */
 const COOKIE_DA_SESSAO = "inia_session"
 
 export class ErroApi extends Error {
@@ -59,7 +60,7 @@ export class ClienteInia {
     const resposta = await fetch(`${destino}/api/v1/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password: senha }) })
     const corpo = await lerCorpo(resposta)
     if (!resposta.ok) throw erroDe(resposta.status, corpo)
-    const cookie = resposta.headers.getSetCookie().map((linha) => linha.split(";")[0]!).find((par) => par.startsWith(`${COOKIE_DA_SESSAO}=`))
+    const cookie = resposta.headers.getSetCookie().map((linha) => linha.split(";")[0]!).find((par) => par.startsWith(`${COOKIE_DA_SESSAO}=`) || par.startsWith(`__Host-${COOKIE_DA_SESSAO}=`))
     if (!cookie) throw new ErroApi(resposta.status, "SEM_SESSAO", "O servidor aceitou o login mas não devolveu o cookie de sessão (confira se o endereço é o da INIA).")
     if ((corpo as { data?: { passwordChangeRequired?: boolean } }).data?.passwordChangeRequired) {
       throw new ErroApi(403, "PASSWORD_CHANGE_REQUIRED", "Esta conta ainda está com a senha provisória: entre uma vez pelo navegador, crie a senha definitiva e rode de novo.")

@@ -10,6 +10,7 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import { currentAiAbortSignal, runWithAiCancellation } from "../../../shared/application/model-routing/ai-runtime.js"
 import { createChatTurnTrace, currentChatTurnTrace, finishChatTurn, runWithChatTurnTrace, type ChatTurnTrace } from "../../../shared/application/observability/chat-turn-trace.js"
 import { reconcileShownText } from "../../assistant/domain/reply-stream.js"
+import { createPostgresReplyRunRegistry, MAX_REPLIES_IN_FLIGHT_PER_PERSON, REPLY_MAX_DURATION_MS, TOOL_CALL_MAX_DURATION_MS, tooManyRepliesInFlight, type ReplyRunRegistry } from "../../assistant/application/assistant-reply-runs.js"
 import { conversationInactivityMs, createPostgresConversationStore, type ConversationScope, type ConversationStore, type ResolvedConversation } from "../../assistant/application/assistant-conversations.js"
 import type { RatingSnapshot } from "../../assistant/application/assistant-interaction-ratings.js"
 import { clampOccurredAt, decodeCursor, type ConversationOrigin } from "../../assistant/domain/assistant-conversation.js"
@@ -59,6 +60,7 @@ import { loadClarificationGuardrails, loadSpecialistInstructions } from "../../k
 import { CLARIFICATION_ANSWER_TOOL_NAME, CLARIFICATION_TOOL_NAME, clarificationAnswerRequestSchema, openStepOf, parseClarificationState, type ClarificationAnswerRequest, type ClarificationState } from "../../knowledge-clarification/domain/clarification-state.js"
 import { referencedDocumentIds, toClarificationView } from "../../knowledge-clarification/domain/clarification-view.js"
 import { renderClarificationVoiceInstruction } from "../../knowledge-clarification/domain/clarification-voice.js"
+import type { HelpRoute } from "../../knowledge-clarification/domain/help-route.js"
 import { assistantRatingInputSchema } from "../../assistant/domain/assistant-interaction-rating.js"
 import { signalsOfClarification, signalsOfOrchestratedReply, signalsOfSpecialist } from "../../assistant/application/reply-signals.js"
 import { signalsAfterResponseCheck, type SupportSignal } from "../../assistant/domain/reply-signals.js"
@@ -368,6 +370,8 @@ export function createRealtimeRouter(
   ) => Promise<void>,
   deps: {
     conversations?: ConversationStore
+    /** Respostas do chat em andamento (`assistant-reply-runs.ts`): sair da tela não cancela; só o "Parar". */
+    replyRuns?: ReplyRunRegistry
     now?: () => Date
     workflowContext?: (input: { organizationId: string; ownerPersonId: string; conversationId: string }) => Promise<string>
     /** Conversa de uma APLICAÇÃO de feedback: instrução montada do registro congelado da aplicação (null = não é aplicação).
@@ -413,6 +417,9 @@ export function createRealtimeRouter(
     /** Apoio com Anjo (Parte B): registra a SUGESTÃO ELEGÍVEL de falar com um Anjo — mensagem com sinal (`SIGNAL`) ou descurtida
      * com "ainda preciso de ajuda" (`DISLIKE`), só no chat livre. Ausente = nada é registrado. Nunca muda a resposta da rota. */
     recordSuggestion?: (input: { organizationId: string; personId: string; interactionId: string; origin: "SIGNAL" | "DISLIKE" }) => Promise<void>
+    /** Apoio com Anjo: para onde a resposta "insuficiente" do esclarecimento aponta (`HELP_ROUTE_V1`) — o Apoio, se a pessoa pode
+     * pedir agora; senão, a liderança. Ausente = sempre a liderança (o texto de antes). Só o chat livre de quem atende. */
+    supportHelpRoute?: (input: { organizationId: string; personId: string }) => Promise<HelpRoute>
   } = {},
 ) {
   const router = Router()
@@ -716,6 +723,7 @@ export function createRealtimeRouter(
     return visibleCards(scope, cards as LeadershipCard[])
   })
   const conversations = deps.conversations ?? createPostgresConversationStore(db)
+  const replyRuns = deps.replyRuns ?? createPostgresReplyRunRegistry(db)
   const now = deps.now ?? (() => new Date())
   // Dono e organização SEMPRE da sessão — nunca do corpo da requisição.
   const scopeOf = (request: { user?: { organizationId: string; personId: string } }): ConversationScope => ({ organizationId: request.user!.organizationId, ownerPersonId: request.user!.personId })
@@ -735,6 +743,9 @@ export function createRealtimeRouter(
       console.error(JSON.stringify({ event: "support_suggestion_record_failed", interactionId: input.interactionId, origin: input.origin, message: (error as Error).message }))
     }
   }
+  /** Rota de ajuda do esclarecimento (`HELP_ROUTE_V1`): só no chat livre (`origin = USER`), onde a sugestão do Apoio aparece. */
+  const helpRouteFor = (organizationId: string, personId: string, origin: ConversationOrigin | null | undefined) =>
+    deps.supportHelpRoute && (origin ?? "USER") === "USER" ? () => deps.supportHelpRoute!({ organizationId, personId }) : null
   /** Turno de texto que terminou em erro sem resposta gravada: `NO_REPLY` na pergunta do operador (só no chat livre) e a sugestão.
    * Falha aqui vai para o log: a pessoa já recebeu o evento de erro. */
   const recordNoReply = async (input: { scope: ConversationScope; conversationId: string; questionId: string; trace: ChatTurnTrace }) => {
@@ -944,6 +955,7 @@ export function createRealtimeRouter(
         outcome = await knowledgeClarification!.handle({
           organizationId: scope.organizationId,
           personId,
+          helpRoute: helpRouteFor(scope.organizationId, personId, conversationRecord.origin),
           orchestratorAgentId: askOrchestrator.orchestratorAgentId || null,
           specialistAgentIds: askOrchestrator.specialists.map((specialist) => specialist.agentId),
           text: spoken,
@@ -1030,12 +1042,12 @@ export function createRealtimeRouter(
   // da sessão de voz (mesmo encerrada nesse meio-tempo: é a resposta à pergunta
   // feita ali) — nunca em outra.
   router.post("/tool-call", knowledgeConsultationScope, async (request, response) => {
-    // A pessoa fechou a página ou a conexão caiu: a orquestração desta fala (especialistas, liderança) para de chamar a IA e a vaga
-    // volta para os outros — mesmo cuidado do SSE do chat (achado AI-09 da auditoria de 17/10/2026).
-    const cancellation = new AbortController()
-    response.on("close", () => {
-      if (!response.writableFinished) cancellation.abort()
-    })
+    // SAIR DA TELA NÃO CANCELA (19/11/2026, `assistant-reply-runs.ts`): a pessoa fechou/recarregou a página, trocou de área ou a
+    // conexão caiu — a consulta desta fala termina e a resposta do especialista fica GRAVADA na conversa (aparece quando ela voltar).
+    // Antes, o `close` da resposta cancelava tudo (achado AI-09 de 17/10) e a pergunta ficava sem resposta. A interrupção da fala
+    // (barge-in) é do transporte de voz, que descarta o resultado; o cancelamento aqui fica só para o contexto de IA da request.
+    // Sem o cancelamento pela desconexão, o prazo do servidor é o teto (run-8, SL-01): a consulta da voz nunca roda sem limite.
+    const cancellation = { signal: AbortSignal.timeout(TOOL_CALL_MAX_DURATION_MS) }
     // Rastreamento do turno da voz: o "primeiro conteúdo" é o resultado entregue ao modelo de voz (ele fala a partir daqui).
     const trace = createChatTurnTrace({ channel: "voice" })
     response.setHeader("X-Inia-Trace-Id", trace.traceId)
@@ -1240,6 +1252,9 @@ export function createRealtimeRouter(
     const conversationId = idParam.parse(request.params.conversationId)
     const input = messagesQuerySchema.parse(request.query)
     const conversation = await conversations.requireOwned(scope, conversationId)
+    // "Em andamento" lido ANTES da página (run-8, QA-03): se a resposta terminar entre as duas leituras, ela já vem na página; na ordem
+    // inversa, a página saía sem ela e o "em andamento" já vazio — a tela parava de esperar sem mostrar a resposta.
+    const pendingReply = input.before ? null : await replyRuns.pending({ organizationId: scope.organizationId, ownerPersonId: scope.ownerPersonId, conversationId })
     const page = await conversations.loadMessages({ organizationId: scope.organizationId, conversationId, limit: input.limit, before: decodeCursor(input.before), after: decodeCursor(input.after) })
     const materials = await loadAssistantSupportMaterials(db, { organizationId: scope.organizationId, viewer: { personId: scope.ownerPersonId }, interactionIds: page.messages.filter((m) => m.role === "assistant").map((m) => m.id) })
     // Cartões de dados revalidados contra o escopo ATUAL (uma leitura de escopo por página, só quando há cartões).
@@ -1276,6 +1291,9 @@ export function createRealtimeRouter(
           return { ...message, analytics: allowed.get(message.id) ?? [], supportMaterials: materials.get(message.id) ?? [], ...offerOf(message.id), clarification: clarificationViews.get(message.id) ?? null, ...(message.role === "assistant" ? ratingFieldsOf(ratings.get(message.id)) : {}) }
         }),
         hasMore: page.hasMore,
+        // Resposta ainda sendo gerada para uma pergunta desta conversa (a pessoa saiu e voltou): a tela mostra o indicador e busca as
+        // mensagens novas até ela chegar. Só na página mais recente (a de `before` é histórico).
+        pendingReply,
       },
     })
   })
@@ -1343,6 +1361,15 @@ export function createRealtimeRouter(
     response.json({ data: { ...(await conversationPayload(request, resolved)), assistantInteractionId: assistant?.id ?? null, ...(violation ? { responseCheck: { outcome: "VIOLATION", notice: SPOKEN_VIOLATION_NOTICE } } : {}) } })
   })
 
+  // "Parar" (cancelar DE PROPÓSITO) a resposta em andamento da própria pessoa — a única forma de cancelar (sair da tela não cancela).
+  // Chave = `clientMessageId` da pergunta; resposta de outra pessoa nunca é alcançada (a chave inclui organização e dono).
+  router.post("/messages/:clientMessageId/cancel", async (request, response) => {
+    const clientMessageId = clientKeySchema.parse(request.params.clientMessageId)
+    const user = request.user!
+    const cancelled = await replyRuns.requestCancel({ organizationId: user.organizationId, ownerPersonId: user.personId, clientMessageId })
+    response.json({ data: { cancelled } })
+  })
+
   router.post("/messages", knowledgeConsultationScope, async (request, response) => {
     const input = messageSchema.parse(request.body)
     const scope = scopeOf(request)
@@ -1357,6 +1384,9 @@ export function createRealtimeRouter(
     // a complementar, criada nesta primeira dúvida). Conversa pedida que não é desta aplicação = 409 antes de qualquer gravação.
     // Escolha feita no formulário de um esclarecimento: a mensagem legível + a escolha estruturada (etapa, opções, complemento).
     const userToolCalls = input.clarification ? [{ toolName: CLARIFICATION_ANSWER_TOOL_NAME, ...input.clarification }] : undefined
+    // Teto de respostas em andamento por pessoa (run-8, SL-01): sair da tela não cancela, então desconectar e perguntar de novo em
+    // laço não pode empilhar gerações. Conferido antes de gravar a pergunta e de qualquer chamada de IA.
+    if ((await replyRuns.inFlight({ organizationId: scope.organizationId, ownerPersonId: operatorId })) >= MAX_REPLIES_IN_FLIGHT_PER_PERSON) throw tooManyRepliesInFlight()
     const { resolved, userMessage } = await trace.span("conversation", async () => {
       const target = await targetOf(request, input, at)
       const writable = await conversations.resolveForWrite(scope, target.requestedId, at)
@@ -1367,6 +1397,12 @@ export function createRealtimeRouter(
       return { resolved: conversation, userMessage: saved }
     })
     const replyKey = `${input.clientMessageId}:reply`
+    // Antes de abrir o stream: a mesma pergunta já em andamento recebe 409 JSON (SL-04) em vez de gerar de novo.
+    const run = await replyRuns.start({ organizationId: scope.organizationId, ownerPersonId: operatorId, clientMessageId: input.clientMessageId, conversationId: resolved.conversationId, questionInteractionId: userMessage.id })
+    // "Parar" OU o prazo máximo do servidor (SL-01). O prazo vencido não é um "Parar": vira erro com código, e a pergunta fica com `NO_REPLY`.
+    const deadline = AbortSignal.timeout(REPLY_MAX_DURATION_MS)
+    const cancellation = { signal: AbortSignal.any([run.signal, deadline]) }
+    const stopRequested = () => run.signal.aborted
 
     // SSE relay, not JSON: the whole point is that the frontend renders each
     // fragment as it arrives instead of waiting for the full reply. Headers
@@ -1381,12 +1417,14 @@ export function createRealtimeRouter(
     response.setHeader("X-Accel-Buffering", "no")
     response.setHeader("X-Inia-Trace-Id", trace.traceId)
     response.flushHeaders()
-    // Quem pediu foi embora (fechou a página, a conexão caiu, o IIS cortou): as chamadas de IA desta resposta são canceladas —
-    // saem da fila do limitador ou têm o fetch interrompido — e a vaga volta para os outros. Escuta o `close` da RESPOSTA: o do
-    // request, no Node atual, dispara assim que o corpo JSON termina de ser lido, com a pessoa ainda esperando.
-    const cancellation = new AbortController()
+    // REGRA (19/11/2026, `assistant-reply-runs.ts`): SAIR DA TELA NÃO CANCELA; SÓ O "PARAR" CANCELA.
+    // Quem pediu saiu (trocou de aba ou de área da INIA, recarregou, a conexão caiu, o IIS cortou): a resposta continua sendo gerada
+    // e é GRAVADA — quem volta vê "ainda respondendo" com a etapa real e, depois, a resposta. Antes, o `close` da resposta cancelava
+    // tudo e a pergunta ficava sem resposta (comprovado em 19/11: trocar Acompanhamento → Indicadores desmonta o chat).
+    // Cancelar de propósito é o `POST /messages/:clientMessageId/cancel` (botão "Parar"): as chamadas de IA desta resposta param —
+    // saem da fila do limitador ou têm o fetch interrompido —, a vaga volta e nada da resposta é gravado.
     response.on("close", () => {
-      if (!response.writableFinished) cancellation.abort()
+      if (!response.writableFinished) console.info(JSON.stringify({ event: "assistant_reply_detached", conversationId: resolved.conversationId }))
     })
     // Batimento (comentário SSE, que o cliente ignora): o IIS/ARR e proxies não derrubam a conexão parada enquanto o Orquestrador
     // pensa antes do primeiro pedaço.
@@ -1424,6 +1462,7 @@ export function createRealtimeRouter(
         held.push({ event, data })
         return
       }
+      if (event === "status" && typeof (data as { label?: unknown }).label === "string") run.stage((data as { label: string }).label)
       deliver(event, data)
     }
     /** As regras deste turno, as mesmas da instrução. Sem nenhuma, solta o fluxo. Falha na leitura: fica segurando, e a conferência responde pela falha. */
@@ -1796,6 +1835,7 @@ export function createRealtimeRouter(
         const clarificationRequest: ClarificationRequest = {
           organizationId: scope.organizationId,
           personId: operatorId,
+          helpRoute: helpRouteFor(scope.organizationId, operatorId, conversationRecord.origin),
           orchestratorAgentId: orchestrator.orchestratorAgentId || null,
           specialistAgentIds: orchestrator.specialists.map((specialist) => specialist.agentId),
           text: input.text,
@@ -1879,16 +1919,17 @@ export function createRealtimeRouter(
         send("done", {})
       }))
     } catch (error) {
-      if (cancellation.signal.aborted) {
+      if (stopRequested()) {
         outcome = "CANCELLED"
-        // Ninguém mais esperando: nada a enviar nem a gravar (a pergunta já está salva; a resposta interrompida não vira histórico).
-        console.info(JSON.stringify({ event: "assistant_reply_cancelled", conversationId: resolved.conversationId }))
+        // "Parar": nada a gravar (a pergunta já está salva; a resposta interrompida de propósito não vira histórico nem `NO_REPLY`).
+        console.info(JSON.stringify({ event: "assistant_reply_cancelled", conversationId: resolved.conversationId, reason: "STOP_REQUESTED" }))
       } else {
         outcome = "ERROR"
-        const message = error instanceof DomainError ? error.message : "Não foi possível obter uma resposta da INIA."
+        const timedOut = deadline.aborted
+        const message = timedOut ? "A INIA demorou demais para responder e a resposta foi interrompida. Pergunte de novo." : error instanceof DomainError ? error.message : "Não foi possível obter uma resposta da INIA."
         // O status já foi 200: a falha vai no evento, com o código (o do domínio, ou INIA-STREAM-FALHA) e a referência
         // (x-request-id) que a pessoa copia — e fica no log e nas ocorrências (Diagnóstico de erros).
-        const code = error instanceof DomainError ? error.code : "INIA-STREAM-FALHA"
+        const code = timedOut ? "ASSISTANT_REPLY_TIMEOUT" : error instanceof DomainError ? error.code : "INIA-STREAM-FALHA"
         const reference = currentRequestId()
         const summary = sanitizeError(error)
         console.error(JSON.stringify({ event: "stream_error", code, reference, route: "POST /api/v1/realtime/messages", severity: "error", failure: summary }))
@@ -1899,6 +1940,7 @@ export function createRealtimeRouter(
       }
     } finally {
       clearInterval(heartbeat)
+      await run.finish()
       response.end()
       finishChatTurn(trace, outcome, { conversationId: resolved.conversationId })
     }

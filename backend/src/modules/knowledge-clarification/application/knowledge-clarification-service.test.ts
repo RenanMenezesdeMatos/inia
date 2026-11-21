@@ -525,3 +525,44 @@ describe("esclarecimento pelas bases — falha passageira do provedor na redaç�
     expect(tela.retracts()).toBe(0)
   })
 })
+
+describe("esclarecimento pelas bases — para onde a resposta \"insuficiente\" aponta (HELP_ROUTE_V1)", () => {
+  const insufficient = () => ({ decision: "INSUFFICIENT", insufficient: { reason: "Nenhuma base cita mudança para outro estado.", ask: "Informe se a mudança é na mesma cidade." } })
+  const question = "Como faço a mudança de endereço para outro estado?"
+
+  it("sem a função (liderança, sessão de feedback, apoio não injetado): o texto de antes, com a liderança", async () => {
+    const outcome = reply(await setup(insufficient).ask(question))
+    expect(outcome.content).toMatch(/Informe se a mudança é na mesma cidade\. Se a dúvida continuar, procure a sua liderança imediata\.$/)
+    expect(outcome.content).not.toContain("Apoio")
+    expect(outcome.trace.helpRoute).toBe("LEADERSHIP")
+  })
+
+  it("Apoio disponível para a pessoa agora: aponta o Apoio, nunca a liderança nem a palavra Anjo", async () => {
+    let asked = 0
+    const outcome = reply(await setup(insufficient).ask(question, { helpRoute: async () => { asked += 1; return "SUPPORT" } }))
+    expect(outcome.content).toMatch(/Se a dúvida continuar, fale com o Apoio\.$/)
+    expect(outcome.content).not.toMatch(/lideran|Anjo/)
+    expect(outcome.trace.helpRoute).toBe("SUPPORT")
+    expect(asked).toBe(1)
+  })
+
+  it("ninguém do Apoio em serviço (a função diz LEADERSHIP): a liderança", async () => {
+    const outcome = reply(await setup(insufficient).ask(question, { helpRoute: async () => "LEADERSHIP" }))
+    expect(outcome.content).toMatch(/procure a sua liderança imediata\.$/)
+  })
+
+  it("leitura da rota falha: a resposta sai igual, com a liderança (nunca derruba o chat)", async () => {
+    const outcome = reply(await setup(insufficient).ask(question, { helpRoute: async () => { throw new Error("banco fora") } }))
+    expect(outcome.state.status).toBe("INSUFFICIENT")
+    expect(outcome.content).toMatch(/procure a sua liderança imediata\.$/)
+    expect(outcome.trace.helpRoute).toBe("LEADERSHIP")
+  })
+
+  it("a rota só é lida na decisão INSUFFICIENT (pergunta de esclarecimento não consulta o apoio)", async () => {
+    let asked = 0
+    const { ask } = setup((call) => clarify("Destino", "A mudança é para qual estado?", [{ label: "Mesmo estado", evidence: [refOf(call.user, "Mudança de endereço", "Mesmo estado")] }, { label: "Outro estado", evidence: [refOf(call.user, "Mudança de endereço", "Outro estado")] }]))
+    const outcome = await ask(question, { helpRoute: async () => { asked += 1; return "SUPPORT" } })
+    expect(outcome.trace.helpRoute).toBeUndefined()
+    expect(asked).toBe(0)
+  })
+})

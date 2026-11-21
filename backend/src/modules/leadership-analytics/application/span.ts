@@ -77,6 +77,11 @@ export function buildSpan(scope: ViewerScope, input: { structure: ResolvedStruct
     entry.operators.push(subject)
     byLeader.set(leader.id, entry)
   }
+  // Regra única com a hierarquia (`org_hierarchy`, run-8 ARQ-01): o líder do nível que está na estrutura e não tem ninguém abaixo entra com
+  // ZERO — a média, a mediana e o mínimo não o ignoram. Antes, só entrava quem tinha alguém, e as duas ferramentas davam números diferentes.
+  for (const person of peopleBelow(scope, input.structure)) {
+    if (person.role === input.level && person.active && !byLeader.has(person.id)) byLeader.set(person.id, { leader: person, operators: [] })
+  }
   const spans = [...byLeader.values()].map((entry) => entry.operators.length)
   const covered = subjects.length - withoutLeader
   const leaders = byLeader.size
@@ -85,9 +90,9 @@ export function buildSpan(scope: ViewerScope, input: { structure: ResolvedStruct
   ]
   const limitations: string[] = []
   if (withoutLeader > 0) limitations.push(`${withoutLeader} ${countedPlural} ativos não têm ${levelLabel} acima no organograma e ficaram fora do span.`)
-  if (leaders === 0) limitations.push(`Não há ${plural} com ${countedPlural} abaixo desta estrutura.`)
+  if (leaders === 0) limitations.push(`Não há ${plural} nesta estrutura.`)
   const methods = [
-    `Span = ${countedPlural} ativos abaixo de cada ${levelLabel} (cada um conta para o primeiro ${levelLabel} acima dele no organograma vigente). Média = ${countedPlural} ÷ ${plural}.`,
+    `Span = ${countedPlural} ativos abaixo de cada ${levelLabel} (cada um conta para o primeiro ${levelLabel} acima dele no organograma vigente). ${capitalized(plural)} ativos sem ninguém abaixo entram com zero. Média = ${countedPlural} ÷ ${plural}.`,
     counted === "OPERATOR" ? "Situação funcional não tira ninguém da conta: férias e afastamentos continuam no span de quem lidera a pessoa." : `O Grupo de cada ${labelOf(counted)} é o dos operadores abaixo dele (o mais frequente).`,
   ]
   const majority = (people: PersonNode[], key: (person: PersonNode) => string) => {

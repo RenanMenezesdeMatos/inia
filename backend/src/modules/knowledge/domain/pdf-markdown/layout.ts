@@ -83,6 +83,15 @@ export type PdfOcrRecord = {
   failedPages: number[]
   skippedPages: number[]
   prints: number
+  /**
+   * Páginas cujos prints vieram da posição das imagens do próprio PDF (página sem camada de texto que não é digitalização, como a impressa pelo
+   * "Print To PDF"): `embeddedPrintRule` diz a regra. As outras usaram `printRule`. Ausente = leitura anterior a 20/11/2026, toda pela regra da tinta.
+   */
+  embeddedPrintPages?: number[]
+  embeddedPrintRule?: string
+  /** Páginas a conferir com o PDF e o motivo (`domain/pdf-ocr/ocr-page-checks.ts`). Ausente = leitura anterior às conferências, não "nada a conferir". */
+  reviews?: { page: number; reasons: string[] }[]
+  checks?: string
 }
 
 /** Registro da conversão, guardado junto da versão. `edited` = o texto foi alterado depois da conversão. */

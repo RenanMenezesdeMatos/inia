@@ -52,14 +52,19 @@ export async function computePublishImpact(
    * `authorizeTarget`: a rota confere se quem pede alcança a configuração que seria publicada (versão escolhida ou rascunho) antes
    * de qualquer dado dela sair na prévia — títulos das bases, alcance, consumidores (agent-router.ts › authorizeAgentConfig).
    */
-  options: { revertToVersionId?: string | undefined; authorizeTarget?: (config: AgentConfig) => void } = {},
+  options: {
+    revertToVersionId?: string | undefined
+    authorizeTarget?: (config: AgentConfig) => void
+    /** Configuração que SERIA publicada, ainda não gravada (associação de bases a partir da base: rascunho + a base escolhida). */
+    nextConfig?: AgentConfig
+  } = {},
 ): Promise<PublishImpact | null> {
   const lifecycle = await loadAgentLifecycle(db, viewer.organizationId, agentId)
   if (!lifecycle) return null
   const live = lifecycle.currentVersionId ? await loadLiveAgentConfig(db, viewer.organizationId, agentId) : null
   const revertTo = options.revertToVersionId ? await loadAgentVersion(db, viewer.organizationId, agentId, options.revertToVersionId) : null
   if (options.revertToVersionId && !revertTo) return null
-  const next = revertTo?.config ?? lifecycle.draftConfig ?? live
+  const next = options.nextConfig ?? revertTo?.config ?? lifecycle.draftConfig ?? live
   if (next) options.authorizeTarget?.(next)
   const visible = await loadVisibleAgentReferences(db, viewer, agentId)
   const consumers = await Promise.all(

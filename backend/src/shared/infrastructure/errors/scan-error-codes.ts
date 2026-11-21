@@ -86,8 +86,9 @@ export function scanDomainErrorCodes(backendRoot: string): InventoriedDomainCode
       const status = codeMatch[2] ? Number(codeMatch[2]) : isDomain ? 422 : null
       add(acc, codeMatch[1]!, module, `backend/${relative}`, status, messageMatch?.[2] ?? null)
     }
-    // B — objetos de erro { code: "X", message: … } (respostas JSON e decisões).
-    for (const match of text.matchAll(new RegExp(`\\bcode:\\s*["'](${CODE})["']\\s*,\\s*message:\\s*(?:(["'\`])((?:\\\\.|(?!\\2).)*)\\2)?`, "gs"))) {
+    // B — objetos de erro { code: "X", message: … } (respostas JSON e decisões) e { errorCode: "X", errorMessage: … } (etapas do envio de
+    // arquivo da base, mostradas na tela — run-8, QA-05).
+    for (const match of text.matchAll(new RegExp(`\\b(?:code|errorCode):\\s*["'](${CODE})["']\\s*,\\s*(?:message|errorMessage):\\s*(?:(["'\`])((?:\\\\.|(?!\\2).)*)\\2)?`, "gs"))) {
       const before = text.slice(Math.max(0, match.index! - 200), match.index!)
       const statusMatch = /(?:status\(|status:\s*)(\d{3})\D*$/.exec(before)
       add(acc, match[1]!, module, `backend/${relative}`, statusMatch ? Number(statusMatch[1]) : null, match[3] ?? null)

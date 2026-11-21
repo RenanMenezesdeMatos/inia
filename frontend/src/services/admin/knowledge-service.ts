@@ -2,7 +2,7 @@ import type { OrgScopeEntry } from "@/lib/scope-links/scope-links"
 import type { UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
 import { z } from "zod"
 
-import { adminGet, adminGetBlob, adminSend, adminUpload } from "@/lib/admin/admin-api"
+import { AdminApiError, adminGet, adminGetBlob, adminSend, adminUpload, adminUploadWithProgress, type UploadTransfer } from "@/lib/admin/admin-api"
 import { pageResultSchema, toQueryString, type DateRangeFilter, type ListParams, type OrgScopeFilter, type PageResult, type SubjectScopeFilter } from "@/lib/admin/list-query"
 import {
   knowledgeAiPreviewSchema,
@@ -28,6 +28,7 @@ import {
   type KnowledgeVersionDetail,
   type KnowledgeVersionRow,
 } from "@/schemas/admin/knowledge.schema"
+import { knowledgeUploadRunSchema, type KnowledgeUploadRun } from "@/schemas/admin/knowledge-upload.schema"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 const BASE_PATH = "/api/v1/admin/knowledge"
@@ -91,10 +92,15 @@ export type CreateKnowledgeInput = {
   /** Todos os assuntos, 1..N assuntos canônicos ou nenhum (lista vazia). */
   subjectScopes: KnowledgeSubjectScopePayload[]
   operatingUniverse?: OperatingUniverse | null
+  /** Id do acompanhamento do envio: com ele, o servidor grava cada etapa do processamento e a tela consulta por ele. */
+  uploadId?: string
+  onProgress?: (transfer: UploadTransfer) => void
 }
 
 export async function createKnowledgeDocument(input: CreateKnowledgeInput) {
   const formData = new FormData()
+  // Antes do arquivo: o servidor lê os campos na ordem em que chegam.
+  if (input.uploadId) formData.set("uploadId", input.uploadId)
   formData.set("title", input.title)
   formData.set("documentType", input.documentType)
   if (input.content) formData.set("content", input.content)
@@ -102,6 +108,7 @@ export async function createKnowledgeDocument(input: CreateKnowledgeInput) {
   formData.set("orgScopes", JSON.stringify(input.orgScopes))
   formData.set("subjectScopes", JSON.stringify(input.subjectScopes))
   if (input.operatingUniverse) formData.set("operatingUniverse", input.operatingUniverse)
+  if (input.file) return adminUploadWithProgress<{ id: string }>(BASE_PATH, formData, { onProgress: input.onProgress })
   return adminUpload<{ id: string }>(BASE_PATH, formData)
 }
 
@@ -130,10 +137,26 @@ export async function updateKnowledgeDocument(id: string, input: UpdateKnowledge
 }
 
 /** Troca o arquivo no rascunho. Sem texto extraível, o rascunho volta com `textAvailable: false` e `content: ""`. */
-export async function replaceKnowledgeDraftFile(id: string, file: File): Promise<KnowledgeDocumentDetail> {
+export async function replaceKnowledgeDraftFile(id: string, file: File, tracking: { uploadId?: string; onProgress?: (transfer: UploadTransfer) => void } = {}): Promise<KnowledgeDocumentDetail> {
   const formData = new FormData()
+  if (tracking.uploadId) formData.set("uploadId", tracking.uploadId)
   formData.set("file", file)
-  return knowledgeDocumentDetailSchema.parse(await adminUpload(`${BASE_PATH}/${id}/draft/file`, formData))
+  return knowledgeDocumentDetailSchema.parse(await adminUploadWithProgress(`${BASE_PATH}/${id}/draft/file`, formData, { onProgress: tracking.onProgress }))
+}
+
+/** O andamento de um envio da própria conta. `null` = o servidor ainda não começou a processar (ou o envio não existe). */
+export async function fetchKnowledgeUploadRun(uploadId: string): Promise<KnowledgeUploadRun | null> {
+  try {
+    return knowledgeUploadRunSchema.parse(await adminGet(`${BASE_PATH}/uploads/${uploadId}`))
+  } catch (error) {
+    if (error instanceof AdminApiError && error.code === "KNOWLEDGE_UPLOAD_NOT_FOUND") return null
+    throw error
+  }
+}
+
+/** Os envios do último dia da conta (de uma base, com `documentId`). */
+export async function fetchRecentKnowledgeUploads(documentId?: string): Promise<KnowledgeUploadRun[]> {
+  return z.array(knowledgeUploadRunSchema).parse(await adminGet(`${BASE_PATH}/uploads${documentId ? `?documentId=${encodeURIComponent(documentId)}` : ""}`))
 }
 
 export type PublishKnowledgeInput = { changeSummary?: string; reactivate?: boolean }

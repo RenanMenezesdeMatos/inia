@@ -40,16 +40,17 @@ export type KnowledgeOcrStatus = {
   result: { pagesRead: number; failedPages: number[]; skippedPages: number[]; prints: number } | null
 }
 
-/** Pede a leitura das páginas digitalizadas do rascunho (dentro da transação de quem gravou o rascunho). */
+/** Pede a leitura das páginas digitalizadas do rascunho (dentro da transação de quem gravou o rascunho). Devolve o id da leitura, que o acompanhamento do envio guarda. */
 export async function enqueueKnowledgeOcr(
   client: Queryable,
   input: { organizationId: string; documentId: string; versionId: string; fileId: string; pages: number; content: string; actor: KnowledgeActor },
-): Promise<void> {
-  await client.query(
+): Promise<string | null> {
+  const inserted = await client.query<{ id: string }>(
     `insert into knowledge_ocr_jobs (organization_id, document_id, version_id, file_id, pages_total, base_content_hash, requested_by, requested_by_name)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+     values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
     [input.organizationId, input.documentId, input.versionId, input.fileId, input.pages, createHash("sha256").update(input.content).digest("hex"), input.actor.personId, input.actor.name],
   )
+  return inserted.rows[0]?.id ?? null
 }
 
 type JobRow = {

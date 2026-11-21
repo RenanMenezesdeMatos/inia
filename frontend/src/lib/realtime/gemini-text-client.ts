@@ -21,7 +21,8 @@ import type { FeedbackSupportMaterial } from "@/schemas/feedbacks/support-materi
 import { parseLeadershipCards, type LeadershipCard } from "@/schemas/leadership/leadership.schema"
 import { parseClarification, type ClarificationAnswer, type ClarificationView } from "@/schemas/knowledge-clarification/clarification.schema"
 import { chatRatingResultSchema, parseSupportSignals, type ChatDislikeInput, type ChatRatingResult, type SupportSignal } from "@/schemas/operator/chat-rating.schema"
-import { apiSend } from "@/lib/api/api-client"
+import { apiPost, apiSend } from "@/lib/api/api-client"
+import { parsePendingReply, type PendingReply } from "@/schemas/operator/pending-reply.schema"
 
 export type HistoryTurn = { role: "user" | "model"; text: string }
 
@@ -75,7 +76,8 @@ export async function fetchTextReply(
   onConversation?: (conversation: ConversationRef) => void,
   /** `onStatus`: o que o servidor está fazendo agora (progresso verdadeiro, nunca texto da resposta). `onRetract`: o texto mostrado
    * até aqui deixou de ser a resposta (o modelo pediu uma ferramenta depois de escrever) — a tela apaga e os próximos pedaços
-   * recomeçam. `signal`: quem pediu desistiu (trocou de conversa) — o pedido é cancelado e o servidor para de gerar. */
+   * recomeçam. `signal`: a tela parou de ler (saiu da tela, trocou de conversa ou o "Parar") — só a leitura para; quem cancela a GERAÇÃO
+   * no servidor é `cancelTextReply` (o servidor termina e grava a resposta de quem só saiu). */
   options: { onStatus?: (status: ReplyStatus) => void; onRetract?: () => void; signal?: AbortSignal } = {},
 ): Promise<TextReply> {
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
@@ -89,10 +91,12 @@ export async function fetchTextReply(
   }).catch(() => {
     throw new Error("Não foi possível contatar a INIA. Verifique sua conexão e tente de novo.")
   })
-  if (response.status === 409) {
-    const payload = (await response.json().catch(() => null)) as { error?: { code?: string; details?: { activeConversationId?: string | null } } } | null
+  if (response.status === 409 || response.status === 429) {
+    const payload = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string; details?: { activeConversationId?: string | null } } } | null
     if (payload?.error?.code === "ASSISTANT_CONVERSATION_CLOSED") throw new ConversationClosedError(payload.error.details?.activeConversationId ?? null)
     if (payload?.error?.code === "FEEDBACK_APPLICATION_CONVERSATION_MISMATCH" || payload?.error?.code === "FEEDBACK_APPLICATION_NOT_STARTED") throw new FeedbackConversationChangedError()
+    // Mesma pergunta ainda sendo respondida (409) ou respostas demais em andamento (429): a mensagem do servidor diz o que fazer.
+    if ((payload?.error?.code === "ASSISTANT_REPLY_IN_PROGRESS" || payload?.error?.code === "ASSISTANT_REPLIES_IN_FLIGHT") && payload.error.message) throw new Error(payload.error.message)
   }
   if (!response.ok || !response.body) throw new Error("Não foi possível obter uma resposta da INIA.")
 
@@ -247,11 +251,22 @@ export function fetchOwnConversations(page = 1, pageSize = 20) {
 }
 
 /** Página de mensagens de uma conversa do próprio usuário: as mais recentes, as anteriores (`before`) ou as novas (`after`). */
-export function fetchConversationMessages(conversationId: string, options: { before?: string; after?: string; limit?: number } = {}) {
+/** `pendingReply`: resposta desta conversa ainda sendo gerada no servidor (só na página mais recente; ausente = nada em andamento). */
+export function fetchConversationMessages(conversationId: string, options: { before?: string; after?: string; limit?: number } = {}): Promise<{ conversation: ConversationSummary; messages: ConversationMessage[]; hasMore: boolean; pendingReply?: PendingReply | null }> {
   const params = new URLSearchParams({ limit: String(options.limit ?? 30) })
   if (options.before) params.set("before", options.before)
   if (options.after) params.set("after", options.after)
-  return getJson<{ conversation: ConversationSummary; messages: ConversationMessage[]; hasMore: boolean }>(`/api/v1/realtime/conversations/${conversationId}/messages?${params}`, "Não foi possível carregar as mensagens da conversa.")
+  return getJson<{ conversation: ConversationSummary; messages: ConversationMessage[]; hasMore: boolean; pendingReply?: unknown }>(`/api/v1/realtime/conversations/${conversationId}/messages?${params}`, "Não foi possível carregar as mensagens da conversa.").then(({ pendingReply, ...page }) => ({ ...page, pendingReply: parsePendingReply(pendingReply) }))
+}
+
+/**
+ * "Parar": cancela DE PROPÓSITO a resposta em andamento (a da pergunta com esta chave). É a ÚNICA forma de cancelar — sair da tela
+ * (trocar de aba ou de área, recarregar, perder a conexão) não cancela: o servidor termina e grava a resposta. `false` = nada em
+ * andamento com essa chave (já terminou).
+ */
+export async function cancelTextReply(clientMessageId: string): Promise<boolean> {
+  const data = await apiPost<{ cancelled?: boolean }>(`/api/v1/realtime/messages/${encodeURIComponent(clientMessageId)}/cancel`)
+  return Boolean(data?.cancelled)
 }
 
 /**

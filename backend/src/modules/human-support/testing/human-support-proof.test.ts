@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { env } from "../../../config/env.js"
 import { exportSubjectData } from "../../data-lifecycle/application/subject-data-export.js"
 import { classifyAttendance } from "../application/classification-service.js"
+import { createHelpRouteResolver } from "../application/suggestions.js"
 import { acknowledgeMessages, signalTyping } from "../application/conversation-marks.js"
 import { anjosActivity, anjosNow, listRequests, queueWaiting, listUnavailableAttempts, requestDetail } from "../application/coordination-service.js"
 import { dispatchOrganization } from "../application/dispatch.js"
@@ -1203,4 +1204,32 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     expect(beyond.items).toEqual([])
     expect(beyond.total).toBe((await supportAbandonment(pool, viewer("ADMIN"), period)).waiting.abandoned)
   }, 60_000)
+
+  it("rota de ajuda do chat (HELP_ROUTE_V1, 19/11): Apoio só com alguém em serviço para a pessoa; desligado, sem ninguém, fora do escopo ou conexão vencida = liderança; nada registrado", async () => {
+    await resetOpen()
+    const route = createHelpRouteResolver(pool)
+    const of = (key: string) => route({ organizationId: ORG, personId: ids[key]! })
+    const entries = async () => ((await sql(`select count(*)::int total from human_support_entry_events where organization_id = $1`, [ORG])).rows[0] as { total: number }).total
+    const before = await entries()
+    // Ninguém em serviço (todos Indisponíveis depois do reset): liderança.
+    expect(await of("O1")).toBe("LEADERSHIP")
+    // Subgrupo desligado: liderança, mesmo com Anjo do Grupo em serviço.
+    await available("A1")
+    expect(await of("OS2")).toBe("LEADERSHIP")
+    // Em serviço e cobrindo o Grupo da pessoa: Apoio. Outro Grupo (só o A5 de organização cobre, e está Indisponível): liderança.
+    expect(await of("O1")).toBe("SUPPORT")
+    expect(await of("OG2")).toBe("LEADERSHIP")
+    // Em pausa ainda está em serviço (o pedido vai para a fila): Apoio. Pausa "Desconexão" (sistema, 195) não está: liderança.
+    await changePresence(pool, viewer("A1"), { status: "PAUSED", pauseReason: "MEETING" })
+    expect(await of("O1")).toBe("SUPPORT")
+    await sql(`update human_support_agent_presence set pause_reason = 'DISCONNECTION' where organization_id = $1 and person_id = $2`, [ORG, ids.A1])
+    expect(await of("O1")).toBe("LEADERSHIP")
+    // Disponível com a conexão da área vencida (fechou a área): liderança.
+    await sql(`update human_support_agent_presence set status = 'AVAILABLE', pause_reason = null, lease_until = now() - interval '1 second' where organization_id = $1 and person_id = $2`, [ORG, ids.A1])
+    expect(await of("O1")).toBe("LEADERSHIP")
+    // Pessoa desconhecida na organização: liderança. Só leitura: nenhuma tentativa nem sugestão registrada.
+    expect(await route({ organizationId: ORG, personId: randomUUID() })).toBe("LEADERSHIP")
+    expect(await entries()).toBe(before)
+    await resetOpen()
+  })
 })

@@ -15,7 +15,10 @@ import { scenarioOf, type ClarificationCoverage, type ClarificationState, type C
 /** V5 (16/11/2026, busca em escala): cada base mostrada traz, como DADO, o produto cadastrado dela ("vale para X, produto da família Y",
  * Produtos e aplicabilidade) — também nas seções que a redação lê. Sem isso, a pergunta pela família ("linha Órion") com a base do produto
  * lida virava "não encontrei para a linha Órion". As regras não mudaram. */
-export const KNOWLEDGE_CLARIFICATION_PROMPT_VERSION = "KNOWLEDGE_CLARIFICATION_PROMPTS_V5" as const
+/** V6 (20/11/2026, hierarquia aberta): o exemplo de NOT_APPLICABLE inclui a hierarquia/organograma (quem lidera quem, a quem alguém responde,
+ * quantas pessoas abaixo) — respondida pela ferramenta `org_hierarchy`, nunca pelas bases. Ao vivo, "Quantas pessoas estão abaixo da Camila?"
+ * virava "não encontrei nas bases" e a ferramenta nem era chamada. As demais regras não mudaram. */
+export const KNOWLEDGE_CLARIFICATION_PROMPT_VERSION = "KNOWLEDGE_CLARIFICATION_PROMPTS_V6" as const
 
 export const PLANNER_SYSTEM = [
   "Você é a etapa de ESCLARECIMENTO da INIA, supervisora virtual de operações. Aqui você NÃO responde ao colaborador: decide, só com as bases de conhecimento mostradas, se já é possível responder corretamente à pergunta ou se falta uma informação que muda a resposta.",
@@ -36,7 +39,7 @@ export const PLANNER_SYSTEM = [
   "5. \"selectionMode\": \"SINGLE\" quando as alternativas se excluem; \"MULTIPLE\" só quando o caso pode reunir mais de uma ao mesmo tempo e a resposta combinaria as fontes.",
   "6. decision = \"ANSWER\" assim que as ambiguidades restantes não mudarem o procedimento ou o que foi pedido — não é preciso chegar a um único documento. Antes de responder, confira que nenhuma seção lida diz que a orientação depende de algo ainda não definido. Em \"answerEvidence\", as SEÇÕES (K-n) que sustentam a resposta para o cenário definido, incluindo as condições e exceções aplicáveis. Um título de seção vale: o texto inteiro é lido antes da resposta.",
   "7. decision = \"INSUFFICIENT\" quando, depois de consultar o que faz sentido, as bases não cobrem a pergunta ou o caso descrito não corresponde a nenhum cenário documentado. Em \"insufficient.reason\", o que falta nas bases; em \"insufficient.ask\", uma informação objetiva que o colaborador pode dar (ou a sugestão de reformular).",
-  "8. decision = \"NOT_APPLICABLE\" quando a mensagem não pede um procedimento ou conteúdo das bases (por exemplo: os resultados, indicadores ou feedbacks do próprio colaborador, conversa social, pedido de ação em sistema) ou quando o pedido está fora dos limites de atuação abaixo — outro fluxo responde.",
+  "8. decision = \"NOT_APPLICABLE\" quando a mensagem não pede um procedimento ou conteúdo das bases (por exemplo: os resultados, indicadores ou feedbacks do próprio colaborador, a hierarquia da organização — quem lidera quem, a quem alguém responde, quantas pessoas estão abaixo de alguém —, conversa social, pedido de ação em sistema) ou quando o pedido está fora dos limites de atuação abaixo — outro fluxo responde.",
   "9. Duas fontes vigentes dizem coisas incompatíveis para o mesmo cenário: registre em \"conflicts\" (descrição + marcadores); nunca escolha uma em silêncio.",
   "10. Em \"questionFacts\", só as dimensões que DISTINGUEM cenários nas bases e que a pergunta ou a conversa já definem (as mesmas que você perguntaria se faltassem), com as palavras do colaborador. Nunca repita ali o assunto ou a própria pergunta; sem nenhuma, devolva [].",
   "11. Quando houver uma pergunta de esclarecimento EM ABERTO e o colaborador escreveu uma mensagem: \"pendingReply.kind\" = \"OPTIONS\" (a mensagem escolhe opções da etapa aberta; \"optionRefs\" com os O-n), \"CONTEXT\" (traz outra informação útil) ou \"NEW_QUESTION\" (é outro assunto). Decida o próximo passo já considerando essa mensagem.",

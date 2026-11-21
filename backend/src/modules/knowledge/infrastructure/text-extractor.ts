@@ -5,6 +5,8 @@ import { createLogger } from "../../../shared/infrastructure/logging/logger.js"
 import { PDF_OCR_VERSION, type PdfExtraction, type PdfPageLayout } from "../domain/pdf-markdown/layout.js"
 import { pdfLayoutToMarkdown } from "../domain/pdf-markdown/pdf-markdown.js"
 import { OCR_MAX_PAGES, ocrPageLayouts } from "../domain/pdf-ocr/ocr-layout.js"
+import { PDF_EMBEDDED_PRINT_RULE } from "../domain/pdf-ocr/embedded-prints.js"
+import { PDF_OCR_CHECKS } from "../domain/pdf-ocr/ocr-page-checks.js"
 import { PDF_PRINT_RULE } from "../domain/pdf-ocr/print-regions.js"
 import type { DocumentParseJob } from "./document-parser-job.js"
 import { PDF_IMAGE_LIMITS, type ExtractedPdfImage, type PdfImageRead } from "./pdf-image-reader.js"
@@ -129,22 +131,74 @@ export const pdfOcrLimits = (pages: number): IsolatedParserLimits => ({ heapMb: 
  * O texto que a busca e a IA vão usar, e as imagens que só o usuário vê. PDF vira Markdown com o registro das páginas; se a conversão falhar, fica o
  * texto corrido e o upload segue. Falha nas imagens não atrapalha o texto: o registro fica sem `images`, e a tela continua abrindo o PDF, onde elas estão.
  */
-export async function extractKnowledgeFile(buffer: Buffer, sourceType: KnowledgeSourceType): Promise<ExtractedFile> {
-  if (sourceType === "PDF") {
+export async function extractKnowledgeFile(buffer: Buffer, sourceType: KnowledgeSourceType, observer: ExtractionObserver = {}): Promise<ExtractedFile> {
+  const report: ExtractionObserver["onStage"] = (key, state, outcome) => {
     try {
+      observer.onStage?.(key, state, outcome)
+    } catch (error) {
+      // Acompanhar nunca atrapalha a leitura.
+      log.warn({ error: error instanceof Error ? error.message : String(error) }, "upload stage observer failed")
+    }
+  }
+  if (sourceType === "PDF") {
+    // Em qual etapa a leitura estava quando falhou: decide o que a tela diz da conversão e das imagens.
+    let current: "TEXT" | "IMAGES" | "MARKDOWN" = "TEXT"
+    try {
+      report("TEXT", "RUNNING")
       const layout = await readPdfLayoutIsolated(buffer)
       const scannedPages = scannedPagesOf(pdfLayoutToMarkdown(layout).extraction)
+      report("TEXT", "DONE", { detail: pdfTextDetail(layout.length, scannedPages.length) })
+      current = "IMAGES"
+      report("IMAGES", "RUNNING")
       const read = await readTextPageImages(buffer, layout, scannedPages)
+      if (read === null) report("IMAGES", "FAILED", { errorCode: "KNOWLEDGE_IMAGES_FAILED", errorMessage: "Não foi possível separar as imagens do PDF. O texto segue, e os prints continuam no PDF original." })
+      current = "MARKDOWN"
+      report("MARKDOWN", "RUNNING")
       const { markdown, extraction } = pdfLayoutToMarkdown(layout, read ? { images: read.images, omitted: read.omitted } : undefined)
       const placed = new Set(extraction.images?.map((image) => image.id))
+      report("MARKDOWN", "DONE", { detail: "Texto em Markdown, com títulos, listas e tabelas reconhecidos e a página de origem de cada trecho." })
+      if (read !== null) report("IMAGES", "DONE", imagesOutcome(placed.size, extraction.imagesOmitted ?? 0))
       return { text: markdown, extraction, images: (read?.files ?? []).filter((file) => placed.has(file.id)), scannedPages }
     } catch (error) {
       if (readersBusy(error)) throw error
       log.error({ error: error instanceof Error ? error.message : String(error) }, "pdf markdown conversion failed; using plain text")
-      return { text: await extractPlainPdfText(buffer), extraction: null, images: [], scannedPages: [] }
+      const conversionFailed = { errorCode: "KNOWLEDGE_MARKDOWN_FAILED", errorMessage: "Não foi possível converter o PDF para Markdown: o texto ficou corrido, sem títulos nem tabelas." }
+      if (current === "TEXT") {
+        report("IMAGES", "SKIPPED", { detail: "Não lidas: a leitura da disposição das páginas falhou." })
+        report("MARKDOWN", "FAILED", conversionFailed)
+      } else {
+        report("IMAGES", "FAILED", { errorCode: "KNOWLEDGE_IMAGES_FAILED", errorMessage: "As imagens ficaram de fora porque a conversão para Markdown falhou. Elas continuam no PDF original." })
+        report("MARKDOWN", "FAILED", conversionFailed)
+      }
+      report("TEXT", "RUNNING")
+      const text = await extractPlainPdfText(buffer)
+      report("TEXT", "DONE", { detail: "Texto corrido do PDF (sem a disposição das páginas)." })
+      return { text, extraction: null, images: [], scannedPages: [] }
     }
   }
-  return { text: await extractTextFromFile(buffer, sourceType), extraction: null, images: [], scannedPages: [] }
+  report("TEXT", "RUNNING")
+  const text = await extractTextFromFile(buffer, sourceType)
+  report("TEXT", "DONE", { detail: `${text.length.toLocaleString("pt-BR")} caracteres de texto.` })
+  return { text, extraction: null, images: [], scannedPages: [] }
+}
+
+/** Quem acompanha o envio (migration 243) recebe cada etapa da leitura no momento em que ela começa e termina. */
+export type ExtractionObserver = {
+  onStage?: (key: "TEXT" | "IMAGES" | "MARKDOWN", state: "RUNNING" | "DONE" | "FAILED" | "SKIPPED", outcome?: { detail?: string; errorCode?: string; errorMessage?: string; warning?: string }) => void
+}
+
+const countLabel = (count: number, one: string, many: string) => `${count.toLocaleString("pt-BR")} ${count === 1 ? one : many}`
+
+function pdfTextDetail(pageCount: number, scanned: number): string {
+  const base = `${countLabel(pageCount, "página lida", "páginas lidas")}`
+  return scanned > 0 ? `${base}, ${countLabel(scanned, "digitalizada (sem texto selecionável)", "digitalizadas (sem texto selecionável)")}.` : `${base}.`
+}
+
+function imagesOutcome(placed: number, omitted: number) {
+  return {
+    detail: placed === 0 ? "Nenhuma imagem nas páginas com texto." : `${countLabel(placed, "imagem separada", "imagens separadas")} e posicionada${placed === 1 ? "" : "s"} no texto.`,
+    ...(omitted > 0 ? { warning: `${countLabel(omitted, "imagem ficou", "imagens ficaram")} de fora pelo limite do documento ou por erro de leitura.` } : {}),
+  }
 }
 
 /**
@@ -187,7 +241,12 @@ export async function extractScannedPdf(buffer: Buffer, options: { onProgress?: 
   const read = new Map(ocrPageLayouts(ocr.pages).map((page) => [page.page, page]))
   const merged = layout.map((page) => read.get(page.page) ?? page)
   const { markdown, extraction } = pdfLayoutToMarkdown(merged, { images: [...embedded.images, ...ocr.images], omitted: embedded.omitted + ocr.imagesOmitted })
-  extraction.ocr = { version: PDF_OCR_VERSION, engine: OCR_ENGINE_LABEL, printRule: PDF_PRINT_RULE.version, pages: ocr.pages.map((page) => page.page), failedPages: ocr.failedPages, skippedPages: ocr.skippedPages, prints: ocr.images.length }
+  extraction.ocr = { version: PDF_OCR_VERSION, engine: OCR_ENGINE_LABEL, printRule: PDF_PRINT_RULE.version, pages: ocr.pages.map((page) => page.page), failedPages: ocr.failedPages, skippedPages: ocr.skippedPages, prints: ocr.images.length,
+    embeddedPrintPages: ocr.pages.filter((page) => page.source === "EMBEDDED").map((page) => page.page),
+    embeddedPrintRule: PDF_EMBEDDED_PRINT_RULE.version,
+    reviews: ocr.reviews,
+    checks: PDF_OCR_CHECKS.version,
+  }
   const placed = new Set(extraction.images?.map((image) => image.id))
   return { text: markdown, extraction, images: [...embedded.files, ...ocr.files].filter((file) => placed.has(file.id)), scannedPages: [...ocr.failedPages, ...ocr.skippedPages] }
 }

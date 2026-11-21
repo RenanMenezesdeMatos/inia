@@ -10,6 +10,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { useHumanSupportState } from "@/queries/human-support/use-human-support-state"
+import { SUPPORT_BUTTON_LABEL, SUPPORT_UNAVAILABLE_TEXT } from "@/schemas/human-support/catalogs.schema"
 import {
   CHAT_DISLIKE_COMMENT_LIMITS,
   CHAT_DISLIKE_REASON_LABELS,
@@ -25,7 +26,8 @@ import {
  * o formulário (Popover, nunca Sheet): motivo (lista própria do chat), comentário (obrigatório em "Outro") e "Você ainda precisa de
  * ajuda com isso?". "Enviar" grava tudo numa chamada e espera a confirmação; falha aparece no formulário; fechar sem enviar não grava
  * nada. Com a resposta já descurtida, o polegar reabre o formulário preenchido, com "Retirar avaliação". Depois de enviar com "Sim":
- * "Falar com um Anjo" quando o apoio está ligado para a pessoa (`onRequestSupport`); senão, o aviso de que ainda não está disponível.
+ * "Falar com o Apoio" quando o apoio está ligado para a pessoa (`onRequestSupport`; o operador nunca lê "Anjo"); senão, o aviso de que
+ * ainda não está disponível e de que a dúvida segue com a liderança.
  */
 export type DislikeControlProps = {
   interactionId: string
@@ -110,7 +112,7 @@ export function DislikeForm({ initial, removable, onSubmit, onRemove, onClose, o
         {onRequestSupport && sent.ratingId ? (
           <>
             {/* Com pedido já aberto, o caminho é o pedido que existe (um por vez): quem chama abre a sala em vez da janela. */}
-            <p className="text-sm text-muted-foreground">{supportAlreadyOpen ? "Você já tem um pedido de apoio." : "Um Anjo pode ajudar você com essa dúvida."}</p>
+            <p className="text-sm text-muted-foreground">{supportAlreadyOpen ? "Você já tem um pedido de apoio." : "O Apoio pode ajudar você com essa dúvida."}</p>
             <Button
               type="button"
               size="sm"
@@ -123,11 +125,11 @@ export function DislikeForm({ initial, removable, onSubmit, onRemove, onClose, o
               }}
             >
               {supportAlreadyOpen ? <MessagesSquare /> : <HeartHandshake />}
-              {supportAlreadyOpen ? "Ver pedido" : "Falar com um Anjo"}
+              {supportAlreadyOpen ? "Ver pedido" : SUPPORT_BUTTON_LABEL}
             </Button>
           </>
         ) : (
-          <p className="text-sm text-muted-foreground">O apoio com Anjo ainda não está disponível para sua equipe.</p>
+          <p className="text-sm text-muted-foreground">{SUPPORT_UNAVAILABLE_TEXT}</p>
         )}
         <Button type="button" variant="ghost" size="sm" className="-ml-2 w-fit" onClick={onClose}>
           Fechar

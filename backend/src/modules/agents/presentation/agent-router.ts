@@ -1,5 +1,5 @@
 import { Router, type Request } from "express"
-import { optionalOperatingUniverseSchema } from "../../operating-universe/domain/operating-universe.js"
+import { OPERATING_UNIVERSES, optionalOperatingUniverseSchema } from "../../operating-universe/domain/operating-universe.js"
 import { assertUniverseRequiredFor } from "../../operating-universe/application/universe-access.js"
 import { z } from "zod"
 import { INVESTIGATION_CAPABILITY_LABELS, investigationCapabilitySchema, normalizeCapabilities, type InvestigationCapability } from "../../investigation/domain/capabilities.js"
@@ -34,6 +34,8 @@ import {
 } from "../application/agent-versions.js"
 import { assessAgentDeletion, deleteAgentIfUnused } from "../application/agent-deletion.js"
 import { computePublishImpact } from "../application/agent-publish-impact.js"
+import { draftHasOtherChanges, knowledgeIdsAfter, loadKnowledgeLinkCandidates, loadKnowledgeLinkContext, pageKnowledgeLinkCandidates, type KnowledgeLinkCandidate, type KnowledgeLinkContext } from "../application/agent-knowledge-links.js"
+import { sameAgentConfig } from "../domain/agent-config.js"
 import { applyUniverseListFilter, universeListParam } from "../../operating-universe/application/universe-list-filter.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 
@@ -459,6 +461,88 @@ const notFound = () => new DomainError("Agente não encontrado.", "AGENT_NOT_FOU
 const inactiveRestricted = () =>
   new DomainError("Este agente está inativo. Só administradores consultam o cadastro, o histórico completo e as execuções de agentes inativos, e podem reativá-los ou excluí-los.", "AGENT_INACTIVE_RESTRICTED", 403)
 
+/** Associação a partir da base (agent-knowledge-links.ts): ligar/desligar a base em cada agente escolhido. Até 50 agentes por vez (run-8, SB-03: cada
+ * agente custa ~15 consultas e trava a linha dele até o fim da transação). */
+const MAX_KNOWLEDGE_LINK_CHANGES = 50
+const knowledgeLinksQuerySchema = z.object({
+  knowledgeDocumentId: z.string().uuid(),
+  tab: z.enum(["LINKED", "AVAILABLE"]).default("LINKED"),
+  search: z.string().trim().max(200).optional(),
+  agentType: z.enum(AGENT_TYPES).optional(),
+  universe: z.enum([...OPERATING_UNIVERSES, "PENDING"]).optional(),
+  scopeType: z.literal("ALL_TEAMS").optional(),
+  teamId: z.string().uuid().optional(),
+  subteamId: z.string().uuid().optional(),
+  state: z.enum(["PUBLISHED", "NOT_PUBLISHED", "DRAFT_PENDING", "INACTIVE"]).optional(),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+})
+const knowledgeLinksSchema = z.object({
+  knowledgeDocumentId: z.string().uuid(),
+  /** DRAFT = grava no rascunho de cada agente; PUBLISH = grava e publica (quem tem outras alterações pendentes fica só no rascunho). */
+  mode: z.enum(["DRAFT", "PUBLISH"]),
+  changes: z.array(z.object({
+    agentId: z.string().uuid(),
+    linked: z.boolean(),
+    /** PEN-050: a revisão do rascunho que a pessoa viu na lista. Diferente da atual = 409, nada é gravado em nenhum agente. */
+    expectedDraftRevision: z.number().int().nonnegative(),
+  })).min(1).max(MAX_KNOWLEDGE_LINK_CHANGES).refine((changes) => new Set(changes.map((change) => change.agentId)).size === changes.length, { message: "Cada agente só pode aparecer uma vez." }),
+})
+
+type KnowledgeLinkOutcome = "UNCHANGED" | "DRAFT_SAVED" | "PUBLISHED" | "DRAFT_ONLY_OTHER_CHANGES"
+
+type KnowledgeLinkPlan = {
+  candidate: KnowledgeLinkCandidate
+  base: AgentConfig
+  config: AgentConfig
+  outcome: KnowledgeLinkOutcome
+  firstPublication: boolean
+  /** A configuração em edição muda (a base entra ou sai do rascunho). */
+  changesDraft: boolean
+}
+
+/**
+ * O que acontece em UM agente — a mesma conta na prévia e na gravação. A configuração seguinte sai de `nextConfig` (a validação do
+ * PATCH: alcance, bases existentes e compatíveis), a revisão é conferida (PEN-050) e o universo da base precisa ser o do agente.
+ */
+async function planKnowledgeLink(
+  client: Pick<Database, "query">,
+  organizationId: string,
+  context: KnowledgeLinkContext,
+  candidate: KnowledgeLinkCandidate,
+  lifecycle: AgentLifecycleRow,
+  change: { linked: boolean; expectedDraftRevision: number },
+  mode: "DRAFT" | "PUBLISH",
+): Promise<KnowledgeLinkPlan> {
+  assertDraftRevision(lifecycle, change.expectedDraftRevision)
+  const live = lifecycle.currentVersionId ? await loadLiveAgentConfig(client, organizationId, lifecycle.id) : null
+  const base = lifecycle.draftConfig ?? live
+  if (!base) throw notFound()
+  authorizeAgentConfig(context.scopes, base)
+  const config = await nextConfig(client, organizationId, context.scopes, base, { knowledgeDocumentIds: knowledgeIdsAfter(base.knowledgeDocumentIds, context.knowledgeDocumentId, change.linked) })
+  if (change.linked && context.knowledgeUniverse !== null && candidate.operatingUniverse !== null && context.knowledgeUniverse !== candidate.operatingUniverse) {
+    throw new DomainError(`A base é do universo ${context.knowledgeUniverse} e o agente "${candidate.name}", do ${candidate.operatingUniverse} — universos não se misturam.`, "OPERATING_UNIVERSE_LINK_CONFLICT", 409)
+  }
+  const firstPublication = lifecycle.currentVersionId === null
+  const changesDraft = !sameAgentConfig(base, config)
+  let outcome: KnowledgeLinkOutcome = changesDraft ? "DRAFT_SAVED" : "UNCHANGED"
+  if (mode === "PUBLISH") {
+    const pendingAfter = firstPublication || !live || !sameAgentConfig(live, config)
+    if (pendingAfter) outcome = draftHasOtherChanges(live, lifecycle.draftConfig) ? "DRAFT_ONLY_OTHER_CHANGES" : "PUBLISHED"
+  }
+  return { candidate, base, config, outcome, firstPublication, changesDraft }
+}
+
+/** Agentes pedidos, cada um no alcance de quem pede (fora dele = 404, como no cadastro), na ordem dos ids (travas sem impasse). */
+async function knowledgeLinkCandidatesFor(db: Pick<Database, "query">, organizationId: string, context: KnowledgeLinkContext, agentIds: string[]): Promise<KnowledgeLinkCandidate[]> {
+  const candidates = new Map((await loadKnowledgeLinkCandidates(db, organizationId, context, agentIds)).map((candidate) => [candidate.id, candidate]))
+  return [...agentIds].sort().map((agentId) => {
+    const candidate = candidates.get(agentId)
+    if (!candidate) throw notFound()
+    return candidate
+  })
+}
+
 type AgentAccess = { scope: ScopedTarget; active: boolean; scopes: ManageableScopes; canManageInactive: boolean }
 
 /**
@@ -542,6 +626,90 @@ export function createAgentRouter(db: Database) {
    * Referências mínimas (nome, status, publicação e números de versão) de agentes citados por Workflows e orquestradores — inclusive
    * inativos, para o editor sinalizá-los (CA-009.12) sem abrir o cadastro deles a quem não é administrador (PEN-068).
    */
+  /**
+   * Associação a partir da base: os agentes que a pessoa administra, com a situação da base em cada um (em uso, no rascunho), o
+   * rascunho (revisão, outras alterações pendentes) e o motivo quando a base não pode entrar. Exige ler a base E administrar agentes.
+   */
+  router.get("/knowledge-links", async (request, response) => {
+    const user = sessionUser(request)
+    const { knowledgeDocumentId, page, pageSize, ...filter } = knowledgeLinksQuerySchema.parse(request.query)
+    const context = await loadKnowledgeLinkContext(db, user, knowledgeDocumentId)
+    const listed = pageKnowledgeLinkCandidates(await loadKnowledgeLinkCandidates(db, user.organizationId, context), filter, page, pageSize)
+    response.json({ data: { knowledgeDocument: { id: knowledgeDocumentId, title: context.knowledgeTitle, operatingUniverse: context.knowledgeUniverse }, ...listed } })
+  })
+
+  /**
+   * Prévia (nada é gravado): o resultado em cada agente e, para quem seria publicado, a mesma prévia de impacto da publicação do
+   * agente (consumidores afetados, restritos, quem perderia acesso). A confirmação na tela só é liberada com esta prévia carregada.
+   * Um agente com problema (revisão desatualizada, alcance, universo) volta com o motivo — a gravação recusaria o lote inteiro.
+   */
+  router.post("/knowledge-links/preview", async (request, response) => {
+    const user = sessionUser(request)
+    const input = knowledgeLinksSchema.parse(request.body)
+    const context = await loadKnowledgeLinkContext(db, user, input.knowledgeDocumentId)
+    const byId = new Map(input.changes.map((change) => [change.agentId, change]))
+    const candidates = await knowledgeLinkCandidatesFor(db, user.organizationId, context, [...byId.keys()])
+    const agents = []
+    for (const candidate of candidates) {
+      const lifecycle = await loadAgentLifecycle(db, user.organizationId, candidate.id)
+      if (!lifecycle) throw notFound()
+      try {
+        const plan = await planKnowledgeLink(db, user.organizationId, context, candidate, lifecycle, byId.get(candidate.id)!, input.mode)
+        const impact = plan.outcome === "PUBLISHED"
+          ? await computePublishImpact(db, user, candidate.id, { nextConfig: plan.config, authorizeTarget: (config) => authorizeAgentConfig(context.scopes, config) })
+          : null
+        agents.push({ agentId: candidate.id, name: candidate.name, outcome: plan.outcome, firstPublication: plan.firstPublication, problem: null, impact })
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error
+        agents.push({ agentId: candidate.id, name: candidate.name, outcome: null, firstPublication: lifecycle.currentVersionId === null, problem: { code: error.code, message: error.message }, impact: null })
+      }
+    }
+    response.json({ data: { mode: input.mode, agents } })
+  })
+
+  /**
+   * Grava a associação em todos os agentes pedidos numa transação só (tudo ou nada): rascunho de cada um pelo `saveAgentDraft`, e,
+   * no modo PUBLISH, a publicação pelo `publishAgentDraft` — com a mesma revalidação da rota de publicar (bases, nome, universo).
+   * Agente publicado com outras alterações pendentes no rascunho recebe a base só no rascunho (não publica o que não é da base).
+   */
+  router.post("/knowledge-links", async (request, response) => {
+    const user = sessionUser(request)
+    const organizationId = user.organizationId
+    const input = knowledgeLinksSchema.parse(request.body)
+    const context = await loadKnowledgeLinkContext(db, user, input.knowledgeDocumentId)
+    const byId = new Map(input.changes.map((change) => [change.agentId, change]))
+    const candidates = await knowledgeLinkCandidatesFor(db, organizationId, context, [...byId.keys()])
+    const actor = actorOf(request)
+    const results = await inTransaction(db, async (client) => {
+      const outcomes: { agentId: string; name: string; outcome: KnowledgeLinkOutcome; versionNumber: number | null }[] = []
+      for (const candidate of candidates) {
+        const lifecycle = await lifecycleForWrite(client, organizationId, candidate.id)
+        const plan = await planKnowledgeLink(client, organizationId, context, candidate, lifecycle, byId.get(candidate.id)!, input.mode)
+        if (plan.changesDraft) {
+          await saveAgentDraft(client, lifecycle, plan.config, actor)
+          if (!lifecycle.currentVersionId) await writeLiveAgentConfig(client, organizationId, candidate.id, plan.config)
+          const diff = diffConfigs(plan.base, plan.config)
+          if (diff.length > 0) await recordAgentHistory(client, organizationId, { agentId: candidate.id, action: "UPDATED", actor, changes: diff, configs: [plan.base, plan.config] })
+        }
+        let versionNumber: number | null = null
+        if (plan.outcome === "PUBLISHED") {
+          const saved = await lifecycleForWrite(client, organizationId, candidate.id)
+          if (saved.draftConfig) {
+            authorizeAgentConfig(context.scopes, saved.draftConfig)
+            await assertKnowledge(client, organizationId, saved.draftConfig)
+            await assertNameAvailable(client, organizationId, saved.draftConfig.name, candidate.id)
+            const published = await publishAgentDraft(client, saved, actor)
+            await recordAgentHistory(client, organizationId, { agentId: candidate.id, action: "PUBLISHED", actor, changes: [{ field: "version", label: FIELD_LABELS.version!, from: saved.currentVersionNumber ? `Versão ${saved.currentVersionNumber}` : "Não publicado", to: `Versão ${published.number}` }] })
+            versionNumber = published.number
+          }
+        }
+        outcomes.push({ agentId: candidate.id, name: candidate.name, outcome: plan.outcome, versionNumber })
+      }
+      return outcomes
+    }).catch(rethrowNameTaken)
+    response.json({ data: { mode: input.mode, results } })
+  })
+
   router.get("/references", async (request, response) => {
     const user = sessionUser(request)
     const ids = (referencesSchema.parse(request.query).ids ?? "").split(",").map((id) => id.trim()).filter((id) => z.string().uuid().safeParse(id).success).slice(0, 200)

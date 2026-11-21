@@ -52,6 +52,7 @@ export default function LeadershipPage() {
         <FieldRow label="Coordenador" value="“Quais grupos estão com o pior resultado e onde atacar?”, “Quais supervisores têm mais operadores no Q4?”, “Quais as maiores dispersões em quartil?”, “Nos últimos 3 meses, quais supervisores estão no pior consolidado?”" />
         <FieldRow label="Gerente, Gerente Sênior e Diretor" value="As mesmas perguntas sobre os níveis abaixo (coordenadores, gerentes, gerentes seniores), Grupos e Subgrupos — níveis ausentes são tratados: quem responde direto a você aparece como unidade própria." />
         <FieldRow label="Força de trabalho" value="“Quantas pessoas estão de férias?”, “Qual % está em produção por supervisor?”, “Quem está de férias na equipe de cada supervisor?” — quantidade, percentual ou nomes, conforme a pergunta." />
+        <FieldRow label="Hierarquia" value="“Quem é meu chefe?”, “A quem a Camila responde?”, “Quantas pessoas estão abaixo do gerente X?”, “Quantos supervisores tem cada gerente?”, “Qual % da organização é de operadores?” — o organograma é aberto: qualquer pessoa, inclusive o operador, consulta a hierarquia de qualquer outra (só nome, cargo, Grupo, Subgrupo e liderança; nunca resultados)." />
         <FieldRow label="Qualquer nível" value="“Como estão minhas equipes neste mês?” (mês em curso pela medição diária + último fechamento oficial), “Quem está fora da meta em 3 ou mais indicadores?”, “Como evoluiu TMA nos últimos 4 meses?”, “Como melhorar este indicador?”" />
         <p>
           A INIA pode fazer várias consultas na mesma resposta — achar os piores e, em seguida, diagnosticar o que eles têm em comum — e aprofundar na conversa (“e dentro desse
@@ -141,7 +142,8 @@ export default function LeadershipPage() {
       <WikiSection id="escopo" title="Escopo e acesso" eyebrow="Decidido pelo sistema">
         <p>
           O que cada pessoa consulta é decidido pelo sistema a cada pergunta: a estrutura que ela lidera (pela cadeia real de gestores) mais o escopo de acesso dado ao
-          usuário dela. Uma equipe fora do seu escopo recebe a mesma resposta de uma equipe inexistente. O cargo não amplia a visão. Ver <WikiLink href="/wiki/estrutura">Pessoas e Estrutura</WikiLink>.
+          usuário dela. Uma equipe fora do seu escopo recebe a mesma resposta de uma equipe inexistente. O cargo não amplia a visão. A exceção é a hierarquia
+          (quem lidera quem e quantas pessoas há em cada nível), aberta a todos — ela não traz resultado, situação funcional nem escala de ninguém. Ver <WikiLink href="/wiki/estrutura">Pessoas e Estrutura</WikiLink>.
         </p>
         <WarningCallout title="Estrutura de hoje" kind="tip">
           As análises usam a estrutura vigente — quem está na equipe agora — também para competências anteriores.

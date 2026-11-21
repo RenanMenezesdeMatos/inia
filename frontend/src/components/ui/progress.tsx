@@ -13,6 +13,8 @@ function Progress({
   return (
     <ProgressPrimitive.Root
       data-slot="progress"
+      // O valor também vai para a raiz: é dela o aria-valuenow que o leitor de tela anuncia (sem isso a barra não dizia o andamento).
+      value={value}
       className={cn(
         "relative flex h-1 w-full items-center overflow-x-hidden rounded-full bg-muted",
         className

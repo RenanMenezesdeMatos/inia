@@ -16,6 +16,7 @@ import { WORKDAY_CLASSIFICATION_LABELS } from "../../people/domain/workday-class
 import { RESOLVED_WORKDAY_STATE_LABELS } from "../../people/domain/workday-resolution.js"
 import { PERSON_GROUPINGS, STATISTICS, TIME_GROUPINGS } from "./fact-query.js"
 import { ARITHMETIC_OPERATIONS, calculate, CALCULATION_TRACE, parseCalculations, renderCalculations } from "./arithmetic.js"
+import { executeHierarchyTool, HIERARCHY_DECLARATION, HIERARCHY_TOOL } from "./org-hierarchy.js"
 import { buildWorkforce, WORKFORCE_STATUS_FILTERS, type StatusFreshness, type StatusLoader } from "./workforce.js"
 import { buildIndicatorDiagnosis, type HireDatesLoader, type InteractionStatsLoader } from "./indicator-diagnosis.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
@@ -38,7 +39,7 @@ import { alignmentReferenceOf } from "../../operational-alignments/domain/operat
  *  - `card`: o mesmo resultado estruturado, exibido na tela com os números do backend e os links de aprofundamento.
  */
 
-export const LEADERSHIP_TOOL_NAMES = ["leadership_priorities", "leadership_structure_overview", "leadership_indicator_analysis", "leadership_people", "leadership_indicator_query", "leadership_workforce", "leadership_indicator_diagnosis", "leadership_best_practices", "leadership_alignments", "leadership_span", "leadership_calculate", "leadership_interactions", "leadership_monitoring", "leadership_feedbacks", "leadership_cases", "leadership_schedule", "leadership_workday", "leadership_communications", "leadership_inia_usage", "leadership_support"] as const
+export const LEADERSHIP_TOOL_NAMES = ["leadership_priorities", "leadership_structure_overview", "leadership_indicator_analysis", "leadership_people", "leadership_indicator_query", "leadership_workforce", "leadership_indicator_diagnosis", "leadership_best_practices", "leadership_alignments", "leadership_span", "leadership_calculate", "leadership_interactions", "leadership_monitoring", "leadership_feedbacks", "leadership_cases", "leadership_schedule", "leadership_workday", "leadership_communications", "leadership_inia_usage", "leadership_support", "org_hierarchy"] as const
 export type LeadershipToolName = (typeof LEADERSHIP_TOOL_NAMES)[number]
 
 export function isLeadershipTool(name: string): name is LeadershipToolName {
@@ -366,11 +367,14 @@ LEADERSHIP_TOOL_DECLARATIONS.push({
 })
 
 /** Voz: UMA ferramenta que leva a pergunta ao mesmo raciocínio do chat de texto (dados da estrutura + especialistas), no backend. */
+// Hierarquia aberta a todos (fora do escopo de acesso): a mesma declaração que o operador recebe.
+LEADERSHIP_TOOL_DECLARATIONS.push(HIERARCHY_DECLARATION)
+
 export const LEADERSHIP_ASK_TOOL = "leadership_ask"
 export const LEADERSHIP_ASK_DECLARATION: FunctionDeclaration = {
   name: LEADERSHIP_ASK_TOOL,
   description:
-    "Responde com dados reais qualquer pergunta de quem lidera: equipe/estrutura, indicadores, metas, pessoas, comparações, evolução, pendências, prioridades, como melhorar um indicador e processos para orientar a equipe. Passe a pergunta completa, já com o contexto da conversa (qual indicador, equipe ou mês foi falado antes).",
+    "Responde com dados reais qualquer pergunta de quem lidera: equipe/estrutura, hierarquia (quem é o chefe de alguém, quem responde a quem, quantas pessoas abaixo), indicadores, metas, pessoas, comparações, evolução, pendências, prioridades, como melhorar um indicador e processos para orientar a equipe. Passe a pergunta completa, já com o contexto da conversa (qual indicador, equipe ou mês foi falado antes).",
   parameters: { type: "object", properties: { query: { type: "string", description: "A pergunta do usuário, completa e com o contexto da conversa." } }, required: ["query"] },
 }
 
@@ -419,6 +423,8 @@ function clarification<T>(outcome: ReferenceOutcome<T>, what: string): Leadershi
 export async function executeLeadershipTool(deps: LeadershipToolDependencies, name: string, args: Record<string, unknown>): Promise<LeadershipToolResult> {
   const { repository, scope, closure } = deps
   try {
+    // Hierarquia: organograma da organização inteira, aberto a todos — NÃO passa pelo escopo de acesso (ver `org-hierarchy.ts`).
+    if (name === HIERARCHY_TOOL) return executeHierarchyTool(repository, { organizationId: scope.organizationId, viewer: scope.viewer, args, now: closure.now })
     if (name === "leadership_calculate") {
       const parsed = parseCalculations(args.calculos)
       if ("error" in parsed) return { text: `Cálculo não feito: ${parsed.error}`, card: null, issue: { kind: "INVALID", message: parsed.error, candidates: [] } }

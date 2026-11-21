@@ -26,6 +26,18 @@ describe("span de controle (leadership_span)", () => {
     expect(card.rows.find((row) => row.cells.leader === "Sara Silva")?.cells.operators).toBe("5")
   })
 
+  it("supervisor sem ninguém abaixo entra com zero: média, mediana e mínimo não o ignoram (regra única com org_hierarchy, run-8 ARQ-01)", async () => {
+    const org = leadershipOrg()
+    const sara = org.people.find((person) => person.id === L.sara)!
+    org.people.push({ ...sara, id: "00000000-0000-4000-8000-00000000e5a0", name: "Sueli Sem Equipe" })
+    const repository = new InMemoryAnalyticsRepository(org)
+    const deps = { repository, scope: await loadViewerScope(repository, leaderUser(L.gabriel, "MANAGER")), closure: CLOSURE, loadPendingActions: async () => NO_PENDING }
+    const result = await executeLeadershipTool(deps, "leadership_span", {})
+    const card = result.card as QueryTableCard
+    expect(card.rows.find((row) => row.cells.leader === "Sueli Sem Equipe")?.cells.operators).toBe("0")
+    expect(result.text).toMatch(/mínimo 0/)
+  })
+
   it("por Grupo: líderes, operadores e média de cada Grupo", async () => {
     const card = (await executeLeadershipTool(await managerDeps(), "leadership_span", { por: "GRUPO" })).card as QueryTableCard
     expect(card.columns.map((column) => column.label)).toEqual(["Grupo", "Supervisores", "Operadores", "Média por supervisor", "Mínimo", "Máximo"])

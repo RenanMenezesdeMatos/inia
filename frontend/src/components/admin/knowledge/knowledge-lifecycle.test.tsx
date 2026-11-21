@@ -39,6 +39,8 @@ const service = vi.hoisted(() => ({
   deleteKnowledgeDocument: vi.fn(),
   fetchKnowledgeSubjects: vi.fn(async () => ({ items: [{ id: "s1", code: "fatura", name: "Faturas", active: true }, { id: "s2", code: "reparo", name: "Reparo", active: true }, { id: "s3", code: "antigo", name: "Antigo", active: false }], canCreate: true })),
   createKnowledgeSubject: vi.fn(),
+  fetchKnowledgeUploadRun: vi.fn(async () => null),
+  fetchRecentKnowledgeUploads: vi.fn(async () => []),
 }))
 vi.mock("@/services/admin/knowledge-service", () => service)
 vi.mock("@/services/admin/org-structure-service", () => ({
@@ -913,9 +915,11 @@ describe("editor da base (moldes de Publicações)", () => {
     service.replaceKnowledgeDraftFile.mockResolvedValue(withDraft({ draft: { ...DRAFT, content: "", textAvailable: false, config: fileConfig }, editable: { versionId: "v5", version: 5, status: "DRAFT", content: "", config: fileConfig, textAvailable: false, restricted: false } }))
     const file = new File(["%PDF"], "escaneado.pdf", { type: "application/pdf" })
     fireEvent.change(screen.getByLabelText("Arquivo novo para o rascunho"), { target: { files: [file] } })
-    await waitFor(() => expect(service.replaceKnowledgeDraftFile).toHaveBeenCalledWith("kb-1", file))
+    // O envio leva o id do acompanhamento e o andamento dos bytes (migration 243).
+    await waitFor(() => expect(service.replaceKnowledgeDraftFile).toHaveBeenCalledWith("kb-1", file, expect.objectContaining({ uploadId: expect.any(String), onProgress: expect.any(Function) })))
     expect(await screen.findByText(/Não foi possível extrair texto deste arquivo/)).toBeInTheDocument()
-    expect(screen.getByText(/escaneado\.pdf/)).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Envio de escaneado.pdf" })).toBeInTheDocument()
+    expect(screen.getAllByText(/escaneado\.pdf/).length).toBeGreaterThan(0)
     const content = screen.getByLabelText("Texto extraído do arquivo")
     expect(content).toHaveValue("")
     fireEvent.change(content, { target: { value: "curto" } })

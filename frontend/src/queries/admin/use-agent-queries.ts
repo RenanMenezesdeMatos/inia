@@ -21,10 +21,15 @@ import {
   testAgent,
   updateAgent,
   updateAgentActive,
+  applyAgentKnowledgeLinks,
+  fetchAgentKnowledgeLinks,
+  previewAgentKnowledgeLinks,
   type AgentListParams,
   type AgentTestTarget,
   type CreateAgentInput,
 } from "@/services/admin/agent-service"
+
+import type { KnowledgeLinksParams, KnowledgeLinksRequest } from "@/schemas/admin/agent-knowledge-links.schema"
 
 import { adminQueryKeys } from "./admin-query-keys"
 
@@ -153,5 +158,36 @@ export function useDeleteAgentMutation() {
     silentErrorCodes: ["AGENT_DELETE_BLOCKED"],
     invalidateKey: adminQueryKeys.agents(),
     successMessage: "Agente excluído.",
+  })
+}
+
+/** Associação a partir da base: uma página da lista (`params` null = desligada: base ainda não criada ou sem permissão). */
+export function useAgentKnowledgeLinksQuery(params: KnowledgeLinksParams | null) {
+  return useQuery({
+    queryKey: [...adminQueryKeys.agents(), "knowledge-links", params],
+    queryFn: () => fetchAgentKnowledgeLinks(params!),
+    enabled: params !== null,
+    placeholderData: keepPreviousData,
+    staleTime: 0,
+  })
+}
+
+/** Prévia da associação com publicação — sempre fresca; `input` null = fechada. A confirmação só é liberada com ela carregada. */
+export function useAgentKnowledgeLinksPreviewQuery(input: KnowledgeLinksRequest | null) {
+  return useQuery({
+    queryKey: [...adminQueryKeys.agents(), "knowledge-links", "preview", input],
+    queryFn: () => previewAgentKnowledgeLinks(input!),
+    enabled: input !== null,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  })
+}
+
+export function useApplyAgentKnowledgeLinksMutation() {
+  return useAdminMutation({
+    mutationFn: (input: KnowledgeLinksRequest) => applyAgentKnowledgeLinks(input),
+    invalidateKey: adminQueryKeys.agents(),
+    silentErrors: true,
   })
 }

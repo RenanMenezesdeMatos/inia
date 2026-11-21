@@ -262,6 +262,17 @@ Pedido: instruções de trabalho em PDF trazem prints do processo, e a pessoa pr
 
 **Provas:** `pdf-image-reader.test.ts`, `pdf-markdown.test.ts`, `knowledge-workspace.test.ts`, `INIA_DB_PROOF=1 npx vitest run pdf-images-proof`, e na interface `document-inserts.test.ts`, `knowledge-reading-view.test.tsx`, `knowledge-source-images.test.tsx`, `knowledge-material-page.test.tsx`.
 
+### Imagem ampliada com setas e o texto da base embaixo (2026-11-19, sem migration)
+
+Pedido do responsável depois de testar na VM: na imagem ampliada do material de apoio, setas para a anterior e a próxima, ← → no teclado, Esc fecha, e embaixo de cada imagem o que fazer naquele passo, vindo do texto da própria base (nunca de IA; sem texto, sem descrição).
+
+- **Um visualizador só:** `components/knowledge-reading/knowledge-image-viewer.tsx` (`KnowledgeImageViewer`), aberto por `KnowledgeDocumentImage` com `gallery = { images, index }`. Vale nos três lugares que mostram imagem de base: chat (`KnowledgeSourceImages`: o conjunto é TODAS as imagens da resposta, inclusive as atrás do "Ver mais", e cada uma leva o link "Abrir o material nesta página"), leitura do material `/materiais/:id` (todas as imagens do documento, na ordem do texto) e "O que a IA lê" na administração (as imagens do trecho). O Acompanhamento (`SupportMaterialsSection`) não mostra imagem: lá o material é só o cartão com "Acessar material", que abre a leitura, onde a melhoria já vale.
+- **Navegação:** setas sobre a imagem (`aria-label` "Imagem anterior"/"Próxima imagem"; nas pontas, `aria-disabled` e não `disabled`, para o foco não sair do modal), ← → no conteúdo do diálogo, toque com deslocamento horizontal ≥ 48 px e maior que 1,5× o vertical (toque parado e rolagem não trocam), sem dar a volta do fim para o começo. Título "Imagem X de Y · Página N" e região `aria-live` com "Imagem X de Y". Esc e foco preso pelo Radix; o botão da miniatura é o `DialogTrigger`, e por isso o foco volta para ela ao fechar (sem o gatilho, ia para o corpo da página). A caixa tem a largura da MAIOR imagem do conjunto, para não pular a cada seta.
+- **Texto da base junto da imagem — regra `IMAGE_STEP_TEXT_V1`** (`imageStepText`, código puro, duas cópias com os mesmos casos de teste: `backend/src/modules/knowledge/domain/image-step-text.ts` e `frontend/src/lib/knowledge/image-step-text.ts`). A imagem entra no fim da linha do último texto acima dela (`placeImages`), então vale o bloco que termina ali: o item de lista com as linhas de continuação, ou o parágrafo. Se antes só há título, linha de tabela ou nada, vale o primeiro bloco depois (a legenda ou o passo seguinte). Tira `**`, `__` e crase, junta espaços, corta em 400 caracteres numa palavra. Sem bloco = sem descrição. Na tela: "No material, junto desta imagem". Não há detecção de "Figura N" por palavra: a legenda entra quando é o bloco antes ou depois.
+- **Onde é calculado:** no chat, pelo servidor (`sectionImagesOf` em `knowledge-catalog.ts`, com o texto do trecho e a posição `at` da imagem; imagem no começo de um trecho olha o fim do trecho anterior da mesma seção) e gravado em `images[].description` no estado do esclarecimento (`clarification-state.ts`, opcional, até 400). Na leitura e em "O que a IA lê", pelo navegador, com o texto que a tela já tem e a mesma posição em que a imagem é desenhada.
+- **Limitações:** resposta do chat gravada antes de 19/11/2026 não tem `description` e mostra a imagem sem texto (as setas funcionam). A posição `at` dentro do trecho é aproximada quando o trecho foi recomposto com espaços (mesma limitação do "O que a IA lê"). O chat não foi visto no navegador com uma resposta real (pediria uma chamada de IA); a leitura do material foi, com a IT-INIA-008 de teste do dev (92 prints).
+- **Provas:** `image-step-text.test.ts` (backend e frontend), `knowledge-workspace.test.ts`, `knowledge-image-viewer.test.tsx` (setas, pontas, teclado, Esc com foco de volta, toque, sem descrição, imagem sozinha), `knowledge-source-images.test.tsx` (conjunto além do "Ver mais" com texto do servidor) e `knowledge-reading-view.test.tsx` (texto da base, e nenhum depois da tabela).
+
 ### PDF digitalizado: leitura por OCR (2026-11-07, migration 179)
 
 Pedido: PDF que não deixa selecionar o texto (a página é uma imagem) precisa render texto em Markdown e prints recortados, com o OCR dentro do código. **Nada pode ser instalado na VM de produção (Windows Server 2016):** o usuário recusou Tesseract instalado, Python e pacotes, mesmo a VM tendo Python. Medidas e comparações: [relatório, seção 6.2](../pdf-para-markdown/relatorio.md).
@@ -282,6 +293,66 @@ Pedido: PDF que não deixa selecionar o texto (a página é uma imagem) precisa 
 **Medido (07/11/2026).** Leitura de 97–98% das palavras reais. Prints achados: 132 de 141 nos manuais do ajuste, 43 de 159 e 84 de 159 nos inéditos. Nenhuma palavra real perdida em página limpa. No escaneamento simulado, duas áreas de texto pequeno com fundo (tabela, quadro) foram cortadas como imagem: 105 de 57.021 e 26 de 56.957 palavras. Elas aparecem como imagem no lugar, e o aviso pede conferência. **Não verificado:** velocidade na VM, Windows Server 2016 (ensaiar na homologação da Azure antes) e um escaneado de verdade.
 
 **Provas:** `hocr.test.ts`, `print-regions.test.ts`, `ocr-layout.test.ts`, `pdf-ocr-reader.test.ts` (motor de verdade, com o PDF digitalizado montado no próprio teste por `testing/scanned-pdf-fixture.ts`), `INIA_DB_PROOF=1 npx vitest run knowledge-ocr-proof` e `pdf-markdown-proof`, que agora roda a fila antes de publicar. Na interface: `knowledge-lifecycle.test.tsx`, `knowledge-ai-preview.test.tsx` e `knowledge-reading-view.test.tsx`.
+### Andamento do envio de arquivo da base (2026-11-19, migration 243)
+
+Pedido: a VM vai receber muitas bases grandes em PDF/DOCX e não se sabia se o envio estava andando, processando ou se tinha falhado. Regras do
+usuário: estado REAL do backend (nunca contador de tempo), erro por etapa com mensagem clara, sair da tela e voltar depois, nada "concluído" antes
+de terminar. Decidido na sessão sem o usuário (ele valida em 20/11).
+
+- **Por que estado novo.** Conferência, texto, imagens e Markdown rodam DENTRO da requisição do envio (`POST /admin/knowledge` e
+  `POST /:id/draft/file`), e nada guardava em que ponto estavam. Com N APIs (escala horizontal) o estado precisa estar no PostgreSQL:
+  `knowledge_upload_runs` (243), uma linha por envio, escrita pela própria requisição. O OCR NÃO foi duplicado: a linha guarda só
+  `ocr_job_id`, e a etapa é lida de `knowledge_ocr_jobs` (179) na hora (fila, `READING`/`PRINTS` com páginas, concluída, erro).
+- **Etapas** (`knowledge/domain/upload-stages.ts`, puro): `CHECK` conferência, `TEXT` extração, `IMAGES` prints, `MARKDOWN` conversão,
+  `SAVE` gravação do rascunho (só `DONE` depois do commit), `OCR`. Estados `PENDING | RUNNING | DONE | FAILED | SKIPPED`. DOCX e TXT/JSON
+  nascem com IMAGES, MARKDOWN e OCR em `SKIPPED` com o motivo (o DOCX sai como texto corrido do mammoth e os prints só aparecem na prévia):
+  a tela nunca promete etapa que o servidor não faz. Falha que impede o envio: a etapa recebe código e mensagem e as que esperavam viram
+  `SKIPPED` "Não executada" (nunca "aguardando" algo que não vai acontecer). Falha que não impede (imagens, Markdown caindo no texto
+  corrido, OCR sem motor, texto do DOCX ilegível na troca de arquivo) fica só na etapa, e o envio aparece "Concluído com ressalvas".
+- **Quem grava** (`application/knowledge-upload-runs.ts`): `extractKnowledgeFile(buffer, tipo, observer)` avisa cada etapa no início e no fim;
+  as escritas saem em fila e a última é esperada antes da resposta. Gravar o andamento nunca derruba o envio (erro vai para o log). Sem
+  `uploadId` no formulário (importador de configuração, cliente antigo) ou com id repetido: envio igual, sem acompanhamento. Reprocessar
+  ainda não é acompanhado.
+- **Interrompido:** `PROCESSING` sem notícia há 30 min aparece como falha `KNOWLEDGE_UPLOAD_INTERRUPTED` na leitura (nada é gravado ao ler).
+  Os 30 min cobrem a fila de leitores (4 na espera × layout + imagens no teto de 90 s).
+- **API:** `GET /admin/knowledge/uploads` (último dia, até 10, da PRÓPRIA conta; `?documentId=`), `GET /admin/knowledge/uploads/:id`
+  (de outra conta = 404 `KNOWLEDGE_UPLOAD_NOT_FOUND`). Retenção: 30 dias, apagados quando a mesma conta envia de novo.
+- **Tela:** a barra é do `xhr.upload.onprogress` (`adminUploadWithProgress` em `lib/admin/admin-api.ts`; o `fetch` não informa envio). O id
+  é gerado na tela (`newUploadId`: `crypto.randomUUID` só existe em https/localhost; fora disso, `getRandomValues`) e vai no formulário ANTES do
+  arquivo. `components/admin/knowledge/knowledge-upload-progress/`: `KnowledgeUploadProgress` (barra + etapas), `KnowledgeRecentUploads`
+  ("Envios recentes" na lista; "Último envio de arquivo" no editor) e `useTrackedUpload`. A navegação para o editor depois de criar só
+  acontece se a pessoa ainda está na tela. Concluído sem ressalva vira uma linha com "Ver etapas"; o que estava em andamento continua aberto.
+- **Armadilha encontrada:** depois da resposta de erro, a releitura pelo `refetch` capturado no clique não chegava ao servidor no navegador
+  (no teste passava). Agora `settle` lê direto pelo id e grava no cache, com 6 s de releitura se ainda vier vazio. O `Progress` do kit não
+  passava o valor para a raiz (sem `aria-valuenow`): corrigido.
+- **Verificado no navegador** (pilha isolada: API :3643 no banco `inia_upload243`, proxy limitando o envio a 1,5 MB/s, OCR rodado só pela tarefa
+  de OCR): IT-INIA-008 PDF 10,8 MB (bytes 44% → 98%, 74 páginas, 92 imagens, Markdown, gravação), IT-INIA-005 DOCX, 4 páginas da IT-INIA-002
+  digitalizadas (OCR na fila → "Recortando os prints" → 4 páginas lidas, 3 prints), arquivo `.pdf` falso (conferência falhou com o motivo) e
+  saída para a lista durante o OCR.
+
+**Provas:** `upload-stages.test.ts`, `knowledge-upload-runs.test.ts`, `text-extractor-stages.test.ts` (parser isolado de verdade),
+`INIA_DB_PROOF=1 npx vitest run knowledge-upload-progress-proof` (PDF, DOCX, digitalizado com a fila real, recusado, troca de arquivo, outra
+conta); na interface `knowledge-upload-progress.test.tsx` e `admin-upload-progress.test.ts`. Rodar as provas de OCR uma por vez: juntas
+disputam a mesma fila.
+
+### OCR: prints pela posição das imagens, conferências por página e validação em lote (2026-11-20)
+
+Pedido: uma IT da base de conhecimento impressa do portal pelo navegador ("Microsoft: Print To PDF") saiu com o texto dos prints misturado aos passos ("fome e000000-00 o ande added À…"), enquanto outros PDFs saíam certos; e "criar mecanismos para validar PDFs de diversas formas".
+
+- **Causa.** Esse tipo de PDF não é digitalização: o texto vira contorno vetorial (sem camada de texto, então a página vai para o OCR) e cada print é uma imagem própria do PDF, guardada em tiras de 7 pixels. A regra da tinta (`PDF_PRINT_RULE_V1`) só reconhece print pela letra menor que a do corpo; o print do login tinha a letra do tamanho do corpo e ficou como texto.
+- **Correção** (`domain/pdf-ocr/embedded-prints.ts`, `PDF_EMBEDDED_PRINTS_V1`): cada página sem camada de texto é classificada. Imagem (ou tiras emendadas) cobrindo ≥ 85% da largura e da altura = `SCAN`, e segue a regra da tinta sem mudança. Senão = `EMBEDDED`: os prints são as imagens do PDF (tiras emendadas, ≥ 0,5% da página e 12 pt de lado, imagem contida em outra descartada, imagem com ≥ 12 desenhos pequenos por cima = fundo de texto vetorial, não print), recortadas à tinta (`trimToInk`, a margem branca da imagem fica de fora), e a regra da tinta NÃO roda (cortaria rodapé e tabela de letra pequena de verdade). As posições vêm da lista de operações do pdf.js no mesmo processo filho (`placementsOf` em `pdf-page-raster.ts`).
+- **Conferências** (`domain/pdf-ocr/ocr-page-checks.ts`, `PDF_OCR_CHECKS_V1`): não mudam texto nem cortam nada, só apontam páginas: `SUSPECT_PRINT_TEXT` (faixa ficou como texto com confiança mediana < 70; os prints do Vantive lidos como texto tinham 29–66, o corpo 93–96), `LOW_CONFIDENCE`, `SMALL_TEXT_LEFT` (só `SCAN`: linhas com letra de tela que sobraram perto de um print ou em quantidade fora das margens — por LINHA, porque por palavra a IT-013 sem prints era acusada em 6 de 8 páginas) e `NOTHING_READ`. Vão para `extraction.ocr.reviews` (com `embeddedPrintPages`, `embeddedPrintRule`, `checks`; ausentes = leitura anterior, não "nada a conferir"), e a tela da base mostra "Confira com atenção p. X: motivo" com o botão de cada página (`knowledge-ocr-review`).
+- **Ferramenta de validação** (`backend/scripts/dev/pdf-ocr-eval/validar-ocr.ts`, sem IA, sem banco): roda o mesmo leitor em qualquer pasta de PDFs em três modos — `producao` (o arquivo como chegou), `objetos` (PDF com texto lido como se não tivesse: o caso do "Print To PDF") e `digitalizado` (cada página vira imagem cinza com papel tingido e ruído). Gabarito automático da camada de texto e das imagens do próprio arquivo; notas por página (`score.ts`: palavras lidas, acentos, texto real cortado, palavras a mais, prints achados, cortes errados); imagens de cada página com os cortes marcados e o Markdown resultante.
+- **Medido (20/11, 10 primeiras páginas).** IT do Vantive: os 21 passos limpos, 12 prints recortados, nenhuma conferência. Manuais inéditos IT-001/006/008/016 (nunca usados para ajustar): `objetos` 24 de 24 prints, 0 palavra real cortada; `digitalizado` (regra da tinta, sem mudança) 13 de 24 prints, 0 palavra real cortada, e as conferências apontaram as 10 de 10 páginas com print perdido, com 3 alarmes a mais. Nos três usados para ajustar (IT-002/005/013): IT-005 4 de 4 páginas, IT-013 nenhum alarme, IT-002 2 de 4 com 2 alarmes a mais. O gabarito de prints do modo `objetos` usa a mesma leitura de posição do produto (é circular para prints; não para palavras).
+- **Limitação que continua:** na digitalização de verdade, a regra da tinta acha cerca de metade dos prints (tela de fundo cinza claro some no papel tingido e sai em pedaços). Agora isso é AVISADO por página, não corrigido; mudar a regra exige medição declarada antes, com a ferramenta acima. O rodapé repetido lido diferente pelo OCR ("2/9" → "219") não sai como repetição.
+
+Provas: `embedded-prints.test.ts`, `ocr-page-checks.test.ts`, `pdf-ocr-embedded.test.ts` (página "impressa" com print em tiras e margem branca), `pdf-ocr-reader.test.ts` (digitalização, motor real) e `knowledge-ai-preview.test.tsx`. Uso:
+
+```bash
+cd backend
+npx tsx scripts/dev/pdf-ocr-eval/validar-ocr.ts /tmp/validacao-ocr <pdf-ou-pasta>... --modos=producao,objetos,digitalizado --max-paginas=20
+```
+
 ### PENDÊNCIA OBRIGATÓRIA antes da VM — busca nas bases em escala (registrada 2026-11-13; implementada 2026-11-16 — ver a seção seguinte)
 
 **Decisão do responsável (13/11/2026):** a INIA vai ter pelo menos **1000 bases de conhecimento grandes**. O caminho atual — a IA escolhe as seções olhando a base (com BM25 como apoio) — não escala para esse volume (custo, tempo e contexto). A busca em escala abaixo é **obrigatória antes de instalar na VM**.
@@ -385,3 +456,86 @@ relacionados" dos Alinhamentos operacionais.
   testes `knowledge-lifecycle.test.tsx` (editor) e `knowledge-form-universe.test.tsx`. A 224 foi aplicada
   em `inia` e `inia_test` em 17/11 a pedido do usuário (vínculos idênticos: 62 no dev, 3 no teste). Até o branch entrar no tronco, o código
   antigo (`:3000`/`:3333`) ainda oferece os assuntos de `subjects`: salvar ali uma base com assunto específico falha pela FK nova.
+
+### Seletor de bases do Agent para ~1000 bases (2026-11-19, sem migration, branch `claude/agente-seletor-bases-c4db12`)
+
+Pedido: no Criar/Editar agente, o campo "Bases de conhecimento" (duas colunas Disponíveis × Selecionadas, `knowledge-base-mover`) não
+servia com muitas bases, e a VM terá ~1000 bases grandes. O formulário carregava `GET /admin/knowledge` INTEIRO, com o trecho do
+conteúdo de cada base (`regexp_replace` no texto todo) — não aguentava a escala. Substituído:
+
+- **Servidor** — `GET|POST /api/v1/admin/agents/knowledge-options/*` (`agents/presentation/agent-knowledge-options-router.ts`,
+  SQL em `agents/application/agent-knowledge-options.ts`), com `agents.manage` (quem cria agente não precisa de `knowledge.manage`;
+  antes precisava, porque a lista vinha da rota de Bases). Leituras por POST porque levam listas de ids; nada é gravado.
+  `search` (página por posição: keyset em `(título dobrado, id)`, `limit + 1`, `total` só na primeira página, cursor opaco
+  inválido = 400 `KNOWLEDGE_OPTIONS_CURSOR_INVALID`; colunas leves — Grupos, assuntos, produtos — depois do LIMIT), `ids` (o filtro
+  inteiro, teto 2000, para "Ligar as filtradas"), `group-defaults` (pré-seleção pelo Grupo), `lookup` (as escolhidas pelo id),
+  `facets` (produtos e assuntos que aparecem em bases visíveis). Busca sem acento e sem caixa (`translate(lower())`, sem a extensão
+  unaccent) em título, nome do arquivo, assunto e produto/família. Visibilidade = alcance de `agents.manage` com a mesma regra de
+  leitura da lista de Bases. Situação: `IN_USE` (versão publicada), `ARCHIVED` (inativa), `NO_VERSION`.
+- **Só oferece o que o salvar aceita**: universo do agente (pendente cabe) e, em agente de Grupo/Subgrupo, bases globais ou do mesmo
+  Grupo (a regra de `assertKnowledgeDocumentsCompatible`, que antes a tela não aplicava — oferecia e o salvar recusava com
+  `AGENT_KNOWLEDGE_SCOPE_FORBIDDEN`). O salvar continua a autoridade.
+- **Pré-seleção pelo Grupo** — regra de sempre, agora no servidor: Grupo = globais + bases do Grupo (inclusive por Subgrupo);
+  Subgrupo = globais + bases do próprio Subgrupo (não as do Grupo-pai inteiro — mantido como era); "todos os Grupos" = nada; só na
+  criação; só a resposta do último Grupo escolhido vale.
+- **Tela** — `components/admin/agents/knowledge-base-picker.tsx` + `knowledge-base-picker/*`, cartão em largura inteira, inline
+  (sem Sheet): abas **Ligadas (N)** (busca local, `ListPagination`, as que impedem salvar primeiro, "Desligar as listadas/todas"
+  com `AlertDialog`) e **Disponíveis** (busca, universo → Grupo → Subgrupo com `ListOrgScopeFilter`/`teamsForUniverse`, produto
+  por família, assunto, situação; `CursorPagination`; "Ligar as N filtradas" / "Ligar todas as N" com confirmação que diz que liga o
+  filtro inteiro e, sem filtro, recomenda filtrar). As ligadas no momento em que a lista foi montada ficam fora de Disponíveis; as
+  ligadas agora continuam visíveis e marcadas até mudar o filtro (a lista não pula). Arquivada, sem versão, de outro universo ou de
+  outro Grupo já ligadas ficam em Ligadas, marcadas, com selo; base ligada fora do alcance de quem edita aparece só com o título que o
+  agente traz, para poder desligar. As linhas das escolhidas vêm de `useKnownKnowledgeOptions` (lê pelo id só as desconhecidas).
+- Provas: `INIA_DB_PROOF=1 NODE_ENV=test npx vitest run agent-knowledge-options-proof` (backend, transação desfeita);
+  `knowledge-options-cursor.test.ts`; frontend `knowledge-base-picker.test.tsx` e `agent-universe-chain.test.tsx` (servidor de
+  mentira em `knowledge-base-picker/testing/`).
+- Verificado no navegador numa cópia isolada do banco de dev (`inia_seletor_bases`, +1000 bases "[Massa seletor] …", conta de QA
+  só nela; o agente "[POC TOOLS] Coordenação · Diagnóstico Operacional" ganhou universo B2C e 5 bases ligadas SÓ na cópia). A cópia
+  pode ser apagada (`dropdb inia_seletor_bases`). Lição: o cookie de sessão é por host, não por porta — uma stack isolada em
+  `127.0.0.1:<porta>` perde a sessão quando outra sessão loga em `127.0.0.1`; use um host próprio (`seletor.localhost`, com
+  `CORS_ORIGIN` e `NEXT_PUBLIC_INIA_API_URL` nesse host).
+- Achados na verificação e corrigidos: pré-seleção do Grupo chegando com "Disponíveis" aberta não saía da lista (a lista agora se
+  refaz quando a escolha muda por fora); família de produto ligada direto a uma base duplicava a chave no filtro Produto.
+
+### Associar agentes a partir da base (2026-11-20, sem migration)
+
+Pedido do usuário: ligar uma base a um agente exigia criar a base, voltar ao agente, editar as bases dele e publicar. Agora o editor da
+base (lateral, seção "Agentes") e a página da base (cartão "Agentes que consultam esta base", escondido em base arquivada) mostram quem
+consulta a base e abrem "Associar agentes" — só para quem tem `agents.manage`.
+
+- **Mesmo ciclo de vida do agente, sem caminho paralelo**: rotas em `agents/presentation/agent-router.ts` (antes de `/:id`):
+  `GET /admin/agents/knowledge-links?knowledgeDocumentId=` (candidatos), `POST /knowledge-links/preview` (nada gravado; para quem publica,
+  a mesma prévia de impacto da publicação — `computePublishImpact` ganhou `nextConfig`) e `POST /knowledge-links` (`mode: DRAFT | PUBLISH`,
+  `changes: [{agentId, linked, expectedDraftRevision}]`, 1..100, sem repetir agente). A configuração seguinte sai de `nextConfig` (a mesma
+  validação do PATCH: alcance, bases existentes e do Grupo), grava por `saveAgentDraft` e publica por `publishAgentDraft` com a revalidação
+  da rota de publicar. Tudo numa transação, agentes travados em ordem de id: um 409/422 desfaz o lote inteiro.
+- **Regras próprias** (`agents/application/agent-knowledge-links.ts`): quem associa precisa LER a base pela regra da tela de bases
+  (`canReadDocument`, movida para `knowledge/application/knowledge-document-read-access.ts`) **e** ter `knowledge.manage` em algum alcance —
+  `canReadDocument` supõe a permissão (o mount das rotas de base a exige) e deixava a base global "legível" sem ela; achado na prova e
+  corrigido com `holdsAnyScope`. Fora disso, 404 `KNOWLEDGE_NOT_FOUND`. Agente fora do alcance = 404 `AGENT_NOT_FOUND`; inativo só para quem
+  administra inativos. Universo diferente da base = 409 `OPERATING_UNIVERSE_LINK_CONFLICT` já no rascunho (antes só a publicação recusava).
+- **Publicar daqui só publica a mudança de bases**: agente publicado cujo rascunho tem outras alterações (`draftHasOtherChanges`) recebe a
+  base só no rascunho (`DRAFT_ONLY_OTHER_CHANGES`). Agente nunca publicado: "em uso" é sempre falso (a linha viva dele só acompanha o
+  rascunho), publicar é a primeira publicação (avisada na prévia) e ele só entra no lote se a pessoa o marcou/desmarcou agora
+  (`knowledgeLinkChangesOf`). A confirmação de publicar só libera com a prévia carregada e sem problema em nenhum agente.
+- **Frontend**: `components/admin/knowledge/knowledge-agents/` (cartão `knowledge-agents-picker.tsx`, resumo da lateral, linha, conferência, situação; o diálogo da 1ª versão saiu), schema `schemas/admin/agent-knowledge-links.schema.ts`,
+  service/queries em `agent-service.ts`/`use-agent-queries.ts`. Wiki: `/wiki/bases-conhecimento#vinculo`.
+- **Provas**: `INIA_DB_PROOF=1 npx vitest run agent-knowledge-links-proof` (8 cenários, banco de teste real, sem IA) e
+  `knowledge-agents.test.tsx` (9). Rodar as provas de banco sozinhas: `agent-lifecycle-proof` junto de `knowledge-version-lifecycle-proof`
+  falha com `ORCHESTRATOR_SCOPE_TAKEN` (as duas criam orquestrador). Tela conferida em 20/11 numa pilha isolada (`kb.localhost`, API no
+  `inia_test`): criar base → associar → publicar (versão 2, "Em uso") e salvar no rascunho de agente nunca publicado ("No rascunho");
+  celular sem rolagem lateral. Dados de QA apagados.
+- **Seletor inline, fechado por padrão (20/11, 2ª rodada, pedido do usuário: "nos moldes do agente, com filtro e paginação, sem
+  sheets soltos"; depois "não vir aberto"):** o diálogo saiu. Cartão `knowledge-agents-picker.tsx` (largura inteira embaixo do editor e na
+  página da base, escondido em base arquivada) nasce FECHADO com o resumo (quantos e os 5 primeiros, mesma consulta do resumo da lateral);
+  "Associar ou desassociar" abre abas Ligados × Disponíveis, busca, filtros (tipo, universo, Grupo, situação) e `ListPagination`. A lista só
+  é pedida aberta. As escolhas valem entre páginas (`toggleKnowledgeLinkChoice`) e ficam guardadas ao fechar ("N alterações não gravadas");
+  a barra grava; a conferência de publicar aparece no próprio cartão (sem janela). A lateral do editor (`knowledge-agents-section.tsx`) só
+  resume e "Escolher agentes" abre o cartão (evento `inia:open-knowledge-agents` + âncora `#agentes-da-base`).
+- **API da lista**: `GET /admin/agents/knowledge-links` ganhou `tab` (LINKED = no que a IA usa ou no rascunho; AVAILABLE), `search`, `agentType`,
+  `universe` (PENDING = sem universo), `scopeType`/`teamId`/`subteamId` (alcance em edição do agente; Grupo inclui os Subgrupos), `state`
+  (PUBLISHED, NOT_PUBLISHED, DRAFT_PENDING, INACTIVE), `page`, `pageSize` (≤ 100) → `{ items, total, page, pageSize, counts, pendingPublish }`.
+  Filtragem e página em memória (`pageKnowledgeLinkCandidates`) sobre os candidatos já autorizados — agentes são centenas, não milhares; se
+  passar disso, levar para SQL. `pendingPublish` = publicados com a base só no rascunho ou só no que a IA usa: "Salvar e publicar" os inclui.
+  O `POST` não devolve mais a lista (a tela recarrega). Prova com 9 cenários.
+

@@ -680,3 +680,44 @@ se o Anjo está habilitado, se foi definido ali ou herdado (e de onde), e o que 
   Administrador × Coordenador do G1 × filtro de Grupo, página além do fim). A limpeza da prova passou a incluir
   `human_support_group_response_times` (sobrava no `inia_test`). Sem migration.
 
+
+### Apoio ou liderança: para onde a INIA aponta (19/11/2026, `HELP_ROUTE_V1`, sem migration)
+
+O responsável perguntou se faz sentido mandar o operador "procurar a liderança" sempre. O levantamento completo está em
+[docs/dev/apoio-ou-lideranca.md](../apoio-ou-lideranca.md): 14 pontos, a classe de cada um (liderança, Apoio ou "depende") e as propostas P1–P5.
+
+**Validação:** pendente do responsável em 20/11. Branch `claude/anjo-em-vez-de-lideranca-71d6ec`.
+
+- **Implementado: resposta INSUFFICIENT do esclarecimento.**
+  - A última frase passa a ser "fale com o Apoio" quando o apoio está ligado para a pessoa e há alguém EM SERVIÇO no escopo dela.
+  - "Em serviço" usa a mesma contagem da regra "sem Anjo em serviço" (`anjosInServiceCount`). Em pausa ou ocupado ainda conta, porque o pedido vai para a fila.
+  - Nos demais casos fica o texto de antes ("procure a sua liderança imediata"). Isso inclui falha da leitura e leitura acima de 1,5 s.
+  - Onde fica:
+    - `knowledge-clarification/domain/help-route.ts`: as duas frases;
+    - `ClarificationRequest.helpRoute`: lida só na INSUFFICIENT, com o rastro `trace.helpRoute`;
+    - `human-support/application/suggestions.ts › createHelpRouteResolver`: só leitura, não registra tentativa (D4);
+    - injeção `supportHelpRoute` no `realtime-router` pelo `createApp`. O isolamento do `assistant` continua.
+  - Só o chat livre de quem atende (texto e voz). Liderança, sessão de feedback e Workflow ficam sem rota.
+- **Implementado: descurtida com "ainda preciso de ajuda" (`dislike-form.tsx`).**
+  - Saiu o "Anjo" do texto que o operador lê, como manda a regra de 16/11: agora é "O Apoio pode ajudar…" e `SUPPORT_BUTTON_LABEL`.
+  - Com o apoio desligado: `SUPPORT_UNAVAILABLE_TEXT`, que também indica a liderança.
+- **Mantido com a liderança (classe a):**
+  - `RESPONSE_BLOCKED_TEXT` e `SPOKEN_VIOLATION_NOTICE`, coerente com a decisão de 10/11 de que a resposta barrada por violação não sugere o Apoio;
+  - coaching do redator antigo da investigação;
+  - `FORWARDED` do Anjo;
+  - intervenções e escalonamento.
+- **Motor de feedback:** não tem texto que mande procurar a liderança. O redator confiável proíbe essa dica genérica. Não foi alterado.
+- **Propostas abertas:**
+  - P1: `KNOWLEDGE_CLARIFICATION_PROMPTS_V5`, resposta parcial. Pede V6 e um sinal novo, porque sem sinal não há botão.
+  - P2: `NOT_FOUND_GUIDANCE` dos especialistas.
+  - P3: `context_prompt` de 5 agentes demo com "oriente procurar a liderança".
+  - P4: resposta barrada por limite de procedimento.
+  - P5: liderança.
+  - Achado à parte: na consulta de processo, quem lidera recebe "procure a sua liderança imediata", contrariando o `leaderFrame`.
+- **Provas:**
+  - `knowledge-clarification-service.test.ts` (5 casos);
+  - `realtime-router-knowledge-clarification.test.ts` (2 casos);
+  - `human-support-proof`, cenário "rota de ajuda do chat (HELP_ROUTE_V1)" (22/22 no `inia_test` em 19/11);
+  - testes do chat e da descurtida;
+  - FAQ do Apoio com a pergunta nova.
+- **Não conferido no navegador.** O texto é fixo e coberto por testes; a sugestão abaixo da resposta já existia.

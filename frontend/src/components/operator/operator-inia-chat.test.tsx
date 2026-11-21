@@ -139,6 +139,7 @@ vi.mock("@/lib/realtime/gemini-text-client", () => {
     fetchOwnConversations: vi.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 20 })),
     fetchTextReply: vi.fn(async () => ({ text: "", supportMaterials: [], interactionId: null, conversationId: "c", persisted: true })),
     startNewConversation: vi.fn(async () => {}),
+    cancelTextReply: vi.fn(async () => true),
     saveMessageRating: vi.fn(async () => ({ interactionId: "x", rating: null, ratingId: null, details: null })),
   }
 })
@@ -420,6 +421,7 @@ describe("OperatorIniaChat — conversas", () => {
     vi.mocked(textClient.fetchConversationMessages).mockReset()
     vi.mocked(textClient.fetchTextReply).mockReset()
     vi.mocked(textClient.startNewConversation).mockReset().mockResolvedValue()
+    vi.mocked(textClient.cancelTextReply).mockReset().mockResolvedValue(true)
     vi.mocked(transportModule.recordVoiceTurn).mockReset().mockResolvedValue(null)
     // Estes testes são do caminho ESCRITO: a INIA no mudo (o padrão — ela falar — tem testes próprios abaixo).
     setVoiceMuted(true)
@@ -480,8 +482,10 @@ describe("OperatorIniaChat — conversas", () => {
 
     expect(signal?.aborted).toBe(false)
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Nova conversa" })) })
-    // O pedido da resposta pendente é cancelado: o servidor para de gerar algo que ninguém vai ver.
+    // A tela para de ler a resposta pendente (ela não aparece aqui); trocar de conversa é SAIR, não "Parar": o servidor termina e
+    // grava a resposta na conversa anterior — nenhum cancelamento é pedido.
     expect(signal?.aborted).toBe(true)
+    expect(textClient.cancelTextReply).not.toHaveBeenCalled()
     expect(textClient.startNewConversation).toHaveBeenCalledTimes(1)
     expect(transport.calls).toContain("disconnect")
     expect(screen.queryByText("pergunta antiga")).toBeNull()
@@ -489,6 +493,58 @@ describe("OperatorIniaChat — conversas", () => {
 
     await act(async () => { pending.resolve({ text: "resposta atrasada", supportMaterials: [], interactionId: "i", conversationId: CONV, persisted: true }) })
     expect(screen.queryByText("resposta atrasada")).toBeNull()
+  })
+
+  it("SAIR DA TELA no meio da resposta (o chat desmonta) não cancela; ao voltar, o indicador mostra a etapa real e a resposta aparece sem perguntar de novo", async () => {
+    vi.mocked(textClient.fetchCurrentConversation).mockResolvedValue({ conversation: summary(CONV) as never, inactivityHours: 24 })
+    vi.mocked(textClient.fetchConversationMessages).mockResolvedValue({ conversation: summary(CONV) as never, messages: [], hasMore: false })
+    let signal: AbortSignal | undefined
+    vi.mocked(textClient.fetchTextReply).mockImplementation((_input, _onChunk, onConversation, options) => {
+      signal = options?.signal
+      onConversation?.({ conversationId: CONV, created: false, rotatedFrom: null, userMessageId: "m-c1" })
+      return new Promise(() => {})
+    })
+    renderChat()
+    await waitFor(() => expect(composer()).toBeEnabled())
+    fireEvent.change(composer(), { target: { value: "Como abro uma contestação?" } })
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
+    // A pessoa troca de área da INIA (Acompanhamento → Indicadores): o chat sai da árvore. A tela só para de LER — o servidor não é
+    // avisado de cancelamento nenhum e termina a resposta.
+    cleanup()
+    expect(signal?.aborted).toBe(true)
+    expect(textClient.cancelTextReply).not.toHaveBeenCalled()
+
+    // Ela volta: a conversa diz que a resposta da pergunta ainda está sendo gerada (com a etapa real) e, na busca seguinte, chega.
+    const question = message("Como abro uma contestação?", "user", "c1")
+    vi.mocked(textClient.fetchConversationMessages).mockReset()
+      .mockResolvedValueOnce({ conversation: summary(CONV) as never, messages: [question], hasMore: false, pendingReply: { questionInteractionId: "m-c1", clientMessageId: "k-1", label: "Consultando a base de conhecimento…", startedAt: new Date().toISOString() } })
+      .mockResolvedValueOnce({ conversation: summary(CONV) as never, messages: [message("Use a opção Contestar na fatura.", "assistant", "c2")], hasMore: false, pendingReply: null })
+    renderChat()
+    expect(await screen.findByText("Como abro uma contestação?")).toBeInTheDocument()
+    expect(await screen.findByText("Consultando a base de conhecimento…")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Parar resposta" })).toBeInTheDocument()
+    expect(await screen.findByText("Use a opção Contestar na fatura.", undefined, { timeout: 6_000 })).toBeInTheDocument()
+    expect(textClient.fetchConversationMessages).toHaveBeenLastCalledWith(CONV, { after: "c1", limit: 30 })
+    await waitFor(() => expect(screen.queryByText("Consultando a base de conhecimento…")).toBeNull())
+    expect(screen.getByRole("button", { name: "Enviar mensagem" })).toBeInTheDocument()
+    // A pergunta não foi feita de novo.
+    expect(textClient.fetchTextReply).toHaveBeenCalledTimes(1)
+  })
+
+  it("PARAR: cancela no servidor pela chave da pergunta e a tela volta ao normal, sem balão de erro", async () => {
+    vi.mocked(textClient.fetchTextReply).mockImplementation((_input, _onChunk, _onConversation, options) =>
+      new Promise((_resolve, reject) => options?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true })))
+    renderChat()
+    await waitFor(() => expect(composer()).toBeEnabled())
+    fireEvent.change(composer(), { target: { value: "vai demorar" } })
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
+    const sentKey = vi.mocked(textClient.fetchTextReply).mock.calls[0]![0].clientMessageId
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Parar resposta" })) })
+    expect(textClient.cancelTextReply).toHaveBeenCalledWith(sentKey)
+    expect(screen.getByText("vai demorar")).toBeInTheDocument()
+    expect(screen.queryByText(/Não consegui responder agora/)).toBeNull()
+    expect(screen.queryByRole("button", { name: "Parar resposta" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Enviar mensagem" })).toBeInTheDocument()
   })
 
   it("conversa encerrada em outra janela: avisa, abre a atual e devolve o texto ao campo", async () => {
@@ -1496,7 +1552,7 @@ describe("OperatorIniaChat — descurtida com motivo no chat livre (Apoio com An
     fireEvent.click(within(dialog).getByRole("radio", { name: "Não encontrou a informação" }))
     fireEvent.click(within(dialog).getByRole("radio", { name: "Sim" }))
     await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "Enviar" })) })
-    expect(await within(dialog).findByText("O apoio com Anjo ainda não está disponível para sua equipe.")).toBeInTheDocument()
+    expect(await within(dialog).findByText("O Apoio ainda não está disponível para sua equipe. Se a dúvida continuar, procure a sua liderança imediata.")).toBeInTheDocument()
     expect(within(dialog).queryByRole("button", { name: "Falar com o Apoio" })).not.toBeInTheDocument()
   })
 
@@ -1603,7 +1659,7 @@ describe("OperatorIniaChat — Apoio com Anjo (sala separada da INIA)", () => {
     expect(screen.queryByTestId("support-status-pill")).not.toBeInTheDocument()
   })
 
-  it("apoio ligado: nenhum botão fixo; \"Falar com um Anjo\" só aparece abaixo da resposta em que a INIA não encontrou", async () => {
+  it("apoio ligado: nenhum botão fixo; \"Falar com o Apoio\" só aparece abaixo da resposta em que a INIA não encontrou", async () => {
     setVoiceMuted(true)
     renderWithSupport({ enabled: true, availability: null, openRequest: null, pendingEvaluations: [] })
     await waitFor(() => expect(composer()).toBeEnabled())

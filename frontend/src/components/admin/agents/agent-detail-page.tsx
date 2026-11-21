@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
+import { toast } from "sonner"
 import Link from "next/link"
 import { useQueryClient } from "@tanstack/react-query"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -25,14 +26,15 @@ import {
 } from "@/components/ui/tooltip"
 
 import { OrgScopeSelect, orgScopeValueAfterUniverseChange, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
-import { filterByUniverse, fitsUniverse } from "@/lib/operating-universe/hierarchy"
+import { fitsUniverse } from "@/lib/operating-universe/hierarchy"
 import { ActionLimitsCard } from "@/components/admin/agents/action-limits-card"
 import { describeBusinessDomain, type BusinessDomainRef } from "@/schemas/admin/business-domain.schema"
 import { resolveAgentSpecialty, SPECIALTY_KIND_HELP, SPECIALTY_KIND_LABELS, type SpecialtyKind } from "@/schemas/admin/orchestrator-policy"
 import { useBusinessDomainsQuery } from "@/queries/admin/use-business-domain-queries"
 import { INVESTIGATION_CAPABILITIES, INVESTIGATION_CAPABILITY_DESCRIPTIONS, INVESTIGATION_CAPABILITY_LABELS, toolsForCapabilities, type InvestigationCapability } from "@/schemas/admin/investigation.schema"
 import { useManageableTeamsQuery } from "@/queries/admin/use-org-structure-queries"
-import { useKnowledgeDocumentsQuery } from "@/queries/admin/use-knowledge-queries"
+import { useKnownKnowledgeOptions } from "@/queries/admin/use-agent-knowledge-options-queries"
+import { fetchGroupDefaultKnowledgeIds } from "@/services/admin/agent-knowledge-options-service"
 import {
   useAgentHistoryQuery,
   useAgentQuery,
@@ -62,9 +64,9 @@ import { AdminApiError } from "@/lib/admin/admin-api"
 import { AgentLifecycleBar } from "./agent-lifecycle/lifecycle-bar"
 import { AgentConfigSummary, AgentVersionsPanel } from "./agent-lifecycle/versions-panel"
 import { RESTRICTED_DRAFT_REASON, RestrictedConfigNotice } from "./agent-lifecycle/restricted-config"
-import { KnowledgeBaseMover } from "./knowledge-base-mover"
+import { KnowledgeBasePicker } from "./knowledge-base-picker"
+import { agentKnowledgeScopeOf, optionProblems } from "./knowledge-base-picker/picker-rules"
 import { adminQueryKeys } from "@/queries/admin/admin-query-keys"
-import type { KnowledgeDocument } from "@/schemas/admin/knowledge.schema"
 import { cn } from "@/lib/utils"
 
 const COMING_SOON_TABS = [
@@ -75,19 +77,6 @@ const COMING_SOON_TABS = [
 function formatChangeValue(field: string, value: string) {
   if (field === "agentType") return AGENT_TYPE_LABELS[value as AgentType] ?? value
   return value
-}
-
-function teamDefaultDocumentIds(documents: KnowledgeDocument[], orgScope: OrgScopeValue): string[] {
-  if (orgScope.scopeType === "ALL_TEAMS") return []
-  return documents
-    .filter((document) =>
-      document.orgScopes.some((scope) => {
-        if (scope.scopeType === "ALL_TEAMS") return true
-        if (orgScope.scopeType === "SUBTEAM") return scope.subteamId === orgScope.subteamId
-        return scope.teamId === orgScope.teamId
-      }),
-    )
-    .map((document) => document.id)
 }
 
 function AgentHistoryTimeline({ agentId }: { agentId: string }) {
@@ -349,7 +338,6 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
   const queryClient = useQueryClient()
   const router = useRouter()
   const manageableTeamsQuery = useManageableTeamsQuery()
-  const knowledgeQuery = useKnowledgeDocumentsQuery()
   const createMutation = useCreateAgentMutation()
   const updateMutation = useUpdateAgentMutation()
   const toggleActiveMutation = useToggleAgentActiveMutation()
@@ -394,10 +382,16 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
   // os seletores oferecem. Pendente (nulo) cabe em qualquer universo. O que já está SALVO e é de outro universo continua visível e
   // sinalizado (nunca some em silêncio); nada novo incompatível é oferecido. O backend recusa o vínculo (OPERATING_UNIVERSE_LINK_CONFLICT).
   const universe = savedAgent ? (savedAgent.operatingUniverse ?? null) : operatingUniverse
-  const savedKnowledgeIds = new Set(savedAgent?.knowledgeDocuments.map((document) => document.id) ?? [])
   const savedDomainCode = savedAgent ? resolveAgentSpecialty(editableAgentOf(savedAgent)).domain?.code ?? null : null
-  const knowledgeOptions = filterByUniverse(knowledgeQuery.data ?? [], universe, (document) => savedKnowledgeIds.has(document.id))
-  const outOfUniverseKnowledge = knowledgeOptions.filter((document) => knowledgeDocumentIds.includes(document.id) && !fitsUniverse(document.operatingUniverse, universe))
+  // Bases: busca e filtros no servidor (~1000 bases); aqui só as linhas das escolhidas (lidas pelo id, nunca somem) e os títulos que o
+  // agente já traz. O que impede salvar (outro universo, outro Grupo) aparece marcado no seletor e resumido abaixo dele.
+  const knownKnowledge = useKnownKnowledgeOptions(knowledgeDocumentIds)
+  const knowledgeTitles = new Map((source?.knowledgeDocuments ?? []).map((document) => [document.id, document.title] as const))
+  const blockedKnowledge = knowledgeDocumentIds.flatMap((id) => {
+    const option = knownKnowledge.byId.get(id)
+    const problems = option ? optionProblems(option, universe, agentKnowledgeScopeOf(orgScope), manageableTeamsQuery.data?.teams) : []
+    return option && problems.length ? [{ title: option.title, problems }] : []
+  })
   const domainCatalog = businessDomainsQuery.data ?? []
   const domainUniverseOf = (code: string) => domainCatalog.find((candidate) => candidate.code === code)?.operatingUniverse ?? null
   const domainOptions: BusinessDomainRef[] = [
@@ -439,19 +433,30 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
     }
   }
 
+  // Pré-seleção pelo Grupo (só na criação, regra de sempre): globais + as do Grupo (ou do Subgrupo) no universo do agente, calculadas no
+  // servidor. Só a resposta do ÚLTIMO Grupo escolhido vale (trocas rápidas não se atropelam).
+  const groupDefaultsRequest = useRef(0)
   function handleOrgScopeChange(nextScope: OrgScopeValue) {
     setOrgScope(nextScope)
-    if (!isEditing && knowledgeQuery.data) {
-      setKnowledgeDocumentIds(teamDefaultDocumentIds(filterByUniverse(knowledgeQuery.data, universe), nextScope))
-    }
+    const agentScope = agentKnowledgeScopeOf(nextScope)
+    if (isEditing || !agentScope) return
+    const request = ++groupDefaultsRequest.current
+    fetchGroupDefaultKnowledgeIds(agentScope, universe ?? undefined)
+      .then((result) => {
+        if (request !== groupDefaultsRequest.current) return
+        setKnowledgeDocumentIds(result.ids)
+        if (result.ids.length) toast.success(`${result.ids.length} ${result.ids.length === 1 ? "base do Grupo entrou pré-selecionada" : "bases do Grupo entraram pré-selecionadas"} — confira em “Ligadas”.`)
+      })
+      .catch(() => {
+        if (request === groupDefaultsRequest.current) toast.error("Não foi possível pré-selecionar as bases do Grupo. Escolha-as em “Disponíveis”.")
+      })
   }
 
   // Trocar o universo (só na criação) limpa o que deixou de caber: Grupo/Subgrupo, bases e domínio de outro universo.
   function handleUniverseChange(next: OperatingUniverse | null) {
     setOperatingUniverse(next)
     setOrgScope((current) => orgScopeValueAfterUniverseChange(current, manageableTeamsQuery.data?.teams, next))
-    const documents = knowledgeQuery.data ?? []
-    setKnowledgeDocumentIds((current) => current.filter((id) => fitsUniverse(documents.find((document) => document.id === id)?.operatingUniverse, next)))
+    setKnowledgeDocumentIds((current) => current.filter((id) => fitsUniverse(knownKnowledge.byId.get(id)?.operatingUniverse, next)))
     if (domain && !fitsUniverse(domainUniverseOf(domain.code), next)) setDomain(null)
   }
 
@@ -679,8 +684,8 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
           <fieldset disabled={draftRestricted} className="grid min-w-0 gap-5 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Quem é este agente</CardTitle>
-                <CardDescription>Nome, tipo e o que ele deve alcançar.</CardDescription>
+                <CardTitle>Quem é este agente e como ele raciocina</CardTitle>
+                <CardDescription>Nome, tipo, o que ele deve alcançar e as instruções que ele segue.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-1.5">
@@ -807,6 +812,20 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
                   <CharacterCounter id="agent-description-count" value={description} limits={AGENT_TEXT_LIMITS.description} />
                 </div>
                 <div className="space-y-1.5">
+                  <Label htmlFor="agent-prompt">Contexto (prompt)</Label>
+                  <Textarea
+                    id="agent-prompt"
+                    value={contextPrompt}
+                    onChange={(event) => setContextPrompt(event.target.value)}
+                    rows={10}
+                    placeholder="Você é o Agente de..."
+                    aria-describedby="agent-prompt-help agent-prompt-count"
+                    aria-invalid={characterCountState(contextPrompt, AGENT_TEXT_LIMITS.contextPrompt).over || undefined}
+                  />
+                  <p id="agent-prompt-help" className="text-xs text-muted-foreground">Instruções detalhadas de como o agente deve raciocinar.</p>
+                  <CharacterCounter id="agent-prompt-count" value={contextPrompt} limits={AGENT_TEXT_LIMITS.contextPrompt} />
+                </div>
+                <div className="space-y-1.5">
                   <Label>Grupo</Label>
                   {manageableTeamsQuery.data ? (
                     <OrgScopeSelect
@@ -824,48 +843,6 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
             </Card>
 
             <div className="space-y-5">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Contexto (prompt)</CardTitle>
-                  <CardDescription>Instruções detalhadas de como o agente deve raciocinar.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-1.5">
-                  <Textarea
-                    value={contextPrompt}
-                    onChange={(event) => setContextPrompt(event.target.value)}
-                    rows={10}
-                    placeholder="Você é o Agente de..."
-                    aria-label="Contexto (prompt)"
-                    aria-describedby="agent-prompt-count"
-                    aria-invalid={characterCountState(contextPrompt, AGENT_TEXT_LIMITS.contextPrompt).over || undefined}
-                  />
-                  <CharacterCounter id="agent-prompt-count" value={contextPrompt} limits={AGENT_TEXT_LIMITS.contextPrompt} />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Bases de conhecimento consultadas</CardTitle>
-                  <CardDescription>
-                    Ao escolher um grupo, as bases já associadas a ele entram pré-selecionadas — mova para “Disponíveis” se não quiser usar alguma.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {knowledgeOptions.length ? (
-                    <>
-                      <KnowledgeBaseMover documents={knowledgeOptions} selectedIds={knowledgeDocumentIds} onChange={setKnowledgeDocumentIds} universe={universe} />
-                      {outOfUniverseKnowledge.length ? (
-                        <p className="mt-2 text-xs text-destructive" data-testid="agent-knowledge-out-of-universe">
-                          De outro universo (remova para salvar): {outOfUniverseKnowledge.map((document) => document.title).join(", ")}.
-                        </p>
-                      ) : null}
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">{knowledgeQuery.data?.length ? "Nenhuma base de conhecimento deste universo de atuação." : "Nenhuma base de conhecimento cadastrada ainda."}</p>
-                  )}
-                </CardContent>
-              </Card>
-
               <Card>
                 <CardHeader>
                   <CardTitle>Materiais de apoio</CardTitle>
@@ -945,6 +922,33 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
 
               {mutation.isError ? <p className="text-sm text-destructive">{(mutation.error as Error).message}</p> : null}
             </div>
+
+            {/* Largura inteira: com ~1000 bases o seletor precisa de espaço para busca, filtros e a lista. */}
+            <Card className="lg:col-span-2" data-testid="agent-knowledge-card">
+              <CardHeader>
+                <CardTitle>Bases de conhecimento consultadas</CardTitle>
+                <CardDescription>
+                  Ao escolher um grupo, as bases já associadas a ele entram pré-selecionadas — desmarque em “Ligadas” as que não quiser usar. Em “Disponíveis”, busque pelo
+                  nome, assunto ou produto e filtre por Grupo, produto e assunto.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <KnowledgeBasePicker
+                  selectedIds={knowledgeDocumentIds}
+                  onChange={setKnowledgeDocumentIds}
+                  universe={universe}
+                  orgScope={orgScope}
+                  teams={manageableTeamsQuery.data?.teams}
+                  known={knownKnowledge}
+                  fallbackTitles={knowledgeTitles}
+                />
+                {blockedKnowledge.length ? (
+                  <p className="text-xs text-destructive" data-testid="agent-knowledge-out-of-universe">
+                    Desligue para salvar: {blockedKnowledge.map((entry) => `${entry.title} (${entry.problems.map((problem) => (problem === "OTHER_UNIVERSE" ? "de outro universo" : "de outro Grupo")).join(", ")})`).join("; ")}.
+                  </p>
+                ) : null}
+              </CardContent>
+            </Card>
           </fieldset>
         </TabsContent>
 

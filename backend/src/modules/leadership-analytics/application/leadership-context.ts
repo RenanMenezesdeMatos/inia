@@ -19,6 +19,7 @@ import type { StatusFreshness, StatusLoader } from "./workforce.js"
 import type { HireDatesLoader, InteractionStatsLoader } from "./indicator-diagnosis.js"
 import { coveringStatusPeriodSql } from "../../people/application/employment-status-service.js"
 import { resolveEmploymentStatusFreshness } from "../../people/application/employment-status-freshness.js"
+import { HIERARCHY_RULE } from "./org-hierarchy.js"
 import { executeLeadershipTool, isLeadershipTool, LEADERSHIP_ASK_TOOL, leadershipDeclarationsFor, type LeadershipToolDependencies, type LeadershipToolResult } from "./leadership-toolset.js"
 import { processScopeOf, structureGroupsOf, type ProcessScope } from "./process-consultation.js"
 import { resolveAnalysisPeriod, resolveStructureReference, type ResolvedStructure } from "./references.js"
@@ -45,7 +46,7 @@ export type LeadershipChatContext = {
 /** Voz de quem lidera: o modelo de voz só encaminha; quem consulta os dados e escreve a resposta é a orquestração do chat. */
 export const LEADERSHIP_VOICE_RULES = [
   "Como conduzir a voz com quem lidera pessoas (essa pessoa NÃO realiza atendimentos):",
-  `- Para QUALQUER pergunta sobre a equipe/estrutura, indicadores, metas, pessoas, atendimentos e ligações, monitoria, feedbacks, casos, escala e jornada, comunicados, uso da INIA, apoio do Anjo, comparações, evolução, pendências, prioridades, como melhorar um indicador, processos para orientar a equipe, regras e políticas da empresa, benefícios, valores ou prazos, acione ${LEADERSHIP_ASK_TOOL} com a pergunta completa e o contexto da conversa (indicador, equipe e mês já falados).`,
+  `- Para QUALQUER pergunta sobre a equipe/estrutura, a hierarquia (quem é o chefe de alguém, a quem responde, quantas pessoas abaixo), indicadores, metas, pessoas, atendimentos e ligações, monitoria, feedbacks, casos, escala e jornada, comunicados, uso da INIA, apoio do Anjo, comparações, evolução, pendências, prioridades, como melhorar um indicador, processos para orientar a equipe, regras e políticas da empresa, benefícios, valores ou prazos, acione ${LEADERSHIP_ASK_TOOL} com a pergunta completa e o contexto da conversa (indicador, equipe e mês já falados).`,
   `- Continuação também é uma pergunta nova e vai à ferramenta ("e nesse caso…", "e se…", "então não precisa…, né?", "vale para…?"): acione ${LEADERSHIP_ASK_TOOL} de novo com a pergunta e o contexto. Nunca deduza, complete nem confirme um número, uma regra, um valor ou um prazo a partir do que já foi dito — o que ainda não foi respondido, só a ferramenta responde. Sem acionar, só repita quando a pessoa pedir para repetir, e exatamente o que a ferramenta trouxe.`,
   "- Acione a ferramenta IMEDIATAMENTE, na mesma resposta, SEM falar nada antes (nem \"vou consultar\"): uma frase sem a chamada encerra o turno e a pessoa fica sem resposta. Nunca fale números, nomes, metas, valores, prazos, regras ou procedimentos que não vieram da ferramenta.",
   "- Nunca diga que não tem acesso, que não sabe, que as bases não cobrem o assunto ou que vai consultar sem ter acionado a ferramenta neste turno: acione e responda com o que ela trouxer.",
@@ -196,6 +197,7 @@ export const LEADERSHIP_RESPONSE_RULES = [
   `  • COMUNICADOS recebidos pela equipe (quais, alcance; a leitura não é registrada) → leadership_communications;${INIA_USAGE_RULE}${SUPPORT_RULE}`,
   "  • PESSOAS por situação funcional (produção, férias, afastamento, quantas pessoas) → leadership_workforce; lista de pessoas por situação no indicador → leadership_people; SPAN (pessoas ou líderes por líder) → leadership_span;",
   "  • prioridades e pendências → leadership_priorities; alinhamentos operacionais → leadership_alignments (nunca diga que não há sem ela); processos e o que dizem as bases → leadership_process (passe o Grupo quando a estrutura tem Grupos com bases diferentes);",
+  `  • ${HIERARCHY_RULE.slice(2)} Fora da estrutura de quem pergunta, ela é a única ferramenta que alcança outras pessoas, e só no organograma;`,
   "  • qualquer conta sobre números já trazidos (somar, dividir, % de uma parte, diferença, variação) → leadership_calculate. Estatística de uma população (média, mediana, percentil, mínimo, máximo, desvio) NUNCA sai da calculadora sobre uma lista: peça à ferramenta do dado, que calcula sobre todos os registros (a lista que você recebe pode estar cortada).",
   "- Se nenhuma ferramenta tiver o dado pedido, diga exatamente isso e o que você consegue trazer; nunca afirme que o dado não existe nem explique a ausência com suposição sobre a operação.",
   "- Entenda o que a pergunta pede: \"quantos\" = quantidade; \"qual %\" = percentual; \"quem\" = nomes (recorte por PESSOA); \"pior quartil geral\" = Q4 de PRV; \"dispersão\" = distribuição Q1–Q4 e desvio padrão. Traga o que foi pedido e, quando ajudar, os outros dois.",

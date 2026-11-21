@@ -44,10 +44,13 @@ padrão e o Express devolve isso em `req.ip` (cada conexão virava um "IP"); o `
   `unhandledRejection` = log e segue; `uncaughtException` = log + desligamento com código 1. SIGINT/SIGTERM/SIGBREAK.
 - `/ready` (`main/readiness.ts`): 503 desligando ou banco sem responder `select 1` em 3 s (cache 1 s, uma consulta por vez). O
   corpo "não pronto" NUNCA contém a palavra `ready` (o health check do ARR procura essa palavra). `/health` continua sempre ok.
-- SSE do chat: `: ping` a cada 15 s; cancelamento pelo `close` da RESPOSTA (o do request dispara ao terminar de ler o corpo JSON
-  no Node atual — `request.on('close')` cancelaria toda conversa na hora) → `runWithAiCancellation` (ALS em `ai-runtime.ts`) →
-  limitador tira da fila/backoff, adapters e clientes legados (chat, Orquestrador, agentes) abortam o fetch, a vaga volta.
-  `AiCallCancelledError` (499) nunca dispara fallback nem nova tentativa. Resposta interrompida não é gravada (a pergunta já foi).
+- SSE do chat: `: ping` a cada 15 s. Desde 19/11/2026 o `close` da resposta NÃO cancela mais: sair da tela (aba, área, recarga,
+  conexão) só desliga a entrega e a resposta é gravada; quem cancela é o "Parar" (`POST /realtime/messages/:clientMessageId/cancel`,
+  `assistant_reply_runs`, migration 245 — ver [conversa-voz-e-avatar.md](conversa-voz-e-avatar.md), "Sair da tela não cancela a
+  resposta"). O cancelamento segue o mesmo caminho: `runWithAiCancellation` (ALS em `ai-runtime.ts`) → limitador tira da
+  fila/backoff, adapters e clientes legados (chat, Orquestrador, agentes) abortam o fetch, a vaga volta. `AiCallCancelledError`
+  (499) nunca dispara fallback nem nova tentativa. Resposta parada de propósito não é gravada (a pergunta já foi). O `close` do
+  request continua inútil para isso (dispara ao terminar de ler o corpo JSON no Node atual).
 - Streaming: `AbortSignal.timeout(n)` no `fetch` vale para a resposta INTEIRA (cortava respostas longas aos 15 s). Use
   `shared/infrastructure/http/stream-deadline.ts`: prazo até começar + silêncio máximo entre pedaços (+ cancelamento).
 - Token da voz com prazo de 10 s (504 `REALTIME_SESSION_TIMEOUT`).
@@ -96,7 +99,7 @@ Hosts `127.0.0.1` de propósito: cookie separado do `localhost` (outras sessões
 Login (429/400/200 corretos), `/operator`, avatar pequeno `?v=`, chunk do 3D pedido DEPOIS do `load` (2,3 s × 2,1 s) e o GLB
 versionado carregando; pergunta digitada com voz ligada vai pela sessão de voz (token 200); no modo mudo, SSE do chat:
 `conversation` → `: ping` aos 15 s e 30 s → resposta do Orquestrador aos 32,5 s → `persisted` → `support_materials` + `done`.
-Recarregar a página no meio de uma resposta: vaga interativa 1 → 0 em ~2 s e log `assistant_reply_cancelled` (JSON do pino).
+Recarregar a página no meio de uma resposta: vaga interativa 1 → 0 em ~2 s e log `assistant_reply_cancelled` (JSON do pino) — comportamento de 13/10, trocado em 19/11/2026 (recarregar não cancela mais; só o "Parar").
 Depois do redesenho por conexão: Administração › IA › Conexões › configurar mostra "Chamadas simultâneas" (vazio = "Sem
 limite"); a API devolve `maxConcurrentCalls` (null nas 3 conexões do dev); `/internal/metrics` traz `aiConnections`
 (vagas seguradas, esperando e pausas por chave).

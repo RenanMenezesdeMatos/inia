@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { IMAGE_STEP_TEXT_MAX } from "../../knowledge/domain/image-step-text.js"
 
 /**
  * ESCLARECIMENTO PELAS BASES — o estado de UM fluxo de esclarecimento de uma pergunta (a pergunta original, as etapas já feitas
@@ -39,8 +40,9 @@ export const knowledgeSourceRefSchema = z.object({
   chunkIndex: z.number().int().min(0),
   /** Páginas do PDF de origem. Vêm do registro da conversão, nunca da IA; estado gravado antes disso não tem. */
   pages: z.object({ from: z.number().int().min(1), to: z.number().int().min(1) }).optional(),
-  /** Imagens da seção no arquivo, só nas fontes de uma resposta e só para a tela: vêm do registro da conversão e a IA não as recebe. */
-  images: z.array(z.object({ id: z.string().max(64), page: z.number().int().min(1), width: z.number().int().min(1), height: z.number().int().min(1) })).max(MAX_SOURCE_IMAGES).optional(),
+  /** Imagens da seção no arquivo, só nas fontes de uma resposta e só para a tela: vêm do registro da conversão e a IA não as recebe.
+   * `description` = texto literal da base junto da imagem (`imageStepText`); resposta gravada antes de 19/11/2026 não tem. */
+  images: z.array(z.object({ id: z.string().max(64), page: z.number().int().min(1), width: z.number().int().min(1), height: z.number().int().min(1), description: z.string().min(1).max(IMAGE_STEP_TEXT_MAX).optional() })).max(MAX_SOURCE_IMAGES).optional(),
 })
 export type KnowledgeSourceRef = z.infer<typeof knowledgeSourceRefSchema>
 

@@ -1433,6 +1433,32 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
+    "code": "ASSISTANT_REPLIES_IN_FLIGHT",
+    "module": "assistant",
+    "statuses": [
+      429
+    ],
+    "messages": [
+      "Você já tem ${MAX_REPLIES_IN_FLIGHT_PER_PERSON} respostas da INIA em andamento. Espere uma delas terminar e pergunte de novo."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/assistant-reply-runs.ts"
+    ]
+  },
+  {
+    "code": "ASSISTANT_REPLY_IN_PROGRESS",
+    "module": "assistant",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta pergunta ainda está sendo respondida. Aguarde a resposta aparecer na conversa."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/assistant-reply-runs.ts"
+    ]
+  },
+  {
     "code": "ASSISTANT_TIMEOUT",
     "module": "assistant",
     "statuses": [
@@ -6712,7 +6738,8 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "messages": [
       "Não foi possível extrair texto do arquivo enviado.",
-      "Nenhuma página deste PDF tem texto para a IA ler. Nada foi alterado."
+      "Nenhuma página deste PDF tem texto para a IA ler. Nada foi alterado.",
+      "Não foi possível extrair texto do arquivo. Ele entra no rascunho sem texto: digite o texto ou troque o arquivo."
     ],
     "refs": [
       "backend/src/modules/knowledge/presentation/knowledge-router.ts"
@@ -6760,6 +6787,29 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "refs": [
       "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_IMAGES_FAILED",
+    "module": "knowledge",
+    "statuses": [],
+    "messages": [
+      "Não foi possível separar as imagens do PDF. O texto segue, e os prints continuam no PDF original.",
+      "As imagens ficaram de fora porque a conversão para Markdown falhou. Elas continuam no PDF original."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/infrastructure/text-extractor.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_MARKDOWN_FAILED",
+    "module": "knowledge",
+    "statuses": [],
+    "messages": [
+      "Não foi possível converter o PDF para Markdown: o texto ficou corrido, sem títulos nem tabelas."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/infrastructure/text-extractor.ts"
     ]
   },
   {
@@ -6811,6 +6861,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "Base de conhecimento não encontrada."
     ],
     "refs": [
+      "backend/src/modules/agents/application/agent-knowledge-links.ts",
       "backend/src/modules/checkpoint-registry/application/checkpoint-registry-queries.ts",
       "backend/src/modules/checkpoint-registry/application/checkpoint-registry-service.ts",
       "backend/src/modules/knowledge/application/knowledge-versions.ts",
@@ -6903,9 +6954,25 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     "code": "KNOWLEDGE_OCR_UNAVAILABLE",
     "module": "knowledge",
     "statuses": [],
-    "messages": [],
+    "messages": [
+      "${pagesWord(scannedFound)} ficaram sem texto: a leitura por OCR não está disponível neste servidor."
+    ],
     "refs": [
-      "backend/src/modules/knowledge/application/knowledge-ocr-jobs.ts"
+      "backend/src/modules/knowledge/application/knowledge-ocr-jobs.ts",
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_OPTIONS_CURSOR_INVALID",
+    "module": "agents",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Posição da lista inválida: recarregue a lista de bases."
+    ],
+    "refs": [
+      "backend/src/modules/agents/presentation/agent-knowledge-options-router.ts"
     ]
   },
   {
@@ -7082,6 +7149,41 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "refs": [
       "backend/src/modules/knowledge/application/knowledge-subjects.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_UPLOAD_FAILED",
+    "module": "knowledge",
+    "statuses": [],
+    "messages": [
+      "Erro inesperado ao processar o arquivo. Tente de novo; se repetir, avise quem administra a INIA."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-upload-runs.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_UPLOAD_INTERRUPTED",
+    "module": "knowledge",
+    "statuses": [],
+    "messages": [
+      "O processamento parou sem terminar (o servidor reiniciou ou a conexão caiu). O arquivo não entrou: envie de novo."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/domain/upload-stages.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_UPLOAD_NOT_FOUND",
+    "module": "knowledge",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Envio não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
     ]
   },
   {
@@ -7392,11 +7494,12 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       409
     ],
     "messages": [
+      "A base é do universo ${context.knowledgeUniverse} e o agente \"${candidate.name}\", do ${candidate.operatingUniverse} — universos não se misturam.",
       "A área escolhida é do universo ${domainUniverse}; o argumentário é ${universe}. Universos não se misturam.",
-      "${UNIVERSE_RESOURCES[kind].label} e recursos ligados ficariam em universos diferentes — universos não se misturam. Resolva estes vínculos antes de salvar: ${lines.join(\"; \")}${conflicts.length > 10 ? ",
-      "A mudança deixaria vínculos com universos diferentes. Resolva antes de salvar: ${lines.join(\"; \")}${conflicts.length > 10 ? "
+      "${UNIVERSE_RESOURCES[kind].label} e recursos ligados ficariam em universos diferentes — universos não se misturam. Resolva estes vínculos antes de salvar: ${lines.join(\"; \")}${conflicts.length > 10 ? "
     ],
     "refs": [
+      "backend/src/modules/agents/presentation/agent-router.ts",
       "backend/src/modules/argument-scripts/application/argument-script-service.ts",
       "backend/src/modules/operating-universe/application/resource-universe.ts",
       "backend/src/modules/operating-universe/application/universe-links.ts"

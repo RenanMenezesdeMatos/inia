@@ -16,6 +16,8 @@ const knowledgeService = vi.hoisted(() => ({
   updateKnowledgeDocument: vi.fn(),
   fetchKnowledgeSubjects: vi.fn(async () => ({ items: [{ id: "s1", code: "segunda_via", name: "Segunda via", active: true }], canCreate: true })),
   createKnowledgeSubject: vi.fn(),
+  fetchKnowledgeUploadRun: vi.fn(async () => null),
+  fetchRecentKnowledgeUploads: vi.fn(async () => []),
 }))
 vi.mock("@/services/admin/knowledge-service", () => knowledgeService)
 vi.mock("@/services/admin/org-structure-service", () => ({

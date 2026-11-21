@@ -27,6 +27,7 @@ import {
   type ClarificationStep,
   type QuestionFact,
 } from "../domain/clarification-state.js"
+import { insufficientHelpSentence, type HelpRoute } from "../domain/help-route.js"
 import { DEFAULT_NAVIGATION_BUDGET, KnowledgeWorkspace, describeProducts, type NavigationBudget } from "../domain/knowledge-workspace.js"
 import type { ClarificationModel } from "./clarification-model.js"
 
@@ -85,6 +86,11 @@ export type ClarificationRequest = {
   sessionContext?: string | null
   /** Chat de texto: a resposta (ANSWER) aparece enquanto é redigida. Ausente = só a resposta inteira e validada (voz, liderança). */
   stream?: ClarificationStream | null
+  /**
+   * Para onde apontar quando as bases não sustentam a resposta (`HELP_ROUTE_V1`): lida só na decisão INSUFFICIENT. Ausente, falha ou
+   * demora = `LEADERSHIP` (o texto de antes). Só o chat livre de quem atende (texto e voz) passa a função.
+   */
+  helpRoute?: (() => Promise<HelpRoute>) | null
 }
 
 /**
@@ -102,6 +108,8 @@ export type ClarificationPassReason = "NO_AGENTS" | "NO_KNOWLEDGE" | "NOT_APPLIC
 
 /** Consultas (READ) por mensagem: abrir bases / ler seções antes de decidir. */
 export const MAX_READ_ROUNDS = 2
+/** Quanto a leitura da rota de ajuda pode atrasar a resposta "insuficiente" antes de cair na liderança. */
+export const HELP_ROUTE_TIMEOUT_MS = 1_500
 
 /** Rastro auditável (gravado com a resposta; nunca prompt nem texto das bases). */
 export type ClarificationTrace = {
@@ -117,6 +125,8 @@ export type ClarificationTrace = {
   /** Cada chamada à IA nesta mensagem, em ordem: etapa, correção e o que decidiu (ex.: `PLANNER READ +1B +4K`, `ANSWER OK`). Sem
    * conteúdo — mostra quantas rodadas a pergunta custou. */
   calls?: string[]
+  /** Para onde a resposta "insuficiente" apontou (`HELP_ROUTE_V1`); ausente nas outras decisões. */
+  helpRoute?: HelpRoute
   /** Busca em escala: modo (BM25 ∪ vetor ou só BM25), candidatos, cobertura do índice, tempos e seções entregues já lidas (sem texto). */
   recall?: KnowledgeRecallTrace & { prefilled: number; reordered: boolean; failed?: string }
 }
@@ -158,6 +168,24 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
       if (previous && previous.isLatestAssistantMessage && openStepOf(previous.state)) return continueFlow(request, agentIds, "PENDING_TEXT", previous.state, request.text)
       return newFlow(request, agentIds, request.text, previous?.isLatestAssistantMessage ? previous.state : null)
     },
+  }
+
+  /** Rota da resposta "insuficiente": nunca derruba a resposta — sem função, com erro ou além de 1,5 s, a liderança (texto de antes). */
+  async function helpRouteOf(request: ClarificationRequest, record: ClarificationTrace): Promise<HelpRoute> {
+    let route: HelpRoute = "LEADERSHIP"
+    if (request.helpRoute) {
+      let timer: NodeJS.Timeout | undefined
+      try {
+        const timeout = new Promise<HelpRoute>((resolve) => { timer = setTimeout(() => resolve("LEADERSHIP"), HELP_ROUTE_TIMEOUT_MS) })
+        route = await Promise.race([request.helpRoute(), timeout])
+      } catch (error) {
+        logFailure("help_route", error)
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+    record.helpRoute = route
+    return route
   }
 
   function trace(mode: ClarificationMode): ClarificationTrace {
@@ -250,7 +278,7 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
       // As bases que sustentavam o esclarecimento saíram do alcance (despublicadas, removidas ou fora do acesso).
       record.decision = "INSUFFICIENT"
       const notice = "As bases que sustentavam este esclarecimento não estão mais disponíveis para consulta."
-      return { kind: "REPLY", content: `${notice} Se a dúvida continuar, reformule a pergunta ou procure a sua liderança imediata.`, state: { ...state, status: "INSUFFICIENT", coverage: navigation.workspace.coverage(), notice, updatedAt: now().toISOString() }, trace: record }
+      return { kind: "REPLY", content: `${notice} ${insufficientHelpSentence(await helpRouteOf(request, record), { reformulate: true })}`, state: { ...state, status: "INSUFFICIENT", coverage: navigation.workspace.coverage(), notice, updatedAt: now().toISOString() }, trace: record }
     }
     // O que sustentou as escolhas já começa aberto e lido (citado pela própria IA nas etapas anteriores); a etapa em aberto, aberta.
     const chosen = answered.flatMap((step) => step.options.filter((option) => step.answer!.optionIds.includes(option.id)).flatMap((option) => option.evidence))
@@ -352,7 +380,7 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
     if (result.decision === "INSUFFICIENT" && result.insufficient) {
       const notice = result.insufficient.reason
       const ask = result.insufficient.ask ?? "Se puder, descreva o caso com mais detalhes ou reformule a pergunta."
-      const content = `Não encontrei nas bases consultadas uma orientação que sustente a resposta para este caso. ${notice}\n\n${ask} Se a dúvida continuar, procure a sua liderança imediata.`
+      const content = `Não encontrei nas bases consultadas uma orientação que sustente a resposta para este caso. ${notice}\n\n${ask} ${insufficientHelpSentence(await helpRouteOf(request, record), { reformulate: false })}`
       return { kind: "REPLY", content, state: { ...state, status: "INSUFFICIENT", coverage, sources: [], conflicts: [], notice, updatedAt: at }, trace: record }
     }
     if (result.decision !== "ANSWER") return null

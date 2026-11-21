@@ -17,18 +17,18 @@ const fill = (reason: string, help: "Sim" | "Não") => {
 }
 
 describe("DislikeForm", () => {
-  it("com \"Sim\" e o apoio ligado: \"Falar com um Anjo\" abre o pedido com a versão gravada e fecha o formulário", async () => {
+  it("com \"Sim\" e o apoio ligado: \"Falar com o Apoio\" abre o pedido com a versão gravada e fecha o formulário", async () => {
     const onRequestSupport = vi.fn()
     const onClose = vi.fn()
     render(<DislikeForm initial={null} removable={false} onSubmit={async () => ({ ratingId: "rating-9" })} onRemove={async () => {}} onClose={onClose} onRequestSupport={onRequestSupport} />)
     fill("Informação errada", "Sim")
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar" })) })
-    fireEvent.click(await screen.findByRole("button", { name: "Falar com um Anjo" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Falar com o Apoio" }))
     expect(onRequestSupport).toHaveBeenCalledWith("rating-9")
     expect(onClose).toHaveBeenCalled()
   })
 
-  it("com \"Sim\" e um pedido já aberto: mostra \"Ver pedido\" (um pedido por vez), nunca um segundo \"Falar com um Anjo\"", async () => {
+  it("com \"Sim\" e um pedido já aberto: mostra \"Ver pedido\" (um pedido por vez), nunca um segundo \"Falar com o Apoio\"", async () => {
     const onRequestSupport = vi.fn()
     const operator = { enabled: true, openRequest: { id: "req-1" }, pendingEvaluations: [] } as unknown as OperatorView
     render(
@@ -39,7 +39,7 @@ describe("DislikeForm", () => {
     fill("Informação errada", "Sim")
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar" })) })
     expect(await screen.findByText("Você já tem um pedido de apoio.")).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Falar com um Anjo" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Falar com o Apoio" })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Ver pedido" }))
     expect(onRequestSupport).toHaveBeenCalledWith("rating-9")
   })
@@ -53,7 +53,7 @@ describe("DislikeForm", () => {
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar" })) })
     expect(onSubmit).toHaveBeenCalledWith({ reason: "HARD_TO_UNDERSTAND", comment: "  Muito longo.  ", stillNeedsHelp: false })
     expect(onClose).toHaveBeenCalled()
-    expect(screen.queryByRole("button", { name: "Falar com um Anjo" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Falar com o Apoio" })).not.toBeInTheDocument()
   })
 
   it("enquanto grava, o botão mostra o andamento e não envia de novo", async () => {

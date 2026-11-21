@@ -86,3 +86,34 @@ export async function adminUpload<T>(path: string, formData: FormData, method: "
   const payload = (await response.json()) as { data: T }
   return payload.data
 }
+
+/** Bytes do arquivo já enviados ao servidor (do `upload.onprogress` do navegador). `total` nulo = o navegador não informou o tamanho. */
+export type UploadTransfer = { loaded: number; total: number | null }
+
+/**
+ * Como `adminUpload`, com o andamento real do ENVIO dos bytes (o `fetch` não informa o envio). Usa XMLHttpRequest com o cookie de sessão, como as
+ * demais chamadas. O andamento vem do navegador; quando ele chega ao fim, o arquivo está no servidor e a resposta ainda espera o processamento.
+ */
+export function adminUploadWithProgress<T>(path: string, formData: FormData, options: { method?: "POST" | "PATCH"; onProgress?: (transfer: UploadTransfer) => void } = {}): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open(options.method ?? "POST", `${API_URL}${path}`)
+    xhr.withCredentials = true
+    xhr.responseType = "text"
+    xhr.upload.onprogress = (event) => options.onProgress?.({ loaded: event.loaded, total: event.lengthComputable ? event.total : null })
+    xhr.onerror = () => reject(new AdminApiError("A conexão com o servidor caiu durante o envio do arquivo. Confira a rede e envie de novo.", "UPLOAD_NETWORK_ERROR"))
+    xhr.onabort = () => reject(new AdminApiError("O envio do arquivo foi cancelado.", "UPLOAD_ABORTED"))
+    xhr.onload = () => {
+      const response = new Response(xhr.responseText, { status: xhr.status, headers: { "content-type": xhr.getResponseHeader("content-type") ?? "application/json" } })
+      if (xhr.status < 200 || xhr.status >= 300) {
+        void parseError(response).then(reject)
+        return
+      }
+      void response
+        .json()
+        .then((payload: { data: T }) => resolve(payload.data))
+        .catch(() => reject(new AdminApiError(`Resposta inválida do servidor (${xhr.status}).`)))
+    }
+    xhr.send(formData)
+  })
+}

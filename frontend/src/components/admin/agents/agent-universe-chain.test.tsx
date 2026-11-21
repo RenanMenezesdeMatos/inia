@@ -1,28 +1,31 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
-import { cleanup, fireEvent, screen } from "@testing-library/react"
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
-import type { KnowledgeDocument } from "@/schemas/admin/knowledge.schema"
 
 import { NewAgentPage } from "./agent-detail-page"
+import { createFakeKnowledgeOptions, option } from "./knowledge-base-picker/testing/fake-knowledge-options"
 
 /**
  * Hierarquia universo → Grupo → bases/domínio no cadastro de agente: escolhido o universo, só se oferecem Grupos, bases e domínios dele
- * (ou ainda sem universo); trocar o universo limpa o que deixou de caber. O backend continua recusando (OPERATING_UNIVERSE_LINK_CONFLICT).
+ * (ou ainda sem universo); trocar o universo limpa o que deixou de caber; escolher o Grupo pré-seleciona as bases dele (servidor).
+ * O backend continua recusando (OPERATING_UNIVERSE_LINK_CONFLICT).
  */
 vi.mock("@/services/admin/agent-service", () => ({ fetchAgent: vi.fn(), createAgent: vi.fn(), fetchAgents: vi.fn() }))
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }), useSearchParams: () => new URLSearchParams() }))
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }))
 
-function doc(id: string, title: string, operatingUniverse: KnowledgeDocument["operatingUniverse"]): KnowledgeDocument {
-  return {
-    id, title, operatingUniverse, documentType: "PROCEDURE", sourceType: "TEXT", originalFilename: null, mimeType: null, fileSizeBytes: null, createdAt: "2026-11-01", updatedAt: null,
-    authorName: null, status: "ACTIVE", inUseVersion: 1, draftVersion: null, updateVersion: null, updateStatus: null, excerpt: null, orgScopes: [], subjectScopes: [],
-  } as unknown as KnowledgeDocument
-}
+const fake = vi.hoisted(() => ({ current: null as ReturnType<typeof import("./knowledge-base-picker/testing/fake-knowledge-options").createFakeKnowledgeOptions> | null }))
+vi.mock("@/services/admin/agent-knowledge-options-service", () => ({
+  searchKnowledgeOptions: (filter: never) => fake.current!.searchKnowledgeOptions(filter),
+  fetchKnowledgeOptionIds: (filter: never) => fake.current!.fetchKnowledgeOptionIds(filter),
+  fetchGroupDefaultKnowledgeIds: (scope: never) => fake.current!.fetchGroupDefaultKnowledgeIds(scope),
+  lookupKnowledgeOptions: (ids: string[]) => fake.current!.lookupKnowledgeOptions(ids),
+  fetchKnowledgeOptionFacets: () => fake.current!.fetchKnowledgeOptionFacets(),
+}))
 
 // Resultados estáveis entre renderizações, como os do React Query.
 const lookups = vi.hoisted(() => ({
@@ -35,13 +38,12 @@ const lookups = vi.hoisted(() => ({
       ],
     },
   },
-  knowledge: { data: [] as KnowledgeDocument[] },
   domains: { data: [], isPending: false },
 }))
-lookups.knowledge.data = [doc("kb-b2b", "Base Empresas", "B2B"), doc("kb-b2c", "Base Consumidor", "B2C"), doc("kb-pending", "Base Pendente", null)]
 vi.mock("@/queries/admin/use-org-structure-queries", () => ({ useManageableTeamsQuery: () => lookups.teams }))
-vi.mock("@/queries/admin/use-knowledge-queries", () => ({ useKnowledgeDocumentsQuery: () => lookups.knowledge }))
 vi.mock("@/queries/admin/use-business-domain-queries", () => ({ useBusinessDomainsQuery: () => lookups.domains }))
+
+const DOCS = [option("kb-b2b", "Base Empresas", { operatingUniverse: "B2B" }), option("kb-b2c", "Base Consumidor", { operatingUniverse: "B2C" }), option("kb-pending", "Base Pendente", { operatingUniverse: null })]
 
 beforeAll(() => installJsdomStubs())
 afterEach(cleanup)
@@ -51,21 +53,46 @@ async function chooseUniverse(name: RegExp) {
   fireEvent.click(await screen.findByRole("option", { name }))
 }
 
+function tab(name: RegExp) {
+  const element = screen.getByRole("tab", { name })
+  fireEvent.mouseDown(element)
+  fireEvent.click(element)
+}
+
 describe("Agente — universo encadeia Grupo e bases", () => {
   it("escolhido B2B, a base B2C não é oferecida; trocar para B2C tira a base B2B já escolhida", async () => {
+    fake.current = createFakeKnowledgeOptions(DOCS)
     renderWithQuery(<NewAgentPage />)
     await chooseUniverse(/^B2B/)
-    expect(screen.getByRole("button", { name: /Base Empresas/ })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /Base Pendente/ })).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: /Base Consumidor/ })).toBeNull()
+    tab(/Disponíveis/)
+    const list = await screen.findByRole("list", { name: "Bases disponíveis" })
+    await waitFor(() => expect(within(list).getByRole("checkbox", { name: /Base Empresas/ })).toBeInTheDocument())
+    expect(within(list).getByRole("checkbox", { name: /Base Pendente/ })).toBeInTheDocument()
+    expect(within(list).queryByRole("checkbox", { name: /Base Consumidor/ })).toBeNull()
 
-    fireEvent.click(screen.getByRole("button", { name: /Base Empresas/ }))
+    fireEvent.click(within(list).getByRole("checkbox", { name: /Base Empresas/ }))
+    expect(screen.getByTestId("agent-knowledge-count")).toHaveTextContent("1")
     await chooseUniverse(/^B2C/)
-    expect(screen.queryByRole("button", { name: /Base Empresas/ })).toBeNull()
-    expect(screen.getByRole("button", { name: /Base Consumidor/ })).toBeInTheDocument()
+    expect(screen.getByTestId("agent-knowledge-count")).toHaveTextContent("0")
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: /Base Consumidor/ })).toBeInTheDocument())
+    expect(screen.queryByRole("checkbox", { name: /Base Empresas/ })).toBeNull()
+  })
+
+  it("escolher o Grupo pré-seleciona as bases dele (pedido ao servidor com o universo do agente)", async () => {
+    const defaults = vi.fn(() => ["kb-b2c", "kb-pending"])
+    fake.current = createFakeKnowledgeOptions(DOCS, defaults)
+    renderWithQuery(<NewAgentPage />)
+    await chooseUniverse(/^B2C/)
+    fireEvent.click(screen.getByRole("combobox", { name: "Alcance por grupo" }))
+    fireEvent.click(await screen.findByRole("option", { name: "Um grupo específico" }))
+    fireEvent.click(screen.getByRole("combobox", { name: "Grupo" }))
+    fireEvent.click(await screen.findByRole("option", { name: "Varejo" }))
+    await waitFor(() => expect(screen.getByTestId("agent-knowledge-count")).toHaveTextContent("2"))
+    expect(defaults).toHaveBeenCalledWith({ scopeType: "TEAM", teamId: "team-b2c" })
   })
 
   it("o Grupo de outro universo some do alcance e a troca de universo limpa o Grupo escolhido", async () => {
+    fake.current = createFakeKnowledgeOptions(DOCS)
     renderWithQuery(<NewAgentPage />)
     await chooseUniverse(/^B2B/)
     fireEvent.click(screen.getByRole("combobox", { name: "Alcance por grupo" }))

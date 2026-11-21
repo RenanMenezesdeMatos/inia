@@ -404,7 +404,7 @@ achado, encontrado por duas frentes.
 | AI-06 | "Testar diagnóstico" aceitava Agent de outro Grupo (bases dele voltavam a quem testou) | Baixa | Confirmada | Corrigido |
 | AI-07 | Verificação "literal" da evidência aceitava 1 caractere ou só aspas | Baixa | Confirmada | Corrigido |
 | AI-08 | Link externo escrito pela IA (induzido por transcrição/base) virava link clicável "da INIA" | Baixa | Preventiva | Corrigido |
-| AI-09 | Voz: sessões Live vivas sem teto por conta; `/tool-call` continuava gastando IA depois que a pessoa saía | Baixa | Confirmada | Corrigido (medição do Live: R-30) |
+| AI-09 | Voz: sessões Live vivas sem teto por conta; `/tool-call` continuava gastando IA depois que a pessoa saía | Baixa | Confirmada | Corrigido (medição do Live: R-30). Regressão em 19/11 (`004a4a63`, sair da tela não cancela mais a resposta) — fechada de novo em 20/11 por teto e prazo (R11-01) |
 | AI-10 | Transcrição do próprio sujeito vai ao provedor sem redação de PII | Informativa | Confirmada | Pendente — decisão de DPA (R-31) |
 | INFRA-3 | Banco interno usado com superusuário do PostgreSQL sem aviso | Baixa | Preventiva | Corrigido (aviso) |
 | DEP-1 | Dependências: produção do frontend sem alerta; backend com 6 moderadas transitivas sem caminho de exploração; críticas só em ferramentas de desenvolvimento | Informativa | — | Sem mudança — R-14 atualizado |
@@ -980,3 +980,32 @@ A execução em lote dos reports lia as permissões dos domínios restritos cont
 | R10-18 (DC-02) | Média | Report de uso da INIA / Apoio entregue a destinatário sem a permissão | Corrigido: `ACCESS_DENIED` |
 | R10-19 (DC-03/04/06) | Baixa | `STARTED` sem sino em versão publicada durante o envio; oferta de report com termo; "Minha estrutura" em uso da INIA | Corrigido |
 
+## Décima primeira rodada (20/11/2026, run-8: skill da Cloudflare em modo delimitado, varredura AppSec, QA e arquitetura)
+
+Escopo: `b046c056..b011ecee` (20 commits, 138 arquivos, migrations 243 e 245): associação de agentes a partir da base (cartão inline com abas,
+filtros e paginação; rotas `/admin/agents/knowledge-links*`), seletor de bases do agente, prompt no card do agente, andamento do envio de
+arquivo da base (243), OCR pela posição das imagens, visualizador de imagem do material de apoio, hierarquia aberta `org_hierarchy`,
+HELP_ROUTE_V1, resposta do chat que sobrevive à troca de tela (245) e importador com o cookie `__Host-`. Relatórios em
+`~/security-audit-skill/inia/run-8/agents/{sec-bases-ocr,sec-lideranca-chat-apoio,arquitetura,qa-dados}/relatorio.md`. Nenhum achado crítico
+ou alto; nenhum vazamento entre organizações confirmado. Varredura AppSec (Semgrep, Gitleaks, OSV): 0 achado novo.
+
+| Id | Sev. | Achado | Situação |
+|---|---|---|---|
+| R11-01 (SL-01) | Média | Sem o cancelamento pela desconexão (`004a4a63`), uma conta empilhava respostas do chat sem teto (regressão do AI-09) | Corrigido: até 3 respostas em andamento por pessoa (429 `ASSISTANT_REPLIES_IN_FLIGHT` antes de gravar a pergunta), prazo de 4 min no servidor (`ASSISTANT_REPLY_TIMEOUT`) e de 2 min no `/tool-call` |
+| R11-02 (SL-02) | Média | `org_hierarchy` comparava texto sem limite com cada pessoa da organização (event loop preso) | Corrigido: nomes de busca cortados em 120 caracteres |
+| R11-03 (SL-03) | Baixa | A hierarquia aberta mostrava "(inativo no cadastro)" e deixava qualquer operador listar líderes inativos | Corrigido (decisão): a marca saiu; o líder inativo aparece só pelo nome |
+| R11-04 (SL-04/05) | Baixa | Mesma pergunta duas vezes dividia a linha de `assistant_reply_runs`; órfãs só saíam na mesma conversa | Corrigido: 409 `ASSISTANT_REPLY_IN_PROGRESS` antes do stream; limpeza global das órfãs |
+| R11-05 (SB-01) | Baixa | OCR pela posição das imagens sem teto (operações, imagens, emendas quadráticas) | Corrigido: `PDF_EMBEDDED_PRINTS_V2` — página com operações/imagens demais ou que passa do prazo segue a regra da tinta; recorte de no máximo 60 prints por página |
+| R11-06 (SB-02) | Baixa | Lista de agentes da base mostrava dados do rascunho de outro alcance | Corrigido: a linha mostra o agente em uso, bloqueada |
+| R11-07 (SB-03) | Baixa | Prévia e gravação em lote fora do limitador de ações caras, até 100 agentes | Corrigido: limitador de ações caras e teto de 50 agentes (a tela avisa) |
+| R11-08 (SB-06) | Info | Registros de envio de arquivo só saíam quando a mesma conta enviava outro | Corrigido: limpeza global (30 dias) |
+| R11-09 (QA-01/02/03/04/06) | Média–Baixa | Conflito de edição não relia a lista; pendente com outras alterações nunca sumia; resposta retomada perdida entre duas leituras; "Parar" barrado pelo limite de IA; atalho sem destino em base arquivada | Corrigido |
+| R11-10 (QA-05, ARQ-05) | Baixa | `KNOWLEDGE_IMAGES_FAILED` e `KNOWLEDGE_MARKDOWN_FAILED` fora do catálogo de erros | Corrigido: o inventário lê `errorCode:` |
+| R11-11 (ARQ-01) | Média | "Operadores por líder" com duas regras (`org_hierarchy` contava líder sem ninguém como 0; `leadership_span`, não) | Corrigido (decisão): regra única — líder do nível sem ninguém abaixo entra com zero nas duas |
+| R11-12 (QA-08, ARQ-04, ARQ-08/09/10) | Baixa | Regras novas só em prova de banco; conferência inline fora do catálogo; tipos do frontend à mão; miudezas | Corrigido: testes unitários da associação, do teto e da duplicata; exceção registrada no catálogo de UI; tipos por `z.infer` |
+
+Decisões tomadas pelo assistente (o responsável estava fora e pediu "corrija e decida por mim"): SL-03 (sem marca de inativo na hierarquia
+aberta), ARQ-01 (zero conta), teto de 3 respostas em andamento por pessoa e prazos de 4 min (chat) e 2 min (voz), teto de 50 agentes por
+gravação, conferência de publicar inline no cartão (pedido explícito de evitar janelas soltas). Aceitos como estão (decisões de produto já
+registradas): SB-04 (publicar daqui um agente nunca publicado é a primeira publicação dele inteiro, avisada na prévia) e SB-05 (o seletor de
+bases do agente lê bases só com `agents.manage`). Em aberto: R-49.

@@ -22,6 +22,8 @@ type ChatComposerProps = {
   question: string
   setQuestion: React.Dispatch<React.SetStateAction<string>>
   textReplyPending: boolean
+  /** Presente enquanto a INIA responde por escrito: o botão de enviar vira "Parar resposta" (o único cancelamento de propósito). */
+  onStopReply?: () => void
   conversationState: AvatarConversationState
   send: (override?: string) => Promise<void>
   composerLocked: boolean
@@ -39,7 +41,7 @@ type ChatComposerProps = {
  * Campo de mensagem com microfone, envio e (na sessão de feedback) o botão de silenciar a INIA. O pulso do microfone e as barras
  * da onda são pintados direto no DOM pelo chat (`micPulseRef`, `waveformBarRefs`) — nunca por estado.
  */
-export function ChatComposer({ sessionOpen, readOnlyConversation, feedbackCompleted, composerRef, micOpen, waveformBarRefs, textareaRef, question, setQuestion, textReplyPending, conversationState, send, composerLocked, callActive, toggleVoiceMuted, voiceMuted, handleMicClick, micDisabled, micLabel, micPulseRef, voiceError }: ChatComposerProps) {
+export function ChatComposer({ sessionOpen, readOnlyConversation, feedbackCompleted, composerRef, micOpen, waveformBarRefs, textareaRef, question, setQuestion, textReplyPending, onStopReply, conversationState, send, composerLocked, callActive, toggleVoiceMuted, voiceMuted, handleMicClick, micDisabled, micLabel, micPulseRef, voiceError }: ChatComposerProps) {
   const composerPlaceholder = readOnlyConversation
     ? "Conversa encerrada — volte à atual ou inicie uma nova"
     : sessionOpen
@@ -85,12 +87,21 @@ export function ChatComposer({ sessionOpen, readOnlyConversation, feedbackComple
           </TooltipTrigger>
           <TooltipContent side="top" className="inia-tooltip-genie">{micLabel}</TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button size="icon-sm" disabled={!question.trim() || textReplyPending || conversationState === "thinking" || composerLocked} onClick={() => void send()} aria-label="Enviar mensagem" className="shrink-0 rounded-full" data-usage-element="chat.send"><ArrowUp/></Button>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="inia-tooltip-genie">Enviar mensagem</TooltipContent>
-        </Tooltip>
+        {onStopReply ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon-sm" variant="outline" onClick={onStopReply} aria-label="Parar resposta" className="shrink-0 rounded-full" data-testid="inia-stop-reply" data-usage-element="chat.stop_reply"><Square className="size-3 fill-current"/></Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="inia-tooltip-genie">Parar resposta</TooltipContent>
+          </Tooltip>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon-sm" disabled={!question.trim() || textReplyPending || conversationState === "thinking" || composerLocked} onClick={() => void send()} aria-label="Enviar mensagem" className="shrink-0 rounded-full" data-usage-element="chat.send"><ArrowUp/></Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="inia-tooltip-genie">Enviar mensagem</TooltipContent>
+          </Tooltip>
+        )}
       </div>
     </div>
     {micOpen && sessionOpen ? <p className="mt-1.5 flex items-center justify-center gap-1.5 text-[11px] font-medium text-destructive" role="status"><span className="size-1.5 animate-pulse rounded-full bg-destructive motion-reduce:animate-none" aria-hidden/>Microfone ativo — toque no quadrado para enviar</p> : null}

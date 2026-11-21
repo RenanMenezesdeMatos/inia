@@ -15,6 +15,7 @@ import { buildSelfResults } from "./self-results.js"
 import { executeSelfPractices, SELF_PRACTICES_DECLARATION, SELF_PRACTICES_RULE, SELF_PRACTICES_TOOL } from "../../best-practices/application/operator-guidance.js"
 import { ALIGNMENT_HISTORY_DECLARATION, ALIGNMENT_HISTORY_RULE, ALIGNMENT_HISTORY_TOOL, executeAlignmentHistory } from "../../operational-alignments/application/alignment-history.js"
 import { ALIGNMENTS_IN_FORCE_DECLARATION, ALIGNMENTS_IN_FORCE_TOOL, executeAlignmentsInForce } from "../../operational-alignments/application/alignments-in-force-tool.js"
+import { executeHierarchyTool, HIERARCHY_DECLARATION, HIERARCHY_RULE, HIERARCHY_TOOL } from "./org-hierarchy.js"
 import { executeSelfDataTool, isSelfDataTool, SELF_DATA_DECLARATIONS, SELF_DATA_RULE, selfDomainLoader } from "./self-data-tools.js"
 
 /**
@@ -49,6 +50,7 @@ export const SELF_RESPONSE_RULES = [
   SELF_PRACTICES_RULE,
   ALIGNMENT_HISTORY_RULE,
   SELF_DATA_RULE,
+  HIERARCHY_RULE,
 ].join("\n")
 
 /** Voz do operador: UMA ferramenta que leva a pergunta à mesma orquestração do chat de texto (`my_results` + especialistas), no
@@ -57,14 +59,14 @@ export const SELF_ASK_TOOL = "self_ask"
 export const SELF_ASK_DECLARATION: FunctionDeclaration = {
   name: SELF_ASK_TOOL,
   description:
-    "Responde com os dados reais da própria pessoa e com a base de conhecimento qualquer pergunta sobre o trabalho dela: os próprios resultados (PRV, quartil, indicadores, metas, pior ou melhor indicador, evolução, este mês), os próprios atendimentos, monitoria, feedbacks, escala e jornada, como melhorar, processos, procedimentos e regras do atendimento, alinhamentos operacionais (os de hoje e os anteriores, como histórico). Passe a pergunta completa, já com o contexto da conversa (qual indicador ou mês foi falado antes).",
+    "Responde com os dados reais da própria pessoa e com a base de conhecimento qualquer pergunta sobre o trabalho dela: os próprios resultados (PRV, quartil, indicadores, metas, pior ou melhor indicador, evolução, este mês), os próprios atendimentos, monitoria, feedbacks, escala e jornada, a hierarquia da organização (quem é o chefe dela ou de qualquer pessoa, a quem alguém responde, quantas pessoas abaixo), como melhorar, processos, procedimentos e regras do atendimento, alinhamentos operacionais (os de hoje e os anteriores, como histórico). Passe a pergunta completa, já com o contexto da conversa (qual indicador ou mês foi falado antes).",
   parameters: { type: "object", properties: { query: { type: "string", description: "A pergunta do usuário, completa e com o contexto da conversa." } }, required: ["query"] },
 }
 
 /** Voz do operador: o modelo de voz só encaminha; quem consulta os números e escreve a resposta é a orquestração do chat. */
 export const SELF_VOICE_RULES = [
   "Como conduzir a voz:",
-  `- Para QUALQUER pergunta sobre os próprios resultados (PRV, quartil, indicadores, metas, pior ou melhor indicador, evolução, este mês), os próprios atendimentos, monitoria, feedbacks, escala e jornada, como melhorar, processos, procedimentos ou regras do atendimento, regras e políticas da empresa, benefícios, valores ou prazos, acione ${SELF_ASK_TOOL} com a pergunta completa e o contexto da conversa (indicador e mês já falados).`,
+  `- Para QUALQUER pergunta sobre os próprios resultados (PRV, quartil, indicadores, metas, pior ou melhor indicador, evolução, este mês), os próprios atendimentos, monitoria, feedbacks, escala e jornada, a hierarquia (quem é o chefe dela ou de qualquer pessoa, a quem alguém responde, quantas pessoas abaixo), como melhorar, processos, procedimentos ou regras do atendimento, regras e políticas da empresa, benefícios, valores ou prazos, acione ${SELF_ASK_TOOL} com a pergunta completa e o contexto da conversa (indicador e mês já falados).`,
   `- Continuação também é uma pergunta nova e vai à ferramenta ("e nesse caso…", "e se…", "então não precisa…, né?", "vale para…?"): acione ${SELF_ASK_TOOL} de novo com a pergunta e o contexto. Nunca deduza, complete nem confirme uma regra, um passo, um valor ou um prazo a partir do que já foi dito — o que ainda não foi respondido, só a ferramenta responde. Sem acionar, só repita quando a pessoa pedir para repetir, e exatamente o que a ferramenta trouxe.`,
   "- Acione a ferramenta IMEDIATAMENTE, na mesma resposta, SEM falar nada antes (nem \"vou consultar\"): uma frase sem a chamada encerra o turno e a pessoa fica sem resposta. Nunca fale números, metas, valores, prazos, regras ou procedimentos que não vieram da ferramenta.",
   "- Nunca diga que não tem acesso, que não sabe, que as bases não cobrem o assunto ou que vai consultar sem ter acionado a ferramenta neste turno: acione e responda com o que ela trouxer.",
@@ -98,6 +100,8 @@ export async function loadSelfChatContext(db: Database, user: AuthTokenPayload, 
     // Alinhamentos que valem hoje ou vão começar, de todos os processos (sempre da própria pessoa) — "temos algum alinhamento?".
     if (name === ALIGNMENTS_IN_FORCE_TOOL) return executeAlignmentsInForce(db, { organizationId: scope.organizationId, personId: person.id, now: options.now ?? new Date() })
     // Atendimentos, monitoria, feedbacks, escala, jornada, comunicados e cálculos — sempre só da própria pessoa.
+    // Hierarquia: aberta a todos — o organograma da organização inteira (nunca resultados de outra pessoa).
+    if (name === HIERARCHY_TOOL) return executeHierarchyTool(repository, { organizationId: scope.organizationId, viewer: scope.viewer, args, now: closure.now })
     if (isSelfDataTool(name)) return executeSelfDataTool(scope, { name, args, lastClosedPeriod: closure.lastClosedPeriod, now: closure.now, load: selfDomainLoader(db, scope.organizationId, closure.timeZone) })
     if (name !== SELF_TOOL) return { text: "Ferramenta desconhecida.", card: null, issue: { kind: "INVALID", message: "Ferramenta desconhecida.", candidates: [] } }
     const definitions = await repository.loadIndicatorDefinitions(scope.organizationId)
@@ -124,5 +128,5 @@ export async function loadSelfChatContext(db: Database, user: AuthTokenPayload, 
   // A data de hoje e a última competência fechada (como na liderança): sem elas o modelo chutava o ano ("2024-08") nas ferramentas.
   const today = new Intl.DateTimeFormat("pt-BR", { timeZone: closure.timeZone, day: "2-digit", month: "2-digit", year: "numeric" }).format(closure.now)
   const calendar = `[Datas — dado do sistema] Hoje: ${today}. Última competência fechada: ${closure.lastClosedPeriod}. "Agosto", "mês passado" e afins são do ano corrente, salvo pedido de outro ano.`
-  return { instructions: `${calendar}\n${SELF_RESPONSE_RULES}`, voiceInstructions: `${calendar}\n${SELF_VOICE_RULES}`, toolset: { declarations: [SELF_TOOL_DECLARATION, SELF_PRACTICES_DECLARATION, ALIGNMENTS_IN_FORCE_DECLARATION, ALIGNMENT_HISTORY_DECLARATION, ...SELF_DATA_DECLARATIONS], handles: (name) => name === SELF_TOOL || name === SELF_PRACTICES_TOOL || name === ALIGNMENTS_IN_FORCE_TOOL || name === ALIGNMENT_HISTORY_TOOL || isSelfDataTool(name), execute } }
+  return { instructions: `${calendar}\n${SELF_RESPONSE_RULES}`, voiceInstructions: `${calendar}\n${SELF_VOICE_RULES}`, toolset: { declarations: [SELF_TOOL_DECLARATION, SELF_PRACTICES_DECLARATION, ALIGNMENTS_IN_FORCE_DECLARATION, ALIGNMENT_HISTORY_DECLARATION, ...SELF_DATA_DECLARATIONS, HIERARCHY_DECLARATION], handles: (name) => name === SELF_TOOL || name === HIERARCHY_TOOL || name === SELF_PRACTICES_TOOL || name === ALIGNMENTS_IN_FORCE_TOOL || name === ALIGNMENT_HISTORY_TOOL || isSelfDataTool(name), execute } }
 }

@@ -7,7 +7,9 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
-import { extractKnowledgeFile, fileContentAccepted, resolveSourceType, type ExtractedFile, type KnowledgeSourceType } from "../infrastructure/text-extractor.js"
+import { extractKnowledgeFile, fileContentAccepted, resolveSourceType, type ExtractedFile, type ExtractionObserver, type KnowledgeSourceType } from "../infrastructure/text-extractor.js"
+import { findKnowledgeUploadRun, listRecentKnowledgeUploadRuns, startKnowledgeUploadRun, type UploadTracker } from "../application/knowledge-upload-runs.js"
+import type { UploadSourceType, UploadStageKey } from "../domain/upload-stages.js"
 import { ocrEngineFiles } from "../infrastructure/pdf-ocr/ocr-engine.js"
 import { enqueueKnowledgeOcr, knowledgeOcrStatus } from "../application/knowledge-ocr-jobs.js"
 import { chunkKnowledgeDocument } from "../domain/knowledge-chunking.js"
@@ -23,6 +25,7 @@ import { createKnowledgeSubject, listKnowledgeSubjects, normalizeKnowledgeSubjec
 import { createLogger } from "../../../shared/infrastructure/logging/logger.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 import { LIVE_FILE_QUERY, type LiveFileRow } from "../application/live-knowledge-version.js"
+import { canReadDocument, loadDocumentScopes, type DocumentScope } from "../application/knowledge-document-read-access.js"
 import {
   archiveKnowledge,
   auditKnowledge,
@@ -120,9 +123,9 @@ const knowledgeSubjectCreateSchema = z.object({ name: z.string().trim().min(2, "
  * Texto do arquivo lido no processo filho do parser (R-24). Estouro de memória/tempo ou morte do filho = arquivo recusado como
  * conteúdo inaceitável (o mesmo código da pré-varredura); erro do próprio parser = arquivo ilegível; fila cheia = tente de novo.
  */
-async function extractUploadedFile(buffer: Buffer, sourceType: KnowledgeSourceType): Promise<ExtractedFile> {
+async function extractUploadedFile(buffer: Buffer, sourceType: KnowledgeSourceType, observer: ExtractionObserver = {}): Promise<ExtractedFile> {
   try {
-    return await extractKnowledgeFile(buffer, sourceType)
+    return await extractKnowledgeFile(buffer, sourceType, observer)
   } catch (error) {
     if (!(error instanceof IsolatedParserError)) throw error
     uploadLog.warn({ sourceType, reason: error.reason, detail: error.message }, "knowledge file refused by isolated parser")
@@ -145,6 +148,31 @@ function parseJsonField(value: unknown) {
   } catch {
     throw new DomainError("Escopo inválido.", "INVALID_SCOPE_JSON", 400)
   }
+}
+
+/** Id do acompanhamento do envio (migration 243), gerado pela tela e enviado no formulário. Ausente ou inválido = envio sem acompanhamento. */
+const uploadIdOf = (value: unknown) => (z.string().uuid().safeParse(value).success ? String(value) : null)
+
+/** Cada etapa da leitura do arquivo vai para o acompanhamento no momento em que começa e termina. */
+const stageObserver = (tracker: UploadTracker): ExtractionObserver => ({
+  onStage: (key, state, outcome) => (state === "RUNNING" ? tracker.start(key) : tracker.finish(key, state, outcome ?? {})),
+})
+
+const FILE_CHECKED: Record<UploadSourceType, string> = {
+  PDF: "PDF conferido: tipo e estrutura aceitos.",
+  DOCX: "DOCX conferido: tipo e pacote aceitos.",
+  TXT: "Arquivo de texto conferido.",
+  JSON: "Arquivo JSON conferido.",
+}
+
+const pagesWord = (count: number) => `${count} ${count === 1 ? "página digitalizada" : "páginas digitalizadas"}`
+
+/** A etapa de OCR depois da leitura: na fila depois da gravação, sem leitor neste servidor, ou não se aplica. */
+function reportOcrPlan(tracker: UploadTracker, sourceType: KnowledgeSourceType, scannedFound: number, willRead: boolean) {
+  if (sourceType !== "PDF") return
+  if (scannedFound === 0) return tracker.finish("OCR", "SKIPPED", { detail: "Nenhuma página digitalizada: todas têm texto selecionável." })
+  if (willRead) return tracker.describe("OCR", "PENDING", `${pagesWord(scannedFound)}: a leitura entra na fila quando o rascunho for gravado.`)
+  tracker.finish("OCR", "FAILED", { errorCode: "KNOWLEDGE_OCR_UNAVAILABLE", errorMessage: `${pagesWord(scannedFound)} ficaram sem texto: a leitura por OCR não está disponível neste servidor.` })
 }
 
 // Uma linha por documento. O status é o da versão EM USO (PEN-008): sem versão decidida, o da mais recente. O resumo sai de quem define o
@@ -298,38 +326,10 @@ async function replaceScopes(
  *    no escopo (`canManageScope`): base global só com escopo de organização. Sem alcance nenhum = só a organização inteira.
  * Fora do escopo = 404 (não revela que a base existe).
  */
-type DocumentScope = { scopeType: string; teamId: string | null; subteamId: string | null }
 
 function canWriteDocument(scopes: ManageableScopes, documentScopes: readonly ScopedTarget[]): boolean {
   if (scopes.unrestricted || scopes.allTeams) return true
   return documentScopes.length > 0 && documentScopes.every((scope) => canManageScope(scopes, scope))
-}
-
-async function parentTeamsOf(db: Database, subteamIds: readonly string[]): Promise<Set<string>> {
-  if (subteamIds.length === 0) return new Set()
-  const result = await db.query<{ team_id: string }>(`select team_id from subteams where id = any($1::uuid[])`, [[...subteamIds]])
-  return new Set(result.rows.map((row) => row.team_id))
-}
-
-async function canReadDocument(db: Database, scopes: ManageableScopes, documentScopes: readonly DocumentScope[]): Promise<boolean> {
-  if (scopes.unrestricted || scopes.allTeams) return true
-  if (documentScopes.some((scope) => scope.scopeType === "ALL_TEAMS")) return true
-  const parentTeams = await parentTeamsOf(db, [...scopes.subteamIds])
-  return documentScopes.some((scope) =>
-    (scope.teamId !== null && (scopes.teamIds.has(scope.teamId) || (scope.scopeType === "TEAM" && parentTeams.has(scope.teamId)))) ||
-    (scope.subteamId !== null && scopes.subteamIds.has(scope.subteamId)))
-}
-
-/** Alcances atuais do documento NA organização (null = não existe nela ou foi excluído). */
-async function loadDocumentScopes(db: Pick<Database, "query">, organizationId: string, id: string): Promise<DocumentScope[] | null> {
-  if (!z.string().uuid().safeParse(id).success) return null
-  const result = await db.query<{ found: boolean; scopes: DocumentScope[] }>(
-    `select true found, coalesce((select json_agg(json_build_object('scopeType', os.scope_type, 'teamId', os.team_id, 'subteamId', os.subteam_id))
-       from knowledge_document_org_scopes os where os.knowledge_document_id = d.id), '[]') scopes
-     from knowledge_documents d where d.id = $1 and d.organization_id = $2 and d.deleted_at is null`,
-    [id, organizationId],
-  )
-  return result.rows[0] ? result.rows[0].scopes : null
 }
 
 const NOT_FOUND = { error: { code: "KNOWLEDGE_NOT_FOUND", message: "Base de conhecimento não encontrada." } } as const
@@ -441,6 +441,21 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
     response.status(201).json({ data: await createKnowledgeSubject(db, { organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId ?? null }, name) })
   })
 
+  // Envios de arquivo da própria conta (migration 243): o andamento de cada etapa, para acompanhar e para voltar depois.
+  router.get("/uploads", async (request, response) => {
+    const user = sessionUser(request)
+    const documentId = z.string().uuid().optional().parse(typeof request.query.documentId === "string" && request.query.documentId ? request.query.documentId : undefined)
+    response.json({ data: await listRecentKnowledgeUploadRuns(db, { organizationId: user.organizationId, accountId: user.sub, documentId: documentId ?? null }) })
+  })
+
+  router.get("/uploads/:uploadId", async (request, response) => {
+    const user = sessionUser(request)
+    const id = request.params.uploadId!
+    const run = z.string().uuid().safeParse(id).success ? await findKnowledgeUploadRun(db, { organizationId: user.organizationId, accountId: user.sub, id }) : null
+    if (!run) return response.status(404).json({ error: { code: "KNOWLEDGE_UPLOAD_NOT_FOUND", message: "Envio não encontrado." } })
+    response.json({ data: run })
+  })
+
   router.get("/:id", async (request, response) => {
     if (!(await readable(request, request.params.id))) return response.status(404).json(NOT_FOUND)
     const detail = await fetchDocumentDetail(db, sessionUser(request).organizationId, request.params.id, await versionReaderOf(request))
@@ -504,61 +519,79 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
     input.subjectScopes = await normalizeKnowledgeSubjectScopes(db, organizationId, input.subjectScopes)
 
     const sourceType = file ? resolveSourceType(file.mimetype, file.originalname) : "TEXT"
-    if (file && !(await fileContentAccepted(file.buffer, sourceType))) {
-      throw new DomainError("O conteúdo do arquivo não corresponde ao tipo informado (aceitos: PDF, DOCX, TXT e JSON).", "KNOWLEDGE_FILE_TYPE_MISMATCH", 422)
-    }
-    const extracted = file ? await extractUploadedFile(file.buffer, sourceType) : { text: input.content!, extraction: null, images: [], scannedPages: [] }
-    const extractedContent = extracted.text
-    // Páginas digitalizadas: o texto delas chega depois, pela leitura em segundo plano (OCR). Sem essa leitura possível, o PDF sem texto é recusado.
-    const scannedPages = ocrEngineFiles() ? extracted.scannedPages : []
-    if (!extractedContent && scannedPages.length === 0) {
-      throw new DomainError(sourceType === "PDF" ? "Este PDF não tem texto para a IA ler: as páginas parecem ser imagens digitalizadas. Envie um PDF com texto selecionável ou digite o conteúdo." : "Não foi possível extrair texto do arquivo enviado.", "KNOWLEDGE_EXTRACTION_FAILED", 422)
-    }
-
-    const actor = await actorOf(request)
-    const documentId = await inTransaction(db, async (client) => {
-      const documentResult = await client.query<{ id: string }>(
-        `insert into knowledge_documents(organization_id, title, document_type, source_type, original_filename, mime_type, file_size_bytes, created_by, operating_universe)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
-        [
-          organizationId,
-          input.title,
-          input.documentType,
-          sourceType,
-          file?.originalname ?? null,
-          file ? knowledgeFileContentType(sourceType) : null,
-          file?.size ?? null,
-          request.user?.sub ?? null,
-          input.operatingUniverse,
-        ],
-      )
-      const documentId = documentResult.rows[0]!.id
-
-      const checksum = file ? createHash("sha256").update(file.buffer).digest("hex") : null
-      const fileId = file
-        ? (await client.query<{ id: string }>(`insert into knowledge_files(knowledge_document_id, file_data, checksum) values ($1,$2,$3) returning id`, [documentId, file.buffer, checksum])).rows[0]!.id
-        : null
-      if (fileId) await saveKnowledgeFileImages(client, fileId, extracted.images)
-      const config: KnowledgeVersionConfig = {
-        title: input.title,
-        documentType: input.documentType,
-        sourceType,
-        file: file && fileId ? { id: fileId, filename: file.originalname, mimeType: knowledgeFileContentType(sourceType), sizeBytes: file.size, checksum: checksum! } : null,
-        orgScopes: input.orgScopes.map((scope) => ({ scopeType: scope.scopeType, teamId: scope.teamId ?? null, subteamId: scope.subteamId ?? null })),
-        subjectScopes: input.subjectScopes.map((scope) => ({ scopeType: scope.scopeType, subjectId: scope.subjectId ?? null })),
-        productNodeIds: [],
+    // Acompanhamento do envio (243): a tela consulta pelo id que gerou; cada etapa é gravada quando começa e quando termina.
+    const tracker = file && sourceType !== "TEXT"
+      ? await startKnowledgeUploadRun(db, { id: uploadIdOf(body.uploadId), organizationId, accountId: sessionUser(request).sub, kind: "CREATE", documentId: null, title: input.title, filename: file.originalname, sourceType, sizeBytes: file.size })
+      : null
+    let failAt: UploadStageKey | undefined
+    try {
+      tracker?.start("CHECK")
+      if (file && !(await fileContentAccepted(file.buffer, sourceType))) {
+        throw new DomainError("O conteúdo do arquivo não corresponde ao tipo informado (aceitos: PDF, DOCX, TXT e JSON).", "KNOWLEDGE_FILE_TYPE_MISMATCH", 422)
       }
-      const versionId = (await client.query<{ id: string }>(
-        `insert into knowledge_versions(organization_id, document_id, version, content, status, content_hash, config, file_id, origin, created_by_name, extraction, text_status)
-         values ($1,$2,1,$3,'DRAFT',$4,$5,$6,'CREATE',$7,$8,$9) returning id`,
-        [organizationId, documentId, extractedContent, knowledgeContentHash(extractedContent), JSON.stringify(config), fileId, actor.name, extracted.extraction ? JSON.stringify(extracted.extraction) : null, extractedContent.trim() ? "AVAILABLE" : "UNAVAILABLE"],
-      )).rows[0]!.id
-      if (fileId && scannedPages.length > 0) await enqueueKnowledgeOcr(client, { organizationId, documentId, versionId, fileId, pages: scannedPages.length, content: extractedContent, actor })
+      if (tracker && sourceType !== "TEXT") tracker.finish("CHECK", "DONE", { detail: FILE_CHECKED[sourceType] })
+      const extracted = file ? await extractUploadedFile(file.buffer, sourceType, tracker ? stageObserver(tracker) : {}) : { text: input.content!, extraction: null, images: [], scannedPages: [] }
+      const extractedContent = extracted.text
+      // Páginas digitalizadas: o texto delas chega depois, pela leitura em segundo plano (OCR). Sem essa leitura possível, o PDF sem texto é recusado.
+      const scannedPages = ocrEngineFiles() ? extracted.scannedPages : []
+      if (!extractedContent && scannedPages.length === 0) {
+        failAt = "TEXT"
+        throw new DomainError(sourceType === "PDF" ? "Este PDF não tem texto para a IA ler: as páginas parecem ser imagens digitalizadas. Envie um PDF com texto selecionável ou digite o conteúdo." : "Não foi possível extrair texto do arquivo enviado.", "KNOWLEDGE_EXTRACTION_FAILED", 422)
+      }
+      if (tracker) {
+        reportOcrPlan(tracker, sourceType, extracted.scannedPages.length, scannedPages.length > 0)
+        tracker.start("SAVE")
+      }
 
-      await replaceScopes(client, documentId, input.orgScopes, input.subjectScopes)
-      return documentId
-    })
-    response.status(201).json({ data: { id: documentId, title: input.title, documentType: input.documentType, sourceType, ocr: scannedPages.length > 0 ? { status: "QUEUED", pages: scannedPages.length } : null } })
+      const actor = await actorOf(request)
+      const saved = await inTransaction(db, async (client) => {
+        const documentResult = await client.query<{ id: string }>(
+          `insert into knowledge_documents(organization_id, title, document_type, source_type, original_filename, mime_type, file_size_bytes, created_by, operating_universe)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
+          [
+            organizationId,
+            input.title,
+            input.documentType,
+            sourceType,
+            file?.originalname ?? null,
+            file ? knowledgeFileContentType(sourceType) : null,
+            file?.size ?? null,
+            request.user?.sub ?? null,
+            input.operatingUniverse,
+          ],
+        )
+        const documentId = documentResult.rows[0]!.id
+
+        const checksum = file ? createHash("sha256").update(file.buffer).digest("hex") : null
+        const fileId = file
+          ? (await client.query<{ id: string }>(`insert into knowledge_files(knowledge_document_id, file_data, checksum) values ($1,$2,$3) returning id`, [documentId, file.buffer, checksum])).rows[0]!.id
+          : null
+        if (fileId) await saveKnowledgeFileImages(client, fileId, extracted.images)
+        const config: KnowledgeVersionConfig = {
+          title: input.title,
+          documentType: input.documentType,
+          sourceType,
+          file: file && fileId ? { id: fileId, filename: file.originalname, mimeType: knowledgeFileContentType(sourceType), sizeBytes: file.size, checksum: checksum! } : null,
+          orgScopes: input.orgScopes.map((scope) => ({ scopeType: scope.scopeType, teamId: scope.teamId ?? null, subteamId: scope.subteamId ?? null })),
+          subjectScopes: input.subjectScopes.map((scope) => ({ scopeType: scope.scopeType, subjectId: scope.subjectId ?? null })),
+          productNodeIds: [],
+        }
+        const versionId = (await client.query<{ id: string }>(
+          `insert into knowledge_versions(organization_id, document_id, version, content, status, content_hash, config, file_id, origin, created_by_name, extraction, text_status)
+           values ($1,$2,1,$3,'DRAFT',$4,$5,$6,'CREATE',$7,$8,$9) returning id`,
+          [organizationId, documentId, extractedContent, knowledgeContentHash(extractedContent), JSON.stringify(config), fileId, actor.name, extracted.extraction ? JSON.stringify(extracted.extraction) : null, extractedContent.trim() ? "AVAILABLE" : "UNAVAILABLE"],
+        )).rows[0]!.id
+        const ocrJobId = fileId && scannedPages.length > 0 ? await enqueueKnowledgeOcr(client, { organizationId, documentId, versionId, fileId, pages: scannedPages.length, content: extractedContent, actor }) : null
+
+        await replaceScopes(client, documentId, input.orgScopes, input.subjectScopes)
+        return { documentId, versionId, ocrJobId }
+      })
+      // Só agora o rascunho existe de fato: a etapa de gravação termina depois do commit.
+      await tracker?.complete(saved)
+      response.status(201).json({ data: { id: saved.documentId, title: input.title, documentType: input.documentType, sourceType, ocr: scannedPages.length > 0 ? { status: "QUEUED", pages: scannedPages.length } : null } })
+    } catch (error) {
+      throw tracker ? await tracker.fail(error, failAt) : error
+    }
   })
 
   /**
@@ -704,23 +737,41 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
     const file = request.file
     if (!file) throw new DomainError("Envie um arquivo.", "KNOWLEDGE_SOURCE_REQUIRED", 400)
     const sourceType = resolveSourceType(file.mimetype, file.originalname)
-    if (!(await fileContentAccepted(file.buffer, sourceType))) throw new DomainError("O conteúdo do arquivo não corresponde ao tipo informado (aceitos: PDF, DOCX, TXT e JSON).", "KNOWLEDGE_FILE_TYPE_MISMATCH", 422)
-    const extracted = await extractUploadedFile(file.buffer, sourceType).catch((error: unknown) => {
-      // Recusado pelo teto de memória ou de tempo, ou leitores ocupados: o arquivo não entra. Erro do próprio parser mantém o arquivo, sem texto novo.
-      if (error instanceof DomainError && error.code !== "KNOWLEDGE_EXTRACTION_FAILED") throw error
-      return null
-    })
-    const scannedPages = extracted && ocrEngineFiles() ? extracted.scannedPages : []
-    const actor = await actorOf(request)
-    await inTransaction(db, async (client) => {
-      if (!(await lockKnowledgeDocument(client, organizationId, documentId))) throw new DomainError("Base de conhecimento não encontrada.", "KNOWLEDGE_NOT_FOUND", 404)
-      await assertWritableLocked(client, request, documentId, true)
-      const checksum = createHash("sha256").update(file.buffer).digest("hex")
-      const fileId = (await client.query<{ id: string }>(`insert into knowledge_files(knowledge_document_id, file_data, checksum) values ($1,$2,$3) returning id`, [documentId, file.buffer, checksum])).rows[0]!.id
-      await saveKnowledgeFileImages(client, fileId, extracted?.images ?? [])
-      const draft = await saveKnowledgeDraft(client, organizationId, documentId, { file: { file: { id: fileId, filename: file.originalname, mimeType: knowledgeFileContentType(sourceType), sizeBytes: file.size, checksum }, sourceType, extractedText: extracted?.text || null, extraction: extracted?.extraction ?? null } }, actor)
-      if (draft && scannedPages.length > 0) await enqueueKnowledgeOcr(client, { organizationId, documentId, versionId: draft.versionId, fileId, pages: scannedPages.length, content: extracted?.text ?? "", actor })
-    })
+    const tracker = sourceType === "TEXT"
+      ? null
+      : await startKnowledgeUploadRun(db, { id: uploadIdOf((request.body as Record<string, unknown> | undefined)?.uploadId), organizationId, accountId: sessionUser(request).sub, kind: "REPLACE_FILE", documentId, title: null, filename: file.originalname, sourceType, sizeBytes: file.size })
+    try {
+      tracker?.start("CHECK")
+      if (!(await fileContentAccepted(file.buffer, sourceType))) throw new DomainError("O conteúdo do arquivo não corresponde ao tipo informado (aceitos: PDF, DOCX, TXT e JSON).", "KNOWLEDGE_FILE_TYPE_MISMATCH", 422)
+      if (tracker && sourceType !== "TEXT") tracker.finish("CHECK", "DONE", { detail: FILE_CHECKED[sourceType] })
+      const extracted = await extractUploadedFile(file.buffer, sourceType, tracker ? stageObserver(tracker) : {}).catch((error: unknown) => {
+        // Recusado pelo teto de memória ou de tempo, ou leitores ocupados: o arquivo não entra. Erro do próprio parser mantém o arquivo, sem texto novo.
+        if (error instanceof DomainError && error.code !== "KNOWLEDGE_EXTRACTION_FAILED") throw error
+        tracker?.finish("TEXT", "FAILED", { errorCode: "KNOWLEDGE_EXTRACTION_FAILED", errorMessage: "Não foi possível extrair texto do arquivo. Ele entra no rascunho sem texto: digite o texto ou troque o arquivo." })
+        return null
+      })
+      const scannedPages = extracted && ocrEngineFiles() ? extracted.scannedPages : []
+      if (tracker) {
+        if (extracted) reportOcrPlan(tracker, sourceType, extracted.scannedPages.length, scannedPages.length > 0)
+        // Sem texto, o PDF não chega ao OCR (as imagens e a conversão já foram informadas pela leitura).
+        else if (sourceType === "PDF") tracker.finish("OCR", "SKIPPED", { detail: "Não feita: o texto do arquivo não pôde ser extraído." })
+        tracker.start("SAVE")
+      }
+      const actor = await actorOf(request)
+      const saved = await inTransaction(db, async (client) => {
+        if (!(await lockKnowledgeDocument(client, organizationId, documentId))) throw new DomainError("Base de conhecimento não encontrada.", "KNOWLEDGE_NOT_FOUND", 404)
+        await assertWritableLocked(client, request, documentId, true)
+        const checksum = createHash("sha256").update(file.buffer).digest("hex")
+        const fileId = (await client.query<{ id: string }>(`insert into knowledge_files(knowledge_document_id, file_data, checksum) values ($1,$2,$3) returning id`, [documentId, file.buffer, checksum])).rows[0]!.id
+        await saveKnowledgeFileImages(client, fileId, extracted?.images ?? [])
+        const draft = await saveKnowledgeDraft(client, organizationId, documentId, { file: { file: { id: fileId, filename: file.originalname, mimeType: knowledgeFileContentType(sourceType), sizeBytes: file.size, checksum }, sourceType, extractedText: extracted?.text || null, extraction: extracted?.extraction ?? null } }, actor)
+        const ocrJobId = draft && scannedPages.length > 0 ? await enqueueKnowledgeOcr(client, { organizationId, documentId, versionId: draft.versionId, fileId, pages: scannedPages.length, content: extracted?.text ?? "", actor }) : null
+        return { documentId, versionId: draft?.versionId ?? null, ocrJobId }
+      })
+      await tracker?.complete(saved)
+    } catch (error) {
+      throw tracker ? await tracker.fail(error) : error
+    }
     await respondDetail(request, response, documentId)
   })
 

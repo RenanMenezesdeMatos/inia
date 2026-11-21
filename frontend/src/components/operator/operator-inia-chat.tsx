@@ -19,8 +19,9 @@ import type { FarewellSpeech } from "@/lib/avatar/avatar-driver"
 import { fetchEphemeralSession, fetchVoiceReading, GeminiRealtimeTransport, recordVoiceTurn, type RealtimeCallState, type VoiceConversationResult } from "@/lib/realtime/gemini-realtime-transport"
 import { ApiError } from "@/lib/api/api-client"
 import { startUsageAction, trackUsage } from "@/lib/usage/usage-provider"
-import { ConversationClosedError, FeedbackConversationChangedError, fetchConversationMessages, fetchCurrentConversation, fetchTextReply, saveMessageRating, startNewConversation, type ConversationSummary } from "@/lib/realtime/gemini-text-client"
+import { cancelTextReply, ConversationClosedError, FeedbackConversationChangedError, fetchConversationMessages, fetchCurrentConversation, fetchTextReply, saveMessageRating, startNewConversation, type ConversationSummary } from "@/lib/realtime/gemini-text-client"
 import { newClientKey } from "@/lib/realtime/conversation-format"
+import type { PendingReply } from "@/schemas/operator/pending-reply.schema"
 import { IniaConversationHistorySheet } from "./inia-conversation-history-sheet"
 import { IniaRecadoInvite } from "./inia-recado-invite"
 import { speakRecado, type RecadoHandlers, type RecadoPlayback } from "@/lib/avatar/recado/recado-speech"
@@ -69,6 +70,8 @@ import { useBrowserIdle } from "@/lib/browser/use-browser-idle"
 const AVATAR_COMPACT_HEIGHT = "h-20 sm:h-24"
 const AVATAR_COMPACT_SLOT = "absolute inset-y-0 left-0 w-20 sm:w-24"
 const AVATAR_COMPACT_CONTROLS_OFFSET = "left-20 sm:left-24"
+// Resposta retomada (a pessoa saiu e voltou no meio): de quanto em quanto tempo a tela busca se ela já chegou.
+export const RESUME_POLL_MS = 2_000
 const avatarStagePlaceholder = <div aria-hidden className="h-full rounded-2xl bg-muted/40"/>
 const IniaHumanoidAvatar3D = dynamic(() => import("./inia-humanoid-avatar-3d").then((module) => module.IniaHumanoidAvatar3D), {
   ssr: false,
@@ -154,15 +157,32 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   // Toda troca de conversa incrementa a geração: resposta, transcrição ou página que chegar depois para a conversa
   // anterior é descartada da tela (já está salva na conversa certa pelo backend) — nunca aparece no lugar errado.
   const viewGenerationRef = useRef(0)
-  // Resposta por escrito em andamento: trocar de conversa (ou fechar o chat) cancela o pedido — o servidor para de gerar e a vaga de
-  // IA volta para os outros, em vez de terminar uma resposta que ninguém vai ver.
+  // REGRA (19/11/2026): SAIR DA TELA NÃO CANCELA A RESPOSTA; SÓ O "PARAR" CANCELA.
+  // Trocar de conversa, de área da INIA (o chat desmonta), de aba do navegador ou recarregar só para a LEITURA do pedido em
+  // andamento: o servidor termina e GRAVA a resposta na conversa dela, e quem volta vê "ainda respondendo" e depois a resposta
+  // (`resumePendingReply`). Antes, o desmonte do chat abortava o pedido, o servidor cancelava e a pergunta ficava sem resposta.
+  // Cancelar a GERAÇÃO é o "Parar" (`stopTextReply` → `cancelTextReply`): a vaga de IA volta e nada da resposta é gravado.
   const textReplyAbortRef = useRef<AbortController | null>(null)
+  // Chave (`clientMessageId`) da pergunta cuja resposta está em andamento — a do "Parar". `stoppedKeysRef`: paradas de propósito
+  // (o fim do pedido não vira balão de erro). `resumeTokenRef`: cada retomada/envio/parada invalida a busca de uma retomada anterior.
+  const textReplyKeyRef = useRef<string | null>(null)
+  const stoppedKeysRef = useRef(new Set<string>())
+  const resumeTokenRef = useRef(0)
+  const mountedRef = useRef(true)
   const advanceView = () => {
     textReplyAbortRef.current?.abort()
     textReplyAbortRef.current = null
+    textReplyKeyRef.current = null
     return ++viewGenerationRef.current
   }
-  useEffect(() => () => textReplyAbortRef.current?.abort(), [])
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      // Só para de ler: a resposta continua no servidor e aparece quando a pessoa voltar.
+      mountedRef.current = false
+      textReplyAbortRef.current?.abort()
+    }
+  }, [])
   const inactivityMsRef = useRef(24 * 3_600_000)
   const lastActivityRef = useRef<number | null>(null)
   const messagesContentRef = useRef<HTMLDivElement>(null)
@@ -309,7 +329,70 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     lastActivityRef.current = new Date(page.conversation.lastActivityAt).getTime()
     scrollToLatest()
     scrollAfterLoadRef.current = true
+    // A pessoa saiu e voltou com a resposta ainda sendo gerada: o indicador volta e a resposta aparece quando chegar.
+    if (page.pendingReply && !textReplyAbortRef.current) resumePendingReply(id, generation, page.pendingReply, page.messages.at(-1)?.cursor ?? null)
     return true
+  }
+
+  /**
+   * Retomada de uma resposta em andamento no servidor (a pessoa saiu da tela no meio e voltou): o indicador mostra a etapa REAL e as
+   * mensagens novas são buscadas até a resposta chegar — sem perguntar de novo. Para com outra troca de conversa, novo envio,
+   * "Parar" ou o chat saindo da tela.
+   */
+  const resumePendingReply = (id: string, generation: number, pending: PendingReply, afterCursor: string | null) => {
+    const token = ++resumeTokenRef.current
+    textReplyKeyRef.current = pending.clientMessageId
+    setTextReplyPending(true)
+    setLiveTextReply(null)
+    setLiveTextCitations(false)
+    setTextReplyStatus(pending.label ?? THINKING_LABEL)
+    let cursor = afterCursor
+    const alive = () => mountedRef.current && token === resumeTokenRef.current && generation === viewGenerationRef.current && !textReplyAbortRef.current
+    const tick = async () => {
+      if (!alive()) return
+      let page: Awaited<ReturnType<typeof fetchConversationMessages>>
+      try {
+        page = await fetchConversationMessages(id, { ...(cursor ? { after: cursor } : {}), limit: PAGE_LIMIT })
+      } catch {
+        // Falha passageira (rede): tenta de novo um pouco depois; o indicador continua.
+        if (alive()) window.setTimeout(() => void tick(), RESUME_POLL_MS * 2)
+        return
+      }
+      if (!alive()) return
+      if (page.messages.length > 0) {
+        cursor = page.messages.at(-1)?.cursor ?? cursor
+        const arrived = page.messages.map(toChatMessage)
+        setMessages((list) => [...list, ...arrived])
+        markConversationActivity()
+        scrollToLatest()
+      }
+      if (page.pendingReply) {
+        setTextReplyStatus(page.pendingReply.label ?? THINKING_LABEL)
+        window.setTimeout(() => void tick(), RESUME_POLL_MS)
+        return
+      }
+      if (textReplyKeyRef.current === pending.clientMessageId) textReplyKeyRef.current = null
+      setTextReplyPending(false)
+      setTextReplyStatus(null)
+    }
+    window.setTimeout(() => void tick(), RESUME_POLL_MS)
+  }
+
+  /** "Parar": cancela DE PROPÓSITO a resposta em andamento (a única forma de cancelar). A pergunta fica; nenhuma resposta é gravada. */
+  const stopTextReply = () => {
+    const key = textReplyKeyRef.current
+    if (!key) return
+    stoppedKeysRef.current.add(key)
+    textReplyKeyRef.current = null
+    resumeTokenRef.current += 1
+    void cancelTextReply(key).catch((error: unknown) => console.warn("[chat] não foi possível parar a resposta", error))
+    textReplyAbortRef.current?.abort()
+    textReplyAbortRef.current = null
+    if (stageOpen()) setStage(null)
+    setTextReplyPending(false)
+    setLiveTextReply(null)
+    setLiveTextCitations(false)
+    setTextReplyStatus(null)
   }
 
   /** Abrir o chat / recarregar / voltar à conversa atual: a conversa ATIVA do backend, ou um chat limpo. */
@@ -1442,8 +1525,11 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     setTextReplyStatus(THINKING_LABEL)
     scrollToLatest()
     textReplyAbortRef.current?.abort()
+    resumeTokenRef.current += 1
     const abort = new AbortController()
     textReplyAbortRef.current = abort
+    const clientMessageId = newClientKey()
+    textReplyKeyRef.current = clientMessageId
     // Na conversa de um feedback o indicador ATUAL nunca entra (o backend também ignora esta instrução nesse caso).
     const contextHint = inFeedback ? "" : focus
       ? focus.recommendation
@@ -1476,7 +1562,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       // O backend monta o contexto do modelo a partir da conversa gravada — nenhum histórico sai daqui.
       const reply = await fetchTextReply(
         // Sobre uma aplicação: o backend decide a conversa (a da aplicação ou a complementar, criada nesta primeira dúvida).
-        { conversationId: requestedConversationId, text, clientMessageId: newClientKey(), contextHint: contextHint.trim().slice(0, 1_000) || undefined, feedbackApplicationId, ...(options.clarification ? { clarification: options.clarification } : {}) },
+        { conversationId: requestedConversationId, text, clientMessageId, contextHint: contextHint.trim().slice(0, 1_000) || undefined, feedbackApplicationId, ...(options.clarification ? { clarification: options.clarification } : {}) },
         (chunk, meta) => {
           recordFirstText("OK")
           if (!current()) return
@@ -1534,6 +1620,11 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
         window.setTimeout(() => endStageUtterance(undefined, key), shownIn.finish(stageWords()))
       }
     } catch (error) {
+      // "Parar": a pessoa mesma interrompeu — nada de balão de erro (a tela já voltou ao normal em `stopTextReply`).
+      if (stoppedKeysRef.current.delete(clientMessageId)) {
+        usageAction.cancel()
+        return
+      }
       recordFirstText("FAILED")
       if (error instanceof ConversationClosedError || error instanceof FeedbackConversationChangedError) usageAction.cancel()
       else usageAction.fail(error instanceof ApiError && error.code ? error.code : "SEND_FAILED")
@@ -1562,6 +1653,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     } finally {
       const latest = textReplyAbortRef.current === abort
       if (latest) textReplyAbortRef.current = null
+      if (textReplyKeyRef.current === clientMessageId) textReplyKeyRef.current = null
       // O fim de um pedido substituído não encerra o indicador do novo.
       if (current() && latest) {
         setTextReplyPending(false)
@@ -1990,6 +2082,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     question={question}
     setQuestion={setQuestion}
     textReplyPending={textReplyPending}
+    onStopReply={textReplyPending ? stopTextReply : undefined}
     conversationState={conversationState}
     send={send}
     composerLocked={composerLocked}

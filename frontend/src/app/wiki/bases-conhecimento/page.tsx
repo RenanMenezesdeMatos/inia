@@ -124,6 +124,7 @@ export default function KnowledgeBasesPage() {
           A leitura é feita no próprio servidor, sem enviar o arquivo a outro serviço.
         </p>
         <FieldRow label="Lidas por OCR" value="O texto dessas páginas veio da imagem da página. Cada página da lista abre no PDF, para conferir. O aviso também diz quantos prints foram separados como imagem e se alguma página passou do limite de 300 páginas lidas por documento." />
+        <FieldRow label="Confira com atenção" value="Páginas lidas por OCR em que a leitura parece duvidosa: um trecho lido com pouca confiança que parece texto de print de tela, letra de tela que ficou no texto porque o print não saiu inteiro como imagem, muitas palavras lidas com pouca confiança, ou página com conteúdo em que nada foi lido. Abra cada página no PDF, corrija o texto ou apague o que veio da tela antes de publicar. Em PDF impresso do navegador (o texto não seleciona, mas não é digitalização), os prints são separados pela posição das imagens do próprio arquivo; em digitalização, pela regra da tinta, que acha cerca de metade deles — por isso o aviso." />
         <FieldRow label="Sem texto, parecem digitalizadas" value="Página só com imagem em que o OCR não leu nada (ou que ainda está na fila): o que está nela não chega à IA. As demais páginas do arquivo continuam valendo." />
         <FieldRow label="Print de tela não separado" value="A identificação dos prints é conservadora: na dúvida, o print fica como texto, porque cortar texto do documento seria pior. Nos manuais medidos que a identificação não tinha visto antes, de um quinto à metade dos prints foram separados; os outros aparecem como texto, com as palavras da tela. Raramente uma tabela ou um quadro de letra pequena com fundo é separado como imagem: o texto dele aparece como imagem no rascunho e não chega à IA." />
         <FieldRow label="Com imagem grande" value="O texto da página foi lido, mas não o que está dentro da imagem (print de tela, tabela em figura). A imagem aparece no texto para quem lê; a IA não a recebe." />
@@ -187,6 +188,19 @@ export default function KnowledgeBasesPage() {
           O alcance por grupo e o vínculo com o Agent são coisas separadas. Pôr a base em mais um Grupo não a liga a nenhum Agent — o vínculo
           continua sendo feito aqui, Agent por Agent. Uma base com alcance em um Subgrupo conta para o Agent do Grupo daquele Subgrupo, e tirar um
           Grupo do alcance tira a base da busca dos Agents daquele Grupo já na consulta seguinte.
+        </p>
+        <p>
+          <strong className="font-medium text-foreground">Associar pela própria base.</strong> No editor (embaixo do conteúdo) e na página da
+          base, o cartão <strong className="font-medium text-foreground">Agentes que consultam esta base</strong> vem fechado, mostrando só
+          quantos agentes consultam a base e os primeiros deles; no editor, a seção <em>Agentes</em> da lateral resume o mesmo e o atalho
+          {" "}<em>Escolher agentes</em> abre o cartão. Aberto (<em>Associar ou desassociar</em>), ele funciona como o seletor de bases do
+          agente: abas <em>Ligados</em> e <em>Disponíveis</em>, busca pelo nome, filtros por tipo, universo, Grupo e situação, e paginação. Marcar
+          ou desmarcar só anota a escolha, mesmo trocando de página; a barra de baixo grava. <em>Salvar no rascunho dos agentes</em> não muda o
+          que a IA usa; <em>Salvar e publicar</em> mostra ali mesmo, agente por agente, quem usa o agente e o que muda, e só então publica a
+          versão nova de cada um — incluindo os agentes que já tinham a mudança desta base só no rascunho. É o mesmo ciclo de vida da tela do
+          agente: o servidor confere permissão, Grupo e universo, e se um agente falhar nenhum muda. Agente com outras alterações ainda não
+          publicadas recebe a base só no rascunho — publicar fica para a tela dele, onde se vê tudo o que vai junto. Base ainda sem versão em uso
+          pode ser associada, mas o agente só a consulta depois que ela for publicada e ficar pronta.
         </p>
       </WikiSection>
 

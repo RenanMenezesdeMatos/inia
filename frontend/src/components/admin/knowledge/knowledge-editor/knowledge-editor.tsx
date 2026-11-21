@@ -28,6 +28,9 @@ import type { OperatingUniverse } from "@/schemas/operating-universe/operating-u
 
 import { DiscardKnowledgeDraftDialog, PublishKnowledgeDialog } from "../knowledge-lifecycle-dialogs"
 import { formatFileSize, versionLabel } from "../knowledge-visuals"
+import { KnowledgeRecentUploads } from "../knowledge-upload-progress/knowledge-recent-uploads"
+import { KnowledgeUploadProgress } from "../knowledge-upload-progress/knowledge-upload-progress"
+import { useTrackedUpload } from "../knowledge-upload-progress/use-tracked-upload"
 import {
   ACCEPTED_FILES,
   draftFileOf,
@@ -47,6 +50,8 @@ import {
 import { KnowledgePublicationSection, KnowledgeProductsSection, KnowledgeScopeSection, KnowledgeSubjectsSection, KnowledgeUniverseSection } from "./knowledge-editor-settings"
 import { KnowledgeMarkdownField } from "./knowledge-markdown-field"
 import { KnowledgePreviewDialog } from "./knowledge-preview-dialog"
+import { KnowledgeAgentsPicker } from "../knowledge-agents/knowledge-agents-picker"
+import { KnowledgeAgentsSection } from "../knowledge-agents/knowledge-agents-section"
 
 const STATE_CHIP: Record<KnowledgeEditorState, { tone: Tone; label: (document: KnowledgeDocumentDetail | null) => string }> = {
   NEW: { tone: "neutral", label: () => "Nova base" },
@@ -81,6 +86,15 @@ export function KnowledgeEditor({ document }: { document: KnowledgeDocumentDetai
   const universeEnforced = useCurrentUserQuery().data?.operatingUniverseEnforced ?? false
   const fileInputRef = useRef<HTMLInputElement>(null)
   const creating = document === null
+  // Envio de arquivo com o andamento real (bytes do navegador, etapas do servidor). A requisição continua se a pessoa sair da tela.
+  const tracked = useTrackedUpload()
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const teamOptions = useMemo(() => (teamsQuery.data ? scopeTeamOptionsOf(teamsQuery.data) : null), [teamsQuery.data])
   // Alcance de abertura resolvido com os Grupos carregados (Subgrupo antigo sem Grupo encontra o pai); base salva sem alcance = nenhum Grupo
@@ -139,8 +153,10 @@ export function KnowledgeEditor({ document }: { document: KnowledgeDocumentDetai
     }
     setError("")
     if (creating) {
+      const sending = form.sourceMode === "file" && file ? tracked.begin(file) : null
       try {
         const created = await create.mutateAsync({
+          ...(sending ?? {}),
           operatingUniverse: universe,
           title: form.title.trim(),
           documentType: form.documentType,
@@ -149,11 +165,14 @@ export function KnowledgeEditor({ document }: { document: KnowledgeDocumentDetai
           orgScopes: orgScopesFromValue(scope),
           subjectScopes: subjectScopesOf(form.subjects),
         })
+        if (sending) tracked.settle()
         await productScope.save(created.id).catch(() => undefined)
         guard.release() // a navegação abaixo não pode disparar o aviso de "não salvo"
-        router.replace(knowledgeEditHref(created.id, { publish: intent === "PUBLISH" }))
+        // Quem saiu da tela durante o envio não é puxado de volta: a base aparece em "Envios recentes".
+        if (mounted.current) router.replace(knowledgeEditHref(created.id, { publish: intent === "PUBLISH" }))
         return true
       } catch (failure) {
+        if (sending) tracked.settle(failureMessage(failure, "Não foi possível criar a base."))
         setError(failureMessage(failure, "Não foi possível criar a base. Tente novamente."))
         return false
       }
@@ -230,13 +249,16 @@ export function KnowledgeEditor({ document }: { document: KnowledgeDocumentDetai
 
   async function handleReplaceFile(next: File) {
     if (!document) return
+    const sending = tracked.begin(next)
     try {
-      const updated = await replaceFile.mutateAsync({ id: document.id, file: next })
+      const updated = await replaceFile.mutateAsync({ id: document.id, file: next, ...sending })
+      tracked.settle()
       const text = updated.editable?.content ?? ""
       setForm((current) => ({ ...current, content: text }))
       setBaseline((current) => ({ ...current, content: text }))
       setDraftFile(draftFileOf(updated))
     } catch (failure) {
+      tracked.settle(failureMessage(failure, "Não foi possível trocar o arquivo."))
       setError(failureMessage(failure, "Não foi possível trocar o arquivo."))
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = ""
@@ -273,6 +295,7 @@ export function KnowledgeEditor({ document }: { document: KnowledgeDocumentDetai
       <KnowledgeScopeSection teams={teamOptions} value={scope} onChange={setEditedScope} universe={universe} editing={!creating} />
       <KnowledgeSubjectsSection value={form.subjects} onChange={(subjects) => patch({ subjects })} allowNone={allowNoSubjects} />
       {productScope.available ? <KnowledgeProductsSection nodes={productScope.nodes} value={productScope.value} onChange={productScope.setValue} universe={universe} editing={!creating} /> : null}
+      <KnowledgeAgentsSection documentId={document?.id ?? null} archived={Boolean(document?.archived)} />
     </>
   )
 
@@ -366,17 +389,28 @@ export function KnowledgeEditor({ document }: { document: KnowledgeDocumentDetai
               </Tabs>
               {form.sourceMode === "text" ? (
                 <KnowledgeMarkdownField id="knowledge-content" label="Conteúdo" title={form.title} value={form.content} onChange={(content) => patch({ content })} placeholder={"# Procedimento\n\n## Quando usar\n- ...\n\n## Passo a passo\n1. ..."} />
+              ) : tracked.upload && (tracked.upload.waiting || tracked.run?.status !== "FAILED") && !tracked.upload.requestError ? (
+                <KnowledgeUploadProgress filename={tracked.upload.filename} sizeBytes={tracked.upload.sizeBytes} transfer={tracked.upload.transfer} waiting={tracked.upload.waiting} run={tracked.run} requestError={null} />
               ) : (
+                <div className="space-y-3">
+                {tracked.upload ? <KnowledgeUploadProgress filename={tracked.upload.filename} sizeBytes={tracked.upload.sizeBytes} transfer={tracked.upload.transfer} waiting={tracked.upload.waiting} run={tracked.run} requestError={tracked.upload.requestError} /> : null}
                 <div className="space-y-2 rounded-xl border border-dashed border-border p-5 text-center">
                   <FileUp className="mx-auto size-6 text-muted-foreground" aria-hidden />
                   <p className="text-sm font-medium">{file ? file.name : "Escolha o arquivo da base"}</p>
                   <p className="text-xs text-muted-foreground">{file ? `${formatFileSize(file.size) ?? ""} · o texto é extraído ao salvar e pode ser conferido e ajustado depois.` : "PDF, DOCX, TXT ou JSON. O texto é extraído ao salvar; PDF digitalizado passa pela leitura das páginas (OCR)."}</p>
-                  <Input type="file" accept={ACCEPTED_FILES} aria-label="Arquivo da base" className="mx-auto max-w-sm" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+                  <Input type="file" accept={ACCEPTED_FILES} aria-label="Arquivo da base" className="mx-auto max-w-sm" onChange={(event) => { setFile(event.target.files?.[0] ?? null); tracked.reset() }} />
+                </div>
                 </div>
               )}
             </div>
           ) : (
             <div className="space-y-3">
+              {/* O envio feito agora nesta tela; sem ele, o último envio de arquivo desta base (quem saiu e voltou vê o estado). */}
+              {tracked.upload ? (
+                <KnowledgeUploadProgress filename={tracked.upload.filename} sizeBytes={tracked.upload.sizeBytes} transfer={tracked.upload.transfer} waiting={tracked.upload.waiting} run={tracked.run} requestError={tracked.upload.requestError} />
+              ) : (
+                <KnowledgeRecentUploads documentId={document.id} latestOnly />
+              )}
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted/40 px-3 py-2.5">
                 <div className="flex min-w-0 items-center gap-2">
                   <Paperclip className="size-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -436,6 +470,9 @@ export function KnowledgeEditor({ document }: { document: KnowledgeDocumentDetai
           </div>
         </aside>
       </div>
+
+      {/* Largura inteira, como as bases no agente: busca, filtros e paginação precisam de espaço. Salvar ali grava nos agentes, não na base. */}
+      {document && document.archived === null ? <KnowledgeAgentsPicker documentId={document.id} title={document.title} baseInUse={Boolean(document.inUse)} /> : null}
 
       {document && draftVersion ? (
         <PublishKnowledgeDialog

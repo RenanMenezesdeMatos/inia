@@ -52,7 +52,7 @@ export const isSelfDataTool = (name: string) => name in SELF_DATA_TOOLS || name 
 
 export const SELF_DATA_RULE = [
   "- Seus próprios dados, calculados pelo sistema e só seus: atendimentos/ligações (quantidade, duração, motivos, rechamada, nota da URA…) → my_interactions; monitoria das suas chamadas (critérios cumpridos) → my_monitoring; feedbacks que você recebeu e ciência → my_feedbacks; sua escala e jornada planejada (dias, horário, folgas, pausas, inclusive futuros) → my_schedule; comunicados que você recebeu → my_communications; contas sobre números já trazidos → my_calculate. Resultados de indicador (meta, atingimento, quartil) continuam em my_results.",
-  "- Essas ferramentas só trazem os dados de quem pergunta: se a pessoa pedir dados de colegas, da equipe ou de outra pessoa, diga que você só mostra os dados dela.",
+  "- Essas ferramentas só trazem os dados de quem pergunta: se a pessoa pedir dados de colegas, da equipe ou de outra pessoa, diga que você só mostra os dados dela. A exceção é a hierarquia (quem lidera quem, quantas pessoas abaixo): ela é aberta a todos e vem de org_hierarchy.",
   "- Assunto dito em texto livre (\"contestação\") vai em termo; se o sistema devolver opções, mostre-as e espere a escolha.",
 ].join("\n")
 

@@ -329,6 +329,10 @@ A maioria dos 12 é texto grande da capa. O resto: uma linha quebrada do título
 
 **Não verificado:** Windows Server 2016 (ensaiar na homologação da Azure antes da VM da empresa), a velocidade lá e um PDF escaneado de verdade. Os escaneados daqui são páginas desenhadas, ou essas páginas com papel tingido, ruído e 0,3° de inclinação.
 
+### 6.3 Prints pela posição das imagens e conferências (acréscimo de 20/11/2026)
+
+PDF impresso do navegador ("Print To PDF") chega sem camada de texto e com os prints como imagens próprias: os prints agora saem pela posição das imagens do PDF (`PDF_EMBEDDED_PRINTS_V1`), e a regra da tinta fica só para digitalização. Cada página lida passa por conferências (`PDF_OCR_CHECKS_V1`) que apontam o que conferir. Medidas, decisões e a ferramenta de validação em lote (`scripts/dev/pdf-ocr-eval/validar-ocr.ts`): `docs/dev/memoria/agentes-e-conhecimento.md`, seção "OCR: prints pela posição das imagens".
+
 ## 7. Limitações e pendências
 
 **Medido, mas limitado**

@@ -1,3 +1,4 @@
+import { imageStepText } from "./image-step-text.js"
 import type { KnowledgeChunk } from "./knowledge-chunking.js"
 
 /**
@@ -42,11 +43,14 @@ export function outlineSize(source: CatalogSource): number {
   return sectionsOf(source).reduce((sum, section) => sum + (section.heading || section.preview || "").length + 8, 0)
 }
 
+export type SectionImage = { id: string; page: number; width: number; height: number; description?: string }
+
 /**
  * As imagens do arquivo na seção de um trecho (as partes seguidas com o mesmo título), cada uma uma vez e na ordem do documento. Não entra no sumário
- * nem no texto da seção: é o que a tela mostra junto das fontes de uma resposta, e a IA não recebe.
+ * nem no texto da seção: é o que a tela mostra junto das fontes de uma resposta, e a IA não recebe. `description` é o texto literal da base junto
+ * da imagem (`imageStepText`), ausente quando não há texto por perto.
  */
-export function sectionImagesOf(source: CatalogSource, chunkIndex: number, heading: string): { id: string; page: number; width: number; height: number }[] {
+export function sectionImagesOf(source: CatalogSource, chunkIndex: number, heading: string): SectionImage[] {
   const sorted = [...source.chunks].sort((left, right) => left.index - right.index)
   const position = sorted.findIndex((chunk) => chunk.index === chunkIndex)
   const anchor = sorted[position]
@@ -54,9 +58,18 @@ export function sectionImagesOf(source: CatalogSource, chunkIndex: number, headi
   if (!anchor || anchor.heading !== heading) return []
   let start = position
   if (anchor.heading) while (start > 0 && sorted[start - 1]!.heading === anchor.heading) start -= 1
-  const found = new Map<string, { id: string; page: number; width: number; height: number }>()
+  const found = new Map<string, SectionImage>()
   for (let index = start; index < sorted.length && (index === position || (anchor.heading !== "" && sorted[index]!.heading === anchor.heading)); index += 1) {
-    for (const image of sorted[index]!.images ?? []) if (!found.has(image.id)) found.set(image.id, { id: image.id, page: image.page, width: image.width, height: image.height })
+    const chunk = sorted[index]!
+    // O passo de uma imagem no começo de um trecho pode estar no fim do trecho anterior da mesma seção.
+    const previous = index > start ? sorted[index - 1]!.text : null
+    const text = previous === null ? chunk.text : `${previous}\n\n${chunk.text}`
+    const shift = previous === null ? 0 : previous.length + 2
+    for (const image of chunk.images ?? []) {
+      if (found.has(image.id)) continue
+      const description = imageStepText(text, image.at + shift)
+      found.set(image.id, { id: image.id, page: image.page, width: image.width, height: image.height, ...(description ? { description } : {}) })
+    }
   }
   return [...found.values()]
 }

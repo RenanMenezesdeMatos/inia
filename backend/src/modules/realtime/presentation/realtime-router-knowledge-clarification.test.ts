@@ -43,7 +43,7 @@ function openState(): ClarificationState {
 }
 const TRACE = { version: KNOWLEDGE_CLARIFICATION_VERSION, mode: "NEW" as const, decision: "CLARIFY" as const, navigation: null, rejectedOptions: [], plannerAttempts: 1, answerAttempts: 0, issues: [] }
 
-function setup(outcomes: ClarificationOutcome[], options: { leadership?: boolean; orchestrator?: boolean; accessible?: (id: string) => boolean } = {}) {
+function setup(outcomes: ClarificationOutcome[], options: { leadership?: boolean; orchestrator?: boolean; accessible?: (id: string) => boolean; supportHelpRoute?: (input: { organizationId: string; personId: string }) => Promise<"SUPPORT" | "LEADERSHIP"> } = {}) {
   const memory = createMemoryConversationStore()
   const responseChecks: { text: string; sources?: unknown }[] = []
   const requests: ClarificationRequest[] = []
@@ -84,6 +84,7 @@ function setup(outcomes: ClarificationOutcome[], options: { leadership?: boolean
         },
       },
       accessibleKnowledgeDocuments: async (_organizationId, _personId, ids) => new Set(ids.filter((id) => options.accessible?.(id) ?? true)),
+      ...(options.supportHelpRoute ? { supportHelpRoute: options.supportHelpRoute } : {}),
       responseCheck: async (_db, input) => {
         responseChecks.push(input)
         return { outcome: "NOT_APPLICABLE" }
@@ -212,5 +213,24 @@ describe("chat de texto — esclarecimento pelas bases", () => {
 
   it("estado gravado em tool_calls usa o nome reservado do fluxo", () => {
     expect(CLARIFICATION_TOOL_NAME).toBe("knowledge_clarification")
+  })
+})
+
+describe("chat de texto — rota de ajuda da resposta \"insuficiente\" (HELP_ROUTE_V1)", () => {
+  it("chat livre de quem atende: o esclarecimento recebe a função, que consulta o apoio pela pessoa e organização da SESSÃO", async () => {
+    const seen: { organizationId: string; personId: string }[] = []
+    const { app, requests } = setup([{ kind: "REPLY", content: "Qual cenário de teste?", state: openState(), trace: TRACE }], { supportHelpRoute: async (input) => { seen.push(input); return "SUPPORT" } })
+    await request(app).post("/api/v1/realtime/messages").send({ conversationId: null, text: "Pergunta genérica de teste?", clientMessageId: "aaaaaaaa-0000-4000-8000-00000000c0a1" })
+    expect(typeof requests[0]!.helpRoute).toBe("function")
+    // Só o serviço decide quando ler (na decisão INSUFFICIENT); nada foi lido no envio.
+    expect(seen).toEqual([])
+    expect(await requests[0]!.helpRoute!()).toBe("SUPPORT")
+    expect(seen).toEqual([{ organizationId: ORG, personId: PERSON }])
+  })
+
+  it("sem o apoio injetado: nenhuma função — o texto de antes, com a liderança", async () => {
+    const { app, requests } = setup([{ kind: "REPLY", content: "Qual cenário de teste?", state: openState(), trace: TRACE }])
+    await request(app).post("/api/v1/realtime/messages").send({ conversationId: null, text: "Pergunta genérica de teste?", clientMessageId: "aaaaaaaa-0000-4000-8000-00000000c0a2" })
+    expect(requests[0]!.helpRoute ?? null).toBeNull()
   })
 })

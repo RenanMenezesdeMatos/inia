@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react"
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { AdminApiError } from "@/lib/admin/admin-api"
+import { AdminApiError, type UploadTransfer } from "@/lib/admin/admin-api"
 import { useAdminMutation } from "@/lib/admin/use-admin-mutation"
 import { isKnowledgeBusy, type KnowledgeDocumentDetail, type KnowledgeDocumentUpdate } from "@/schemas/admin/knowledge.schema"
 import {
@@ -23,6 +23,8 @@ import {
   fetchKnowledgeVersionFile,
   fetchKnowledgeVersionPreview,
   fetchKnowledgeVersions,
+  fetchKnowledgeUploadRun,
+  fetchRecentKnowledgeUploads,
   publishKnowledgeDocument,
   reactivateKnowledgeDocument,
   reprocessKnowledgeDocument,
@@ -41,6 +43,38 @@ import { adminQueryKeys } from "./admin-query-keys"
 const PROCESSING_REFETCH_MS = 3_000
 
 const detailKey = (id: string | null) => [...adminQueryKeys.knowledge(), id] as const
+
+/** Andamento do envio: consulta curta enquanto o servidor processa (cada etapa leva de frações de segundo a minutos). */
+const UPLOAD_REFETCH_MS = 1_500
+const uploadsKey = () => [...adminQueryKeys.knowledge(), "uploads"] as const
+export const knowledgeUploadRunKey = (uploadId: string | null) => [...uploadsKey(), uploadId] as const
+
+/**
+ * Um envio, pelo id que a tela gerou. `waitUntil` = até quando o registro pode ainda não existir: enquanto a requisição do envio não respondeu e
+ * alguns segundos depois (a resposta e a última gravação chegam quase juntas). Com o registro, consulta até tudo terminar (inclusive o OCR) e para.
+ */
+export function useKnowledgeUploadRunQuery(uploadId: string | null, waitUntil: number | null) {
+  return useQuery({
+    queryKey: knowledgeUploadRunKey(uploadId),
+    queryFn: () => fetchKnowledgeUploadRun(uploadId!),
+    enabled: uploadId !== null,
+    retry: false,
+    refetchInterval: (query) => {
+      const run = query.state.data
+      if (run === undefined || run === null) return waitUntil !== null && Date.now() < waitUntil ? UPLOAD_REFETCH_MS : false
+      return run.finished ? false : UPLOAD_REFETCH_MS
+    },
+  })
+}
+
+/** Envios do último dia da conta (de uma base, com `documentId`), para voltar depois e ver o estado. Atualiza enquanto algum não terminou. */
+export function useRecentKnowledgeUploadsQuery(documentId?: string | null) {
+  return useQuery({
+    queryKey: [...uploadsKey(), "recent", documentId ?? null],
+    queryFn: () => fetchRecentKnowledgeUploads(documentId ?? undefined),
+    refetchInterval: (query) => (query.state.data?.some((run) => !run.finished) ? PROCESSING_REFETCH_MS : false),
+  })
+}
 
 export function useKnowledgeDocumentsQuery() {
   return useQuery({ queryKey: adminQueryKeys.knowledge(), queryFn: fetchKnowledgeDocuments })
@@ -216,7 +250,7 @@ export function useUpdateKnowledgeDocumentMutation() {
 
 export function useReplaceKnowledgeDraftFileMutation() {
   return useKnowledgeLifecycleMutation({
-    mutationFn: ({ id, file }: { id: string; file: File }) => replaceKnowledgeDraftFile(id, file),
+    mutationFn: ({ id, file, uploadId, onProgress }: { id: string; file: File; uploadId?: string; onProgress?: (transfer: UploadTransfer) => void }) => replaceKnowledgeDraftFile(id, file, { uploadId, onProgress }),
     successMessage: "Arquivo trocado no rascunho. O que a IA usa não mudou.",
   })
 }

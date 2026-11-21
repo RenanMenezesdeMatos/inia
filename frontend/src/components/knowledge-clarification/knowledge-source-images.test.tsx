@@ -51,4 +51,17 @@ describe("imagens abaixo de uma resposta", () => {
     fireEvent.error(screen.getByRole("img", { name: "Imagem da página 1 do documento" }))
     expect(screen.getAllByRole("img")).toHaveLength(1)
   })
+
+  it("ampliada: as setas percorrem todas as imagens da resposta (inclusive as atrás do 'Ver mais'), com o texto da base embaixo quando há", () => {
+    const images = ["a", "b", "c", "d", "e"].map((id, index) => ({ ...image(id, index + 1), ...(id === "e" ? { description: "5. Clique em Concluir." } : {}) }))
+    render(<KnowledgeSourceImages sources={[source({ images })]} />)
+    fireEvent.click(screen.getByRole("button", { name: "Ampliar a imagem da página 4 (imagem 4 de 5)" }))
+    const dialog = screen.getByRole("dialog")
+    expect(within(dialog).queryByTestId("knowledge-image-viewer-description")).toBeNull()
+    fireEvent.keyDown(dialog, { key: "ArrowRight" })
+    expect(within(dialog).getByRole("img").getAttribute("src")).toContain("/images/e")
+    expect(within(dialog).getByRole("heading", { name: "Imagem 5 de 5 · Página 5" })).toBeTruthy()
+    expect(within(dialog).getByText("5. Clique em Concluir.")).toBeTruthy()
+    expect(within(dialog).getByRole("link", { name: "Abrir o material nesta página" }).getAttribute("href")).toBe("/materiais/doc-1?pagina=5&versao=v1")
+  })
 })

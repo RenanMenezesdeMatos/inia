@@ -7,9 +7,13 @@ import { KnowledgeArticleContent, type ArticleInsert } from "@/components/admin/
 import { Button } from "@/components/ui/button"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { documentInserts } from "@/lib/knowledge/document-inserts"
+import { imageStepText } from "@/lib/knowledge/image-step-text"
 import type { PdfExtraction } from "@/schemas/admin/knowledge.schema"
 
 import { KnowledgeDocumentImage } from "./knowledge-document-image"
+import type { ViewerImage } from "./knowledge-image-viewer"
+
+const readingCaption = (page: number) => `Imagem da página ${page}. A INIA não lê imagens.`
 
 export const pageAnchorId = (page: number) => `pagina-${page}`
 
@@ -52,30 +56,37 @@ export function KnowledgeReadingView({
     window.document.getElementById(pageAnchorId(targetPage))?.scrollIntoView?.({ block: "start" })
   }, [targetPage])
 
-  const inserts = useMemo<ArticleInsert[]>(
-    () =>
-      documentInserts(content, extraction).map((insert, index) => {
-        if (insert.kind === "page") return { at: insert.at, key: `page-${insert.page}`, node: <span id={pageAnchorId(insert.page)} data-testid={pageAnchorId(insert.page)} className="block scroll-mt-20" aria-hidden /> }
-        if (insert.kind === "image") {
-          const { image } = insert
-          return { at: insert.at, key: `image-${image.id}-${index}`, node: <KnowledgeDocumentImage src={imageSrc(image.id)} page={image.page} width={image.width} height={image.height} caption={`Imagem da página ${image.page}. A INIA não lê imagens.`} /> }
-        }
-        return {
-          at: insert.at,
-          key: `missing-${insert.page}`,
-          node: (
-            <div className="my-5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground" data-testid="reading-missing-page">
-              <FileWarning aria-hidden className="size-4 shrink-0" />
-              <span>{`A página ${insert.page} não tem texto para mostrar aqui.`}</span>
-              <Button type="button" variant="link" size="xs" className="h-auto p-0" onClick={() => onOpenPage(insert.page)}>
-                Ver no PDF
-              </Button>
-            </div>
-          ),
-        }
-      }),
-    [content, extraction, imageSrc, onOpenPage],
-  )
+  const inserts = useMemo<ArticleInsert[]>(() => {
+    const all = documentInserts(content, extraction)
+    // Todas as imagens do material, na ordem do texto: ampliada uma delas, as setas levam às outras. O texto embaixo é o da base junto dela.
+    const gallery: ViewerImage[] = all.flatMap((insert, index) =>
+      insert.kind === "image"
+        ? [{ key: `image-${insert.image.id}-${index}`, src: imageSrc(insert.image.id), page: insert.image.page, width: insert.image.width, height: insert.image.height, caption: readingCaption(insert.image.page), description: imageStepText(content, insert.at) }]
+        : [],
+    )
+    let imageIndex = 0
+    return all.map((insert, index) => {
+      if (insert.kind === "page") return { at: insert.at, key: `page-${insert.page}`, node: <span id={pageAnchorId(insert.page)} data-testid={pageAnchorId(insert.page)} className="block scroll-mt-20" aria-hidden /> }
+      if (insert.kind === "image") {
+        const { image } = insert
+        const position = imageIndex++
+        return { at: insert.at, key: `image-${image.id}-${index}`, node: <KnowledgeDocumentImage src={imageSrc(image.id)} page={image.page} width={image.width} height={image.height} caption={readingCaption(image.page)} gallery={{ images: gallery, index: position }} /> }
+      }
+      return {
+        at: insert.at,
+        key: `missing-${insert.page}`,
+        node: (
+          <div className="my-5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground" data-testid="reading-missing-page">
+            <FileWarning aria-hidden className="size-4 shrink-0" />
+            <span>{`A página ${insert.page} não tem texto para mostrar aqui.`}</span>
+            <Button type="button" variant="link" size="xs" className="h-auto p-0" onClick={() => onOpenPage(insert.page)}>
+              Ver no PDF
+            </Button>
+          </div>
+        ),
+      }
+    })
+  }, [content, extraction, imageSrc, onOpenPage])
 
   return (
     <article className="mx-auto max-w-3xl space-y-4 px-1 py-2 sm:px-4" data-testid="knowledge-reading-view">

@@ -15,7 +15,7 @@ export const clarificationSourceSchema = z.object({
   /** Páginas do PDF de origem, vindas do registro da conversão. Ausente em base que não é PDF convertido e em respostas anteriores. */
   pages: z.object({ from: z.number(), to: z.number() }).optional(),
   /** Imagens da seção no arquivo, para consulta. A IA não as recebe. Ausente nas respostas anteriores a isso e em base sem imagens. */
-  images: z.array(z.object({ id: z.string(), page: z.number(), width: z.number(), height: z.number() })).optional(),
+  images: z.array(z.object({ id: z.string(), page: z.number(), width: z.number(), height: z.number(), description: z.string().optional() })).optional(),
   available: z.boolean(),
 })
 

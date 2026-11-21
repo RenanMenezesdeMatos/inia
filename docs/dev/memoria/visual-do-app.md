@@ -154,8 +154,14 @@ levantamento, 10/11). Regra geral: o elemento repetido mora no kit (`components/
   o estado do salvamento ("Alterações não salvas") e as ações Pré-visualizar · Salvar rascunho · Publicar (+ menu "⋮"); Ctrl/Cmd+S salva;
   sair com alteração pendente confirma em `AlertDialog`. Em uso: Publicações (`publications/publication-editor-page.tsx`) e Base de
   conhecimento (`admin/knowledge/knowledge-editor/`).
+- **Imagem ampliada** (19/11/2026) — imagem de material que abre grande é o `KnowledgeImageViewer`
+  (`components/knowledge-reading/knowledge-image-viewer.tsx`), por `KnowledgeDocumentImage` com `gallery`: setas na tela, ← → do
+  teclado, gesto de passar no toque, Esc fecha, "Imagem X de Y" no título e anunciado, foco preso e devolvido à miniatura, texto da
+  base junto da imagem embaixo (nunca de IA). Em uso: chat (imagens da resposta), `/materiais/:id` e "O que a IA lê".
 - **Confirmação** — `AlertDialog` (50 telas; nenhum `window.confirm`). Dialog só quando a confirmação pede campos (motivo,
-  digitar o código).
+  digitar o código). Exceção decidida em 20/11 (pedido do responsável: "evitar janelas soltas" na escolha em lote): quando a
+  conferência é longa e faz parte de um cartão de escolha inline (ex.: publicar vários agentes a partir da base, com a prévia de impacto
+  de cada um), ela aparece DENTRO do próprio cartão, no lugar da lista, com "Voltar à lista" e "Confirmar" — `knowledge-agents-picker.tsx`.
 - **Lista/Cards** — `ListViewToggle` (13 telas, já uniforme).
 - **Cabeçalho de página** — `PageHeader` (`components/ui/surface.tsx`): ícone da área num quadrado tingido, `h1`, descrição e, à
   direita, as ações da página (ex.: "Novo agente"). Toda página de lista da Administração começa com ele e o conteúdo vem num
