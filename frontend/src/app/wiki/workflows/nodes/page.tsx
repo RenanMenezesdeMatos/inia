@@ -171,7 +171,7 @@ export default function NodesPage() {
           <div id="acao-CALL_AGENT" className="scroll-mt-24 space-y-2">
             <ExampleCard title="Chamar agente">
             Aciona um Agent especialista diretamente, com uma instrução e o <strong>Formato da análise</strong>: Feedback de monitoria (padrão) ou
-            Conformidade de processo ou Avaliação de processo (feedback com base, para &quot;Gerar feedback&quot;). Os dois só aceitam gatilho por Flag de canal (ver <WikiLink href="/wiki/bases-conhecimento#process-audit">Conformidade e avaliação de processo</WikiLink>). Ver <WikiLink href="/wiki/agents#agent-direto">Agent direto</WikiLink>. Se o
+            Conformidade de processo ou Avaliação de processo (feedback com base, para &quot;Gerar feedback&quot;). Os dois pedem a transcrição de uma chamada: a do gatilho por Flag de canal (ver <WikiLink href="/wiki/bases-conhecimento#process-audit">Conformidade e avaliação de processo</WikiLink>) ou, na Avaliação de processo, a de uma <strong>monitoria aleatória</strong>: com gatilho por Agenda ou Manual por colaborador e a fonte &quot;Amostra de chamadas&quot;, cada execução sorteia UMA chamada do colaborador (com transcrição, sem ser curta e ainda sem monitoria) e a analisa pelo motor de feedback, inclusive quando o atendimento está correto — ver o exemplo <WikiLink href="/wiki/workflows/exemplos">Monitoria aleatória em dois momentos do dia</WikiLink>. Ver <WikiLink href="/wiki/agents#agent-direto">Agent direto</WikiLink>. Se o
             Agent tem <strong>Ferramentas de investigação</strong>, o painel mostra &quot;Ferramentas nesta execução&quot;: as capacidades do Agent, que o
             Workflow pode restringir para esta execução (nunca conceder) — ver{" "}
             <WikiLink href="/wiki/agents/ferramentas-investigacao#workflow">Workflow pode restringir</WikiLink>. Com gatilho por Indicador, o
@@ -188,6 +188,10 @@ export default function NodesPage() {
             — valor, meta, período — (indicador), valida o texto e a privacidade. Liberado, o Workflow segue (Revisão humana opcional, Output);
             sem feedback publicável, a análise fica registrada e nada é emitido, sem esperar decisão humana. Este nó não entrega nada: quem entrega
             é o Output. Feedback oficial no Acompanhamento do operador sempre passa por aqui. Está sempre disponível.
+            Na monitoria, quando a Origem é um Orquestrador, as análises de <strong>todos</strong> os especialistas que ele acionou viram um
+            feedback só. O texto fala das <strong>3 falhas mais graves</strong> (caminho do atendimento errado primeiro, depois as de impacto
+            alto, depois as que se repetem); todas as falhas aparecem em “Entenda este feedback”, o texto avisa onde encontrá-las, e todas
+            ficam registradas e no Diagnóstico da liderança.
           </ExampleCard>
             <NodeGuidePanel name="Gerar feedback" guide={ACTION_GUIDES.GENERATE_FEEDBACK} uses={examplesTeachingAction("GENERATE_FEEDBACK")} />
           </div>

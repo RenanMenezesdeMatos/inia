@@ -23,6 +23,7 @@ import { createConversationMonitoringRouter } from "../modules/assistant/present
 import { createSupervisorRouter } from "../modules/reporting/presentation/supervisor-router.js"
 import { createOperatorRouter } from "../modules/reporting/presentation/operator-router.js"
 import { createAuthRouter } from "../modules/auth/presentation/auth-router.js"
+import { createNetworkLoginAdminRouter } from "../modules/auth/presentation/network-login-admin-router.js"
 import { createMyProfileRouter, createProfileImageRouter } from "../modules/profile-preferences/presentation/profile-preferences-router.js"
 import { createMyViewLayoutRouter } from "../modules/profile-preferences/presentation/view-layout-router.js"
 import { COMMUNICATION_BODY_LIMIT } from "../modules/communications/domain/communication.js"
@@ -89,7 +90,7 @@ import { createClientErrorsRouter } from "../modules/error-diagnostics/presentat
 import { DataRunError } from "../modules/data-hub/domain/error-codes.js"
 import { createResponseCompression } from "../shared/presentation/compression.js"
 import { createOriginGuard } from "../shared/presentation/origin-guard.js"
-import { accountKey, clientIpAndEmailKey, clientIpKey, createRateLimiter, sessionCookieKey, type RateLimitRule } from "../shared/presentation/rate-limit.js"
+import { accountKey, clientIpAndLoginKey, clientIpKey, createRateLimiter, isNetworkLoginRequest, sessionCookieKey, type RateLimitRule } from "../shared/presentation/rate-limit.js"
 import { createMemoryRateLimitStore, type RateLimitStore } from "../shared/application/rate-limit/rate-limit-store.js"
 import { createReadiness, type Readiness } from "./readiness.js"
 import { isInternalRequest, type RuntimeMetrics } from "./runtime-metrics.js"
@@ -307,7 +308,8 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   const onlyMethods = (methods: readonly string[], handler: express.RequestHandler): express.RequestHandler => (request, response, next) =>
     methods.includes(request.method) ? handler(request, response, next) : next()
   // Login: por IP + e-mail (cada pessoa com o seu contador, mesmo atrás de um NAT) e um teto de RECUSAS por IP.
-  app.post("/api/v1/auth/login", limit({ name: "login-ip-email", windowMs: 5 * 60_000, max: "loginPerIpAndEmail", key: clientIpAndEmailKey, message: "Muitas tentativas de acesso com este e-mail. Aguarde alguns minutos e tente novamente." }))
+  // O nome da regra continua "login-ip-email" (balde já gravado); a chave é o e-mail OU a matrícula normalizada (SLR-02).
+  app.post("/api/v1/auth/login", limit({ name: "login-ip-email", windowMs: 5 * 60_000, max: "loginPerIpAndEmail", key: clientIpAndLoginKey, message: (request) => (isNetworkLoginRequest(request) ? "Muitas tentativas de acesso com esta matrícula. Aguarde alguns minutos antes de tentar de novo — insistir pode bloquear a sua conta de rede." : "Muitas tentativas de acesso com este e-mail. Aguarde alguns minutos e tente novamente.") }))
   app.post("/api/v1/auth/login", limit({ name: "login-ip-failures", windowMs: 5 * 60_000, max: "loginPerIp", key: clientIpKey, countOnlyFailures: true, message: "Muitas tentativas de acesso recusadas deste endereço. Aguarde alguns minutos e tente novamente." }))
   app.post("/api/v1/auth/password", limit({ name: "first-password-ip", windowMs: 15 * 60_000, max: "firstPasswordPerIp", key: clientIpKey, countOnlyFailures: true }))
   app.post("/api/v1/auth/password", limit({ name: "first-password-session", windowMs: 15 * 60_000, max: "firstPasswordPerSession", key: sessionCookieKey(SESSION_COOKIE_NAME) }))
@@ -418,6 +420,8 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/supervision-cases", requireAuth, createCaseRouter(new PgCaseRepository(database), (request) => loadCaseVisibility(database, request.user!), (organizationId, caseId) => loadCaseAgentRecords(database, organizationId, caseId)))
   app.use("/api/v1/feedbacks", requireAuth, createFeedbackRouter(database))
   app.use("/api/v1/admin/access", requireAuth, createAccessRouter(database))
+  // Login pela rede (AD): situação, conferência dos servidores e o interruptor da organização (access.users.manage, organização inteira).
+  app.use("/api/v1/admin/network-login", createNetworkLoginAdminRouter(database))
   app.use("/api/v1/admin/knowledge", can("knowledge.manage"), previews, createKnowledgeRouter(database, options.knowledgeInlineProcessing === undefined ? {} : { inlineProcessing: options.knowledgeInlineProcessing }))
   // Checkpoint Registry — checkpoints derivados da Base de Conhecimento (carregam o literal da base). LER também exige a
   // organização inteira: a rota de Bases só mostra uma base a quem alcança o Grupo dela (SEC-03) e a tela "Checkpoints da

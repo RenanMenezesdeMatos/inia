@@ -1,7 +1,7 @@
-# Liberação de IA na Vivo — o que falta fazer (19/10/2026, situação em 20/10/2026)
+# Liberação de IA no cliente — o que falta fazer (19/10/2026, situação em 20/10/2026)
 
 Pedido de liberação de API/SDK de IA vinculado ao **ID 73 INIA - Supervisor Virtual**. O e-mail de orientação lista quatro
-etapas: aprovação do CDG (BP), DAS, Segurança Digital e análise de LGPD (Vivo Privacy). Este documento junta onde está cada
+etapas: aprovação do CDG (BP), DAS, Segurança Digital e análise de LGPD (a área de privacidade do cliente). Este documento junta onde está cada
 material, o que precisa ser implementado na INIA, os documentos a produzir e as decisões que dependem de outras áreas.
 
 Tamanhos são estimativas: **P** até meio dia · **M** 1 a 2 dias · **G** 3 dias ou mais. Os códigos R-xx são os riscos de
@@ -9,7 +9,7 @@ Tamanhos são estimativas: **P** até meio dia · **M** 1 a 2 dias · **G** 3 di
 
 ## Situação em 20/10/2026
 
-Tudo o que não dependia da Vivo foi implementado (sem commit até a data). Detalhes de configuração e atualização em
+Tudo o que não dependia do cliente foi implementado (sem commit até a data). Detalhes de configuração e atualização em
 [configuracao-segura.md §11](../security/configuracao-segura.md); migrations 149–152.
 
 | Item | Situação |
@@ -28,9 +28,9 @@ Tudo o que não dependia da Vivo foi implementado (sem commit até a data). Deta
 | B12 R-33 | Feito: `__Host-inia_session`, HKDF, "Sair de todos os aparelhos" |
 | B13 Voz | **Adiado**: só se a voz entrar no POC; precisa de uma sessão paga para confirmar como o Live informa o uso e de teto por sessão (R-36) |
 | B14 `CHAMADAS - *.rtf` | Indícios fortes de material simulado: os 26 CPFs têm dígito verificador inválido e terminam em `-00`, os protocolos seguem a data (`2026091001…`). Telefones e e-mails (alguns `@gmail.com`) parecem plausíveis. Já ficam fora do snapshot do GitHub. **Falta só quem escreveu confirmar** |
-| B15–B20 | Aguardam a Vivo (ver §5) |
+| B15–B20 | Aguardam o cliente (ver §5) |
 | B21 OpenAPI | Feito: "Baixar OpenAPI" na fonte API Push, gerado dos feeds e contratos |
-| Plano de incidentes | Rascunho em [plano-de-resposta-a-incidentes.md](../security/plano-de-resposta-a-incidentes.md); faltam os contatos da Vivo |
+| Plano de incidentes | Rascunho em [plano-de-resposta-a-incidentes.md](../security/plano-de-resposta-a-incidentes.md); faltam os contatos do cliente |
 | Banco como ponto único de falha | Provado com Docker que a INIA aguenta o banco parado/congelado e volta sozinha; alta disponibilidade é infraestrutura (R-34) |
 
 ## 1. Onde está cada material
@@ -40,9 +40,9 @@ Tudo o que não dependia da Vivo foi implementado (sem commit até a data). Deta
 | Glossário de segurança (81 termos, situação de cada um na INIA) | https://claude.ai/artifact/EoJwV43vjqnrLMegXAEjyc (privado; compartilhar pelo menu da página) | Pronto para consulta |
 | Modelo do BP enviado pelo CDG | `~/Downloads/Modelo BP IA.xlsx` | Original, intacto |
 | Rascunho do BP | `~/Downloads/BP INIA - rascunho.xlsx` | Textos e fórmulas prontos; faltam os números da operação (células amarelas da aba "Racional (descrição)", linha 58 em diante) |
-| Script que gera o rascunho a partir do modelo | [tools/bp-vivo/preencher_bp.py](../../tools/bp-vivo/preencher_bp.py) | `python3 tools/bp-vivo/preencher_bp.py "<modelo>.xlsx" "<saida>.xlsx"` (só biblioteca padrão). Edita o XML direto: abrir e salvar com openpyxl apaga o fluxograma da aba "Fluxo de Aprovação" e as listas de opções |
-| Base para o DAS | [docs/security/mapa-de-superficies.md](../security/mapa-de-superficies.md), [docs/architecture/](../architecture/), ITs em `docs/manuais/` | Existe; falta montar no formato da Vivo |
-| Base para o checklist de Segurança | [docs/security/](../security/README.md) (duas auditorias, configuração segura, riscos residuais) | Existe; o "Checklist de Projetos" da Vivo ainda não foi recebido |
+| Script que gera o rascunho a partir do modelo | [tools/bp-cliente/preencher_bp.py](../../tools/bp-cliente/preencher_bp.py) | `python3 tools/bp-cliente/preencher_bp.py "<modelo>.xlsx" "<saida>.xlsx"` (só biblioteca padrão). Edita o XML direto: abrir e salvar com openpyxl apaga o fluxograma da aba "Fluxo de Aprovação" e as listas de opções |
+| Base para o DAS | [docs/security/mapa-de-superficies.md](../security/mapa-de-superficies.md), [docs/architecture/](../architecture/), ITs em `docs/manuais/` | Existe; falta montar no formato do cliente |
+| Base para o checklist de Segurança | [docs/security/](../security/README.md) (duas auditorias, configuração segura, riscos residuais) | Existe; o "Checklist de Projetos" do cliente ainda não foi recebido |
 
 ## 2. As quatro etapas do e-mail
 
@@ -52,7 +52,7 @@ Tudo o que não dependia da Vivo foi implementado (sem commit até a data). Deta
 2. **DAS (Documento de Arquitetura de Soluções)**: abrir Jira de alocação de arquiteto. Pré-requisitos: SPTI preenchida,
    aprovação financeira do LAB IA e projeto aberto no Jira. Aceita DAS aprovado ou dispensa de DAS.
 3. **Segurança Digital**: chamado no service project de Arquitetura de Segurança, com o "Checklist de Projetos" + SPTI + DAS.
-4. **LGPD (Vivo Privacy)**: obrigatório para a INIA (transcrições com CPF/telefone/protocolo de clientes; desempenho e
+4. **LGPD (a área de privacidade do cliente)**: obrigatório para a INIA (transcrições com CPF/telefone/protocolo de clientes; desempenho e
    afastamentos de colaboradores — tipo de afastamento pode revelar saúde, dado sensível). Sinalizar na SPTI.
 
 ## 3. Implementação na INIA
@@ -83,7 +83,7 @@ Tudo o que não dependia da Vivo foi implementado (sem commit até a data). Deta
 - Onde: repositório do GitHub (Dependabot + secret scanning) ou um script no `npm run` de verificação.
 - Pronto quando: alerta automático de dependência vulnerável e de segredo commitado.
 
-### Prioridade 2 — LGPD (o Vivo Privacy vai cobrar)
+### Prioridade 2 — LGPD (a área de privacidade do cliente vai cobrar)
 
 **B5. Máscara de dados pessoais na transcrição do próprio operador analisado** (R-31) — M
 - Hoje só as transcrições dos colegas vão mascaradas para a IA (`investigation/domain/peer-privacy-projection.ts`,
@@ -139,7 +139,7 @@ Tudo o que não dependia da Vivo foi implementado (sem commit até a data). Deta
 - Têm nomes de operadores e trechos com CPF/protocolo. Confirmar se são simulados; se algum for real, tirar do repositório e
   do próximo snapshot do GitHub.
 
-### Prioridade 4 — dependem de decisão ou informação da Vivo
+### Prioridade 4 — dependem de decisão ou informação do cliente
 
 **B15. SSO com o Entra ID (OIDC) e MFA pelo provedor de identidade** — G
 - Depende de: a Segurança confirmar se é exigência já no POC; dados do Entra ID (tenant, aplicativo, endereço de retorno,
@@ -148,7 +148,7 @@ Tudo o que não dependia da Vivo foi implementado (sem commit até a data). Deta
   reautenticação no Entra ID; liberação de acesso com senha temporária e primeiro login deixam de valer para quem entra por
   SSO; decidir se login próprio continua (ex.: administrador de contingência).
 
-**B16. Segredos vindos do cofre da Vivo** — M
+**B16. Segredos vindos do cofre do cliente** — M
 - Depende de saber qual cofre (Azure Key Vault, CyberArk, HashiCorp Vault). Primeiro candidato: `DATA_HUB_SECRET_KEY`.
 
 **B17. Provedor/SDK de IA liberado pelo LAB IA** — M a G
@@ -177,9 +177,9 @@ Tudo o que não dependia da Vivo foi implementado (sem commit até a data). Deta
 | Inventário de dados pessoais | SPTI, LGPD, RIPD | O que é coletado, de onde vem, para quê, onde fica, por quanto tempo, quem acessa, se vai para o provedor de IA |
 | DAS | Arquitetura | Base em `docs/security/mapa-de-superficies.md` e nas ITs |
 | Checklist de Projetos | Segurança Digital | Conferir linha a linha contra o glossário quando chegar |
-| Plano de resposta a incidentes | SOC e Privacy | Rascunho da parte da INIA em `docs/security/plano-de-resposta-a-incidentes.md`; faltam contatos e prazos internos da Vivo |
+| Plano de resposta a incidentes | SOC e Privacy | Rascunho da parte da INIA em `docs/security/plano-de-resposta-a-incidentes.md`; faltam contatos e prazos internos do cliente |
 | RPO, RTO e SLA | Negócio | Hoje, com backup diário, RPO prático de até 24 h; `npm run db:restore-check` mede o tempo de volta do banco (parte do RTO) |
-| Classificação da informação | Política da Vivo | Sugestão: transcrições e afastamentos restritos; indicadores, feedbacks e conversas confidenciais |
+| Classificação da informação | Política do cliente | Sugestão: transcrições e afastamentos restritos; indicadores, feedbacks e conversas confidenciais |
 | Manuais desatualizados | Instalação | R-11 (IT-INIA-002, 003, 004, 007, 008, 010) |
 
 ## 5. Decisões pendentes
@@ -190,8 +190,8 @@ Tudo o que não dependia da Vivo foi implementado (sem commit até a data). Deta
 | Provedor/SDK de IA e se a voz entra no POC | LAB IA | B13, B17, custo do BP |
 | Período do BP: meses de 2026 do modelo ou 12 meses a partir da entrada em produção (em 19/10 ficou 2026, aguardando o CDG; jan–set estão ocultos na aba Racional) | CDG | Valor do ganho |
 | Ganho orçamentário × gerencial | CDG | Classificação do BP |
-| Prazos de retenção | Vivo Privacy | B9 |
-| Eliminar × anonimizar nos pedidos do titular | Vivo Privacy | B8 |
+| Prazos de retenção | a área de privacidade do cliente | B9 |
+| Eliminar × anonimizar nos pedidos do titular | a área de privacidade do cliente | B8 |
 | Opção (a), (b) ou (c) da conta-fantoche | Produto | B19 |
 | Container exigido | Arquitetura | B18 |
 | Qual cofre de senhas | Segurança / Infra | B16 |
@@ -202,4 +202,4 @@ Tudo o que não dependia da Vivo foi implementado (sem commit até a data). Deta
 2. B2, B5, B6 e B7 — respondem às perguntas mais prováveis da Segurança e do Privacy.
 3. B10, B11, B12 e B14.
 4. B8, assim que o Privacy disser eliminar × anonimizar.
-5. B15–B21 conforme as respostas da Vivo chegarem.
+5. B15–B21 conforme as respostas do cliente chegarem.

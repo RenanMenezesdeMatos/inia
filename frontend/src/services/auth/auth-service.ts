@@ -1,6 +1,8 @@
 import {
   currentUserSchema,
   loggedInUserSchema,
+  loginOptionsSchema,
+  type LoginOptions,
   type CurrentUser,
   type LoggedInUser,
   type LoginInput,
@@ -17,11 +19,16 @@ export class InvalidCredentialsError extends Error {
   }
 }
 
-/** Recusa de login com o código do backend (trava de tentativas, acesso desabilitado, senha temporária vencida). */
+/** Recusas com mensagem própria do backend (login por e-mail e login pela rede). */
+const LOGIN_REFUSAL_CODES = ["LOGIN_TOO_MANY_ATTEMPTS", "ACCESS_DISABLED", "TEMPORARY_PASSWORD_EXPIRED", "NETWORK_LOGIN_REQUIRED", "NETWORK_PASSWORD_EXPIRED", "NETWORK_ACCOUNT_LOCKED", "NETWORK_ACCOUNT_DISABLED", "NETWORK_LOGIN_UNAVAILABLE"] as const
+export type LoginRefusalCode = (typeof LOGIN_REFUSAL_CODES)[number]
+const isRefusalCode = (code: string | undefined): code is LoginRefusalCode => (LOGIN_REFUSAL_CODES as readonly string[]).includes(code ?? "")
+
+/** Recusa de login com o código do backend (trava de tentativas, acesso desabilitado, senha temporária vencida, conta de rede). */
 export class LoginRefusedError extends Error {
   constructor(
     message: string,
-    readonly code: "LOGIN_TOO_MANY_ATTEMPTS" | "ACCESS_DISABLED" | "TEMPORARY_PASSWORD_EXPIRED",
+    readonly code: LoginRefusalCode,
     readonly retryAt: Date | null = null,
   ) {
     super(message)
@@ -38,10 +45,41 @@ const readError = async (response: Response): Promise<ErrorPayload["error"]> => 
   }
 }
 
+const minutesUntil = (retryAt: Date, now: Date) => Math.max(1, Math.ceil((retryAt.getTime() - now.getTime()) / 60_000))
+const minutesText = (minutes: number) => `${minutes} ${minutes === 1 ? "minuto" : "minutos"}`
+
 /** "Tente novamente em N minutos" a partir do horário que o backend devolve (nunca menos de 1 minuto). */
 export function retryMessage(retryAt: Date, now: Date = new Date()) {
-  const minutes = Math.max(1, Math.ceil((retryAt.getTime() - now.getTime()) / 60_000))
-  return `Muitas tentativas de acesso. Tente novamente em ${minutes} ${minutes === 1 ? "minuto" : "minutos"}.`
+  return `Muitas tentativas de acesso. Tente novamente em ${minutesText(minutesUntil(retryAt, now))}.`
+}
+
+/**
+ * Trava do login pela rede: a mensagem do backend (que avisa que insistir pode bloquear a conta de rede) + quando libera.
+ * Nunca a genérica (achado QA-04 da run-9).
+ */
+export function networkRetryMessage(backendMessage: string, retryAt: Date | null, now: Date = new Date()) {
+  return retryAt ? `${backendMessage} Libera em ${minutesText(minutesUntil(retryAt, now))}.` : backendMessage
+}
+
+/** Opções do login + se a leitura deu certo (`checked: false` = não foi possível conferir o tipo de login). */
+export type LoginOptionsResult = LoginOptions & { checked: boolean }
+
+/**
+ * Que login a tela mostra (lido no servidor do Next). Falha (API inalcançável, resposta fora do contrato) nunca cai em silêncio
+ * no e-mail (achado QA-02 da run-9): vai para o log do servidor e a tela avisa, oferecendo a matrícula de rede E o e-mail.
+ */
+export async function fetchLoginOptions(): Promise<LoginOptionsResult> {
+  try {
+    const response = await fetch(`${API_URL}/api/v1/auth/login-options`, { credentials: "include", cache: "no-store" })
+    if (!response.ok) {
+      console.error(JSON.stringify({ event: "login_options_unavailable", status: response.status, apiUrl: API_URL }))
+      return { networkLogin: false, checked: false }
+    }
+    return { ...loginOptionsSchema.parse(((await response.json()) as { data: unknown }).data), checked: true }
+  } catch (error) {
+    console.error(JSON.stringify({ event: "login_options_unavailable", apiUrl: API_URL, message: error instanceof Error ? error.message : String(error) }))
+    return { networkLogin: false, checked: false }
+  }
 }
 
 export async function login(input: LoginInput): Promise<LoggedInUser> {
@@ -55,10 +93,16 @@ export async function login(input: LoginInput): Promise<LoggedInUser> {
     const error = await readError(response)
     if (error?.code === "LOGIN_TOO_MANY_ATTEMPTS") {
       const retryAt = error.details?.retryAt ? new Date(error.details.retryAt) : null
+      if ("matricula" in input && error.message) throw new LoginRefusedError(networkRetryMessage(error.message, retryAt), "LOGIN_TOO_MANY_ATTEMPTS", retryAt)
       throw new LoginRefusedError(retryAt ? retryMessage(retryAt) : error.message ?? "Muitas tentativas de acesso.", "LOGIN_TOO_MANY_ATTEMPTS", retryAt)
     }
-    if (error?.code === "ACCESS_DISABLED" || error?.code === "TEMPORARY_PASSWORD_EXPIRED") throw new LoginRefusedError(error.message ?? "Não foi possível entrar.", error.code)
-    if (response.status === 401) throw new InvalidCredentialsError()
+    // Limite por IP + login (429 RATE_LIMITED): a mensagem do backend diz se foi a matrícula ou o e-mail.
+    if (error?.code === "RATE_LIMITED" && error.message) throw new Error(error.message)
+    if (isRefusalCode(error?.code)) throw new LoginRefusedError(error?.message ?? "Não foi possível entrar.", error!.code as LoginRefusalCode)
+    if (response.status === 401) {
+      if ("matricula" in input) throw new Error(error?.message ?? "Matrícula ou senha de rede inválidas.")
+      throw new InvalidCredentialsError()
+    }
     throw new Error("Não foi possível entrar. Tente novamente.")
   }
   const payload: unknown = await response.json()

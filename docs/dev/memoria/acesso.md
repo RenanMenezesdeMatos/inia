@@ -48,7 +48,7 @@ Regra: **quem gerou a credencial só tinha custódia do lugar em que a pessoa es
 
 ### Agentes inativos — permissão própria (2026-11-03, migration 164)
 
-Permissão nova `agents.inactive.manage`: listar, consultar, ver o histórico completo, as execuções e as versões, reativar e excluir agente inativo, conferida no servidor no alcance do agente. Hoje está em ADMINISTRADOR_GERAL e ADMINISTRADOR, que já tinham `agents.manage`; quais perfis da Vivo a recebem é a PEN-032 (aberta). Capacidade no `/auth/me`: `canManageInactiveAgents`. Os históricos contextuais (execução de Workflow, conversa e caso) seguem a permissão do contexto, nunca abrem o cadastro do inativo.
+Permissão nova `agents.inactive.manage`: listar, consultar, ver o histórico completo, as execuções e as versões, reativar e excluir agente inativo, conferida no servidor no alcance do agente. Hoje está em ADMINISTRADOR_GERAL e ADMINISTRADOR, que já tinham `agents.manage`; quais perfis do cliente a recebem é a PEN-032 (aberta). Capacidade no `/auth/me`: `canManageInactiveAgents`. Os históricos contextuais (execução de Workflow, conversa e caso) seguem a permissão do contexto, nunca abrem o cadastro do inativo.
 
 ### Administrador de dados (05/11/2026)
 
@@ -64,3 +64,59 @@ Papel `ADMINISTRADOR_DE_DADOS`: só `data_hub.manage`, só escopo `ORGANIZATION`
 - Indicadores, Flags de canal e Calendário operacional usam `configuration.manage` e ficam fora do papel. Sem a página de cima, o Calendário sobe para o primeiro nível do menu do `ADMINISTRADOR`.
 - Custódia: quem não pode conceder o papel novo não troca credencial de quem o tem (`checkCredentialCustody`).
 - Provas: `access-service.test.ts`, `admin-sidebar.test.tsx`, `INIA_DB_PROOF=1 npx vitest run access-proof`.
+
+### Login pela rede — AD da empresa por LDAPS (21/11/2026, migration 247)
+
+**Pedido:** a TI da empresa pediu que a INIA use o login oficial, com a matrícula e a senha de rede. O OTP fica para depois, porque ainda não se sabe qual serviço confere o código.
+
+**Testes na VM da empresa (todos só de leitura):**
+- A VM está no domínio e a porta 636 dos servidores do AD responde.
+- 16 servidores do AD respondem LDAPS. Todos têm certificado emitido pela autoridade interna da empresa, que o Windows já reconhece, e **todos usam chave RSA de 1024 bits**. O Node 24 recusa essa chave (`EE certificate key too weak`) e só aceita com `SECLEVEL=1`.
+- Política do domínio: a conta de rede bloqueia com **10 erros em 15 minutos** e **não desbloqueia sozinha**; só o suporte desbloqueia.
+- O bind com `matricula@<domínio>` e a senha certa funciona (UPN implícito), então a matrícula digitada já é a prova de identidade.
+- A VM não tem certificado da autoridade interna para o HTTPS. O modelo WebServer existe, mas a conta de serviço não tem permissão de inscrição, então o certificado oficial exige pedir um CSR à equipe de PKI.
+
+**Regras (código):**
+- **AD prova quem é, a INIA decide quem entra.** A matrícula, normalizada (maiúsculas, sem `DOMINIO\`, só `[A-Z0-9._-]`), encontra a pessoa por `upper(people.matricula)` numa organização com `network_login_enabled`. Se a matrícula aparecer em duas organizações ligadas, ninguém entra. A conta precisa estar habilitada e a pessoa, ativa.
+- **Portão único da matrícula** (`auth/application/authenticate-network.ts` → `verifyNetworkPasswordThroughGate`), usado pelo login e pela ciência:
+  - no máximo `NETWORK_LOGIN_MAX_FAILURES = 3` falhas **na mesma cadeia**, contadas **antes** do AD em `auth_login_attempts` com o identificador `matricula:<X>` (`networkLoginThrottle`, run-9 SLR-01). Cadeia = falhas em que cada uma está a ≤ 15 min da anterior e a última a ≤ 15 min de agora; com 3, trava até a última + 15 min; um sucesso zera. Imita o AD, que só zera o contador depois de 15 min sem nenhuma falha: com a janela fixa de antes, uma tentativa a cada 5 min nunca travava e bloqueava a conta de rede na 10ª. Lê as 50 falhas mais recentes das últimas 24 h. O login por e-mail continua com a janela fixa;
+  - o dispositivo conhecido tem um contador próprio, também de 3 falhas na mesma regra de cadeia;
+  - o limite por IP + login usa `ip|matricula:<normalizada>` no login pela matrícula (antes todas as matrículas de um mesmo IP — VDI, NAT — dividiam um limite só, run-9 SLR-02); o 429 fala em matrícula e avisa do bloqueio da conta de rede;
+  - matrícula sem conta na INIA **nunca chega ao AD**, para ninguém usar a INIA para bloquear a conta de rede de outra pessoa. A resposta tem duração mínima de 900 ms, para não revelar quem tem conta.
+- **Recusa nunca tenta o próximo servidor**, porque contaria duas falhas no AD. Só a falta de resposta passa ao próximo da lista `AD_LDAP_URLS`.
+- **Códigos do AD** (`classifyInvalidCredentials`):
+  - 52e/525 = senha recusada;
+  - 532/773 = senha vencida;
+  - 775 = conta bloqueada (conta como falha);
+  - 530/531/533/701 = conta desativada ou restrita.
+  - AD fora do ar = `NETWORK_LOGIN_UNAVAILABLE` 503. Se a senha NEM saiu (erro de conexão/TLS, "Connection timeout"), a tentativa não conta como falha e o servidor seguinte é tentado. Se a senha SAIU e a resposta não veio (tempo limite do bind, conexão caída no meio, erro desconhecido — `passwordMayHaveBeenSent`), conta como falha na trava e nenhum outro servidor é tentado (22/11): o AD pode ter contado a senha errada, e sem isso o AD lento deixava as tentativas passarem sem limite e em dobro.
+- **TLS** (`directoryTlsOptions`): `rejectUnauthorized` sempre ligado, TLS 1.2 no mínimo, raiz em `AD_CA_FILE` e `servername` = host. `AD_TLS_ALLOW_WEAK_KEY=true` muda só os ciphers para `DEFAULT@SECLEVEL=1`, e **só nesta conexão**. É um risco aceito enquanto o AD usar chave de 1024 bits (os certificados vencem entre abril e outubro de 2027).
+- **Senha vazia nunca vai ao bind**, porque o bind anônimo responde sucesso.
+- **E-mail e senha com o login pela rede ligado** valem só com `user_accounts.emergency_local_access`. Para as outras contas, a senha certa devolve `NETWORK_LOGIN_REQUIRED` 403, revelado só depois de a senha conferir. Cada entrada de emergência gera `audit_logs` `ACCESS_EMERGENCY_LOCAL_LOGIN` e um alerta HIGH para quem tem `access.users.manage` na organização inteira.
+- **Contas de emergência:** o primeiro administrador da instalação (por backfill via `installation_info.first_admin_account_id`) e todo administrador criado por `createAdministrator` (setup e `admin:create`). Não há tela para marcar outras contas; isso é de propósito.
+- **Primeiro login pela rede de quem tinha senha temporária pendente:** a senha temporária é aposentada (vira um hash aleatório, sem a troca obrigatória), para não virar senha permanente se o login pela rede for desligado. Depois de desligar, a pessoa precisa de uma nova senha temporária.
+- **Ciência:** se a conta usa a rede (`credentialMode` do `/auth/me` = `NETWORK`), a matrícula digitada precisa ser a da própria pessoa **antes** de qualquer chamada ao AD. Depois a senha passa pelo mesmo portão do login. A chamada ao AD fica **fora de transação** (run-9 SLR-05/DADOS-02): transação curta (trava da conta, contador, conferências) → portão + AD sem conexão do pool presa → transação curta que confere que nada mudou (ainda pela rede, conta habilitada, mesma matrícula; senão 409 `READ_CONFIRMATION_ACCOUNT_CHANGED`) e grava. A janela não mostra "restam N tentativas" no modo rede (a matrícula trava em 3, somando o login); mostra a mensagem do backend. Senha de rede errada que cai na trava grava o evento FAILED.
+- **Interruptor** em Usuários e acessos › Login pela rede (`/api/v1/admin/network-login`, `access.users.manage` na organização inteira):
+  - mostra a situação, os servidores e as contas de emergência;
+  - "Conferir servidores" faz só TLS, sem senha, e mostra se o servidor responde, a cadeia, os bits da chave e o vencimento.
+  - Ligar exige: AD configurado, HTTPS em produção, ao menos uma conta de emergência habilitada e **nenhuma matrícula repetida** por maiúscula/espaço (`ambiguousMatriculas` na situação; 409 `NETWORK_LOGIN_AMBIGUOUS_MATRICULA` — a matrícula repetida faria a pessoa nunca entrar). Índice `idx_people_network_login` (248), não único de propósito.
+  - Regras em `auth/application/network-login-settings.ts`, SQL em `auth/infrastructure/postgres-network-login-repository.ts` (o router só monta).
+  - A mudança é auditada em `ACCESS_NETWORK_LOGIN_CHANGED`.
+- **Tela de login:** `GET /auth/login-options` → `networkLogin`. Com ele ligado, a tela pede a matrícula e a senha de rede, sem "Esqueci minha senha", e oferece "Entrar com e-mail (administrador)". Se o servidor do Next não conseguir ler as opções, registra `login_options_unavailable`, mostra um aviso, começa no e-mail e oferece "Entrar com a matrícula de rede" (nunca cai em silêncio só no e-mail).
+- **Riscos aceitos (run-9, ver `docs/security/relatorio-de-achados.md` § "Décima segunda rodada"):** quem tem conta pode ser notado pela resposta do AD fora do ar/lento ou "conta de rede bloqueada" (SLR-03; a alternativa — mandar ao AD matrícula sem conta — deixaria a INIA bloquear contas de rede de terceiros); servidor que cai depois de receber a senha passa ao próximo sem contar na trava (SLR-04); a marca de emergência não tem tela e tentativas erradas contra ela não avisam (SLR-07); o HTTPS só é conferido ao ligar e `SECLEVEL=1` (SLR-08, em R-50); ligar não encerra as sessões abertas com senha local (SLR-09).
+- **Sem FK** em `organizations.network_login_changed_by`: a instalação esvazia `people` e mantém `organizations` (a prova da instalação quebrava).
+
+**Configuração na VM** (`backend/.env`, só da INIA; os nomes reais dos servidores ficam fora do repositório):
+- `AD_LDAP_URLS=ldaps://<servidor-1>:636,ldaps://<servidor-2>:636,ldaps://<servidor-3>:636`
+- `AD_DOMAIN=<domínio>`
+- `AD_CA_FILE=<pasta>\certificados\<raiz>.pem`, a raiz exportada do Windows (`Cert:\LocalMachine\Root`)
+- `AD_TLS_ALLOW_WEAK_KEY=true`
+
+Depois de reiniciar só os serviços da INIA, confira os servidores na tela e só então ligue.
+
+**Pendente:**
+- OTP: falta saber qual serviço da empresa envia e confere o código.
+- Certificado oficial para o HTTPS, pelo CSR à PKI. Até lá, o navegador mostra "Não seguro".
+- Liberação de acesso: com o login pela rede ligado, a tela ainda gera uma senha temporária, que não serve para quem entra pela rede. Falta esconder isso e dizer "entra com a matrícula".
+- As matrículas da carga de pessoas precisam ser o login de rede: o mesmo formato do login de rede
+- Teste real na VM com a matrícula do usuário depois do deploy.

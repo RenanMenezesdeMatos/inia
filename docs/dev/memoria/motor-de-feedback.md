@@ -244,7 +244,7 @@ restrita ou abstenção com motivo — nunca espera humana (exceto nó explícit
   - **Composição V9 / prompt V13 / verificação V11** (`REFERENCE_PRACTICES_V1`): práticas como fatos agregados P-n (quantos colegas
     contribuíram, nunca o tamanho do grupo; `you` null nunca vira falta), P-n só em CONTEXT/GUIDANCE/VALUE; prática que orienta sem uso
     = lacuna de utilidade (reescrita, não bloqueia); `STRENGTH_WITH_GOOD_RESULT_V1` (conduta consistente reconhecível com resultado bom).
-  - **Análise prompt V9**: pergunta 2 inclui regras acionadas por SITUAÇÕES — insuficiente na C07 (Jeito Vivo §19 continua fora;
+  - **Análise prompt V9**: pergunta 2 inclui regras acionadas por SITUAÇÕES — insuficiente na C07 (Jeito Telnova §19 continua fora;
     próximo passo estrutural em `round-v13-decisions.md`).
   - **Rodada V13** (`evaluate-round-v13.ts`, critérios `round-v13-criteria.md`, decisões `round-v13-decisions.md`, avaliação
     `round-v13-evaluation.md`; 15 req, US$ 0,258). Nunca repetir. A: C07 publicável e correta, §19 ausente. C: 8 consultas com
@@ -606,3 +606,77 @@ Pedido do usuário depois do TMA da Larissa: "devem ser considerados sempre os p
 ### Prova do motor com a conferência das respostas (2026-11-04)
 
 A análise e o redator não recebem as regras. A mensagem pronta é conferida (PEN-018), hoje só em detecção: `INIA_RESPONSE_CHECK_FEEDBACK=ENFORCE` liga a abstenção e depende de autorização (PEN-079). O cenário I de `feedback-engine-workflow-proof` esperava ao menos uma chamada em `INVESTIGATION_PLANNING` e recebia nenhuma, igual com `INIA_RESPONSE_CHECK=OFF`, então não vinha da PEN-017. A causa era da própria prova, não do motor: ela mudava `investigation_capabilities` por SQL, e isso não chega à versão publicada que o Workflow executa (PEN-002). Agora ela publica a mudança pelas mesmas funções da tela e fecha 16 de 16. Os outros 8 cenários que falhavam vinham de agentes criados por SQL sem versão publicada, e a prova passou a publicá-los.
+
+### Todas as análises num feedback e as 3 falhas mais graves no texto (2026-11-21, `NARRATIVE_TOP_FAILURES_V1` + `MULTI_SPECIALIST_MERGE_V1`, composição V37)
+
+Decisão do responsável em 21/11/2026. Substitui a regra da V1.7.1a ("todo erro confiável vai para o texto, sem teto").
+
+- **Mescla (`MULTI_SPECIALIST_MERGE_V1`):** com um Orquestrador como origem, o "Gerar feedback" lê a análise de CADA especialista acionado (`callAnalysisRefsOf`) e junta os briefs (`mergeMonitoringBriefs`). Antes, usava só a do primeiro; as outras eram pagas e só iam para o Diagnóstico. O mesmo fato visto por dois especialistas (mesma chave de critério) entra uma vez. Os reconhecimentos juntos respeitam o mesmo limite de um brief; os pontos em aberto são renumerados.
+- **Teto do texto (`NARRATIVE_TOP_FAILURES_V1`):** vale para TODA monitoria, com um especialista ou com vários. O texto fala das no máximo 3 falhas mais graves (`limitNarrativeFailures`), nesta ordem:
+  1. caminho do atendimento errado;
+  2. materialidade alta antes de média;
+  3. reincidência (já orientado e repetido, ou não cumprido em outras chamadas);
+  4. primeiro turno citado;
+  5. ordem do brief.
+- **As demais falhas:** vão para `additionalDevelopments`.
+  - Nunca vão ao redator nem ao verificador; os prompts não mudaram.
+  - Aparecem todas nos cards de "Entenda este feedback", com o mesmo card de sempre (fala literal, ausência confirmada, regra literal e fraseologia oficial, nunca leitura do modelo), marcadas `beyondNarrative` e com o selo "Não detalhado no texto".
+  - Contam no resumo ("N pontos para ajustar") e sustentam os materiais.
+  - Contam como entregues, porque o colaborador as vê nos cards.
+  - O texto ganha um aviso do sistema no fim (`beyondNarrativeNoteOf`), apontando para "O que precisa ser ajustado".
+- **Registro:** o brief gravado na mensagem guarda as duas listas, e o nó de saída conta `findings.beyondNarrative`. Cada análise continua vigente em `call_assessments` (uma por procedimento), então o Diagnóstico da liderança mostra todas.
+- **Limites:**
+  - Só a análise do especialista principal é retomada quando está pendente pela correção antiga da revisão.
+  - "Ouvir com a INIA" fala e escreve a NARRATIVA (`application-presentation.ts`): fica mais curta (3 falhas mais o aviso). Todos os cards entram no registro da sessão (`historical-context.ts`), então a INIA responde sobre qualquer falha quando o colaborador pergunta.
+  - Não houve rodada paga: a lógica é toda de código e os prompts são os mesmos.
+- **A mesma prática vista por dois especialistas:** vira UM ponto (`samePracticeMerged`, pela identidade semântica `practiceKeys` que o motor já atribui, nunca por palavras), com as regras e as falas das duas bases. Dentro de um mesmo especialista, quem decide é a consolidação do brief.
+- **Provas:** `domain/narrative-selection.test.ts`, com o caso de 7 falhas de 3 especialistas e a mesma prática em duas bases, e o teste da tela em `frontend/src/components/feedbacks/feedback-narrative-view.test.tsx`.
+- **Validação paga de 21/11:** chamada DEMO-INT-0585-03 (cancelamento, retenção e fatura), com Retenção, Faturamento e Qualidade, em memória RAM e sem publicar.
+  - **Custo:** a 2ª rodada custou US$ 0,71 em 15 pedidos. A 1ª (US$ 0,57–0,70) foi perdida por um limite de tempo do roteiro.
+  - **Análises:** levaram 285, 322 e 440 s.
+  - **Resultado:** PUBLISHABLE. As 3 análises viraram um feedback, com 3 falhas no texto (todas de materialidade alta, pela ordem na chamada), 7 só nos cards e o aviso "Esta chamada teve mais 7 pontos…".
+  - **Defeito encontrado e corrigido:** a recapitulação aparecia 2× (mesma prática em Retenção e Qualidade). Refeita sem custo sobre o resultado pago: de 10 para 9 pontos.
+  - **Limite:** a "recapitulação obrigatória" da base de Faturamento recebeu outra prática do motor e continua como ponto próprio.
+  - **Conferência final (PEN-018):** não rodou por causa do teto da validação (2 pedidos bloqueados); em produção não há esse teto.
+
+### Tempo máximo de 30 min com posse curta e renovada (2026-11-21, `ENGINE_MAX_RUN_SECONDS` + `ENGINE_LEASE_V1`)
+
+Decisão do responsável em 21/11/2026: a execução do motor vai até 30 min, antes 15 min (`DEFAULT_ENGINE_BUDGET.maxDurationMs`).
+
+**Posse (`ENGINE_LEASE_V1`, `application/engine-lease.ts`):** a análise de chamada, a investigação de indicador e o "Gerar feedback" pegam uma posse CURTA (`ENGINE_LEASE_SECONDS` = 120 s), renovada a cada 40 s enquanto a execução está viva, até o tempo máximo.
+- **Processo que cai:** a renovação para e outra execução retoma em cerca de 2 min.
+- **Execução demorada:** segura a posse.
+- **Execução travada além de 30 min:** para de renovar e a posse vence.
+- **Renovação:** é um compare-and-swap pela posse gravada (`claimed_until` = token; `renewAnalysisLease`/`renewMessageLease` nos três stores). Quem perdeu a posse não renova, para e registra `feedback_engine_lease_lost`.
+- **Erro de banco num tique:** tenta de novo no próximo.
+- **Mesmo desenho da posse da matrícula no worker** (`workflows/application/engine.ts`).
+
+**Antes:** posses fixas de 5, 15 e 10 min, sem renovação. Na validação de 21/11, cada análise levou de 4 a 5 min (235 a 314 s), acima da posse de 5 min, e outra execução poderia pagar a mesma análise de novo. Uma posse fixa longa (30 min, primeira versão desta correção, 55c1e96a) atrasaria em 30 min a retomada de quem caiu.
+
+**Limites:** o pedido ao modelo não cresce com o número de bases (até `DOCUMENT_BUDGET_CHARS`, 90 mil caracteres, pela relevância), e os tempos de cada pedido (`gateway-engine-model.ts`, 240 s na análise) continuam os mesmos.
+
+**Provas:**
+- `application/engine-limits.test.ts`: relógio simulado — renova a cada 40 s, para no `stop`, posse perdida, erro de banco e travada além de 30 min; e o compare-and-swap no store em RAM.
+- O compare-and-swap pelo `timestamptz` foi conferido no Postgres real (token certo renova, token velho é recusado).
+
+### Chamada longa e lotes menores na organização das práticas (2026-11-21)
+
+- **Transcrição (`TRANSCRIPT_MAX_CHARS`, `analyze-call.ts`):** 80 mil caracteres, antes 40 mil.
+  - **Densidade:** na massa demo, 491 caracteres/min em média (p90: 663). Numa ligação real com as duas pessoas falando passa de 800, e 40 mil davam ~45–50 min. Uma chamada longa de 50 min perdia o FIM (recapitulação, protocolo, encerramento), e a análise marcava a transcrição como incompleta, sem poder apontar o que faltou.
+  - **Custo:** ~20 mil tokens no pior caso, cerca de US$ 0,015 a mais por análise. Quem já cabia em 40 mil não muda.
+  - **Acima do limite:** continua cortando o fim e marcando a transcrição como incompleta.
+- **Lotes da organização das práticas:** `PRACTICE_LINES_PER_REQUEST` caiu de 40 para 20 regras e `PRACTICES_PER_THEME_REQUEST` de 60 para 30 práticas.
+  - **Motivo:** na validação paga, o lote de 40 regras saiu com 32.754 dos 32.768 tokens de saída (com o raciocínio), em 238 s dos 240 s. A resposta cortada deixa regras sem prática: títulos crus nos cards e a mesma conduta de dois especialistas sem juntar.
+  - **Contrato:** os prompts não mudaram.
+- **Organizar as práticas na publicação: medido e NÃO feito (21/11, aguardando decisão do responsável).**
+  - **Tamanho:** nas 59 bases do dev ligadas a especialistas há 8.941 linhas, e só 946 já têm prática (as que alguma análise cobrou). Organizar tudo seriam cerca de 400 pedidos (~US$ 20) no dev e ~7.500 pedidos (centenas de dólares) com 1.000 bases, e cerca de 90% dessas regras nunca seriam cobradas.
+  - **Regra mantida:** a prática nasce na primeira avaliação da regra (`practiceLinesOf`).
+- **Provas:** `application/engine-limits.test.ts`, com uma ligação de ~50 mil caracteres inteira, o corte acima do limite e os lotes.
+
+### Posse pelo relógio do banco e junção V2 (22/11/2026, auditoria run-9)
+
+- **`ENGINE_LEASE_V1` pelo relógio do banco (SFW-01):** claim e renovação gravam `date_trunc('milliseconds', now()) + prazo` e retomam com `claimed_until < now()` no SQL (`postgres-feedback-memory-store.ts`); o relógio do processo só mede o teto de 30 min. A memória em RAM usa o relógio injetado (`createInMemoryFeedbackMemoryStore({ now })`). A renovação passa só o token (`renew*Lease(org, id, token, leaseSeconds)`).
+- **Quem perdeu a posse para (SFW-02/ARQ-05):** o claim devolve `attempt` (= `attempts`); concluir, suspender e falhar com `LeaseOwner` só gravam se a linha ainda for `RUNNING` nessa tentativa (0 linhas = nada gravado, `feedback_engine_lease_lost_on_complete` no log, `EngineLeaseLostError`). Toda porta de modelo da execução passa por `lease.guard` (recusa a chamada depois da perda) e há `assertHeld()` antes de gravar e da conferência PEN-018. A dona converte a perda no "em andamento" já existente (`FEEDBACK_ANALYSIS_IN_PROGRESS`, `FEEDBACK_INVESTIGATION_IN_PROGRESS`, `FEEDBACK_ENGINE_IN_PROGRESS`); o Workflow tenta de novo e reaproveita o que a outra concluiu.
+- **Junção `MULTI_SPECIALIST_MERGE_V2` (SFW-03, `COMPOSITION_VERSION` V38):** a mesma conduta como ajuste e reconhecimento de especialistas diferentes fica só como ajuste (conflito em `brief.mergeConflicts`, nunca ao redator); achado com chave parcialmente repetida é juntado ao dono com todas as chaves (inclusive das etapas) em `memberFindingKeys`.
+- **Provas:** `engine-limits.test.ts`, `infrastructure/postgres-engine-lease.test.ts` (SQL e parâmetros), `narrative-selection.test.ts`; SQL conferido contra `inia_test` numa transação desfeita (22/11). A prova `feedback-engine-workflow-proof` não rodou: o banco de teste ainda não tem a migration 248.
+

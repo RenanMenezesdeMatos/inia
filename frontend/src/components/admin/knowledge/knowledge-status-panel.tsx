@@ -66,6 +66,17 @@ function InUseRow({ document }: { document: KnowledgeDocumentDetail }) {
   )
 }
 
+const thousands = (chars: number) => `${Math.round(chars / 1000).toLocaleString("pt-BR")} mil caracteres`
+
+/**
+ * Base maior do que a monitoria lê por chamada (`DOCUMENT_BUDGET_CHARS` do motor, vindo da API): quando ela é a mais relevante, entra
+ * sozinha e as outras bases do especialista ficam de fora daquela análise. Só aviso — nada é bloqueado.
+ */
+export function oversizedForMonitoring(content: string | null | undefined, limit: number | null | undefined): string | null {
+  if (!content || !limit || content.length <= limit) return null
+  return `Base grande para a monitoria: ${thousands(content.length)}, e a monitoria lê até ${thousands(limit)} de procedimentos por chamada, somando as bases do especialista. Quando esta base for a mais relevante, ela entra sozinha e as outras ficam de fora daquela análise. Se puder, divida em bases menores, uma por processo.`
+}
+
 const pagesLabel = (count: number) => `${count} ${count === 1 ? "página" : "páginas"}`
 
 /** A leitura das páginas digitalizadas do rascunho: andamento enquanto lê e o motivo quando não terminou. Pronta, o aviso fica na cobertura do texto. */
@@ -127,6 +138,7 @@ function DraftRow({ document, draft }: { document: KnowledgeDocumentDetail; draf
       {draft.ocr ? <OcrProgress ocr={draft.ocr} /> : null}
       {draft.textAvailable || reading ? null : <p className="font-medium text-amber-800 dark:text-amber-200">Sem texto: publicar assim falha no processamento. Edite o rascunho para digitar o texto ou trocar o arquivo.</p>}
       {draft.extraction?.ocr?.pages.length && !reading ? <p className="font-medium text-amber-800 dark:text-amber-200">Parte do texto veio do OCR: confira com o PDF antes de publicar, principalmente números, prazos e valores.</p> : null}
+      {draft.textAvailable && !reading && oversizedForMonitoring(draft.content, document.monitoringReadLimitChars) ? <p className="font-medium text-amber-800 dark:text-amber-200" data-testid="knowledge-size-warning">{oversizedForMonitoring(draft.content, document.monitoringReadLimitChars)}</p> : null}
       {onlyDraft ? <p>Esta base só tem o rascunho: para retirá-la, use Excluir.</p> : null}
     </Row>
   )
@@ -191,6 +203,11 @@ export function KnowledgeStatusPanel({ document }: { document: KnowledgeDocument
   return (
     <section aria-label="Situação da base" className="space-y-2">
       <InUseRow document={document} />
+      {oversizedForMonitoring(document.inUse?.content, document.monitoringReadLimitChars) ? (
+        <Row icon={<AlertTriangle className="text-amber-700 dark:text-amber-300" />} title="Versão em uso grande para a monitoria">
+          <p data-testid="knowledge-size-warning">{oversizedForMonitoring(document.inUse?.content, document.monitoringReadLimitChars)}</p>
+        </Row>
+      ) : null}
       {document.draft?.restricted ? <RestrictedDraftRow draft={document.draft} /> : document.draft ? <DraftRow document={document} draft={document.draft} /> : null}
       {document.updates.map((update) => (
         <UpdateRow key={update.id} document={document} update={update} />

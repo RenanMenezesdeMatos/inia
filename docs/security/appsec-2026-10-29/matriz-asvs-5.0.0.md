@@ -143,7 +143,7 @@ estão em `registro-de-testes.md` e `relatorio-tecnico.md`.
 | **V5.3.3** — Verify that server-side file processing, such as file decompression, ignores user-provided path information to prevent vulnerabilities such as zip … | L3 | não testado | Fora do recorte desta passada. |
 | **V5.4.1** — Verify that the application validates or ignores user-submitted filenames, including in a JSON, JSONP, or URL parameter and specifies a filename in… | L2 | não testado | Fora do recorte desta passada. |
 | **V5.4.2** — Verify that file names served (e.g., in HTTP response header fields or email attachments) are encoded or sanitized (e.g., following RFC 6266) to pr… | L2 | verificado | C: `Content-Disposition` com ids/datas validados (`DATE` regex no CSV de diagnóstico). |
-| **V5.4.3** — Verify that files obtained from untrusted sources are scanned by antivirus scanners to prevent serving of known malicious content. | L2 | falhou | C: sem antivírus nos uploads (bases de conhecimento, Central de Dados). Depende do ambiente da Vivo — recomendação. |
+| **V5.4.3** — Verify that files obtained from untrusted sources are scanned by antivirus scanners to prevent serving of known malicious content. | L2 | falhou | C: sem antivírus nos uploads (bases de conhecimento, Central de Dados). Depende do ambiente do cliente — recomendação. |
 
 ### V6 — Authentication
 
@@ -316,7 +316,7 @@ Capítulo inteiro **não aplicável** (36 requisitos): Sem OAuth/OIDC (autentica
 | **V13.2.4** — Verify that an allowlist is used to define the external resources or systems with which the application is permitted to communicate (e.g., for outb… | L2 | verificado | C+D: `INIA_OUTBOUND_MODE=ALLOWLIST` (usado na API isolada). |
 | **V13.2.5** — Verify that the web or application server is configured with an allowlist of resources or systems to which the server can send requests or load dat… | L2 | verificado | Idem. |
 | **V13.2.6** — Verify that where the application connects to separate services, it follows the documented configuration for each connection, such as maximum paral… | L3 | não testado | Fora do recorte desta passada. |
-| **V13.3.1** — Verify that a secrets management solution, such as a key vault, is used to securely create, store, control access to, and destroy backend secrets. … | L2 | falhou | C: segredos em `.env` + cifra de aplicação com `DATA_HUB_SECRET_KEY`; sem cofre (DPAPI/Key Vault). Recomendação para produção na Vivo. |
+| **V13.3.1** — Verify that a secrets management solution, such as a key vault, is used to securely create, store, control access to, and destroy backend secrets. … | L2 | falhou | C: segredos em `.env` + cifra de aplicação com `DATA_HUB_SECRET_KEY`; sem cofre (DPAPI/Key Vault). Recomendação para produção no cliente. |
 | **V13.3.2** — Verify that access to secret assets adheres to the principle of least privilege. | L2 | não testado | Fora do recorte desta passada. |
 | **V13.3.3** — Verify that all cryptographic operations are performed using an isolated security module (such as a vault or hardware security module) to securely … | L3 | não testado | Fora do recorte desta passada. |
 | **V13.3.4** — Verify that secrets are configured to expire and be rotated based on the application's documentation. | L3 | não testado | Fora do recorte desta passada. |

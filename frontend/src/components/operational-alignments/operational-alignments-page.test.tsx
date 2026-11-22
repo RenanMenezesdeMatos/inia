@@ -39,14 +39,14 @@ vi.mock("@/services/admin/product-catalog-service", () => ({ fetchProductNodes: 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const version = (overrides: Partial<AlignmentVersion> = {}): AlignmentVersion => ({
-  id: "v1", version: 1, reference: "AO-AAAAAAAA v1", status: "DRAFT", title: "Fatura pelo App Meu Vivo ou site", guidance: "Oriente o App Meu Vivo ou o site.",
+  id: "v1", version: 1, reference: "AO-AAAAAAAA v1", status: "DRAFT", title: "Fatura pelo App Meu Telnova ou site", guidance: "Oriente o App Meu Telnova ou o site.",
   processes: [{ id: "doc-1", title: "PR — Envio de fatura", documentType: "PROCEDURE" }], reason: { id: "r1", name: "Contingência" }, requestReasons: [{ id: "s1", name: "Fatura" }], affectedTopic: "Envio da fatura", justification: "Sistema de envio em substituição.", operatingUniverse: "B2C", scopeType: "GROUPS",
   links: [{ teamId: "t-ouv", teamName: "Ouvidoria", subteamId: null, subteamName: null }], product: null, startsOn: "2026-11-10", endsOn: "2026-11-30", timeZone: "America/Sao_Paulo", effectiveFrom: "2026-11-10T03:00:00.000Z", effectiveUntil: "2026-12-01T03:00:00.000Z",
   contentHash: "h", changeReason: null, createdBy: "Gerente Ouvidoria", createdAt: "2026-11-09T12:00:00.000Z", updatedBy: null, updatedAt: null, publishedBy: null, publishedAt: null, supersededAt: null, endedBy: null, endedAt: null, endReason: null, relations: [],
   ...overrides,
 })
 const listItem = (overrides: Partial<AlignmentListItem> = {}): AlignmentListItem => ({
-  id: "a1", reference: "AO-AAAAAAAA v1", version: 1, title: "Fatura pelo App Meu Vivo ou site", reasonName: "Contingência", state: "IN_FORCE", hasDraft: false, operatingUniverse: "B2C", scopeType: "GROUPS",
+  id: "a1", reference: "AO-AAAAAAAA v1", version: 1, title: "Fatura pelo App Meu Telnova ou site", reasonName: "Contingência", state: "IN_FORCE", hasDraft: false, operatingUniverse: "B2C", scopeType: "GROUPS",
   links: [{ teamId: "t-ouv", teamName: "Ouvidoria", subteamId: null, subteamName: null }], productName: null,
   startsOn: "2026-11-10", endsOn: "2026-11-30", affectedTopic: null, processCount: 5, processTitles: ["IT — Segunda via", "PR — Envio de fatura", "PR — Ouvidoria"], updatedAt: "2026-11-09T12:00:00.000Z",
   ...overrides,
@@ -64,7 +64,7 @@ describe("Alinhamentos operacionais — tela", () => {
   it("lista paginada no padrão da Administração: processos resumidos, público, vigência e situação", async () => {
     service.fetchAlignmentsPage.mockResolvedValue(page([listItem()]))
     renderWithQuery(<OperationalAlignmentsPage />)
-    expect(await screen.findByRole("button", { name: "Fatura pelo App Meu Vivo ou site" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: "Fatura pelo App Meu Telnova ou site" })).toBeInTheDocument()
     expect(screen.getByText("IT — Segunda via, PR — Envio de fatura, PR — Ouvidoria e mais 2")).toBeInTheDocument()
     expect(screen.getByText("Ouvidoria")).toBeInTheDocument()
     expect(screen.getByText("10/11/2026 a 30/11/2026")).toBeInTheDocument()
@@ -122,7 +122,7 @@ describe("Alinhamentos operacionais — tela", () => {
     const { AdminApiError } = await import("@/lib/admin/admin-api")
     service.publishAlignment.mockRejectedValue(new AdminApiError("Há alinhamento do MESMO ponto com o MESMO público no mesmo período.", "OPERATIONAL_ALIGNMENT_CONFLICT"))
     renderWithQuery(<OperationalAlignmentsPage />)
-    fireEvent.click(await screen.findByRole("button", { name: "Fatura pelo App Meu Vivo ou site" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Fatura pelo App Meu Telnova ou site" }))
     fireEvent.click(await screen.findByRole("button", { name: "Publicar" }))
     expect(await screen.findByText(/Fatura por SMS/)).toBeInTheDocument()
     expect(screen.getByText("Em comum: PR — Envio de fatura")).toBeInTheDocument()
@@ -140,7 +140,7 @@ describe("Alinhamentos operacionais — tela", () => {
     service.fetchAlignment.mockResolvedValue({ ...draftDetail, state: "IN_FORCE", hasDraft: false, draft: null, current: version({ status: "PUBLISHED" }), shown: version({ status: "PUBLISHED" }) })
     service.deleteAlignment.mockResolvedValue(undefined)
     renderWithQuery(<OperationalAlignmentsPage />)
-    fireEvent.click(await screen.findByRole("button", { name: "Fatura pelo App Meu Vivo ou site" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Fatura pelo App Meu Telnova ou site" }))
     fireEvent.click(await screen.findByRole("button", { name: "Excluir" }))
     const confirm = screen.getAllByRole("button", { name: "Excluir" }).at(-1)!
     expect(confirm).toBeDisabled()

@@ -320,9 +320,45 @@ export function ActionForm({
           {triggerDataOrigin(trigger) === "schedule" && !afterJoin ? (
             <ScheduledDataSourceForm
               source={config.scheduledDataSource}
-              // A fonte deixa de ser "Fechamentos oficiais": o diagnóstico do fechamento não se aplica mais.
-              onChange={(scheduledDataSource) => onChange({ ...node, config: { ...config, scheduledDataSource, ...(scheduledDataSource.kind !== "PERFORMANCE" && (config.outputContract === "PRV_CLOSING_DIAGNOSIS" || config.outputContract === "INDICATOR_DIAGNOSIS" || config.outputContract === "RECOGNITION") ? { outputContract: undefined } : {}) } })}
+              singleCall={config.outputContract === "PROCESS_ASSESSMENT"}
+              onChange={(scheduledDataSource) => {
+                // A fonte deixa de ser "Fechamentos oficiais": o diagnóstico do fechamento não se aplica mais.
+                const performanceContract = config.outputContract === "PRV_CLOSING_DIAGNOSIS" || config.outputContract === "INDICATOR_DIAGNOSIS" || config.outputContract === "RECOGNITION"
+                if (scheduledDataSource.kind === "MONITORING") {
+                  // Amostra de chamadas nasce como monitoria aleatória pelo motor (uma chamada por execução); o formato antigo continua escolhível.
+                  const randomMonitoring = config.scheduledDataSource?.kind === "MONITORING" ? config.outputContract === "PROCESS_ASSESSMENT" : true
+                  onChange({ ...node, config: { ...config, outputContract: randomMonitoring ? "PROCESS_ASSESSMENT" : undefined, scheduledDataSource: randomMonitoring ? { ...scheduledDataSource, sampleSize: 1 } : scheduledDataSource } })
+                  return
+                }
+                onChange({ ...node, config: { ...config, scheduledDataSource, ...((scheduledDataSource.kind !== "PERFORMANCE" && performanceContract) || config.outputContract === "PROCESS_ASSESSMENT" ? { outputContract: undefined } : {}) } })
+              }}
             />
+          ) : null}
+          {triggerDataOrigin(trigger) === "schedule" && !afterJoin && config.scheduledDataSource?.kind === "MONITORING" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor={`${fieldId}-monitoring-contract`}>Formato da análise</Label>
+              <Select
+                value={config.outputContract === "PROCESS_ASSESSMENT" ? "PROCESS_ASSESSMENT" : "FEEDBACK"}
+                onValueChange={(value) => {
+                  const source = config.scheduledDataSource?.kind === "MONITORING" ? config.scheduledDataSource : null
+                  if (!source) return
+                  onChange({ ...node, config: { ...config, outputContract: value === "PROCESS_ASSESSMENT" ? "PROCESS_ASSESSMENT" : undefined, scheduledDataSource: value === "PROCESS_ASSESSMENT" ? { ...source, sampleSize: 1 } : source } })
+                }}
+              >
+                <SelectTrigger id={`${fieldId}-monitoring-contract`} className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PROCESS_ASSESSMENT">Monitoria aleatória — Avaliação de processo (feedback com base)</SelectItem>
+                  <SelectItem value="FEEDBACK">Feedback do agente sobre a amostra (caminho antigo)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {config.outputContract === "PROCESS_ASSESSMENT"
+                  ? "A chamada sorteada passa pelo motor de feedback, como na Flag: avaliação contra os processos da base e, com \"Gerar feedback\", o feedback oficial de monitoria — inclusive o reconhecimento quando o atendimento está correto."
+                  : "O agente comenta as chamadas da amostra sem o motor de feedback (não gera o feedback oficial de monitoria)."}
+              </p>
+            </div>
           ) : null}
           {triggerDataOrigin(trigger) === "schedule" && !afterJoin && config.scheduledDataSource?.kind === "PERFORMANCE" ? (
             <div className="space-y-1.5">

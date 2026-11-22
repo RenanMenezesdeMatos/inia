@@ -1,4 +1,4 @@
-import { Bot, ClipboardCheck, Clock, Flag, GitBranch, GitMerge, Play, Send, ShieldCheck, Split, UsersRound, Zap, type LucideIcon } from "lucide-react"
+import { Bot, ClipboardCheck, Clock, Flag, GitBranch, GitMerge, Play, Send, ShieldCheck, Sparkles, Split, TrendingUp, UsersRound, Variable, Zap, type LucideIcon } from "lucide-react"
 import {
   COMPARATOR_LABELS,
   ESCALATION_ROLE_LABELS,
@@ -90,6 +90,40 @@ export const NODE_COLORS: Record<FlowNodeType, { icon: string; iconBg: string; r
     ring: "border-lime-500 ring-lime-500/30", accent: "border-t-lime-600",
   },
   end: { icon: "text-slate-600 dark:text-slate-300", iconBg: "bg-slate-100 dark:bg-slate-800", ring: "border-slate-400 ring-slate-400/30", accent: "border-t-slate-500" },
+}
+
+type ActionType = Extract<FlowNode, { type: "action" }>["config"]["actionType"]
+type NodeColors = (typeof NODE_COLORS)[FlowNodeType]
+
+/**
+ * Cada ação tem o seu ícone, o mesmo da paleta e da Wiki (antes o canvas mostrava o raio de
+ * "Chamar agente" em toda ação).
+ */
+const ACTION_ICONS: Partial<Record<ActionType, LucideIcon>> = { CALL_AGENT: Zap, GENERATE_FEEDBACK: Sparkles, GENERATE_INTERACTION_FEEDBACK: Sparkles, ESCALATE: TrendingUp, SET_VARIABLE: Variable }
+
+/**
+ * "Gerar feedback" tem cor própria: lado a lado com "Chamar agente" (análise × feedback ao
+ * colaborador), a mesma cor fazia os dois parecerem a mesma etapa. As demais ações seguem a cor de Ação.
+ */
+const FEEDBACK_COLORS: NodeColors = {
+  icon: "text-blue-600 dark:text-blue-300",
+  iconBg: "bg-blue-100 dark:bg-blue-950",
+  ring: "border-blue-400 ring-blue-400/30",
+  accent: "border-t-blue-500",
+}
+const ACTION_COLORS: Partial<Record<ActionType, NodeColors>> = { GENERATE_FEEDBACK: FEEDBACK_COLORS, GENERATE_INTERACTION_FEEDBACK: FEEDBACK_COLORS }
+
+/** Cores pelo tipo da etapa e, numa Ação, pelo tipo da ação — paleta, canvas e Wiki usam esta função. */
+export function nodeColorsFor(type: FlowNodeType, actionType?: ActionType): NodeColors {
+  return (type === "action" && actionType ? ACTION_COLORS[actionType] : undefined) ?? NODE_COLORS[type]
+}
+
+export function nodeColorsOf(node: FlowNode): NodeColors {
+  return nodeColorsFor(node.type, node.type === "action" ? node.config.actionType : undefined)
+}
+
+export function nodeIconOf(node: FlowNode): LucideIcon {
+  return (node.type === "action" ? ACTION_ICONS[node.config.actionType] : undefined) ?? NODE_ICONS[node.type]
 }
 
 /** Nome de cada ação na tela — o mesmo da paleta, da Wiki e das mensagens de validação. */

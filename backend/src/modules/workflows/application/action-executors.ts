@@ -19,7 +19,9 @@ import { loadIndicatorCanonicalContext } from "../../indicators/application/load
 import { executeGenerateInteractionFeedback } from "./interaction-feedback-action.js"
 import { executeGenerateFeedback } from "./generate-feedback-action.js"
 import { callAgentForIndicatorDiagnosis, callAgentForPrvClosing } from "./prv-closing-agent-action.js"
-import { INDICATOR_ANALYSIS_NODE_OUTPUT_KIND, type IndicatorAnalysisNodeOutput } from "../../feedback-engine/domain/node-output.js"
+import { INDICATOR_ANALYSIS_NODE_OUTPUT_KIND, NO_ELIGIBLE_CALL, NO_ELIGIBLE_CALL_NODE_OUTPUT_KIND, type IndicatorAnalysisNodeOutput, type NoEligibleCallNodeOutput, type RandomMonitoringSample } from "../../feedback-engine/domain/node-output.js"
+import { loadMinimumQualityCallSeconds } from "../../interactions/application/quality-call-rule.js"
+import { pickRandomMonitoringCall, priorRandomMonitoringPick, RANDOM_MONITORING_SAMPLE_VERSION, RANDOM_MONITORING_SELECTION_REASON } from "./random-monitoring.js"
 import type { InvestigationTarget } from "../../feedback-engine/application/investigate-indicator.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { agentSnapshotFor } from "../../agents/application/agent-runtime-context.js"
@@ -654,6 +656,11 @@ async function callAgentThroughEngine(config: Extract<ActionConfig, { actionType
     const nodeOutput = await context.effects.feedbackEngine.analyzeCall(context.db, { organizationId: context.organizationId, interactionId: context.enrollment.interactionId, collaboratorId: operator.operator_id, agentId: config.agentId, trigger: { ...trigger, selectionReason } })
     return { nodeOutput }
   }
+  // Monitoria aleatória (`RANDOM_MONITORING_SAMPLE_V1`): Agenda/Manual por colaborador + "Amostra de chamadas" + "Avaliação de processo"
+  // sorteia UMA chamada elegível do colaborador e a analisa pelo mesmo caminho da Flag.
+  if (!context.enrollment.interactionId && !context.enrollment.indicatorMeasurementId && config.outputContract === "PROCESS_ASSESSMENT" && config.scheduledDataSource?.kind === "MONITORING") {
+    return { nodeOutput: await analyzeRandomMonitoringCall(config, config.scheduledDataSource, context, trigger) }
+  }
   let target: InvestigationTarget | null = null
   let personId: string | null = null
   if (context.enrollment.indicatorMeasurementId && config.outputContract === "INDICATOR_DIAGNOSIS") {
@@ -678,6 +685,57 @@ async function callAgentThroughEngine(config: Extract<ActionConfig, { actionType
     text: result.skippedReason ? `Nada a investigar (${result.skippedReason}).` : result.investigations.map((entry) => `${entry.indicatorCode} · ${entry.periodLabel}: ${entry.conclusion ? CONCLUSION_LABELS[entry.conclusion] ?? entry.conclusion : "sem conclusão"}.`).join("\n"),
   }
   return { nodeOutput }
+}
+
+async function analyzeRandomMonitoringCall(
+  config: Extract<ActionConfig, { actionType: "CALL_AGENT" }>,
+  source: Extract<NonNullable<Extract<ActionConfig, { actionType: "CALL_AGENT" }>["scheduledDataSource"]>, { kind: "MONITORING" }>,
+  context: ActionExecutionContext,
+  trigger: { kind: "WORKFLOW_SOURCE_NODE"; workflowId: string; workflowVersionId: string | null; enrollmentId: string; nodeId: string },
+): Promise<unknown> {
+  const operatorId = context.enrollment.scheduledSubjectId
+  if (!operatorId) throw new Error("Monitoria aleatória sem colaborador associado à execução.")
+  await loadRunnableEngineAgent(context, config.agentId)
+  const minimumSeconds = await loadMinimumQualityCallSeconds(context.db, context.organizationId)
+  const analyze = (interactionId: string, randomSample: RandomMonitoringSample | null) =>
+    context.effects.feedbackEngine
+      .analyzeCall(context.db, { organizationId: context.organizationId, interactionId, collaboratorId: operatorId, agentId: config.agentId, trigger: { ...trigger, selectionReason: RANDOM_MONITORING_SELECTION_REASON, ...(randomSample ? { randomSample } : {}) } })
+      .then((output) => (randomSample ? { ...output, randomSample } : output))
+  // Nova tentativa da MESMA execução: a chamada já sorteada (gravada na análise que a tentativa anterior começou) — nunca outra.
+  const prior = await priorRandomMonitoringPick(context.db, { organizationId: context.organizationId, operatorId, enrollmentId: context.enrollment.id, nodeId: trigger.nodeId })
+  // (Sorteio gravado antes da V2 não tem o registro: a chamada é a mesma, sem registro inventado.)
+  if (prior) return analyze(prior.interactionId, prior.sample ? { ...prior.sample, reusedPick: true } : null)
+  const timeZone = await resolveOrganizationTimezone(context.db, context.organizationId)
+  const window = resolvePeriodWindow(source.period, context.now, "PREVIOUS", timeZone)
+  const pick = await pickRandomMonitoringCall(context.db, { organizationId: context.organizationId, operatorId, enrollmentId: context.enrollment.id, window, minimumSeconds })
+  const randomSample: RandomMonitoringSample = {
+    version: RANDOM_MONITORING_SAMPLE_VERSION,
+    minimumSeconds,
+    period: source.period,
+    window: { start: window.start.toISOString(), end: window.end.toISOString() },
+    timeZone,
+    seed: pick.seed,
+    eligible: pick.eligible,
+    unmonitored: pick.unmonitored,
+  }
+  if (pick.interactionId === null) {
+    const output: NoEligibleCallNodeOutput = {
+      kind: NO_ELIGIBLE_CALL_NODE_OUTPUT_KIND,
+      personId: operatorId,
+      skippedReason: NO_ELIGIBLE_CALL,
+      detail: pick.reason,
+      eligible: pick.eligible,
+      minimumSeconds,
+      period: randomSample.window,
+      randomSample,
+      // As duas contagens vêm da mesma consulta, sobre TODAS as elegíveis do período (nunca uma amostra delas).
+      text: pick.reason === "ALL_ELIGIBLE_ALREADY_MONITORED"
+        ? `Nenhuma chamada sorteada: as ${pick.eligible} chamada(s) elegível(is) do período já tinham monitoria.`
+        : `Nenhuma chamada sorteada: o colaborador não tem, no período, chamada com transcrição${minimumSeconds > 0 ? ` e com pelo menos ${minimumSeconds} s` : ""}.`,
+    }
+    return output
+  }
+  return analyze(pick.interactionId, randomSample)
 }
 
 /**

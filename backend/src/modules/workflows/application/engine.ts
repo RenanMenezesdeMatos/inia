@@ -27,7 +27,7 @@ const LEASE_SECONDS = 120
 /**
  * Teto da posse renovada: um nó que ainda não terminou depois disso é tratado como travado (promessa que nunca resolve) —
  * o heartbeat para, a lease vence e outro worker o retoma. Folga larga sobre o nó mais longo conhecido (investigação de
- * indicador do motor de feedback, ~12 min; a própria posse da análise é de 15 min).
+ * indicador do motor de feedback, ~12 min; a execução do motor vai até 30 min — `ENGINE_MAX_RUN_SECONDS` —, com posse curta renovada — `ENGINE_LEASE_V1`).
  */
 const MAX_HOLD_SECONDS = 60 * 60
 // Intervalo de repoll do PAI aguardando a barreira de "Consolidar resultados" (fan-in/JOIN) — o

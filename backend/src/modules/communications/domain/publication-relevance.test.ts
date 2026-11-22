@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import { clarificationYieldsTo, documentIdsIn, EMPTY_SELECTION, hasRelevanceCandidates, parseRelevanceSelection, PUBLICATION_RELEVANCE_SYSTEM, renderRelevanceRequest, type RelevanceInput } from "./publication-relevance.js"
 
 const NATAL = { id: "c-natal", title: "É NATAL!!!", summary: null, plainText: "Você está preparado para a festa?! Em 23/11 será a festa de final de ano.", publishedAt: new Date("2026-11-17T17:31:00Z"), tags: ["Aviso"] }
-const APP = { id: "c-app", title: "Segunda via no app", summary: "Onde fica a segunda via no Meu Vivo.", plainText: "Conta > Faturas.", publishedAt: new Date("2026-11-12T13:00:00Z"), tags: ["Processos"] }
+const APP = { id: "c-app", title: "Segunda via no app", summary: "Onde fica a segunda via no Meu Telnova.", plainText: "Conta > Faturas.", publishedAt: new Date("2026-11-12T13:00:00Z"), tags: ["Processos"] }
 const FATURA = { alignmentId: "a-fatura", title: "Fatura pelo app", guidance: "Oriente o app; não envie a fatura.", processes: ["PR — Envio de fatura"], startsOn: "2026-11-10", endsOn: "2026-11-30" }
 const input = (question: string, extra: Partial<RelevanceInput> = {}): RelevanceInput => ({ question, communications: [NATAL, APP], alignments: [FATURA], timeZone: "America/Sao_Paulo", ...extra })
 
@@ -18,7 +18,7 @@ describe("PUBLICATION_RELEVANCE_V1 — catálogo e contrato", () => {
     const text = renderRelevanceRequest(input("E sobre o comunicado de natal?", { recentTurns: [{ role: "user", text: "Você sabe da festa?" }, { role: "model", text: "Não encontrei." }] }))
     expect(text).toContain("PERGUNTA: «E sobre o comunicado de natal?»")
     expect(text).toContain("C1 · publicado em 17/11/2026 · Aviso · título «É NATAL!!!»")
-    expect(text).toContain("C2 · publicado em 12/11/2026 · Processos · título «Segunda via no app» · «Onde fica a segunda via no Meu Vivo.»")
+    expect(text).toContain("C2 · publicado em 12/11/2026 · Processos · título «Segunda via no app» · «Onde fica a segunda via no Meu Telnova.»")
     expect(text).toContain("A1 · de 10/11/2026 a 30/11/2026 · título «Fatura pelo app» · processos: PR — Envio de fatura")
     expect(text).toContain("- Colaborador: «Você sabe da festa?»")
     expect(PUBLICATION_RELEVANCE_SYSTEM).toContain("Na dúvida, não selecione")

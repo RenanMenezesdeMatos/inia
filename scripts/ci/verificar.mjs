@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // `npm run verificar` — a mesma verificação do CI (.github/workflows/ci.yml), rodando na máquina: para usar antes de cada
-// entrega e para plugar em qualquer pipeline (o da Vivo inclusive) com um comando só. Não altera nada no repositório.
+// entrega e para plugar em qualquer pipeline (o do cliente inclusive) com um comando só. Não altera nada no repositório.
 // A lista de passos é uma só: o `github:publish -- --verificar` roda esta mesma, numa cópia do snapshot.
 //
 //   npm run verificar                    segredos e dependências (security:check), tipos, lint e testes do backend e do frontend,

@@ -34,7 +34,7 @@
   usar" = cria + aprova). "Vale para" também no editor da base e do argumentário e coluna "Produtos" na lista de bases. Recomendação dada
   ao usuário e aceita: produto só se cadastra em Produtos; a ligação base ↔ produto é o mesmo registro nos dois lugares.
 - **Cenário TESTE PRODUTOS no dev (21/10)**: `backend/scripts/dev/larissa-scenario/produtos/` (`--configurar`, `--chamadas`, `--reset`)
-  criou a categoria Soluciona TI/produto Vivo Soluciona TI, 20 bases, 6 argumentários (escopo: subgrupo da Larissa — entram em
+  criou a categoria Soluciona TI/produto Telnova Soluciona TI, 20 bases, 6 argumentários (escopo: subgrupo da Larissa — entram em
   qualquer análise NOVA desse subgrupo), 2 agentes, 2 workflows manuais publicados e 15 chamadas da Larissa (SV01–SV08, RP01–RP07)
   com produto esperado e falhas plantadas. Avaliadas em 21/10 pelos workflows (lógica V20; ~US$ 4,27; RP06 sem análise — 4 falhas do
   provedor, `dead`); avise a sessão "Base de boas práticas" antes de analisar (ela usa a memória da Larissa nas recomposições).
@@ -53,7 +53,7 @@
 - **V3 (21/10, decisão do usuário)**: o operador DIZER ou confirmar o produto estabelece sozinho (também na fala da conduta), salvo quando o
   cliente aponta para outro produto; pergunta/hipótese/negação e procedimento sem dizer o produto não valem. `PRODUCT_APPLICABILITY_V3`,
   `CALL_ANALYSIS_LOGIC_V22`, prompts de produto V4. SV05 → SIP (real, ~US$ 0,26). No dev, 16 argumentários gerais marcados com "Vale
-  para" pela API (Móvel ×8, Banda Larga ×4, IP Dedicado ×3, Fixa Básica ×1), vigentes desde 21/10 21:22; os 5 de processo (aplicativo, bloqueio, Vivo em Dia, Caixa Postal) ficam gerais por decisão do usuário
+  para" pela API (Móvel ×8, Banda Larga ×4, IP Dedicado ×3, Fixa Básica ×1), vigentes desde 21/10 21:22; os 5 de processo (aplicativo, bloqueio, Telnova em Dia, Caixa Postal) ficam gerais por decisão do usuário
   (22/10): "Vale para" só para conteúdo de produto, nunca para tipo de cliente.
 - **Exceção por produto dentro de base geral (22/10)**: teste real EX01–EX03 (`excecao.ts`, ~US$ 0,79) — a INIA entendeu as duas metades
   (exceção vale para o VSTI; fluxo geral não vale para ele; Banda Larga segue o fluxo geral). Sem mudança de código. Ressalva: a exceção da

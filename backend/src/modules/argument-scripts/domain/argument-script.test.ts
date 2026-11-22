@@ -14,7 +14,7 @@ describe("conteúdo do argumentário (estrutura preservada)", () => {
 
   it("critérios: 'deve' e 'pode' preservados; grupo de ALTERNATIVAS é uma exigência só; item condicional leva a condição; legado sem classificação nunca vira critério", () => {
     const items = criterionItemsOf(normalizeArgumentScriptContent({
-      operatorGuidance: [{ key: "g-must", text: "Indicar o Vivo em Dia.", modality: "MUST" }, { key: "g-may", text: "Verificar parcelamento.", modality: "MAY" }, { key: "g-old", text: "Texto antigo.", modality: "UNSPECIFIED" }],
+      operatorGuidance: [{ key: "g-must", text: "Indicar o Telnova em Dia.", modality: "MUST" }, { key: "g-may", text: "Verificar parcelamento.", modality: "MAY" }, { key: "g-old", text: "Texto antigo.", modality: "UNSPECIFIED" }],
       requiredPoints: [{ key: "all", mode: "ALL", items: [{ key: "p1", text: "Mencionar a consulta de débitos.", condition: null }, { key: "p2", text: "Mencionar o reparo pelo app.", condition: "houver abertura de reparo" }] }, { key: "any", mode: "ANY", items: [{ key: "c", text: "Cartão pelo app", condition: null }, { key: "b", text: "Boleto", condition: null }] }],
       avoid: [{ key: "a1", text: "Não prometer desbloqueio imediato." }],
     }))

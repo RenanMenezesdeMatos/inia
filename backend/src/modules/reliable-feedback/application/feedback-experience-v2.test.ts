@@ -29,7 +29,7 @@ const development = () => [
   item("OPPORTUNITY", "Informe de pagamento", "Nesse momento da chamada, faltou avaliar se a funcionalidade de informe de pagamento está disponível para o cliente.", "Na próxima chamada, avalie se a funcionalidade de informe de pagamento está disponível para o cliente.", "Avaliar se a funcionalidade de informe de pagamento está disponível para o cliente.", "É só informar pelo aplicativo, essa opção está disponível pra você."),
   item("OPPORTUNITY", "Promessas", "Nesta chamada, o que o procedimento orienta em “Promessas” não foi seguido.", "Na próxima chamada, siga o que o procedimento orienta: “Não prometer desbloqueio imediato”.", "Não prometer desbloqueio imediato.", "Assim que você informar, o desbloqueio é na hora."),
 ]
-const positive = () => [item("STRENGTH", "Negociação", "Você indicou o Vivo em Dia para consultar os débitos.", "", "Orientar o Vivo em Dia para consultar débitos.", "Pelo Vivo em Dia você consulta os débitos e as opções de parcelamento.")]
+const positive = () => [item("STRENGTH", "Negociação", "Você indicou o Telnova em Dia para consultar os débitos.", "", "Orientar o Telnova em Dia para consultar débitos.", "Pelo Telnova em Dia você consulta os débitos e as opções de parcelamento.")]
 const mixed = () => [...positive(), item("OPPORTUNITY", "Promessas", "Nesta chamada, o que o procedimento orienta em “Promessas” não foi seguido.", "", "Não garantir aprovação antes da consulta.", "Pode ficar tranquila, vai ser aprovado em dez vezes.")]
 type Sentence = NonNullable<NarrativeDraft["sentences"]>[number]
 const draft = (sentences: [number, string, Sentence["stance"], string[]][], card: string, cardRefs: string[]): NarrativeDraft => {
@@ -42,7 +42,7 @@ const stored = (items: EmittedItem[], value: NarrativeDraft) => ({ version: SUPE
 describe("o redator recebe o que precisa para comunicar (sem decidir nada)", () => {
   it("a disposição vem do código; cada ponto leva as falas verificadas para parafrasear", () => {
     expect(projectCompositionBriefForModel(narrativeBriefOf(development(), LABEL))).toMatchObject({ disposition: "DEVELOPMENT", strengths: [], adjustments: [{ ref: "A1", quotes: ["Operador: É só informar pelo aplicativo, essa opção está disponível pra você."] }, { ref: "A2" }] })
-    expect(projectCompositionBriefForModel(narrativeBriefOf(positive(), LABEL))).toMatchObject({ disposition: "POSITIVE", strengths: [{ ref: "S1", quotes: [expect.stringMatching(/^Operador: Pelo Vivo em Dia/)] }] })
+    expect(projectCompositionBriefForModel(narrativeBriefOf(positive(), LABEL))).toMatchObject({ disposition: "POSITIVE", strengths: [{ ref: "S1", quotes: [expect.stringMatching(/^Operador: Pelo Telnova em Dia/)] }] })
     expect(projectCompositionBriefForModel(narrativeBriefOf(mixed(), LABEL)).disposition).toBe("MIXED")
   })
 })
@@ -66,8 +66,8 @@ describe("card curto do redator, preso ao assessment pelo vínculo", () => {
   })
   it("POSITIVE: reconhecimento específico no card, com a ref da força → aceito", () => {
     const items = positive()
-    const value = draft([[1, "Na negociação, você direcionou o cliente ao Vivo em Dia para consultar os débitos e as opções, sem antecipar condição de parcelamento. Vale manter essa condução.", "STRENGTH", ["S1"]]], "Boa condução na negociação pelo Vivo em Dia.", ["S1"])
-    expect(resolveNarrative(stored(items, value), items, CONTEXT)).toMatchObject({ card: "Boa condução na negociação pelo Vivo em Dia.", source: { narrative: "WRITER", card: "WRITER" } })
+    const value = draft([[1, "Na negociação, você direcionou o cliente ao Telnova em Dia para consultar os débitos e as opções, sem antecipar condição de parcelamento. Vale manter essa condução.", "STRENGTH", ["S1"]]], "Boa condução na negociação pelo Telnova em Dia.", ["S1"])
+    expect(resolveNarrative(stored(items, value), items, CONTEXT)).toMatchObject({ card: "Boa condução na negociação pelo Telnova em Dia.", source: { narrative: "WRITER", card: "WRITER" } })
   })
 })
 
@@ -85,7 +85,7 @@ describe("detalhes aprofundam, não repetem", () => {
   it("'O que manter' = as evidências (sem resumo-modelo); a frase do ponto só quando descreve a conduta", () => {
     const items = [...positive(), item("STRENGTH", "Reparo fixa", "Na sua fala ao cliente, citada abaixo, aparece o que o procedimento orienta em “Reparo fixa”.", "", "Realizar o suporte.", "Vamos fazer um teste no modem.")]
     const view = feedbackViewOf(items, resolvePresentation(null, items, CONTEXT))!
-    expect(view.maintain).toMatchObject({ summary: "", evidence: [{ title: "Negociação", statement: "Você indicou o Vivo em Dia para consultar os débitos." }, { title: "Reparo fixa", statement: "" }] })
+    expect(view.maintain).toMatchObject({ summary: "", evidence: [{ title: "Negociação", statement: "Você indicou o Telnova em Dia para consultar os débitos." }, { title: "Reparo fixa", statement: "" }] })
     expect(view.developments).toEqual([])
   })
   it("sem ponto forte, não há 'O que manter'", () => {

@@ -32,7 +32,7 @@ const ORDER = () => refOf("Prestar suporte antes")
 const TESTED = "Operador: Pelo que a gente testou, o reinício do modem e a conexão direta não resolveram, e o sinal não chega até o equipamento. Nesse caso é necessário abrir um reparo pra um técnico avaliar."
 const CUSTOMER = "Cliente: Técnico? E quando ele vem?"
 const OPENED = "Operador: Eu já abri a solicitação de reparo pra você agora. O andamento dessa solicitação você consegue acompanhar pelo aplicativo, e é por lá que aparecem as atualizações do reparo."
-const TRANSCRIPT = ["Operador: Vivo, boa tarde.", "Cliente: A internet de casa parou.", "Operador: Vamos fazer um teste: desliga o modem da tomada e liga de novo.", "Cliente: Continua sem internet.", TESTED, CUSTOMER, OPENED, "Cliente: Tá bom."].join("\n")
+const TRANSCRIPT = ["Operador: Telnova, boa tarde.", "Cliente: A internet de casa parou.", "Operador: Vamos fazer um teste: desliga o modem da tomada e liga de novo.", "Cliente: Continua sem internet.", TESTED, CUSTOMER, OPENED, "Cliente: Tá bom."].join("\n")
 const STITCHED = `${TESTED} O andamento dessa solicitação você consegue acompanhar pelo aplicativo`
 
 type Raw = RawProcessAssessment["processes"][number]["checkpoints"][number]

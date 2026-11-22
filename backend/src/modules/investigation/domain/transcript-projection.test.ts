@@ -38,8 +38,8 @@ describe("TranscriptProjection — turnos determinísticos e formato model-facin
   })
 
   it("linha única com rótulos INLINE ('Operador: … Cliente: … Operador: …') vira um turno por rótulo; 'Protocolo:'/'Confirmando:' não são falantes", () => {
-    const projection = projectTranscript("Operador: Vivo, bom dia. CPF? Cliente: Boa tarde. Minha internet parou. Protocolo: 123. Operador: Confirmando: já reiniciou o modem?")
-    expect(projection.turns.map((turn) => `${turn.handle}|${turn.speaker}|${turn.text}`)).toEqual(["T1|OPERADOR|Vivo, bom dia. CPF?", "T2|CLIENTE|Boa tarde. Minha internet parou. Protocolo: 123.", "T3|OPERADOR|Confirmando: já reiniciou o modem?"])
+    const projection = projectTranscript("Operador: Telnova, bom dia. CPF? Cliente: Boa tarde. Minha internet parou. Protocolo: 123. Operador: Confirmando: já reiniciou o modem?")
+    expect(projection.turns.map((turn) => `${turn.handle}|${turn.speaker}|${turn.text}`)).toEqual(["T1|OPERADOR|Telnova, bom dia. CPF?", "T2|CLIENTE|Boa tarde. Minha internet parou. Protocolo: 123.", "T3|OPERADOR|Confirmando: já reiniciou o modem?"])
     expect(projection.turns.every((turn) => turn.audit.lineIndex === 0)).toBe(true)
     const map = new Map([["I1", { interactionRef: "I1", interactionId: "id", projection }]])
     expect(verifyEvidenceUnit({ interactionRef: "I1", speaker: "CLIENTE", quote: "Minha internet parou." }, map).ok).toBe(true)

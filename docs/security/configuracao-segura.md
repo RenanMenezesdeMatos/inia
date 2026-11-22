@@ -233,9 +233,9 @@ for o caso; a ACL dos `.env` no Windows pode ser devolvida com `icacls <arquivo>
 Desde 20/10/2026 existe recifragem: ver §11 "Rotação da chave de cifra". Nenhuma rotação foi exigida por esta rodada: não houve
 segredo exposto no repositório.
 
-## 11. Terceira rodada (20/10/2026) — liberação de IA na Vivo
+## 11. Terceira rodada (20/10/2026) — liberação de IA no cliente
 
-Itens do backlog `docs/dev/liberacao-ia-vivo.md` que não dependiam de decisão da Vivo. Há **4 migrations novas** (149–152):
+Itens do backlog `docs/dev/liberacao-ia-cliente.md` que não dependiam de decisão do cliente. Há **4 migrations novas** (149–152):
 rode `npm run db:migrate` antes de subir o código novo.
 
 | Migration | O que cria |

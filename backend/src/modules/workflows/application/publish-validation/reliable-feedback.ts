@@ -1,5 +1,5 @@
 import { DomainError } from "../../../../shared/domain/domain-error.js"
-import { feedbackSourceTypeOf, findAncestorNodeIds, resolveFeedbackDomain, sourceOutputContractOf, isClosingDiagnosisSource, resolveNodeContexts, type FlowGraph, type FlowNode } from "../../domain/graph-schema.js"
+import { feedbackSourceTypeOf, findAncestorNodeIds, resolveFeedbackDomain, sourceOutputContractOf, isClosingDiagnosisSource, isRandomMonitoringNode, resolveNodeContexts, type FlowGraph, type FlowNode } from "../../domain/graph-schema.js"
 import { triggerDataOriginOf } from "../../domain/trigger-config-schema.js"
 import { CONVERSATIONAL_SURFACES, RELIABLE_FEEDBACK_SURFACES } from "../output-executor.js"
 import type { PublishValidationRow } from "./context.js"
@@ -60,8 +60,9 @@ export function validateReliableFeedbackFlow(graph: FlowGraph, trigger: PublishV
     if (!domain) {
       throw new DomainError(`Não dá para saber se "${node.label}" é feedback de monitoria ou de indicador com este gatilho e esta origem. Escolha o tipo explicitamente (monitoria exige gatilho por Flag ou Manual com interação; indicador, gatilho por Indicador ou Manual com medição).`, "WORKFLOW_FEEDBACK_DOMAIN_AMBIGUOUS", 422, detail)
     }
-    if (domain === "MONITORING" && (triggerKind !== "channel_flag" || consolidated)) {
-      throw new DomainError(`"${node.label}" é feedback de monitoria, que precisa da interação do gatilho por Flag de canal ou Manual com interação (modo Individual).`, "WORKFLOW_FEEDBACK_MONITORING_REQUIRES_INTERACTION", 422, detail)
+    // Monitoria precisa da chamada: a do gatilho (Flag/Manual com interação) ou a sorteada pela monitoria aleatória da origem.
+    if (domain === "MONITORING" && ((triggerKind !== "channel_flag" && !(triggerKind === "schedule" && isRandomMonitoringNode(source))) || consolidated)) {
+      throw new DomainError(`"${node.label}" é feedback de monitoria, que precisa de uma chamada: a do gatilho por Flag de canal ou Manual com interação, ou a sorteada por um "Chamar agente" com "Amostra de chamadas" + "Avaliação de processo" na Agenda (modo Individual).`, "WORKFLOW_FEEDBACK_MONITORING_REQUIRES_INTERACTION", 422, detail)
     }
     if (domain === "INDICATOR" && sourceType === "ORCHESTRATOR") {
       throw new DomainError(`"${node.label}" é feedback de indicador a partir de um Orquestrador — ainda não suportado: o Orquestrador não recebe o contexto canônico do indicador. Use "Chamar agente" como origem.`, "WORKFLOW_FEEDBACK_INDICATOR_ORCHESTRATOR_UNSUPPORTED", 422, detail)

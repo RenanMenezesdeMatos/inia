@@ -18,6 +18,22 @@ const openDetails = () => fireEvent.click(screen.getByRole("button", { name: /En
 const openSection = (name: RegExp) => fireEvent.click(screen.getByRole("button", { name }))
 const openMaterials = () => fireEvent.click(screen.getByRole("button", { name: /^Materiais utilizados/ }))
 
+describe("NARRATIVE_TOP_FAILURES_V1 — pontos além dos 3 do texto ficam nos cards", () => {
+  it("o resumo conta todos os pontos; o ponto que o texto não detalha aparece com o selo, e o aviso do texto vem do sistema", () => {
+    const view = clone()
+    const base = view.developments[0]!
+    view.developments = [...view.developments, { ...base, key: "extra-1", title: "Confirmação dos dados", beyondNarrative: true }]
+    view.narrative = [...view.narrative, "Esta chamada teve mais um ponto de melhoria. Você encontra os detalhes dele em “Entenda este feedback”, no bloco “O que precisa ser ajustado”."]
+    render(<FeedbackNarrativeView view={feedbackViewSchema.parse(view)} />)
+    expect(screen.getByText(/Esta chamada teve mais um ponto de melhoria/)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Entenda este feedback/ })).toHaveTextContent(`${view.developments.length} pontos para ajustar`)
+    openDetails()
+    openSection(/^O que precisa ser ajustado$/)
+    expect(screen.getByRole("button", { name: "Confirmação dos dados Não detalhado no texto" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: base.title })).toBeInTheDocument()
+  })
+})
+
 describe("Feedback por Flag V2 — narrativa + detalhes (UI)", () => {
   it("a narrativa é a estrela: aparece inteira; os detalhes começam FECHADOS (progressive disclosure)", () => {
     const { container } = render(<FeedbackNarrativeView view={LARISSA} />)

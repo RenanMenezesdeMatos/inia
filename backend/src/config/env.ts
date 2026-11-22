@@ -176,6 +176,22 @@ export const envSchema = z.object({
    */
   SESSION_COOKIE_SECURE: z.enum(["auto", "true", "false"]).default("auto"),
   /**
+   * LOGIN PELA REDE (AD por LDAPS) — infraestrutura da instalação; quem LIGA o login pela rede é o administrador, por
+   * organização, na tela de Acessos. Sem `AD_LDAP_URLS` o login pela rede fica indisponível.
+   *  - AD_LDAP_URLS: servidores `ldaps://host:636` separados por vírgula, na ordem de tentativa (o seguinte só é tentado se o
+   *    anterior não responder — nunca depois de uma senha recusada, para não somar falhas no bloqueio da conta de rede).
+   *  - AD_DOMAIN: domínio do login (`matricula@AD_DOMAIN`).
+   *  - AD_CA_FILE: PEM da autoridade que emitiu o certificado dos servidores (exportada do Windows); sem ele vale só o
+   *    repositório padrão do Node. A cadeia e o nome do servidor são SEMPRE conferidos.
+   *  - AD_TLS_ALLOW_WEAK_KEY: aceitar chave RSA de 1024 bits do servidor (OpenSSL nível 1) SÓ na conexão com o AD — risco
+   *    aceito e documentado quando o AD da empresa ainda usa chave curta.
+   */
+  AD_LDAP_URLS: z.string().trim().optional(),
+  AD_DOMAIN: z.string().trim().regex(/^[A-Za-z0-9.-]+$/).optional(),
+  AD_CA_FILE: z.string().trim().optional(),
+  AD_TLS_ALLOW_WEAK_KEY: z.enum(["true", "false"]).default("false"),
+  AD_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(30_000).default(8_000),
+  /**
    * De quem a API aceita X-Forwarded-For para saber o IP do cliente (limites de tentativas). Sintaxe do `trust proxy` do
    * Express: `loopback` (padrão — IIS/proxy na própria máquina), lista de IPs/sub-redes (`10.0.0.5, 10.1.0.0/16`) ou `false`
    * (nenhum: vale o IP da conexão). Nunca `true`: qualquer cliente forjaria o próprio IP.

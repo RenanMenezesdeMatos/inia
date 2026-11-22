@@ -86,13 +86,23 @@ export async function buildStructureOverview(repository: AnalyticsReadRepository
 async function indicatorCounts(repository: AnalyticsReadRepository, organizationId: string, memberIds: string[], period: string): Promise<OverviewIndicator[]> {
   const previousPeriod = previousReferencePeriod(period)
   const [definitions, rows] = await Promise.all([repository.loadIndicatorDefinitions(organizationId), repository.loadIndicatorPerformance(organizationId, memberIds, [period, previousPeriod])])
+  // Agrupa as linhas UMA vez por indicador × período (run-9 B-09): filtrar todas as linhas por definição custava milhões de
+  // comparações para um diretor. Mesma ordem das linhas dentro de cada grupo — o resultado não muda.
+  const byKey = new Map<string, typeof rows>()
+  for (const row of rows) {
+    const key = `${row.indicatorCode}\u0000${row.referencePeriod}`
+    const list = byKey.get(key)
+    if (list) list.push(row)
+    else byKey.set(key, [row])
+  }
+  const rowsOf = (code: string, reference: string) => byKey.get(`${code}\u0000${reference}`) ?? []
   const result: OverviewIndicator[] = []
   for (const definition of definitions) {
-    const current = rows.filter((row) => row.indicatorCode === definition.code && row.referencePeriod === period)
+    const current = rowsOf(definition.code, period)
     if (current.length === 0) continue
     const evaluate = (list: typeof rows) => list.map((row) => isWithinReference(row, definition.direction)).filter((value) => value !== null)
     const evaluable = evaluate(current)
-    const previous = evaluate(rows.filter((row) => row.indicatorCode === definition.code && row.referencePeriod === previousPeriod))
+    const previous = evaluate(rowsOf(definition.code, previousPeriod))
     const below = evaluable.filter((value) => value === false).length
     const belowPercent = percentOf(below, evaluable.length)
     const previousBelowPercent = percentOf(previous.filter((value) => value === false).length, previous.length)

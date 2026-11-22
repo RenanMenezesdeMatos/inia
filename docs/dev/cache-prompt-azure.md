@@ -15,8 +15,8 @@ Complementa [cache-prompt-motor-feedback.md](cache-prompt-motor-feedback.md) (04
   recente: os primeiros 1.024 tokens e depois de 128 em 128. Basta um caractere diferente no começo para não aproveitar nada do resto.
 - O cache dura de 5 a 10 minutos sem uso (até 1 hora fora do pico); há retenção estendida só em implantações regionais.
 - Tokens em cache têm desconto na entrada: nos planos comuns, conforme a tabela de preço; na capacidade reservada (PTU, o caso do
-  `gpt-5.4-mini-ptu` da Vivo), até 100%.
-- **Não sabemos** se o limite de 250 mil tokens por minuto do LiteLLM conta os tokens que vieram do cache. Pergunta para a Vivo.
+  `gpt-5.4-mini-ptu` do cliente), até 100%.
+- **Não sabemos** se o limite de 250 mil tokens por minuto do LiteLLM conta os tokens que vieram do cache. Pergunta para o cliente.
 
 Fontes: [prompt caching](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/prompt-caching) e
 [cotas e limites](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/quotas-limits).
@@ -65,10 +65,10 @@ Na pergunta do chat, quase tudo o que já se repete vem do esclarecimento. No fe
 
 ## 4. Recomendação
 
-1. **Nada a fazer no esclarecimento.** Ele já aproveita o cache na ordem de hoje. Ao ligar a conexão da Vivo, conferir `cached_tokens`
+1. **Nada a fazer no esclarecimento.** Ele já aproveita o cache na ordem de hoje. Ao ligar a conexão do cliente, conferir `cached_tokens`
    nos eventos de uso.
 2. **Roteamento e síntese: mudança pequena, ganho pequeno** (~2,9 mil por chamada). Levar os dados da pessoa para o fim muda o texto
-   do prompt e precisa de uma rodada curta de comparação. Só vale se a Vivo descontar o cache do limite por minuto ou do custo.
+   do prompt e precisa de uma rodada curta de comparação. Só vale se o cliente descontar o cache do limite por minuto ou do custo.
 3. **Motor: o maior ganho, com o mesmo risco de antes.** Reordenar muda contrato versionado, invalida o reaproveitamento das análises
    já pagas (a chave usa o hash do prompt) e muda o que o modelo lê por último. Continua exigindo A/B com casos de omissão,
    condicional, produto e fontes em conflito; qualquer perda mantém desligado. O que muda no Azure é só o lado do custo: sem criação
@@ -76,18 +76,18 @@ Na pergunta do chat, quase tudo o que já se repete vem do esclarecimento. No fe
    04/11 pode cair para **2 chamadas por base em 10 minutos** (a janela do cache). No dev, 36% das análises já passam disso.
 4. **Não adianta:** conferência da resposta e especialistas sem trecho de base (abaixo de 1.024 tokens).
 
-**Perguntas para a Vivo:** os tokens em cache contam no limite de 250 mil por minuto do LiteLLM? Na PTU, contam na utilização? A
+**Perguntas para o cliente:** os tokens em cache contam no limite de 250 mil por minuto do LiteLLM? Na PTU, contam na utilização? A
 implantação tem retenção estendida? O LiteLLM repassa `prompt_cache_key`?
 
 ## 5. Limites desta medida
 
 - Dev, não produção: bases de teste, poucas pessoas (2 a 3 por Orquestrador) e perguntas de teste.
-- Tokens por proporção (3,99 caracteres por token, a média medida em 04/11), não pelo contador do modelo da Vivo.
+- Tokens por proporção (3,99 caracteres por token, a média medida em 04/11), não pelo contador do modelo do cliente.
 - Esclarecimento: só a primeira rodada do planejador de cada pergunta nova, sem conversa anterior. As rodadas de leitura e a redação da
   resposta não foram montadas.
 - Especialista: montado com a pergunta como consulta, sem o contexto da conversa e sem o escopo de quem pergunta.
 - Síntese do Orquestrador e posição das ferramentas no prefixo: estimadas, não medidas.
-- Nenhum acerto real de cache do Azure foi observado: não há acesso ao modelo da Vivo.
+- Nenhum acerto real de cache do Azure foi observado: não há acesso ao modelo do cliente.
 
 ## 6. Reproduzir
 

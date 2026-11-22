@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useAdminListState } from "@/hooks/use-admin-list-state"
 
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
+import { QualityCallRulePanel } from "./quality-call-rule-panel"
 import { ResponseChecksPanel } from "./response-checks-panel"
 import { EntityCard, EntityCardIcon } from "@/components/admin/shared/list/entity-card"
 import { ListBooleanFilter, ListSearchInput, ListToolbar } from "@/components/admin/shared/list/list-filters"
@@ -486,7 +487,7 @@ export function GovernancePage() {
   const router = useRouter()
   const pathname = usePathname()
   const requestedTab = searchParams.get("tab")
-  const urlTab = requestedTab === "glossary" || requestedTab === "response-checks" ? requestedTab : "prohibited"
+  const urlTab = requestedTab === "glossary" || requestedTab === "response-checks" || requestedTab === "quality-calls" ? requestedTab : "prohibited"
   const [tab, setTab] = useState<string>(urlTab)
   // A aba acompanha a URL quando ela muda (ajuste na renderização, sem render extra); a troca pela tela grava a URL.
   const [syncedUrlTab, setSyncedUrlTab] = useState(urlTab)
@@ -505,7 +506,7 @@ export function GovernancePage() {
       <PageHeader
         icon={ShieldCheck}
         title="Governança"
-        description="Guardrails e termos gerais que orientam a IA, independentemente de grupo ou assunto."
+        description="Guardrails, termos e regras gerais que orientam a IA, independentemente de grupo ou assunto."
       />
       <Card>
         <CardContent>
@@ -514,6 +515,7 @@ export function GovernancePage() {
               <TabsTrigger value="prohibited">Assuntos proibidos</TabsTrigger>
               <TabsTrigger value="glossary">Glossário geral</TabsTrigger>
               <TabsTrigger value="response-checks">Conferência das respostas</TabsTrigger>
+              <TabsTrigger value="quality-calls">Chamadas curtas</TabsTrigger>
             </TabsList>
 
             <TabsContent value="prohibited" className="mt-4">
@@ -526,6 +528,10 @@ export function GovernancePage() {
 
             <TabsContent value="response-checks" className="mt-4">
               <ResponseChecksPanel />
+            </TabsContent>
+
+            <TabsContent value="quality-calls" className="mt-4">
+              <QualityCallRulePanel />
             </TabsContent>
           </Tabs>
         </CardContent>

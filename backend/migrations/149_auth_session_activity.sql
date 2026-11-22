@@ -1,4 +1,4 @@
--- Atividade de cada sessão — encerramento por inatividade (liberação na Vivo, 2026-10-20).
+-- Atividade de cada sessão — encerramento por inatividade (liberação no cliente, 2026-10-20).
 --
 -- O JWT vence num prazo absoluto (JWT_EXPIRES_IN, 12 h). Checklists de segurança pedem também o encerramento da sessão PARADA
 -- (SESSION_IDLE_TIMEOUT_MINUTES, padrão 30). Atividade = interação na tela (o navegador avisa no máximo uma vez por minuto) ou

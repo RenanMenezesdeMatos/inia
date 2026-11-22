@@ -141,12 +141,12 @@ export function AlignmentForm({ editing, onSaved, onCancel }: { editing: Alignme
           <SectionLabel>Orientação</SectionLabel>
           <div className="grid gap-1.5">
             <Label htmlFor="alignment-title">Título</Label>
-            <Input id="alignment-title" value={values.title} onChange={(event) => set("title", event.target.value)} placeholder="Ex.: Fatura pelo App Meu Vivo ou site" />
+            <Input id="alignment-title" value={values.title} onChange={(event) => set("title", event.target.value)} placeholder="Ex.: Fatura pelo aplicativo ou pelo site" />
             <FieldError message={errors.title} />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="alignment-guidance">Orientação que passa a valer</Label>
-            <Textarea id="alignment-guidance" rows={6} value={values.guidance} onChange={(event) => set("guidance", event.target.value)} placeholder="Ex.: Oriente o cliente a acessar a fatura pelo App Meu Vivo ou pelo site." />
+            <Textarea id="alignment-guidance" rows={6} value={values.guidance} onChange={(event) => set("guidance", event.target.value)} placeholder="Ex.: Oriente o cliente a acessar a fatura pelo aplicativo ou pelo site." />
             <FieldError message={errors.guidance} />
           </div>
           <div className="grid gap-1.5">

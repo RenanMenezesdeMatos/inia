@@ -1,4 +1,4 @@
--- Revisão das contestações de feedback (liberação na Vivo, 2026-10-20 — LGPD art. 20).
+-- Revisão das contestações de feedback (liberação no cliente, 2026-10-20 — LGPD art. 20).
 --
 -- O colaborador já registra quando um feedback gerado pela INIA "não foi útil", com o motivo (ex.: impreciso, processo
 -- errado) e a descrição (migration 113). Até aqui ninguém lia esse retorno. Agora uma pessoa com o papel "Revisor de

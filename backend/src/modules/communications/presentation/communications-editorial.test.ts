@@ -195,7 +195,7 @@ describe("público por recorte (SEGMENT)", () => {
 
 describe("conteúdo: links seguros e estado derivado", () => {
   it("link http(s) e caminho interno passam com rel fixo; javascript:, protocol-relative e barra invertida saem com o texto", () => {
-    expect(sanitizeCommunicationHtml(`<p><a href="https://www.vivo.com.br/meuvivo" onclick="x">Meu Vivo</a></p>`).html).toBe(`<p><a href="https://www.vivo.com.br/meuvivo" target="_blank" rel="noopener noreferrer nofollow">Meu Vivo</a></p>`)
+    expect(sanitizeCommunicationHtml(`<p><a href="https://www.telnova.com.br/meutelnova" onclick="x">Meu Telnova</a></p>`).html).toBe(`<p><a href="https://www.telnova.com.br/meutelnova" target="_blank" rel="noopener noreferrer nofollow">Meu Telnova</a></p>`)
     expect(sanitizeCommunicationHtml(`<a href="/operator">painel</a>`).html).toBe(`<a href="/operator" target="_blank" rel="noopener noreferrer nofollow">painel</a>`)
     for (const href of ["javascript:alert(1)", "&#106;avascript:alert(1)", "//evil.example", "/\\evil.example", "data:text/html,x", "https://a b"]) {
       expect(sanitizeCommunicationHtml(`<a href="${href}">texto</a>`).html).toBe("texto")

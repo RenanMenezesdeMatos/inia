@@ -74,7 +74,7 @@ const SCHEDULE: Partial<Record<BehaviorKey, Partial<Record<Cell, Record<number, 
 const on = (behavior: BehaviorKey, cell: Cell, operator: number, call: number) => (SCHEDULE[behavior]?.[cell]?.[operator]?.[call] ?? 0) === 1
 
 const QUOTES: Record<Exclude<BehaviorKey, "TONE">, string> = {
-  GREETING: "bem-vindo à Vivo!",
+  GREETING: "bem-vindo à Telnova!",
   RESUME: "Conferi a sua fatura e vi que entrou uma cobrança proporcional",
   EXPLAIN_WAIT: "isso leva uns três minutos e, assim que terminar, eu volto e te conto o resultado",
   ADAPT_VOCABULARY: "",
@@ -94,7 +94,7 @@ function buildCall(ref: string, operator: number, cell: Cell, index: number, seq
   const first = FIRST_NAMES[operator - 1]!
   const customer = CUSTOMERS[sequence % CUSTOMERS.length]!
   const present: Record<string, string> = { GREETING: QUOTES.GREETING }
-  const lines: string[] = [`Operador: Olá, bem-vindo à Vivo! Meu nome é ${first}. Com quem eu falo?`, `Cliente: Oi, aqui é ${customer}.`]
+  const lines: string[] = [`Operador: Olá, bem-vindo à Telnova! Meu nome é ${first}. Com quem eu falo?`, `Cliente: Oi, aqui é ${customer}.`]
   const flag = (behavior: BehaviorKey) => (options.fewCalls ? behavior === "APP_FOLLOWUP" : on(behavior, cell, operator, index))
   if (flag("SECURITY_EXPLAINED")) {
     lines.push(`Operador: Obrigado, ${customer}. Antes de seguir, preciso confirmar o CPF do titular: é isso que garante que só você mexa na sua conta.`)
@@ -213,7 +213,7 @@ export function buildSyntheticDataset(): { key: string; version: number; label: 
           version: 1,
           content: [
             "# Abertura",
-            "Cumprimente o cliente com \"Bem-vindo à Vivo\" e apresente-se pelo nome. É obrigatório.",
+            "Cumprimente o cliente com \"Bem-vindo à Telnova\" e apresente-se pelo nome. É obrigatório.",
             "Pergunte o nome do cliente e use-o durante o atendimento.",
             "# Segurança",
             "Antes de qualquer consulta ou alteração, confirme o CPF do titular. É obrigatório.",
@@ -232,7 +232,7 @@ export function buildSyntheticDataset(): { key: string; version: number; label: 
 
   const unrelated = { relation: "UNRELATED" as const, sourceRefs: [], ruleQuote: "", sourceModality: "INFORMATIVE" as const, additionalBehavior: "", recommendsOmissionOrManipulation: false, rationale: "Nenhuma fonte trata disso como obrigação." }
   const behaviors: SyntheticAnswerKey["behaviors"] = [
-    { key: "GREETING", scenario: "Obrigação cumprida por todos", name: "Saudar com boas-vindas à Vivo e se apresentar", description: "O operador abre a chamada com as boas-vindas da Vivo e diz o próprio nome.", observableDefinition: "O operador abre a chamada dizendo 'bem-vindo à Vivo' e se apresenta pelo nome.", appliesWhen: "", notApplicableWhen: "", guidance: "Abra a chamada com as boas-vindas e o seu nome.", suggestedPhrasing: "", requiresAudio: false, obligation: { relation: "SAME_AS_OBLIGATION", sourceRefs: ["D1.L1"], ruleQuote: "Cumprimente o cliente com", sourceModality: "MANDATORY", additionalBehavior: "", recommendsOmissionOrManipulation: false, rationale: "É a abertura exigida pelo procedimento." } },
+    { key: "GREETING", scenario: "Obrigação cumprida por todos", name: "Saudar com boas-vindas à Telnova e se apresentar", description: "O operador abre a chamada com as boas-vindas da Telnova e diz o próprio nome.", observableDefinition: "O operador abre a chamada dizendo 'bem-vindo à Telnova' e se apresenta pelo nome.", appliesWhen: "", notApplicableWhen: "", guidance: "Abra a chamada com as boas-vindas e o seu nome.", suggestedPhrasing: "", requiresAudio: false, obligation: { relation: "SAME_AS_OBLIGATION", sourceRefs: ["D1.L1"], ruleQuote: "Cumprimente o cliente com", sourceModality: "MANDATORY", additionalBehavior: "", recommendsOmissionOrManipulation: false, rationale: "É a abertura exigida pelo procedimento." } },
     { key: "RESUME", scenario: "Opcional recorrente entre os melhores (só em Fatura)", name: "Retomar resumindo o que foi verificado e o próximo passo", description: "Ao voltar de uma verificação, o operador conta o que conferiu, o que encontrou e o que vai fazer em seguida.", observableDefinition: "Depois de verificar algo, ao retomar a conversa o operador diz o que conferiu, o que encontrou e qual é o próximo passo.", appliesWhen: "quando o operador interrompe a conversa para verificar algo e depois retoma", notApplicableWhen: "", guidance: "Ao voltar de uma verificação, diga em uma frase o que conferiu, o que encontrou e o que vai fazer agora.", suggestedPhrasing: "Conferi a sua fatura e encontrei o motivo da diferença. Agora vou registrar a contestação e já te explico o prazo.", requiresAudio: false, obligation: unrelated },
     { key: "EXPLAIN_WAIT", scenario: "Opcional recorrente entre os melhores (só em Suporte técnico)", name: "Explicar o motivo da espera e combinar o retorno", description: "Antes de deixar o cliente aguardando, o operador diz o que vai fazer, quanto tempo leva e que volta com o resultado.", observableDefinition: "Antes de deixar o cliente aguardando, o operador diz o que vai fazer, quanto tempo leva e que vai voltar com o resultado.", appliesWhen: "quando o cliente precisa aguardar um teste ou procedimento", notApplicableWhen: "quando não há espera na chamada", guidance: "Antes de uma espera, diga o que vai fazer, quanto tempo deve levar e que volta com o resultado.", suggestedPhrasing: "Vou fazer um teste na sua linha agora; leva alguns minutos e, assim que terminar, eu volto e te conto o resultado.", requiresAudio: false, obligation: unrelated },
     { key: "ADAPT_VOCABULARY", scenario: "Associado a um indicador (Nota da URA), sem evidência para outro (TMA)", name: "Explicar com as palavras do próprio cliente", description: "O operador reformula o problema usando as palavras que o cliente usou, sem termos técnicos.", observableDefinition: "O operador reformula o problema ou a explicação usando as palavras que o cliente usou, sem termos técnicos.", appliesWhen: "quando o operador precisa explicar um problema ou uma cobrança", notApplicableWhen: "", guidance: "Repita o problema com as palavras do cliente antes de explicar, e evite termos técnicos.", suggestedPhrasing: "Entendi: a conta veio mais alta do que você esperava. Vou olhar com você o que mudou, item por item.", requiresAudio: false, obligation: unrelated },

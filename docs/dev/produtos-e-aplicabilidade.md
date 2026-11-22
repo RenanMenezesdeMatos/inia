@@ -166,7 +166,7 @@ e, por ele, à base de conhecimento. Substitui a regra da V2 de que a fala do op
 IT-INIA-005 v2.0). `conteudo.ts` tem o mapa das regras por produto (chaves S1…, LA1…, RVS3…); `chamadas-segunda-via.ts` e
 `chamadas-reparo.ts`, as 15 chamadas da Larissa Monteiro com o produto que a INIA deve concluir e as falhas plantadas.
 
-- Configuração pela API (`--configurar`): categoria Soluciona TI + produto Vivo Soluciona TI; 20 bases publicadas (segunda via e reparo;
+- Configuração pela API (`--configurar`): categoria Soluciona TI + produto Telnova Soluciona TI; 20 bases publicadas (segunda via e reparo;
   "Vale para" geral, por categoria, por produto e por vários produtos de categorias diferentes); 6 argumentários publicados; agentes
   "TESTE PRODUTOS · Especialista de segunda via" (Faturamento) e "… de reparo" (Suporte Técnico), cada um ligado SÓ às bases do seu
   processo; workflows MANUAIS publicados "TESTE PRODUTOS · Feedback de segunda via (manual)" e "… de reparo (manual)" (agente →
@@ -200,7 +200,7 @@ Segunda rodada real (21/10/2026, depois do commit da V2.1; ~US$ 1,75, uma chamad
 | RP06 | conflito (internet × conta 699) | CONFLICTING Banda Larga/SIP | regras de Banda Larga, SIP e Voz Avançada suspensas; nenhuma cobrada |
 | SV04 | Linha Móvel | IDENTIFIED Linha Móvel | achou uma falha PARCIAL que o roteiro não previa (regra geral 4: "oriente a atualizar o cadastro"; ela orientou a encaminhar) — roteiro corrigido |
 | RP03 | DDR | IDENTIFIED DDR | RDDR2 + R4 cobrados |
-| RP05 | Vivo Soluciona TI | IDENTIFIED Vivo Soluciona TI | RVS2 + R4 cobrados; suporte remoto lido como inviável (notebook não liga) — o roteiro tinha plantado RVS1 por engano e foi corrigido |
+| RP05 | Telnova Soluciona TI | IDENTIFIED Telnova Soluciona TI | RVS2 + R4 cobrados; suporte remoto lido como inviável (notebook não liga) — o roteiro tinha plantado RVS1 por engano e foi corrigido |
 | SV05 | não identificado (regra até a V2.1) | NOT_IDENTIFIED (3ª rodada) | a revisão de novo leu "conta da empresa" como SIP; a corroboração barrou. Pela V3 o esperado passou a SIP (ver acima) |
 
 - **Teto de saída** (`engine-meter.ts`): a RP06 nunca tinha sido analisada porque a análise raciocinou 23,6 mil tokens e parou no teto
@@ -217,7 +217,7 @@ Segunda rodada real (21/10/2026, depois do commit da V2.1; ~US$ 1,75, uma chamad
   móvel/franquia/roaming → categoria Móvel; "Internet fixa" ×3 e "Wi-Fi e navegação fixa" → Banda Larga; "Link dedicado" ×3 → IP
   Dedicado; "Problema técnico no serviço fixo" → categoria Fixa Básica (mantido por decisão do usuário em 22/10). Ficam GERAIS, por
   decisão do usuário (22/10): "Segunda via de fatura ou parcelamento — consulta pelo aplicativo", "Serviço bloqueado — pagamento com
-  cartão…", "Serviço bloqueado após pagamento…", "Contas em atraso — Vivo em Dia" e "Procedimento com impacto na Caixa Postal" — são de
+  cartão…", "Serviço bloqueado após pagamento…", "Contas em atraso — Telnova em Dia" e "Procedimento com impacto na Caixa Postal" — são de
   processo, não de produto (empresas também usam aplicativo e compram produtos básicos). Critério: "Vale para" só quando o conteúdo é de
   um produto; processo ou tipo de cliente fica geral. As cobranças do argumentário de segunda via nas SV09/SV10 (confirmar fatura ×
   parcelamento, orientar pelo aplicativo) estavam corretas pelo texto dele.
@@ -227,7 +227,7 @@ Segunda rodada real (21/10/2026, depois do commit da V2.1; ~US$ 1,75, uma chamad
 
 Pergunta do usuário: um processo de segunda via vale para todos os produtos do "grupo A" e abre uma exceção para o VSTI (canal Y). A INIA
 entende as duas metades — a exceção vale para o VSTI e o fluxo geral NÃO vale para ele? Teste em `excecao.ts` / `excecao-conteudo.ts`
-(base "processo do grupo A" com "Vale para" Fixa Básica + Soluciona TI, seção "Exceção — Vivo Soluciona TI": os itens 2–4 do fluxo geral
+(base "processo do grupo A" com "Vale para" Fixa Básica + Soluciona TI, seção "Exceção — Telnova Soluciona TI": os itens 2–4 do fluxo geral
 não valem, encaminhar à Central de Contratos TI em até 5 dias úteis; agente de teste ligado só a ela; chamadas EX01–EX03 posteriores à
 base). Resultado com o modelo real, uma rodada por chamada (~US$ 0,79), sem mudança de código:
 

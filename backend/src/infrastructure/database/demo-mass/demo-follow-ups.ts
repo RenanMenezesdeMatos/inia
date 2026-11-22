@@ -105,7 +105,7 @@ export function demoFollowUpFeedbacks(): DemoFollowUpFeedback[] {
       indicatorTarget: "100%",
       evidenceFound: "Fechamento 2026-09 — PRV (atingimento oficial): 118% (meta: 100%) | Quartil Q1 em 6 de 6 competências (abr–set/2026) | Monitoria de Qualidade: 96% (meta: 90%) | Reincidência em até 7 Dias: 5% (meta: 9%)",
       observedBehavior: "Resultado consistente acima da meta em todos os indicadores da competência, com destaque para Qualidade e Reincidência.",
-      relatedProcedure: "Procedimento Operacional Jeito Vivo de Atender — encerramento com confirmação de entendimento",
+      relatedProcedure: "Procedimento Operacional Jeito Telnova de Atender — encerramento com confirmação de entendimento",
       recommendation: "Parabéns pelo sexto fechamento seguido no Q1. O que mais se destaca é a **Reincidência em até 7 Dias** em 5%: seus clientes não precisam ligar de novo. Continue confirmando protocolo e próximos passos no encerramento — é exatamente essa prática que sustenta o resultado. Sua supervisora pode convidar você a compartilhar essa rotina com a equipe.",
       publishedAt: PUBLISHED_AT,
       acknowledgedAt: "2026-09-15T15:42:00.000Z",

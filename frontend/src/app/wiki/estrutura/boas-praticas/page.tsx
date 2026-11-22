@@ -39,6 +39,7 @@ export default function BestPracticesWikiPage() {
         <StepList
           steps={[
             { title: "Grupos", detail: "Melhores resultados = 1º quartil oficial do indicador na maioria das competências escolhidas; referência = os demais (ou o 4º quartil). Quem não tem quartil oficial fica fora — dado ausente nunca é desempenho ruim." },
+            { title: "Chamadas curtas fora", detail: "Chamada abaixo da duração mínima da organização (ou sem duração conhecida) não entra: quase sempre é engano, queda ou transferência imediata. O mínimo é a regra geral em Administração › Governança › Chamadas curtas, e o relatório diz quantas ficaram fora." },
             { title: "Contextos e amostra", detail: "A comparação acontece dentro de cada contexto; contextos diferentes nunca entram no mesmo número. Cada operador entra com no máximo 4 chamadas por contexto e só com 2 ou mais chamadas transcritas ali; um contexto só é analisado com 3 ou mais operadores em cada grupo." },
             { title: "Hipóteses", detail: "A IA lê chamadas dos dois grupos e propõe comportamentos que parecem mais frequentes entre os melhores. Os padrões já existentes do mesmo indicador e Grupo são sempre medidos de novo." },
             { title: "Codificação cega", detail: "Cada chamada da amostra é lida de novo, sem que a IA saiba o grupo, o indicador ou o resultado de quem atendeu. “Aparece” só vale com um trecho literal da fala do OPERADOR, conferido pelo sistema." },

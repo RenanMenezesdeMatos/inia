@@ -107,7 +107,13 @@ function FeedbackDetails({ view, labels }: { view: FeedbackView; labels: Labels 
               <Accordion type="multiple" className="rounded-lg border px-2 sm:px-3">
                 {view.developments.map((detail) => (
                   <AccordionItem key={detail.key} value={detail.key}>
-                    <AccordionTrigger headingLevel={6} className="text-[13px]">{detail.title}</AccordionTrigger>
+                    <AccordionTrigger headingLevel={6} className="text-[13px]">
+                      <span className="flex flex-wrap items-center gap-2">
+                        {detail.title}
+                        {/* Ponto além dos 3 mais graves que o texto detalhou: está só aqui (`NARRATIVE_TOP_FAILURES_V1`). */}
+                        {detail.beyondNarrative ? <Badge variant="secondary" className="text-[11px] font-normal">Não detalhado no texto</Badge> : null}
+                      </span>
+                    </AccordionTrigger>
                     <AccordionContent className={DYNAMIC_CONTENT}>
                       <DevelopmentDetail detail={detail} callLabel={labels.call} />
                     </AccordionContent>

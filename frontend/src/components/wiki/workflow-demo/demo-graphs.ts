@@ -59,7 +59,7 @@ const INDICATOR_WEEK_QUERY = {
 export const DEMO_GRAPHS: DemoGraphDefinition[] = [
   {
     slug: "dois-momentos-do-dia",
-    name: "Exemplo · Orientação em dois momentos do dia",
+    name: "Exemplo · Monitoria aleatória em dois momentos do dia",
     trigger: { kind: "schedule", mode: "CALENDAR", times: ["09:00", "15:00"], intervalDays: 1, frequency: { type: "DAILY" } },
     graph: {
       nodes: [
@@ -67,14 +67,15 @@ export const DEMO_GRAPHS: DemoGraphDefinition[] = [
         {
           id: "analise",
           type: "action",
-          label: "Analisar uma chamada do dia",
+          label: "Sortear e analisar uma chamada do dia",
           position: at(0, 1),
-          config: { actionType: "CALL_AGENT", agentId: FICTIONAL_AGENT.qualidade, scheduledDataSource: { kind: "MONITORING", sampleSize: 1, period: "TODAY" } },
+          config: { actionType: "CALL_AGENT", agentId: FICTIONAL_AGENT.qualidade, outputContract: "PROCESS_ASSESSMENT", scheduledDataSource: { kind: "MONITORING", sampleSize: 1, period: "TODAY" } },
         },
-        { id: "entrega", type: "output", label: "Orientação ao colaborador", position: at(0, 2), config: { target: { type: "CURRENT_OPERATOR" }, surfaces: ["FOLLOW_UP"], source: "nodeOutputs.analise" } },
-        { id: "fim", type: "end", label: "Fim", position: at(0, 3), config: {} },
+        { id: "feedback", type: "action", label: "Gerar feedback", position: at(0, 2), config: { actionType: "GENERATE_FEEDBACK", sourceNodeId: "analise", feedbackDomain: "MONITORING" } },
+        { id: "entrega", type: "output", label: "Feedback ao colaborador", position: at(0, 3), config: { target: { type: "CURRENT_OPERATOR" }, surfaces: ["FOLLOW_UP"], source: "nodeOutputs.feedback" } },
+        { id: "fim", type: "end", label: "Fim", position: at(0, 4), config: {} },
       ],
-      edges: [edge("gatilho", "always", "analise"), edge("analise", "always", "entrega"), edge("entrega", "always", "fim")],
+      edges: [edge("gatilho", "always", "analise"), edge("analise", "always", "feedback"), edge("feedback", "always", "entrega"), edge("entrega", "always", "fim")],
     },
   },
   {

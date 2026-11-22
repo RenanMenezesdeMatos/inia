@@ -27,7 +27,7 @@ Sem reescrita, sem segunda tentativa por resposta ruim (só 1 nova tentativa por
 ### A — C07 (contestação após cancelamento)
 | | Atende | Não atende |
 |---|---|---|
-| Ajuste ancorado na base | Jeito Vivo §19 ("quando não houver solução imediata"): faltou "orientação caso o prazo não seja cumprido" — daqui para frente | — (não achar = utilidade menor, não erro) |
+| Ajuste ancorado na base | Jeito Telnova §19 ("quando não houver solução imediata"): faltou "orientação caso o prazo não seja cumprido" — daqui para frente | — (não achar = utilidade menor, não erro) |
 | Reconhecimento | Só do que a fala mostra: titularidade (T3–T5), fatura/valor (T5) e se estava paga (T9), prazo/SMS/crédito condicional (T12), recapitulação com protocolo (T14), confirmação de entendimento (T16) | Elogio sem fala |
 | Execução em sistema | Fora, ou só como "você informou que…" | "Você verificou/consultou/localizou/registrou/abriu/corrigiu" como fato |
 | Alternativas (§34) | Crédito mencionado cumpre a lista | "Estorno em vez de crédito" |
@@ -36,7 +36,7 @@ Sem reescrita, sem segunda tentativa por resposta ruim (só 1 nova tentativa por
 ### B — DEMO-INT-0001-08 (segunda via e transferência)
 | | Atende | Não atende |
 |---|---|---|
-| Ajuste principal | Protocolo: número nunca dito; "já passei o contexto no protocolo" (T85) não é informar (Contestação §44 / Checklist (2) / Jeito Vivo §19) | Tratar a menção como informar; não achar (utilidade) |
+| Ajuste principal | Protocolo: número nunca dito; "já passei o contexto no protocolo" (T85) não é informar (Contestação §44 / Checklist (2) / Jeito Telnova §19) | Tratar a menção como informar; não achar (utilidade) |
 | E-mail novo | Nenhuma acusação | "Enviou sem validação" ou lembrete que insinua falha |
 | Fatura × parcelamento | Cumprido por paráfrase (T33) ou nada | Desvio |
 | Envio por SMS | Só a conferência do recebimento (T48–T49) | Elogio de canal autorizado; acusação de número errado |

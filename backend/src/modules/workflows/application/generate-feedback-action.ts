@@ -2,6 +2,8 @@ import type { ActionConfig } from "../domain/graph-schema.js"
 import { feedbackSourceTypeOf, findAncestorNodeIds, findNode, resolveFeedbackDomain, sourceOutputContractOf } from "../domain/graph-schema.js"
 import type { ActionExecutionContext, ActionResult } from "./action-executors.js"
 import { resolveEnrollmentOperatorId } from "./enrollment-subject.js"
+import { callAnalysisRefOf } from "../../feedback-engine/domain/node-output.js"
+import { RANDOM_MONITORING_SELECTION_REASON } from "./random-monitoring.js"
 
 /**
  * EXECUTOR de "Gerar feedback" — MOTOR DE FEEDBACK (feedback-engine).
@@ -16,8 +18,9 @@ import { resolveEnrollmentOperatorId } from "./enrollment-subject.js"
  *   ABSTENÇÃO   → encerra a execução sem Output, com o motivo no evento (nada material, evidência insuficiente, já entregue);
  *   falha técnica → erro classificado; o motor aplica a política de nova tentativa (a análise gravada é reutilizada).
  */
-function selectionReasonOf(context: ActionExecutionContext): string {
+function selectionReasonOf(context: ActionExecutionContext, sampledInteractionId: string | null): string {
   const enrollment = context.enrollment
+  if (sampledInteractionId) return RANDOM_MONITORING_SELECTION_REASON
   if (enrollment.matchedFlagName) {
     const value = enrollment.matchedValueBoolean !== null ? (enrollment.matchedValueBoolean ? "sim" : "não") : enrollment.matchedValueNumeric ?? ""
     return `Sinal da chamada no gatilho do Workflow: ${enrollment.matchedFlagName}${value ? ` = ${value}` : ""}.`
@@ -32,6 +35,8 @@ export async function executeGenerateFeedback(config: Extract<ActionConfig, { ac
   const sourceType = feedbackSourceTypeOf(source)
   if (!source || !sourceType) throw new Error(`"Gerar feedback": a origem "${config.sourceNodeId}" não é um nó "Chamar agente" ou "Orquestrador" deste Workflow.`)
   if (!findAncestorNodeIds(context.graph, context.nodeId).has(source.id)) throw new Error(`"Gerar feedback": a origem "${source.label}" não vem antes deste nó.`)
+  // Monitoria aleatória: a execução da Agenda não traz chamada — a chamada é a que a origem sorteou e analisou.
+  const sampledInteractionId = !context.enrollment.interactionId && !context.enrollment.indicatorMeasurementId ? callAnalysisRefOf(context.enrollment.nodeOutputs[source.id])?.interactionId ?? null : null
   const triggerKind = context.enrollment.interactionId ? "channel_flag" : context.enrollment.indicatorMeasurementId ? "indicator" : "schedule"
   const domain = resolveFeedbackDomain(config.feedbackDomain, triggerKind, sourceType, sourceOutputContractOf(source))
   if (!domain) throw new Error(`"Gerar feedback": não foi possível determinar se o feedback é de monitoria ou de indicador para esta origem.`)
@@ -48,10 +53,10 @@ export async function executeGenerateFeedback(config: Extract<ActionConfig, { ac
     domain,
     sourceNodeOutput: context.enrollment.nodeOutputs[source.id],
     collaboratorId,
-    interactionId: context.enrollment.interactionId,
+    interactionId: context.enrollment.interactionId ?? sampledInteractionId,
     indicatorMeasurementId: context.enrollment.indicatorMeasurementId,
     configuredAgentId: source.type === "action" && source.config.actionType === "CALL_AGENT" ? source.config.agentId : null,
-    selectionReason: selectionReasonOf(context),
+    selectionReason: selectionReasonOf(context, sampledInteractionId),
     triggerFlagName: context.enrollment.matchedFlagName ?? null,
     now: context.now,
   })

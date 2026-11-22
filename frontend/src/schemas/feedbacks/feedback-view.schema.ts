@@ -40,6 +40,8 @@ export const feedbackViewSchema = z.object({
     itemIndexes: z.array(z.number()),
     /** Consolidação de apresentação: os pontos que este bloco reúne (ex.: protocolo + recapitulação). */
     consolidates: z.array(z.string()).optional(),
+    /** `NARRATIVE_TOP_FAILURES_V1`: ponto que o texto não detalha (além dos 3 mais graves) — aparece só aqui, nos cards. */
+    beyondNarrative: z.boolean().optional(),
   })),
   maintain: z.object({ summary: z.string(), evidence: z.array(z.object({ title: z.string(), statement: z.string(), quotes: z.array(quoteSchema), itemIndex: z.number(), phase: z.enum(["INVESTIGATION", "TREATMENT", "CLOSING", "OTHER"]).optional(), /** Reconhecimento só de orientação "pode" do argumentário. */ optional: z.boolean().optional() })) }).nullable(),
   attention: z.array(z.object({ title: z.string(), markdown: z.string(), itemIndex: z.number() })),

@@ -73,7 +73,7 @@ const PR = `# ${PR_TITLE}
 `
 const ALIGNMENT: AlignmentCandidate = {
   alignmentId: "aaaaaaaa-0000-4000-8000-0000000000a1", versionId: "bbbbbbbb-0000-4000-8000-0000000000b1", version: 1,
-  title: "Fatura pelo App Meu Vivo ou site", guidance: "Oriente o cliente a acessar e baixar a fatura pelo App Meu Vivo ou pelo site da Vivo, na área de faturas.\nNão envie a fatura por e-mail enquanto este alinhamento valer.",
+  title: "Fatura pelo App Meu Telnova ou site", guidance: "Oriente o cliente a acessar e baixar a fatura pelo App Meu Telnova ou pelo site da Telnova, na área de faturas.\nNão envie a fatura por e-mail enquanto este alinhamento valer.",
   justification: "O envio de fatura por e-mail está suspenso na Ouvidoria enquanto o sistema de envio é substituído.",
   affectedDocuments: [{ id: DOC, title: PR_TITLE }], affectedTopic: "Envio da fatura quando o cliente solicita",
   operatingUniverse: "B2C", scopeType: "GROUPS", links: [{ teamId: OUVIDORIA, teamName: "Ouvidoria", subteamId: null, subteamName: null }], productId: null, productName: null,
@@ -116,10 +116,10 @@ const record = (id: string, description: string, pass: boolean, evidence: string
 const QUESTION = "O cliente da Ouvidoria pediu a fatura dele. Como eu procedo?"
 async function runChat() {
   const c1 = textOf(await chat("C1", chatSystem(block([ALIGNMENT], ouvidoria, DURING)), [{ role: "user", text: QUESTION }]))
-  record("C1", "Ouvidoria na vigência: orienta App Meu Vivo/site, diz que é temporário, com referência e vigência; não manda enviar por e-mail", has(c1, /app|aplicativo/i) && has(c1, /site/i) && has(c1, /tempor/i) && has(c1, /AO-[0-9A-F]{8}/) && has(c1, /30\/11/) && !has(c1, /(envi[ae]r?|mande).{0,40}e-?mail cadastrado(?!.{0,60}(não|suspens))/i), c1)
+  record("C1", "Ouvidoria na vigência: orienta App Meu Telnova/site, diz que é temporário, com referência e vigência; não manda enviar por e-mail", has(c1, /app|aplicativo/i) && has(c1, /site/i) && has(c1, /tempor/i) && has(c1, /AO-[0-9A-F]{8}/) && has(c1, /30\/11/) && !has(c1, /(envi[ae]r?|mande).{0,40}e-?mail cadastrado(?!.{0,60}(não|suspens))/i), c1)
 
   const c2 = textOf(await chat("C2", chatSystem(block([ALIGNMENT], otherGroup, DURING)), [{ role: "user", text: QUESTION }]))
-  record("C2", "Operador de outro Grupo: segue o PR oficial (envio por e-mail), sem alinhamento", has(c2, /e-?mail/i) && !has(c2, /AO-[0-9A-F]{8}/) && !has(c2, /App Meu Vivo/i), c2)
+  record("C2", "Operador de outro Grupo: segue o PR oficial (envio por e-mail), sem alinhamento", has(c2, /e-?mail/i) && !has(c2, /AO-[0-9A-F]{8}/) && !has(c2, /App Meu Telnova/i), c2)
 
   const c3System = chatSystem(noAlignmentInForceNotice({ recentlyEnded: true }))
   const c3 = textOf(await chat("C3", c3System, [{ role: "user", text: QUESTION }, { role: "model", text: c1 }, { role: "user", text: "Hoje (05/12) chegou outro cliente pedindo a fatura. Faço igual?" }]))
@@ -135,7 +135,7 @@ async function runChat() {
     const final = await chat("C4-resposta", c4System, [...c4Turns, { role: "model", functionCalls: c4First.calls }, { role: "user", functionResponses: c4First.calls.map((call) => ({ name: call.name, response: { result: historyText } })) }] as never, [ALIGNMENT_HISTORY_DECLARATION] as never)
     c4 = textOf(final)
   }
-  record("C4", "Histórico: a INIA chama a ferramenta e responde como registro (o que dizia, vigência) dizendo que não vale mais e o que vale hoje", called && has(c4, /App Meu Vivo|aplicativo/i) && has(c4, /(não (vale|está) mais|encerr|expir|deixou de valer|não está mais em vigor)/i) && has(c4, /e-?mail/i), c4)
+  record("C4", "Histórico: a INIA chama a ferramenta e responde como registro (o que dizia, vigência) dizendo que não vale mais e o que vale hoje", called && has(c4, /App Meu Telnova|aplicativo/i) && has(c4, /(não (vale|está) mais|encerr|expir|deixou de valer|não está mais em vigor)/i) && has(c4, /e-?mail/i), c4)
 
   const c5 = textOf(await chat("C5", chatSystem(block([PROHIBITED_ALIGNMENT], ouvidoria, DURING)), [{ role: "user", text: "Um cliente da Ouvidoria pediu para cancelar a linha. Posso cancelar direto?" }]))
   // Proibido: afirmar que pode/deve cancelar direto (frase sem "não" antes). "Não pode cancelar direto" é o comportamento esperado.
@@ -147,11 +147,11 @@ async function runChat() {
 
 // ------------------------------------------------------------------------------------------------ monitoria
 const TRANSCRIPT_FOLLOWED = [
-  "Operador: Ouvidoria Vivo, boa tarde. Com quem eu falo?",
+  "Operador: Ouvidoria Telnova, boa tarde. Com quem eu falo?",
   "Cliente: É a Marina. Preciso da minha fatura deste mês.",
   "Operador: Marina, me confirma o seu nome completo, por favor?",
   "Cliente: Marina Souza Prado.",
-  "Operador: Obrigada, Marina. Você consegue ver e baixar a fatura agora pelo App Meu Vivo ou pelo site da Vivo, na área de faturas.",
+  "Operador: Obrigada, Marina. Você consegue ver e baixar a fatura agora pelo App Meu Telnova ou pelo site da Telnova, na área de faturas.",
   "Cliente: Ah, tá bom, vou olhar no aplicativo então. Obrigada.",
   "Operador: Por nada, tenha uma boa tarde.",
 ].join("\n")
@@ -190,7 +190,7 @@ async function runMonitoringBattery() {
   if (wants("M1")) {
   const m1 = await runMonitoring("M1", { at: DURING, alignments: [ALIGNMENT] })
   const sent = find(m1.criteria, /enviar a fatura pelo e-mail/i).filter((criterion) => !criterion.operationalAlignment || criterion.operationalAlignment.role === "SUPERSEDED")
-  const app = find(m1.criteria, /App Meu Vivo|acessar e baixar a fatura/i)
+  const app = find(m1.criteria, /App Meu Telnova|acessar e baixar a fatura/i)
   const protocol = find(m1.criteria, /protocolo/i)
   record("M1a", "Seguiu o alinhamento na vigência (monitorado depois do término): o envio por e-mail NÃO vira falha", sent.every((criterion) => !deviation(criterion.status)), m1.summary)
   record("M1b", "O trecho oficial substituído fica registrado (critério não aplicável com a referência, ou linha substituída na fotografia da avaliação)", sent.some((criterion) => criterion.status === "NOT_APPLICABLE" && criterion.operationalAlignment?.role === "SUPERSEDED") || m1.supersededLines.some((text) => /enviar a fatura pelo e-mail/i.test(text)), m1.summary)

@@ -14,6 +14,7 @@ import { ApiError } from "@/lib/api/api-client"
 import { startUsageAction } from "@/lib/usage/usage-provider"
 import { useFeedbackApplicationsQuery } from "@/queries/feedback-applications/use-feedback-applications"
 import { useConfirmFeedbackReadingMutation } from "@/queries/feedback-read-confirmations/use-feedback-read-confirmation"
+import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import { feedbackSourceKey, type FeedbackSourceRef } from "@/schemas/feedback-applications/feedback-application.schema"
 import { CONTESTATION_REASON_COPY, type ReadAgreementInput } from "@/schemas/feedback-ratings/feedback-rating.schema"
 import { readConfirmationErrorDetailsSchema, type ReadConfirmationAttempt, type ReadConfirmationEntryPoint, type ReadConfirmationResult } from "@/schemas/feedback-read-confirmations/feedback-read-confirmation.schema"
@@ -52,6 +53,8 @@ type Step = "AGREEMENT" | "CREDENTIALS"
 export function ReadingConfirmationDialog({ source, entryPoint, purpose, title, applicationInProgress, trigger, onBeforeConfirm, onConfirmed }: Props) {
   const mobile = useIsMobile()
   const mutation = useConfirmFeedbackReadingMutation()
+  // Login pela rede ligado: a ciência é com a matrícula e a senha de REDE (conferidas no AD), não com o e-mail.
+  const network = useCurrentUserQuery().data?.credentialMode === "NETWORK"
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<Step>("AGREEMENT")
   const [draft, setDraft] = useState<AgreementDraft>(EMPTY_AGREEMENT_DRAFT)
@@ -133,7 +136,7 @@ export function ReadingConfirmationDialog({ source, entryPoint, purpose, title, 
         onError: (failure) => {
           action.fail(failure instanceof ApiError && failure.code ? failure.code : "CONFIRMATION_FAILED")
           setPassword("")
-          setError(messageOf(failure))
+          setError(messageOf(failure, network))
           window.requestAnimationFrame(() => passwordRef.current?.focus())
         },
       },
@@ -187,7 +190,7 @@ export function ReadingConfirmationDialog({ source, entryPoint, purpose, title, 
                 </span>
                 <DialogTitle>{purpose === "CONFIRM" ? "Confirmar ciência" : "Confirmar sua escolha"}</DialogTitle>
                 <DialogDescription>
-                  {purpose === "CONFIRM" ? <>Para registrar que você leu {subject}, entre com o seu login e senha.</> : <>Para registrar a sua escolha sobre {subject}, entre com o seu login e senha.</>}
+                  {purpose === "CONFIRM" ? <>Para registrar que você leu {subject}, entre com {network ? "a sua matrícula e a senha de rede" : "o seu login e senha"}.</> : <>Para registrar a sua escolha sobre {subject}, entre com {network ? "a sua matrícula e a senha de rede" : "o seu login e senha"}.</>}
                 </DialogDescription>
               </DialogHeader>
               <div className="flex items-start justify-between gap-3 rounded-xl border bg-muted/30 px-3 py-2 text-sm" data-testid="agreement-summary">
@@ -207,12 +210,16 @@ export function ReadingConfirmationDialog({ source, entryPoint, purpose, title, 
               </div>
               <form id={`${ids}-form`} className="space-y-4" onSubmit={submit} noValidate>
                 <div className="space-y-2">
-                  <Label htmlFor={`${ids}-login`}>Login</Label>
-                  <Input id={`${ids}-login`} type="email" inputMode="email" autoComplete="username" placeholder="Seu e-mail corporativo" value={login} onChange={(event) => setLogin(event.target.value)} disabled={pending} aria-invalid={error ? true : undefined} />
+                  <Label htmlFor={`${ids}-login`}>{network ? "Matrícula de rede" : "Login"}</Label>
+                  {network ? (
+                    <Input id={`${ids}-login`} type="text" autoCapitalize="characters" autoComplete="username" spellCheck={false} placeholder="Ex.: G0055350" value={login} onChange={(event) => setLogin(event.target.value)} disabled={pending} aria-invalid={error ? true : undefined} />
+                  ) : (
+                    <Input id={`${ids}-login`} type="email" inputMode="email" autoComplete="username" placeholder="Seu e-mail corporativo" value={login} onChange={(event) => setLogin(event.target.value)} disabled={pending} aria-invalid={error ? true : undefined} />
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor={`${ids}-password`}>Senha</Label>
-                  <PasswordInput ref={passwordRef} id={`${ids}-password`} autoComplete="current-password" placeholder="Sua senha" value={password} onChange={(event) => setPassword(event.target.value)} disabled={pending} aria-invalid={error ? true : undefined} />
+                  <PasswordInput ref={passwordRef} id={`${ids}-password`} autoComplete="current-password" placeholder={network ? "Sua senha de rede" : "Sua senha"} value={password} onChange={(event) => setPassword(event.target.value)} disabled={pending} aria-invalid={error ? true : undefined} />
                 </div>
                 {error ? <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
                 <ul className="space-y-1 text-xs text-muted-foreground">
@@ -237,9 +244,19 @@ export function ReadingConfirmationDialog({ source, entryPoint, purpose, title, 
   )
 }
 
-function messageOf(failure: unknown): string {
+/**
+ * `network`: a conta confirma com a matrícula e a senha de rede. Aí nunca há "restam N tentativas" do contador da ciência — a
+ * trava que vale é a da matrícula (3, somando o login; achado QA-03 da run-9): vale a mensagem do backend.
+ */
+function messageOf(failure: unknown, network: boolean): string {
   if (!(failure instanceof ApiError)) return "Não foi possível confirmar agora. Verifique a conexão e tente de novo."
   const details = readConfirmationErrorDetailsSchema.parse(failure.details ?? {})
+  if (network && (failure.code === "READ_CONFIRMATION_INVALID_CREDENTIALS" || failure.code === "READ_CONFIRMATION_TOO_MANY_ATTEMPTS")) {
+    const time = failure.code === "READ_CONFIRMATION_TOO_MANY_ATTEMPTS" && details.retryAt ? new Date(details.retryAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null
+    const base = failure.message || (failure.code === "READ_CONFIRMATION_INVALID_CREDENTIALS" ? "Matrícula ou senha de rede não conferem com a sua conta." : "Muitas tentativas com a senha de rede errada. Aguarde alguns minutos.")
+    return time ? `${base} Tente de novo a partir das ${time}.` : base
+  }
+  if (failure.code === "READ_CONFIRMATION_ACCOUNT_CHANGED") return failure.message
   if (failure.code === "READ_CONFIRMATION_INVALID_CREDENTIALS") {
     const remaining = details.remainingAttempts
     if (remaining === undefined) return "Login ou senha não conferem com a sua conta."
@@ -250,6 +267,8 @@ function messageOf(failure: unknown): string {
     const time = details.retryAt ? new Date(details.retryAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null
     return time ? `Muitas tentativas com login ou senha incorretos. Tente de novo a partir das ${time}.` : failure.message
   }
+  // Recusas vindas da conta de rede (login pela rede): a mensagem do backend já diz o que fazer.
+  if (failure.code === "NETWORK_ACCOUNT_LOCKED" || failure.code === "NETWORK_PASSWORD_EXPIRED" || failure.code === "NETWORK_ACCOUNT_DISABLED" || failure.code === "NETWORK_LOGIN_UNAVAILABLE") return failure.message
   if (failure.code === "VALIDATION_ERROR") return "Confira a sua escolha e a justificativa e tente de novo. Se continuar, atualize a página."
   if (failure.code === "FEEDBACK_READ_AGREEMENT_CONFLICT") return "Não foi possível registrar agora. Atualize a página e confira o feedback."
   if (failure.status === 404) return "Este feedback não está mais disponível para confirmação."

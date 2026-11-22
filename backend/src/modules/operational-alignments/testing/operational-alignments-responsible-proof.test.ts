@@ -53,7 +53,7 @@ describe.skipIf(!ENABLED)("Alinhamentos operacionais — responsável e cargo (m
     const scopes = { unrestricted: false as const, allTeams: true, teamIds: new Set<string>(), subteamIds: new Set<string>() }
     const db = savepointDb(client)
     const reason = (await client.query<{ id: string }>("select id from operational_alignment_reasons where organization_id = $1 order by position limit 1", [ORG])).rows[0]!.id
-    const body = { reasonId: reason, requestSubjectIds: [], title: "Proof AR — Fatura pelo app", guidance: "Oriente o cliente a acessar a fatura pelo App Meu Vivo ou pelo site.", affectedDocumentIds: [doc], affectedTopic: "Envio da fatura", justification: "Envio por e-mail suspenso durante a troca do sistema.", operatingUniverse: "B2C", scopeType: "TEAM", teamId: ouvidoria, subteamId: null, productId: null, startsOn: "2026-11-10", endsOn: "2026-11-30" }
+    const body = { reasonId: reason, requestSubjectIds: [], title: "Proof AR — Fatura pelo app", guidance: "Oriente o cliente a acessar a fatura pelo App Meu Telnova ou pelo site.", affectedDocumentIds: [doc], affectedTopic: "Envio da fatura", justification: "Envio por e-mail suspenso durante a troca do sistema.", operatingUniverse: "B2C", scopeType: "TEAM", teamId: ouvidoria, subteamId: null, productId: null, startsOn: "2026-11-10", endsOn: "2026-11-30" }
 
     // Opções: lideranças (alguém abaixo) e quem cadastra; a operadora não aparece.
     const options = await responsibleOptions(db, actor, { search: "prova" })

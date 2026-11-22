@@ -15,8 +15,8 @@ import type { Database } from "../../../infrastructure/database/pool.js"
  */
 const OUVIDORIA = "11111111-1111-4111-8111-111111111111"
 const ROW = {
-  alignment_id: "aaaaaaaa-0000-4000-8000-000000000001", version_id: "bbbbbbbb-0000-4000-8000-000000000001", version: 1, title: "Fatura pelo App Meu Vivo ou site",
-  guidance: "Oriente o cliente a acessar a fatura pelo App Meu Vivo ou pelo site. Não envie a fatura.", justification: "Envio suspenso durante a troca do sistema.",
+  alignment_id: "aaaaaaaa-0000-4000-8000-000000000001", version_id: "bbbbbbbb-0000-4000-8000-000000000001", version: 1, title: "Fatura pelo App Meu Telnova ou site",
+  guidance: "Oriente o cliente a acessar a fatura pelo App Meu Telnova ou pelo site. Não envie a fatura.", justification: "Envio suspenso durante a troca do sistema.",
   documents: [{ id: DOC, title: "PR — Envio de fatura" }], affected_topic: "Envio da fatura quando o cliente solicita", operating_universe: "B2C", scope_type: "GROUPS",
   links: [{ teamId: OUVIDORIA, teamName: "Ouvidoria", subteamId: null, subteamName: null }], product_id: null, product_name: null, starts_on: "2026-11-10", ends_on: "2026-11-30", time_zone: "America/Sao_Paulo",
   effective_from: new Date("2026-11-10T03:00:00Z"), effective_until: new Date("2026-12-01T03:00:00Z"), ended_at: null, content_hash: "h", published_at: new Date("2026-11-09T18:00:00Z"), relations: [],
@@ -47,7 +47,7 @@ describe("alinhamento operacional no prompt do chat", () => {
     const built = await buildSystemPromptWithTrace(fakeDb({ team_id: OUVIDORIA, universe: "B2C" }), "agent-1", AGENT, { query: "Como envio a fatura?", governanceSubjectPersonId: "op-1", collaboratorConversation: true, alignmentReferenceDate: new Date("2026-11-15T14:00:00Z") })
     const prompt = built.systemPrompt
     expect(prompt).toContain("ALINHAMENTOS OPERACIONAIS VIGENTES")
-    expect(prompt).toContain("App Meu Vivo")
+    expect(prompt).toContain("App Meu Telnova")
     expect(prompt).toContain("AO-AAAAAAAA v1 · vigente de 10/11/2026 a 30/11/2026")
     expect(prompt.indexOf("PR — Envio de fatura")).toBeLessThan(prompt.indexOf("ALINHAMENTOS OPERACIONAIS VIGENTES"))
     expect(prompt.indexOf("ALINHAMENTOS OPERACIONAIS VIGENTES")).toBeLessThan(prompt.indexOf("Cancelamento"))
@@ -63,18 +63,18 @@ describe("alinhamento operacional no prompt do chat", () => {
     expect(after.systemPrompt).toContain("nenhum alinhamento operacional vale hoje, para quem está na conversa")
     expect(after.systemPrompt).toContain("Não acrescente orientação para seguir a base ou os procedimentos, e não prometa avisos futuros")
     expect(after.systemPrompt).not.toContain("NÃO vale mais")
-    expect(after.systemPrompt).not.toContain("App Meu Vivo")
+    expect(after.systemPrompt).not.toContain("App Meu Telnova")
     // Ajuste de segurança: houve alinhamento recente para estas bases → a INIA é avisada de que o citado antes não vale mais.
     const afterWithHistory = await buildSystemPromptWithTrace(fakeDb({ team_id: OUVIDORIA, universe: "B2C" }, { recentlyEnded: true }), "agent-1", AGENT, { query: "Como envio a fatura?", governanceSubjectPersonId: "op-1", collaboratorConversation: true, alignmentReferenceDate: new Date("2026-12-02T14:00:00Z") })
     expect(afterWithHistory.systemPrompt).toContain("nenhum alinhamento operacional vale hoje, para quem está na conversa")
     expect(afterWithHistory.systemPrompt).toContain("ele NÃO vale mais: diga que aquela orientação temporária não está mais em vigor e, se a pergunta for sobre como proceder, oriente pela base oficial")
-    expect(afterWithHistory.systemPrompt).not.toContain("App Meu Vivo")
+    expect(afterWithHistory.systemPrompt).not.toContain("App Meu Telnova")
     const otherGroup = await buildSystemPromptWithTrace(fakeDb({ team_id: "outro-grupo", universe: "B2C" }), "agent-1", AGENT, { query: "Como envio a fatura?", governanceSubjectPersonId: "op-2", collaboratorConversation: true, alignmentReferenceDate: new Date("2026-11-15T14:00:00Z") })
     expect(otherGroup.systemPrompt).not.toContain("ALINHAMENTOS OPERACIONAIS VIGENTES")
-    expect(otherGroup.systemPrompt).not.toContain("App Meu Vivo")
+    expect(otherGroup.systemPrompt).not.toContain("App Meu Telnova")
     const otherUniverse = await buildSystemPromptWithTrace(fakeDb({ team_id: OUVIDORIA, universe: "B2B" }), "agent-1", AGENT, { query: "Como envio a fatura?", governanceSubjectPersonId: "op-3", collaboratorConversation: true, alignmentReferenceDate: new Date("2026-11-15T14:00:00Z") })
     expect(otherUniverse.systemPrompt).not.toContain("ALINHAMENTOS OPERACIONAIS VIGENTES")
-    expect(otherUniverse.systemPrompt).not.toContain("App Meu Vivo")
+    expect(otherUniverse.systemPrompt).not.toContain("App Meu Telnova")
   })
 
   it("sem pessoa (teste do agente, prévia, coordenação por Grupo): nenhum alinhamento", async () => {

@@ -54,3 +54,14 @@ export const glossaryTermSchema = z.object({
   active: z.boolean(),
 })
 export type GlossaryTerm = z.infer<typeof glossaryTermSchema>
+
+/** Regra geral de chamada curta (`QUALITY_CALL_MIN_DURATION_V1`, migration 246). */
+export const qualityCallRuleSchema = z.object({
+  minimumQualityCallSeconds: z.number().int(),
+  ruleVersion: z.string(),
+  description: z.string(),
+  limits: z.object({ min: z.number().int(), max: z.number().int() }),
+  /** Quem pode trocar a regra (organização inteira) — o servidor decide; ausente (servidor anterior) = o PUT é quem confere. */
+  canEdit: z.boolean().default(true),
+})
+export type QualityCallRule = z.infer<typeof qualityCallRuleSchema>

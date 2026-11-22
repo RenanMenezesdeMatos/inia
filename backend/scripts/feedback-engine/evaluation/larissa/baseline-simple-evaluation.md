@@ -15,17 +15,17 @@ ainda caía no início do documento. Resultado: as duas verificações da B rece
 ## A — C07
 
 > **Cartão:** Você realizou um atendimento seguro, claro e resolutivo ao tratar a contestação da cliente. Para as próximas ligações,
-> lembre-se apenas de mencionar a marca Vivo logo na abertura.
+> lembre-se apenas de mencionar a marca Telnova logo na abertura.
 >
 > Larissa, você conduziu muito bem o atendimento: validou a titularidade com segurança, identificou pontualmente a fatura e o valor
 > contestado e confirmou se a conta já estava paga. Além disso, registrou a contestação, explicou com clareza o prazo de até cinco dias
 > úteis com retorno por SMS, recapitulou todos os pontos com o número de protocolo e checou se restavam dúvidas antes de encerrar.
-> Como orientação para os próximos contatos, lembre-se de incluir a identificação da Vivo na sua apresentação inicial.
+> Como orientação para os próximos contatos, lembre-se de incluir a identificação da Telnova na sua apresentação inicial.
 
 | | |
 |---|---|
-| Ajuste | "Mencionar a Vivo" (T1 "Conecta, bom dia…") — literal na base; o motor tinha o mesmo ponto (parcial, baixa materialidade). Na massa demo a empresa da conversa é "Conecta" e a base é da Vivo: o ponto é verdadeiro pela base, mas é artefato dos dados. |
-| Ajuste real da base (Jeito Vivo §19: orientação caso o prazo não seja cumprido) | **Não encontrado** — o motor também nunca encontrou |
+| Ajuste | "Mencionar a Telnova" (T1 "Conecta, bom dia…") — literal na base; o motor tinha o mesmo ponto (parcial, baixa materialidade). Na massa demo a empresa da conversa é "Conecta" e a base é da Telnova: o ponto é verdadeiro pela base, mas é artefato dos dados. |
+| Ajuste real da base (Jeito Telnova §19: orientação caso o prazo não seja cumprido) | **Não encontrado** — o motor também nunca encontrou |
 | Erros | "registrou a contestação" (execução em sistema como fato; o verificador pegou); "recapitulou todos os pontos" e "atendimento … resolutivo" (exagero; o verificador não pegou) |
 
 ## B — DEMO-INT-0001-08
@@ -69,5 +69,5 @@ como fato, elogio exagerado, linguagem técnica no indicador. O verificador simp
 O que a comparação mostra de verdadeiro:
 - O motor não é complexo à toa na correção; parte do "não sai bom" vinha da AVALIAÇÃO (gabarito com exigência que a base não tem — o
   cancelamento pendente) e de orçamento por rodada apertado demais para a redação (abstenção da A na V12).
-- A lacuna de utilidade real e comum aos dois: a regra transversal do Jeito Vivo §19 (o que o cliente deve receber quando não há
+- A lacuna de utilidade real e comum aos dois: a regra transversal do Jeito Telnova §19 (o que o cliente deve receber quando não há
   solução imediata) não é ligada ao caso — nem pelo motor, nem pela versão simples.

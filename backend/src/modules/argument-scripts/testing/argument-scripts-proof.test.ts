@@ -96,7 +96,7 @@ describe.skipIf(!ENABLED)("Argumentários — prova Postgres (conversão, escopo
     // Permissão e escopo (backend): sem papel = 403; admin de Grupo não escolhe "todos" nem outro Grupo; no próprio, cria.
     expect((await none.get(base)).status).toBe(403)
     expect((await area.get(`${base}/scope-options`)).body.data).toMatchObject({ allTeams: false, teamIds: [teamA] })
-    const content = { trigger: "O cliente tem contas em atraso no momento da ligação.", operatorGuidance: [{ text: "Indicar o Vivo em Dia para consultar os valores em aberto.", modality: "MUST" }], requiredPoints: [{ mode: "ALL", items: [{ text: "Orientar o acesso ao Vivo em Dia e mencionar a consulta de débitos e o parcelamento.", condition: null }] }], avoid: [{ text: "Não garantir aprovação do parcelamento antes da consulta." }], suggestedScript: "Você pode acessar o Vivo em Dia…" }
+    const content = { trigger: "O cliente tem contas em atraso no momento da ligação.", operatorGuidance: [{ text: "Indicar o Telnova em Dia para consultar os valores em aberto.", modality: "MUST" }], requiredPoints: [{ mode: "ALL", items: [{ text: "Orientar o acesso ao Telnova em Dia e mencionar a consulta de débitos e o parcelamento.", condition: null }] }], avoid: [{ text: "Não garantir aprovação do parcelamento antes da consulta." }], suggestedScript: "Você pode acessar o Telnova em Dia…" }
     expect((await area.post(base).send({ name: "Contas em atraso (prova)", businessDomainId: domain, scope: { scopeType: "ALL_TEAMS" }, content })).body.error.code).toBe("ARGUMENT_SCRIPT_SCOPE_FORBIDDEN")
     expect((await area.post(base).send({ name: "Contas em atraso (prova)", businessDomainId: domain, scope: { scopeType: "TEAM", teamId: teamB }, content })).status).toBe(403)
     const created = await area.post(base).send({ name: "Contas em atraso (prova)", businessDomainId: domain, scope: { scopeType: "TEAM", teamId: teamA }, content })
@@ -116,7 +116,7 @@ describe.skipIf(!ENABLED)("Argumentários — prova Postgres (conversão, escopo
     expect((await area.patch(`${base}/${id}`).send({ scope: { scopeType: "TEAM", teamId: teamA } })).status).toBe(200)
 
     // Nova versão (o item editado mantém a chave) com vigência FUTURA: a anterior vale até ela começar.
-    const editedContent = { ...content, operatorGuidance: [{ key: keys[0], text: "Indicar o Vivo em Dia para consultar valores em aberto e parcelamento.", modality: "MUST" }] }
+    const editedContent = { ...content, operatorGuidance: [{ key: keys[0], text: "Indicar o Telnova em Dia para consultar valores em aberto e parcelamento.", modality: "MUST" }] }
     expect((await area.patch(`${base}/${id}`).send({ content: editedContent })).body.data.draft.version).toBe(2)
     const start = new Date(Date.now() + 3_600_000)
     const v2 = await area.post(`${base}/${id}/publish`).send({ effectiveFrom: start.toISOString() })
@@ -217,19 +217,19 @@ describe.skipIf(!ENABLED)("Argumentários — prova Postgres (conversão, escopo
     // Memória do motor: critério de ARGUMENTÁRIO + regra COMPOSTA persistidos com fonte, versão, aplicabilidade, onde acontece,
     // execução declarada e escopo considerado (leituras simuladas; integridade pelo código).
     const interaction = (await client.query<{ id: string }>("insert into interactions (organization_id, operator_id, channel, reason, started_at, ended_at, external_id) values ($1, $2, 'VOICE', 'Cobrança', now() - interval '5 minutes', now(), $3) returning id", [ORG, operatorA.id, `PROOF-AG-${Date.now()}`])).rows[0]!.id
-    const transcript = ["Cliente: Estou com duas contas atrasadas.", "Operador: Já consultei aqui no sistema. Pelo Vivo em Dia você vê o que está em aberto e pode parcelar.", "Cliente: Obrigado.", "Operador: Até mais."].join("\n")
+    const transcript = ["Cliente: Estou com duas contas atrasadas.", "Operador: Já consultei aqui no sistema. Pelo Telnova em Dia você vê o que está em aberto e pode parcelar.", "Cliente: Obrigado.", "Operador: Até mais."].join("\n")
     const [script] = (await loadArgumentScriptsInForce(client, ORG, { teamId: teamA, subteamId: subA }, new Date())).filter((entry) => entry.scriptId === id)
     const context = buildProcedureContext([], [script!])
     const line = (text: string) => [...context.lines.values()].find((entry) => entry.text.includes(text))!.handle
     const T1 = { turn: "T1", speaker: "CLIENTE", quote: "Estou com duas contas atrasadas." }
     const T2a = { turn: "T2", speaker: "OPERADOR", quote: "Já consultei aqui no sistema." }
-    const T2b = { turn: "T2", speaker: "OPERADOR", quote: "Pelo Vivo em Dia você vê o que está em aberto e pode parcelar." }
+    const T2b = { turn: "T2", speaker: "OPERADOR", quote: "Pelo Telnova em Dia você vê o que está em aberto e pode parcelar." }
     const model: ModelCallAnalysis = {
       scenario: { customerNeed: "Regularizar contas em atraso", conditions: [{ text: "Contas em atraso", evidence: [T1] }], procedure: null, procedureRationale: null, pathSections: [], correctPath: "", pathTaken: "", pathAssessment: "UNDETERMINED", pathRationale: "", pathEvidence: [] },
       criteria: [
         { line: line("Orientar o acesso"), status: "MET", evidenceKind: "CONDUCT_OBSERVED", declaredActionTense: null, evidence: [T2b], opportunityTurn: null, rationale: "Paráfrase do ponto obrigatório.", materiality: "HIGH", guidance: null, whyItMatters: null, itemNature: "COMMUNICATION", scenarioRole: "CENTRAL", applicability: "APPLIES", observability: "IN_CONVERSATION" },
-        { line: line("Indicar o Vivo em Dia"), status: "PARTIAL", evidenceKind: "CONDUCT_OBSERVED", declaredActionTense: null, evidence: [T2b], opportunityTurn: null, rationale: "x", materiality: "HIGH", guidance: null, whyItMatters: null, itemNature: "COMMUNICATION", scenarioRole: "CENTRAL", applicability: "APPLIES", observability: "IN_CONVERSATION", obligations: [
-          { part: "Indicar o Vivo em Dia", requiredAction: null, applicability: "APPLIES", condition: null, applicabilityEvidence: [], observability: "IN_CONVERSATION", evidenceNeeded: null, status: "MET", evidenceKind: "CONDUCT_OBSERVED", declaredActionTense: null, evidence: [T2b], opportunityTurn: null, rationale: "Indicou.", itemNature: "COMMUNICATION" },
+        { line: line("Indicar o Telnova em Dia"), status: "PARTIAL", evidenceKind: "CONDUCT_OBSERVED", declaredActionTense: null, evidence: [T2b], opportunityTurn: null, rationale: "x", materiality: "HIGH", guidance: null, whyItMatters: null, itemNature: "COMMUNICATION", scenarioRole: "CENTRAL", applicability: "APPLIES", observability: "IN_CONVERSATION", obligations: [
+          { part: "Indicar o Telnova em Dia", requiredAction: null, applicability: "APPLIES", condition: null, applicabilityEvidence: [], observability: "IN_CONVERSATION", evidenceNeeded: null, status: "MET", evidenceKind: "CONDUCT_OBSERVED", declaredActionTense: null, evidence: [T2b], opportunityTurn: null, rationale: "Indicou.", itemNature: "COMMUNICATION" },
           { part: "consultar os valores em aberto", requiredAction: null, applicability: "APPLIES", condition: null, applicabilityEvidence: [], observability: "OUTSIDE_CONVERSATION", evidenceNeeded: "registro do sistema", status: "MET", evidenceKind: "DECLARED_ACTION", declaredActionTense: "COMPLETED", evidence: [T2a], opportunityTurn: null, rationale: "Disse que consultou.", itemNature: "INTERNAL_ACTION" },
         ] },
       ],
@@ -240,7 +240,7 @@ describe.skipIf(!ENABLED)("Argumentários — prova Postgres (conversão, escopo
       contractViolations: [],
       argumentScripts: [{ script: "G1", applicability: "APPLIES", situation: "Contas em atraso", evidence: [T1], rationale: "Cliente disse." }],
     }
-    const analysis = verifyCallAnalysis({ model, context, projection: projectTranscript(transcript), transcriptStatus: "COMPLETE", interactionId: interaction, subjectAnchoredDocumentIds: [], repairAttempted: false, review: { attempted: true, review: { claims: new Map([[line("Orientar o acesso"), { id: line("Orientar o acesso"), verdict: "CONFIRMED", issues: [], listReading: null, conditionEvidence: [T1], counterEvidence: [], note: null }], [`${line("Indicar o Vivo em Dia")}.1`, { id: `${line("Indicar o Vivo em Dia")}.1`, verdict: "CONFIRMED", issues: [], listReading: null, conditionEvidence: [T1], counterEvidence: [], note: null }]]), path: null, lines: [], exclusions: new Map(), violations: [] }, error: null } })
+    const analysis = verifyCallAnalysis({ model, context, projection: projectTranscript(transcript), transcriptStatus: "COMPLETE", interactionId: interaction, subjectAnchoredDocumentIds: [], repairAttempted: false, review: { attempted: true, review: { claims: new Map([[line("Orientar o acesso"), { id: line("Orientar o acesso"), verdict: "CONFIRMED", issues: [], listReading: null, conditionEvidence: [T1], counterEvidence: [], note: null }], [`${line("Indicar o Telnova em Dia")}.1`, { id: `${line("Indicar o Telnova em Dia")}.1`, verdict: "CONFIRMED", issues: [], listReading: null, conditionEvidence: [T1], counterEvidence: [], note: null }]]), path: null, lines: [], exclusions: new Map(), violations: [] }, error: null } })
     const store = createPostgresFeedbackMemoryStore(savepointDb(client))
     const claim = await store.claimAnalysis({ organizationId: ORG, kind: "CALL_ANALYSIS", analysisKey: `proof-ag-${Date.now()}`, personId: operatorA.id, interactionId: interaction, indicatorDefinitionId: null, periodStart: null, periodEnd: null, agentId: null, trigger: { kind: "EVALUATION", selectionReason: "prova" }, logicVersion: analysis.logicVersion, asOf: new Date() }, new Date(), 300)
     if (claim.kind !== "CLAIMED") throw new Error("claim")
@@ -253,8 +253,8 @@ describe.skipIf(!ENABLED)("Argumentários — prova Postgres (conversão, escopo
     expect(rows.every((row) => row.source_kind === "ARGUMENT_SCRIPT" && row.document_id === null && row.argument_script_id === id && row.argument_script_version === 1 && /^AG-[0-9a-f]{12}$/.test(row.criterion_key))).toBe(true)
     const byPart = new Map(rows.map((row) => [row.obligation?.part ?? "linha", row]))
     expect(byPart.get("consultar os valores em aberto")).toMatchObject({ status: "NOT_OBSERVABLE", observability: "OUTSIDE_CONVERSATION", execution_claim: "DECLARED" })
-    expect(byPart.get("Indicar o Vivo em Dia")).toMatchObject({ status: "MET", observability: "IN_CONVERSATION", verification: expect.objectContaining({ confirmation: "CONFIRMED" }) })
-    expect(byPart.get("Indicar o Vivo em Dia")!.parent_criterion_key).toBe(byPart.get("consultar os valores em aberto")!.parent_criterion_key)
+    expect(byPart.get("Indicar o Telnova em Dia")).toMatchObject({ status: "MET", observability: "IN_CONVERSATION", verification: expect.objectContaining({ confirmation: "CONFIRMED" }) })
+    expect(byPart.get("Indicar o Telnova em Dia")!.parent_criterion_key).toBe(byPart.get("consultar os valores em aberto")!.parent_criterion_key)
     expect(byPart.get("linha")).toMatchObject({ status: "MET", applicability: "APPLIES", scope: expect.objectContaining({ collaboratorTeamId: teamA, collaboratorSubteamId: subA }) })
     const assessment = (await client.query<{ argument_scripts: { scriptId: string; applicability: string }[] }>("select argument_scripts from call_assessments where analysis_run_id = $1", [claim.runId])).rows[0]!
     expect(assessment.argument_scripts).toEqual([expect.objectContaining({ scriptId: id, applicability: "APPLIES" })])

@@ -69,7 +69,7 @@ argumentário "Segunda via"), uma menção a conta PASSADA paga com atraso (test
 | ↳ Evitar "encerrar sem tratar a necessidade" | Respeitado (enviou por SMS; cliente confirmou recebimento) | "Enviei o código de barras por SMS… Chegou?" / "chegou sim" |
 | ↳ Evitar "nomes de sistemas internos" | Respeitado ("o sistema" genérico não é nome de sistema) | "o sistema cobra os dias…", "o sistema está um pouco lento" |
 | ↳ Argumentário sugerido | Nunca exigido (não perguntou "fatura ou parcelamento?" literalmente — não é falha) | — |
-| Contas em atraso | **NÃO SE APLICA** (conta de abril paga com atraso, já quitada; "nada em aberto além da atual") — correção/negação. Aceitável: incerto sem cobrança. **Inaceitável: cobrar indicação do Vivo em Dia.** | "Consta uma fatura de abril paga com 5 dias de atraso, mas quitada. Nada em aberto além da atual." / "aquela eu atrasei mesmo, mas paguei." |
+| Contas em atraso | **NÃO SE APLICA** (conta de abril paga com atraso, já quitada; "nada em aberto além da atual") — correção/negação. Aceitável: incerto sem cobrança. **Inaceitável: cobrar indicação do Telnova em Dia.** | "Consta uma fatura de abril paga com 5 dias de atraso, mas quitada. Nada em aberto além da atual." / "aquela eu atrasei mesmo, mas paguei." |
 | Bloqueio após pagamento, Cartão, Técnico fixo, Franquia | Não se aplicam | — |
 
 ### Pontos da base (procedimentos)

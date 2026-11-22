@@ -3,7 +3,7 @@
 import { useId, useState } from "react"
 import { ArrowRight, CalendarClock, Inbox, Play } from "lucide-react"
 
-import { ACTION_TYPE_LABELS, NODE_COLORS } from "@/components/admin/workflows/node-visuals"
+import { ACTION_TYPE_LABELS, nodeColorsFor } from "@/components/admin/workflows/node-visuals"
 import { Button } from "@/components/ui/button"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/utils"
@@ -64,7 +64,7 @@ export function DemoGallery() {
               <p className="text-xs font-medium text-foreground">Nós ensinados</p>
               <ul className="flex flex-wrap gap-1">
                 {nodeKindsOf(example).map((kind) => (
-                  <li key={kind.key} className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", NODE_COLORS[kind.type].iconBg, NODE_COLORS[kind.type].icon)}>
+                  <li key={kind.key} className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", nodeColorsFor(kind.type, kind.actionType).iconBg, nodeColorsFor(kind.type, kind.actionType).icon)}>
                     {kind.actionType ? ACTION_TYPE_LABELS[kind.actionType] : NODE_TYPE_LABELS[kind.type]}
                   </li>
                 ))}

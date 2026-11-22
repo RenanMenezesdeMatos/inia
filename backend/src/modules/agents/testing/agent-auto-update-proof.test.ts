@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
  *   INIA_DB_PROOF=1 npx vitest run agent-auto-update-proof
  *
  * Como na `agent-lifecycle-proof`, um papel de teste com `agents.manage` + `workflows.manage` e sem `agents.inactive.manage`
- * nem `assistant_conversations.view` existe SÓ nesta prova (os perfis da Vivo são a PEN-032).
+ * nem `assistant_conversations.view` existe SÓ nesta prova (os perfis da Telnova são a PEN-032).
  */
 const LITERAL = "vou enviar a segunda via agora"
 const TRANSCRIPT = `Cliente: Preciso da segunda via da minha fatura.\nAtendente: Claro, ${LITERAL} para o seu e-mail.`

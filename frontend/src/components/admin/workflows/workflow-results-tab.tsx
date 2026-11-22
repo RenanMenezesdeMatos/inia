@@ -135,6 +135,7 @@ const ENGINE_REASON_LABELS: Record<string, string> = {
   INVESTIGATION_INTERRUPTED_BY_BUDGET: "O limite de IA da execução acabou antes de a investigação responder o que estava em aberto — a próxima execução retoma",
   NOTHING_TO_INVESTIGATE: "Nada a investigar neste fechamento",
   NO_INTERACTION: "Sem interação associada ao disparo",
+  NO_ELIGIBLE_CALL: "Monitoria aleatória sem chamada para sortear no período",
   ANALYSIS_NOT_FOUND: "Análise de origem não encontrada",
   INVESTIGATION_NOT_FOUND: "Investigação de origem não encontrada",
   NO_BRIEF: "Sem conteúdo para compor",
@@ -145,6 +146,8 @@ const ENGINE_DETAIL_LABELS: Record<string, string> = {
   RULE_VIOLATION: "a conferência apontou um assunto proibido ou um limite no texto da mensagem",
   PRODUCT_NOT_ESTABLISHED: "o que havia para avaliar dependia de um produto que a gravação não estabeleceu — nada foi cobrado nem reconhecido",
   PRODUCT_DEPENDENT_POINTS_SUSPENDED: "pontos que dependiam do produto ficaram sem avaliação",
+  NO_ELIGIBLE_CALL: "nenhuma chamada do colaborador no período tinha transcrição e a duração mínima",
+  ALL_ELIGIBLE_ALREADY_MONITORED: "todas as chamadas que podiam ser sorteadas já tinham monitoria",
 }
 const engineDetailOf = (detail: string) => detail.split(",").map((code) => ENGINE_DETAIL_LABELS[code.trim()] ?? code.trim()).join("; ")
 const TONE_LABELS: Record<string, string> = { RECOGNITION: "reconhecimento", DEVELOPMENT: "desenvolvimento", MIXED: "reconhecimento e desenvolvimento", INFORMATIVE: "informativo (sem causa sustentada)" }

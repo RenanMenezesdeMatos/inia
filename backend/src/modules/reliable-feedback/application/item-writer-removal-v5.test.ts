@@ -203,7 +203,7 @@ const developmentItems = () => [
   item("OPPORTUNITY", "Não prometer desbloqueio imediato", "Nesta chamada, o que o procedimento orienta em “Informe de pagamento” não foi seguido.", "Não prometer desbloqueio imediato.", "Assim que você informar, o desbloqueio é imediato."),
 ]
 const mixedItems = () => [
-  item("STRENGTH", "Negociação", "Você orientou a consulta dos débitos pelo Vivo em Dia.", "Orientar o Vivo em Dia para consultar débitos.", "Pelo Vivo em Dia você consulta os débitos e as opções de parcelamento."),
+  item("STRENGTH", "Negociação", "Você orientou a consulta dos débitos pelo Telnova em Dia.", "Orientar o Telnova em Dia para consultar débitos.", "Pelo Telnova em Dia você consulta os débitos e as opções de parcelamento."),
   item("OPPORTUNITY", "Promessas", "Nesta chamada, o que o procedimento orienta em “Negociação” não foi seguido.", "Não garantir aprovação antes da consulta.", "Ele vai ser aprovado na hora, isso eu te garanto."),
 ]
 const check = (items: EmittedItem[], value: NarrativeDraft) => compositionViolations(value, narrativeBriefOf(items, LABEL), items, CONTEXT)
@@ -229,7 +229,7 @@ describe("A–G — o que o único redator pode e não pode", () => {
     expect([...fallback.paragraphs, fallback.card].join("\n")).not.toMatch(PRAISE_WORDS)
   })
   it("G) MIXED com força e achado independentes → aceito; força disfarçada no ajuste → recusada", () => {
-    expect(check(mixedItems(), composition([[1, "Você indicou o Vivo em Dia para ele consultar os débitos e as opções de parcelamento.", "STRENGTH", ["S1"]], [1, "O ajuste é que a aprovação do parcelamento foi garantida antes da consulta.", "ADJUSTMENT", ["A1"]]]))).toEqual({ narrative: [], card: [] })
+    expect(check(mixedItems(), composition([[1, "Você indicou o Telnova em Dia para ele consultar os débitos e as opções de parcelamento.", "STRENGTH", ["S1"]], [1, "O ajuste é que a aprovação do parcelamento foi garantida antes da consulta.", "ADJUSTMENT", ["A1"]]]))).toEqual({ narrative: [], card: [] })
     expect(check(mixedItems(), composition([[1, "Você orientou corretamente e garantiu a aprovação.", "ADJUSTMENT", ["S1", "A1"]]])).narrative).toContain("NARRATIVE_UNSUPPORTED_STRENGTH")
   })
 })

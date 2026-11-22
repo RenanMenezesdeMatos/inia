@@ -11,7 +11,8 @@ import type { MemoryArgument } from "../domain/indicator-investigation.js"
 import { segmentKeySql } from "./postgres-indicator-data.js"
 import { CRITERIA_EXTRACTION_VERSION } from "../domain/versions.js"
 import { LEGACY_REVIEW_UNAVAILABLE, stageResponsesOf, type StageResponses } from "../domain/analysis-recovery.js"
-import type { AnalysisClaim, AnalysisIdentity, AnalysisRunRecord, CallSnapshot, FeedbackMemoryStore, FeedbackMessageStore, MessageRecord, StoredCallAssessment } from "../application/ports.js"
+import type { AnalysisClaim, AnalysisIdentity, AnalysisRunRecord, CallSnapshot, FeedbackMemoryStore, FeedbackMessageStore, LeaseOwner, MessageRecord, StoredCallAssessment } from "../application/ports.js"
+import { leaseLostOnComplete } from "../application/engine-lease.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
@@ -24,6 +25,15 @@ import { inTransaction } from "../../../shared/infrastructure/database/transacti
  * critério).
  */
 type Client = Pick<pg.PoolClient, "query">
+
+/**
+ * `ENGINE_LEASE_V1` pelo relógio do BANCO (run-9, SFW-01): a posse nasce e é renovada como `now()` + prazo, e só é retomada quando
+ * `claimed_until < now()` — nunca pelo relógio do processo. Truncada em milissegundos para o token (o `Date` devolvido) comparar
+ * igual à coluna no compare-and-swap da renovação.
+ */
+const leaseUntilSql = (param: string) => `(date_trunc('milliseconds', now()) + make_interval(secs => ${param}::int))`
+/** Só a tentativa dona da posse grava a conclusão/falha (`LeaseOwner`); sem dona = sem conferência (provas e scripts antigos). */
+const ownerSql = (owner: LeaseOwner | undefined, param: string) => (owner ? ` and status = 'RUNNING' and attempts = ${param}::int` : "")
 type RunRow = { id: string; organization_id: string; kind: AnalysisIdentity["kind"]; analysis_key: string; person_id: string; interaction_id: string | null; indicator_definition_id: string | null; period_start: string | null; period_end: string | null; agent_id: string | null; trigger: AnalysisIdentity["trigger"]; status: AnalysisRunRecord["status"]; outcome: AnalysisRunRecord["outcome"]; outcome_reasons: string[]; logic_version: string; provenance: Record<string, unknown>; result: unknown; metrics: Record<string, unknown>; as_of: Date; completed_at: Date | null }
 
 /** O que fica em `call_criterion_assessments.verification`: proposta × confirmação (com os motivos e o que a revisão disse). */
@@ -110,12 +120,15 @@ export const reviewSettledSql = (alias: string) => `not exists (select 1 from fe
 const RUN_COLUMNS = "organization_id, kind, analysis_key, person_id, interaction_id, indicator_definition_id, period_start, period_end, agent_id, trigger, status, logic_version, as_of, claimed_until, attempts, started_at, created_at"
 
 export function createPostgresFeedbackMemoryStore(db: Database): FeedbackMemoryStore & FeedbackMessageStore & { markDelivered(organizationId: string, messageId: string, at: Date): Promise<void> } {
-  const completeRun = (client: Client, organizationId: string, runId: string, input: { outcome: string; outcomeReasons: string[]; result: unknown; provenance: Record<string, unknown>; metrics: Record<string, unknown> }, now: Date) =>
-    client.query(
+  const completeRun = async (client: Client, organizationId: string, runId: string, input: { outcome: string; outcomeReasons: string[]; result: unknown; provenance: Record<string, unknown>; metrics: Record<string, unknown> }, now: Date, owner?: LeaseOwner) => {
+    const updated = await client.query(
       `update feedback_analysis_runs set status = 'COMPLETED', outcome = $3, outcome_reasons = $4, result = $5, provenance = $6, metrics = $7, completed_at = $8, claimed_until = null, error = null
-       where id = $1 and organization_id = $2`,
-      [runId, organizationId, input.outcome, input.outcomeReasons, JSON.stringify(input.result), JSON.stringify(input.provenance), JSON.stringify(input.metrics), now],
+       where id = $1 and organization_id = $2${ownerSql(owner, "$9")}`,
+      [runId, organizationId, input.outcome, input.outcomeReasons, JSON.stringify(input.result), JSON.stringify(input.provenance), JSON.stringify(input.metrics), now, ...(owner ? [owner.attempt] : [])],
     )
+    // Outra execução retomou a posse: nada desta é gravado (a transação de quem chamou volta inteira).
+    if (owner && updated.rowCount === 0) throw leaseLostOnComplete("feedback_analysis_runs", runId, owner.attempt)
+  }
 
   const loadPersisted = async (client: Pick<Database, "query">, organizationId: string, documentId: string, version: number): Promise<PersistedCriterion[] | null> => {
     const rows = (await client.query<{ line_key: string; criterion_key: string; section_heading: string | null; text: string; position: number }>(
@@ -157,27 +170,33 @@ export function createPostgresFeedbackMemoryStore(db: Database): FeedbackMemoryS
 
   return {
     async claimAnalysis(identity, now, leaseSeconds): Promise<AnalysisClaim> {
-      const leaseUntil = new Date(now.getTime() + leaseSeconds * 1000)
-      const owned = await db.query<{ id: string }>(
+      // A posse usa o relógio do BANCO; `now` (do processo) continua sendo só a data de início registrada.
+      const owned = await db.query<{ id: string; claimed_until: Date; attempts: number }>(
         `insert into feedback_analysis_runs as r (${RUN_COLUMNS})
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'RUNNING',$11,$12,$13,1,$14,$14)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'RUNNING',$11,$12,${leaseUntilSql("$13")},1,$14,$14)
          on conflict (organization_id, analysis_key) do update
-           set status = 'RUNNING', claimed_until = $13, attempts = r.attempts + 1, error = null, trigger = excluded.trigger, as_of = excluded.as_of, started_at = excluded.started_at
-           where r.status = 'FAILED' or (r.status = 'RUNNING' and r.claimed_until < $14)
-         returning r.id`,
-        [identity.organizationId, identity.kind, identity.analysisKey, identity.personId, identity.interactionId, identity.indicatorDefinitionId, identity.periodStart, identity.periodEnd, identity.agentId, JSON.stringify(identity.trigger), identity.logicVersion, identity.asOf, leaseUntil, now],
+           set status = 'RUNNING', claimed_until = ${leaseUntilSql("$13")}, attempts = r.attempts + 1, error = null, trigger = excluded.trigger, as_of = excluded.as_of, started_at = excluded.started_at
+           where r.status = 'FAILED' or (r.status = 'RUNNING' and r.claimed_until < now())
+         returning r.id, r.claimed_until, r.attempts`,
+        [identity.organizationId, identity.kind, identity.analysisKey, identity.personId, identity.interactionId, identity.indicatorDefinitionId, identity.periodStart, identity.periodEnd, identity.agentId, JSON.stringify(identity.trigger), identity.logicVersion, identity.asOf, leaseSeconds, now],
       )
-      if (owned.rows[0]) return { kind: "CLAIMED", runId: owned.rows[0].id }
+      if (owned.rows[0]) return { kind: "CLAIMED", runId: owned.rows[0].id, leaseUntil: new Date(owned.rows[0].claimed_until), attempt: Number(owned.rows[0].attempts) }
       const row = (await db.query<RunRow>(`select * from feedback_analysis_runs where organization_id = $1 and analysis_key = $2`, [identity.organizationId, identity.analysisKey])).rows[0]!
       return row.status === "COMPLETED" ? { kind: "COMPLETED", run: toRun(row) } : { kind: "IN_PROGRESS" }
     },
 
-    async completeCallAnalysis(organizationId, runId, data, now) {
+    async renewAnalysisLease(organizationId, runId, token, leaseSeconds) {
+      // Compare-and-swap pela posse gravada: quem já a perdeu (venceu e outra execução pegou) não renova. Prazo pelo relógio do banco.
+      const renewed = await db.query<{ claimed_until: Date }>(`update feedback_analysis_runs set claimed_until = ${leaseUntilSql("$4")} where id = $1 and organization_id = $2 and status = 'RUNNING' and claimed_until = $3 returning claimed_until`, [runId, organizationId, token, leaseSeconds])
+      return renewed.rows[0] ? new Date(renewed.rows[0].claimed_until) : null
+    },
+
+    async completeCallAnalysis(organizationId, runId, data, now, owner) {
       return inTransaction(db, async (client) => {
         const snapshot = data.snapshot
         await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [`call-memory:${snapshot.interactionId}`])
         const analysis = data.analysis
-        await completeRun(client, organizationId, runId, { outcome: analysis.outcome, outcomeReasons: analysis.outcomeReasons, result: analysis, provenance: data.provenance, metrics: data.metrics }, now)
+        await completeRun(client, organizationId, runId, { outcome: analysis.outcome, outcomeReasons: analysis.outcomeReasons, result: analysis, provenance: data.provenance, metrics: data.metrics }, now, owner)
         const run = (await client.query<{ as_of: Date }>(`select as_of from feedback_analysis_runs where id = $1`, [runId])).rows[0]!
         const asOf = new Date(run.as_of)
         const procedureId = analysis.scenario.procedureDocumentId
@@ -250,12 +269,12 @@ export function createPostgresFeedbackMemoryStore(db: Database): FeedbackMemoryS
       })
     },
 
-    async completeIndicatorInvestigation(organizationId, runId, data, now) {
+    async completeIndicatorInvestigation(organizationId, runId, data, now, owner) {
       return inTransaction(db, async (client) => {
         const investigation = data.investigation
         const official = investigation.official
         await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [`indicator-memory:${runId}`])
-        await completeRun(client, organizationId, runId, { outcome: investigation.conclusion === "INSUFFICIENT_DATA" ? "INSUFFICIENT_EVIDENCE" : investigation.conclusion === "CHANGE_LOCATED_NO_CAUSE" || investigation.conclusion === "CHANGE_LOCATED_NOT_EXAMINED" || investigation.conclusion === "MIX_EFFECT" ? "PARTIAL" : "USABLE", outcomeReasons: [investigation.conclusion], result: investigation, provenance: data.provenance, metrics: data.metrics }, now)
+        await completeRun(client, organizationId, runId, { outcome: investigation.conclusion === "INSUFFICIENT_DATA" ? "INSUFFICIENT_EVIDENCE" : investigation.conclusion === "CHANGE_LOCATED_NO_CAUSE" || investigation.conclusion === "CHANGE_LOCATED_NOT_EXAMINED" || investigation.conclusion === "MIX_EFFECT" ? "PARTIAL" : "USABLE", outcomeReasons: [investigation.conclusion], result: investigation, provenance: data.provenance, metrics: data.metrics }, now, owner)
         // Interrompida pelo orçamento: fica no histórico (e serve à mensagem desta execução), mas a chave é liberada.
         if (data.reusable === false) await client.query(`update feedback_analysis_runs set analysis_key = analysis_key || ':INCOMPLETE:' || id::text where id = $1 and organization_id = $2`, [runId, organizationId])
         const run = (await client.query<{ as_of: Date; person_id: string }>(`select as_of, person_id from feedback_analysis_runs where id = $1`, [runId])).rows[0]!
@@ -276,19 +295,19 @@ export function createPostgresFeedbackMemoryStore(db: Database): FeedbackMemoryS
       })
     },
 
-    async completeInsufficient(organizationId, runId, outcome, now) {
-      await completeRun(db, organizationId, runId, { outcome: "INSUFFICIENT_EVIDENCE", outcomeReasons: outcome.outcomeReasons, result: outcome.result, provenance: outcome.provenance, metrics: outcome.metrics }, now)
+    async completeInsufficient(organizationId, runId, outcome, now, owner) {
+      await completeRun(db, organizationId, runId, { outcome: "INSUFFICIENT_EVIDENCE", outcomeReasons: outcome.outcomeReasons, result: outcome.result, provenance: outcome.provenance, metrics: outcome.metrics }, now, owner)
     },
 
-    async failAnalysis(organizationId, runId, error, now) {
-      await db.query(`update feedback_analysis_runs set status = 'FAILED', error = $3, completed_at = $4, claimed_until = null where id = $1 and organization_id = $2 and status = 'RUNNING'`, [runId, organizationId, error, now])
+    async failAnalysis(organizationId, runId, error, now, owner) {
+      await db.query(`update feedback_analysis_runs set status = 'FAILED', error = $3, completed_at = $4, claimed_until = null where id = $1 and organization_id = $2 and status = 'RUNNING'${ownerSql(owner, "$5")}`, [runId, organizationId, error, now, ...(owner ? [owner.attempt] : [])])
     },
 
-    async suspendCallAnalysis(organizationId, runId, data, now) {
+    async suspendCallAnalysis(organizationId, runId, data, now, owner) {
       await db.query(
         `update feedback_analysis_runs set status = 'FAILED', error = $3, result = $4, provenance = $5, metrics = $6, completed_at = $7, claimed_until = null
-         where id = $1 and organization_id = $2 and status = 'RUNNING'`,
-        [runId, organizationId, data.error.slice(0, 2_000), JSON.stringify({ checkpoint: data.checkpoint }), JSON.stringify(data.provenance), JSON.stringify(data.metrics), now],
+         where id = $1 and organization_id = $2 and status = 'RUNNING'${ownerSql(owner, "$8")}`,
+        [runId, organizationId, data.error.slice(0, 2_000), JSON.stringify({ checkpoint: data.checkpoint }), JSON.stringify(data.provenance), JSON.stringify(data.metrics), now, ...(owner ? [owner.attempt] : [])],
       )
     },
 
@@ -577,29 +596,36 @@ export function createPostgresFeedbackMemoryStore(db: Database): FeedbackMemoryS
 
     // ------------------------------------------------------------------ mensagens
     async claimMessage(identity, now, leaseSeconds) {
-      const leaseUntil = new Date(now.getTime() + leaseSeconds * 1000)
-      const owned = await db.query<{ id: string }>(
+      const owned = await db.query<{ id: string; claimed_until: Date; attempts: number }>(
         `insert into feedback_engine_messages as m (organization_id, message_key, enrollment_id, workflow_id, workflow_version_id, node_id, source_node_id, person_id, domain, status, claimed_until, attempts, created_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'RUNNING',$10,1,$11)
-         on conflict (organization_id, message_key) do update set status = 'RUNNING', claimed_until = $10, attempts = m.attempts + 1, error = null
-           where m.status = 'FAILED' or (m.status = 'RUNNING' and m.claimed_until < $11)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'RUNNING',${leaseUntilSql("$10")},1,$11)
+         on conflict (organization_id, message_key) do update set status = 'RUNNING', claimed_until = ${leaseUntilSql("$10")}, attempts = m.attempts + 1, error = null
+           where m.status = 'FAILED' or (m.status = 'RUNNING' and m.claimed_until < now())
               -- abstenção gravada por uma revisão que NÃO aconteceu (falha técnica, versão anterior) não é decisão: refeita.
               or (m.status = 'ABSTAINED' and m.abstain_reason like '%${LEGACY_REVIEW_UNAVAILABLE}%')
-         returning m.id`,
-        [identity.organizationId, identity.messageKey, identity.enrollmentId, identity.workflowId, identity.workflowVersionId, identity.nodeId, identity.sourceNodeId, identity.personId, identity.domain, leaseUntil, now],
+         returning m.id, m.claimed_until, m.attempts`,
+        [identity.organizationId, identity.messageKey, identity.enrollmentId, identity.workflowId, identity.workflowVersionId, identity.nodeId, identity.sourceNodeId, identity.personId, identity.domain, leaseSeconds, now],
       )
-      if (owned.rows[0]) return { kind: "CLAIMED" as const, messageId: owned.rows[0].id }
+      if (owned.rows[0]) return { kind: "CLAIMED" as const, messageId: owned.rows[0].id, leaseUntil: new Date(owned.rows[0].claimed_until), attempt: Number(owned.rows[0].attempts) }
       const row = (await db.query<MessageRow>(`select * from feedback_engine_messages where organization_id = $1 and message_key = $2`, [identity.organizationId, identity.messageKey])).rows[0]!
       return row.status === "PUBLISHABLE" || row.status === "ABSTAINED" ? { kind: "COMPLETED" as const, record: toMessage(row) } : { kind: "IN_PROGRESS" as const }
     },
 
-    async completeMessage(organizationId, messageId, data, now) {
+    async renewMessageLease(organizationId, messageId, token, leaseSeconds) {
+      const renewed = await db.query<{ claimed_until: Date }>(`update feedback_engine_messages set claimed_until = ${leaseUntilSql("$4")} where id = $1 and organization_id = $2 and status = 'RUNNING' and claimed_until = $3 returning claimed_until`, [messageId, organizationId, token, leaseSeconds])
+      return renewed.rows[0] ? new Date(renewed.rows[0].claimed_until) : null
+    },
+
+    async completeMessage(organizationId, messageId, data, now, owner) {
       return inTransaction(db, async (client) => {
-        const updated = (await client.query<MessageRow>(
+        const found = (await client.query<MessageRow>(
           `update feedback_engine_messages set status = $3, analysis_run_ids = $4, abstain_reason = $5, finding_keys = $6, brief = $7, message = $8, composition = $9, suppressed = $10, metrics = $11, completed_at = $12, claimed_until = null, error = null
-           where id = $1 and organization_id = $2 returning *`,
-          [messageId, organizationId, data.status, data.analysisRunIds, data.abstainReason, data.findingKeys, data.brief ? JSON.stringify(data.brief) : null, data.message ? JSON.stringify(data.message) : null, data.composition ? JSON.stringify(data.composition) : null, JSON.stringify(data.suppressed), JSON.stringify(data.metrics), now],
-        )).rows[0]!
+           where id = $1 and organization_id = $2${ownerSql(owner, "$13")} returning *`,
+          [messageId, organizationId, data.status, data.analysisRunIds, data.abstainReason, data.findingKeys, data.brief ? JSON.stringify(data.brief) : null, data.message ? JSON.stringify(data.message) : null, data.composition ? JSON.stringify(data.composition) : null, JSON.stringify(data.suppressed), JSON.stringify(data.metrics), now, ...(owner ? [owner.attempt] : [])],
+        )).rows[0]
+        // Outra execução retomou a mensagem: nada desta é gravado (nem materiais).
+        if (!found) throw owner ? leaseLostOnComplete("feedback_engine_messages", messageId, owner.attempt) : new Error(`Mensagem do motor ${messageId} não encontrada.`)
+        const updated = found
         for (const material of data.materials) {
           await client.query(
             `insert into feedback_material_recommendations (organization_id, message_id, person_id, document_id, document_version, criterion_keys, reason, created_at)
@@ -612,8 +638,8 @@ export function createPostgresFeedbackMemoryStore(db: Database): FeedbackMemoryS
       })
     },
 
-    async failMessage(organizationId, messageId, error, now) {
-      await db.query(`update feedback_engine_messages set status = 'FAILED', error = $3, completed_at = $4, claimed_until = null where id = $1 and organization_id = $2 and status = 'RUNNING'`, [messageId, organizationId, error.slice(0, 2_000), now])
+    async failMessage(organizationId, messageId, error, now, owner) {
+      await db.query(`update feedback_engine_messages set status = 'FAILED', error = $3, completed_at = $4, claimed_until = null where id = $1 and organization_id = $2 and status = 'RUNNING'${ownerSql(owner, "$5")}`, [messageId, organizationId, error.slice(0, 2_000), now, ...(owner ? [owner.attempt] : [])])
     },
 
     async getMessage(organizationId, messageId) {

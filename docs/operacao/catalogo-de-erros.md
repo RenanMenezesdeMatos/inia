@@ -1624,7 +1624,7 @@ já diz a regra; a família do status diz como investigar.
 
 **Recuperação:** Restabelecer a dependência; repetir a ação. **Escalar para:** Infraestrutura da VM (servidor, IIS, PostgreSQL). Sem solução em 30 min: equipe de desenvolvimento da INIA com a referência, o horário UTC e as linhas do log.
 
-## Códigos dos módulos (968)
+## Códigos dos módulos (981)
 
 ### Módulo `access`
 
@@ -1654,6 +1654,15 @@ já diz a regra; a família do status diz como investigar.
 | `AUTH_BUSY` | 503 | FAMILIA-DEPENDENCIA | Muitos acessos ao mesmo tempo. Tente de novo em alguns segundos. | `backend/src/modules/auth/infrastructure/password-hasher.ts` |
 | `INVALID_CREDENTIALS` | 401 | FAMILIA-ACESSO | E-mail ou senha inválidos. | `backend/src/modules/auth/presentation/auth-router.ts` |
 | `LOGIN_TOO_MANY_ATTEMPTS` | 429 | FAMILIA-LIMITE | Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente. | `backend/src/modules/auth/presentation/auth-router.ts` |
+| `NETWORK_ACCOUNT_DISABLED` | 403 | FAMILIA-ACESSO | Sua conta de rede está desativada ou sem permissão de acesso agora. Procure o suporte de TI. | `backend/src/modules/auth/presentation/auth-router.ts`<br>`backend/src/modules/feedback-application/application/read-confirmation-service.ts` |
+| `NETWORK_ACCOUNT_LOCKED` | 403 | FAMILIA-ACESSO | Sua conta de rede está bloqueada. Procure o suporte de TI para desbloquear. | `backend/src/modules/auth/presentation/auth-router.ts`<br>`backend/src/modules/feedback-application/application/read-confirmation-service.ts` |
+| `NETWORK_LOGIN_AMBIGUOUS_MATRICULA` | 409 | FAMILIA-CONFLITO | Há matrículas repetidas com grafias diferentes (maiúscula ou espaço). Corrija o cadastro dessas pessoas antes de ligar: com a matrícula repetida, ninguém consegue entrar por ela. | `backend/src/modules/auth/application/network-login-settings.ts` |
+| `NETWORK_LOGIN_EMERGENCY_ACCOUNT_REQUIRED` | 409 | FAMILIA-CONFLITO | Antes de ligar, é preciso ao menos uma conta de emergência habilitada (crie com npm run admin:create). | `backend/src/modules/auth/application/network-login-settings.ts` |
+| `NETWORK_LOGIN_HTTPS_REQUIRED` | 409 | FAMILIA-CONFLITO | Ligue o HTTPS antes: a senha de rede não pode passar por uma conexão sem criptografia. | `backend/src/modules/auth/application/network-login-settings.ts` |
+| `NETWORK_LOGIN_NOT_CONFIGURED` | 409 | FAMILIA-CONFLITO | O login pela rede não está configurado nesta instalação (AD_LDAP_URLS e AD_DOMAIN). | `backend/src/modules/auth/application/network-login-settings.ts` |
+| `NETWORK_LOGIN_REQUIRED` | 403 | FAMILIA-ACESSO | Na sua organização o acesso à INIA é pela matrícula e senha de rede. | `backend/src/modules/auth/presentation/auth-router.ts` |
+| `NETWORK_LOGIN_UNAVAILABLE` | 503 | FAMILIA-DEPENDENCIA | O login pela rede está indisponível no momento. Tente de novo em alguns minutos. | `backend/src/modules/auth/presentation/auth-router.ts`<br>`backend/src/modules/feedback-application/application/read-confirmation-service.ts` |
+| `NETWORK_PASSWORD_EXPIRED` | 403 | FAMILIA-ACESSO | Sua senha de rede venceu ou precisa ser trocada. Troque a senha de rede e tente de novo. | `backend/src/modules/auth/presentation/auth-router.ts`<br>`backend/src/modules/feedback-application/application/read-confirmation-service.ts` |
 | `PASSWORD_CHANGE_NOT_REQUIRED` | 409 | FAMILIA-CONFLITO | Sua senha já foi criada. | `backend/src/modules/auth/application/define-first-password.ts` |
 | `PASSWORD_CHANGE_REQUIRED` | 403 | FAMILIA-ACESSO | Crie a sua senha para continuar. | `backend/src/modules/auth/domain/session-state.ts` |
 | `PASSWORD_CONFIRMATION_MISMATCH` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A confirmação não é igual à nova senha. | `backend/src/modules/auth/application/define-first-password.ts` |
@@ -1813,7 +1822,7 @@ já diz a regra; a família do status diz como investigar.
 | `WORKFLOW_FEEDBACK_DOMAIN_AMBIGUOUS` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Não dá para saber se "${node.label}" é feedback de monitoria ou de indicador com este gatilho e esta origem. Escolha o tipo explicitamente (monitoria exige gatilho por Flag ou Manual com interação; indicador, gatilho … | `backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts` |
 | `WORKFLOW_FEEDBACK_INDICATOR_ORCHESTRATOR_UNSUPPORTED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | "${node.label}" é feedback de indicador a partir de um Orquestrador — ainda não suportado: o Orquestrador não recebe o contexto canônico do indicador. Use "Chamar agente" como origem. | `backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts` |
 | `WORKFLOW_FEEDBACK_INDICATOR_REQUIRES_CANONICAL_CONTEXT` | 422 | FAMILIA-REGRA-DE-NEGOCIO | "${node.label}" é feedback de indicador, que precisa do dado canônico de uma medição — só existe com gatilho por Indicador ou Manual com medição (modo Individual). | `backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts` |
-| `WORKFLOW_FEEDBACK_MONITORING_REQUIRES_INTERACTION` | 422 | FAMILIA-REGRA-DE-NEGOCIO | "${node.label}" é feedback de monitoria, que precisa da interação do gatilho por Flag de canal ou Manual com interação (modo Individual). | `backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts` |
+| `WORKFLOW_FEEDBACK_MONITORING_REQUIRES_INTERACTION` | 422 | FAMILIA-REGRA-DE-NEGOCIO | "${node.label}" é feedback de monitoria, que precisa de uma chamada: a do gatilho por Flag de canal ou Manual com interação, ou a sorteada por um "Chamar agente" com "Amostra de chamadas" + "Avaliação de processo" na … | `backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts` |
 | `WORKFLOW_FEEDBACK_SOURCE_INCOMPATIBLE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A origem de "${node.label}" ("${source.label}") não é um "Chamar agente" ou "Orquestrador" que analisa um colaborador. | `backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts` |
 | `WORKFLOW_FEEDBACK_SOURCE_NOT_ANCESTOR` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A origem de "${node.label}" ("${source.label}") precisa vir ANTES dele no fluxo. | `backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts` |
 | `WORKFLOW_FEEDBACK_SOURCE_NOT_FOUND` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O nó "${node.label}" precisa de uma origem: escolha o "Chamar agente" ou "Orquestrador" cujo resultado vira feedback. | `backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts` |
@@ -1874,9 +1883,11 @@ já diz a regra; a família do status diz como investigar.
 | `WORKFLOW_PAID_NODE_RUN_LIMIT` | — | FAMILIA-DEPENDENCIA | O nó "${node.label}" chama a IA e já rodou ${runs} vezes nesta execução (limite: ${env.WORKFLOW_MAX_PAID_NODE_RUNS}). A execução foi encerrada para não repetir o gasto de IA. | `backend/src/modules/workflows/application/engine.ts` |
 | `WORKFLOW_PERFORMANCE_QUERY_INVALID_MODE` | — | FAMILIA-DEPENDENCIA | (mensagem montada no código) | `backend/src/modules/workflows/application/publish-validation/fan-out.ts` |
 | `WORKFLOW_POPULATION_FILTER_INVALID_TRIGGER` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O Filtro Populacional configurado só é válido para Agenda — troque o filtro para "Todos os colaboradores elegíveis" antes de publicar. | `backend/src/modules/workflows/application/publish-validation/trigger-context.ts`<br>`backend/src/modules/workflows/presentation/workflow-router/lifecycle-routes.ts` |
-| `WORKFLOW_PROCESS_ASSESSMENT_REQUIRES_FLAG` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O nó "${assessmentNode.label}" usa o formato "Avaliação de processo", que exige uma transcrição de chamada — só disponível com gatilho por Flag de canal ou Manual com interação. | `backend/src/modules/workflows/application/publish-validation/trigger-context.ts` |
+| `WORKFLOW_PROCESS_ASSESSMENT_REQUIRES_FLAG` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O nó "${assessmentNode.label}" usa o formato "Avaliação de processo", que exige uma transcrição de chamada — só disponível com gatilho por Flag de canal, Manual com interação ou, no "Chamar agente", com a fonte "Amost… | `backend/src/modules/workflows/application/publish-validation/trigger-context.ts` |
 | `WORKFLOW_PROCESS_AUDIT_REQUIRES_FLAG` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O nó "${auditNode.label}" usa o formato "Conformidade de processo", que exige uma transcrição de chamada — só disponível com gatilho por Flag de canal ou Manual com interação. | `backend/src/modules/workflows/application/publish-validation/trigger-context.ts` |
 | `WORKFLOW_PRV_DIAGNOSIS_REQUIRES_SCHEDULE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O nó "${node.label}" usa o formato "Diagnóstico do fechamento do PRV", que parte do fechamento oficial — só com gatilho por Agenda (ou Manual por colaborador) e a fonte de dados "Fechamentos oficiais". | `backend/src/modules/workflows/application/publish-validation/indicator-diagnosis.ts`<br>`backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts` |
+| `WORKFLOW_RANDOM_MONITORING_INDIVIDUAL_ONLY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O nó "${node.label}" faz monitoria aleatória, que analisa um colaborador por execução: use o modo Individual (sem Estrutura Consolidada). | `backend/src/modules/workflows/application/publish-validation/trigger-context.ts` |
+| `WORKFLOW_RANDOM_MONITORING_SINGLE_CALL` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O nó "${node.label}" faz monitoria aleatória: cada execução sorteia UMA chamada por colaborador. Para mais monitorias, aumente a frequência do gatilho. | `backend/src/modules/workflows/application/publish-validation/trigger-context.ts` |
 | `WORKFLOW_RECIPIENT_NOT_FOUND` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Uma pessoa escolhida como destinatário ou revisor não existe mais, está inativa ou não pertence a esta organização. | `backend/src/modules/workflows/application/publish-validation/review-escalation.ts` |
 | `WORKFLOW_RECOGNITION_REQUIRES_RANKING` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O nó "${node.label}" usa o formato "Reconhecimento", que precisa da fonte de dados "Fechamentos oficiais" e de um "Selecionar colaboradores" antes, por ranking de "Melhores desempenhos" ou de evolução. É dele que vem … | `backend/src/modules/workflows/application/publish-validation/indicator-diagnosis.ts` |
 | `WORKFLOW_RETRY_CONTENT_MISSING` | — | FAMILIA-DEPENDENCIA | O conteúdo a revisar continua ausente nesta versão. Publique uma versão que corrija a origem do conteúdo. | `backend/src/modules/workflows/application/workflow-retry.ts` |
@@ -1918,6 +1929,7 @@ já diz a regra; a família do status diz como investigar.
 | `AI_UNKNOWN` | — | FAMILIA-DEPENDENCIA | (mensagem montada no código) | `backend/src/shared/application/model-routing/ai-errors.ts` |
 | `CODIGO` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/shared/infrastructure/errors/scan-error-codes.ts` |
 | `CROSS_SITE_REQUEST_BLOCKED` | 403 | FAMILIA-ACESSO | Requisição bloqueada: origem não autorizada. | `backend/src/shared/presentation/origin-guard.ts` |
+| `RATE_LIMITED` | 429 | FAMILIA-LIMITE | (mensagem montada no código) | `backend/src/shared/presentation/rate-limit.ts` |
 | `STOP_BEFORE_AI` | — | FAMILIA-DEPENDENCIA | (mensagem montada no código) | `backend/src/shared/application/llm-telemetry.ts` |
 
 ### Módulo `argument-scripts`
@@ -2311,7 +2323,8 @@ já diz a regra; a família do status diz como investigar.
 | `FEEDBACK_APPLICATION_NOT_STARTED` | 409 | FAMILIA-CONFLITO | Esta aplicação ainda não começou. | `backend/src/modules/feedback-application/application/feedback-application-service.ts` |
 | `FEEDBACK_APPLICATION_SOURCE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Feedback não encontrado. | `backend/src/modules/feedback-application/application/feedback-application-service.ts` |
 | `FEEDBACK_READ_CONFIRMATION_SOURCE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Feedback não encontrado. | `backend/src/modules/feedback-application/application/read-confirmation-service.ts` |
-| `READ_CONFIRMATION_INVALID_CREDENTIALS` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Login ou senha não conferem com a sua conta. | `backend/src/modules/feedback-application/application/read-confirmation-service.ts` |
+| `READ_CONFIRMATION_ACCOUNT_CHANGED` | 409 | FAMILIA-CONFLITO | A forma de entrar da sua conta mudou durante a confirmação. Abra a confirmação de novo e tente outra vez. | `backend/src/modules/feedback-application/application/read-confirmation-service.ts` |
+| `READ_CONFIRMATION_INVALID_CREDENTIALS` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Matrícula ou senha de rede não conferem com a sua conta. Atenção: várias senhas erradas bloqueiam a sua conta de rede. | `backend/src/modules/feedback-application/application/read-confirmation-service.ts` |
 | `READ_CONFIRMATION_TOO_MANY_ATTEMPTS` | 429 | FAMILIA-LIMITE | Muitas tentativas com login ou senha incorretos. Aguarde alguns minutos e tente de novo. | `backend/src/modules/feedback-application/application/read-confirmation-service.ts` |
 
 ### Módulo `knowledge-clarification`

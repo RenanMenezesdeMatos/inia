@@ -90,8 +90,8 @@ describe.skipIf(!ENABLED)("Publicações — prova Postgres (migration 220) e co
   // A decisão de relevância é da IA (`PUBLICATION_RELEVANCE_V1`); aqui um modelo falso — a prova é de visibilidade, não de relevância.
   const model = fakePublicationRelevanceModel([{ whenQuestionIncludes: "segunda via", titleIncludes: "segunda via" }, { whenQuestionIncludes: "segunda via", titleIncludes: "fatura" }])
   const chat = async (personKey: string) => (await loadCommunicationsForConversation(db, { organizationId: ORG, personId: ids[personKey]!, question: QUESTION, model })).items.map((item) => item.title)
-  const TITLE = "Segunda via da fatura no App Meu Vivo"
-  const BODY = `<h2>Onde fica</h2><p>No App Meu Vivo: Conta &gt; Faturas &gt; Segunda via. Veja <a href="https://www.vivo.com.br/meuvivo">o Meu Vivo</a>.</p>`
+  const TITLE = "Segunda via da fatura no App Meu Telnova"
+  const BODY = `<h2>Onde fica</h2><p>No App Meu Telnova: Conta &gt; Faturas &gt; Segunda via. Veja <a href="https://www.telnova.com.br/meutelnova">o Meu Telnova</a>.</p>`
 
   it("rascunho → agendado → no ar para o recorte → encerrado → arquivado → desarquivado, com o chat acompanhando cada passo", async () => {
     const diretora = await login("pub.diretora@proof.inia.local")
@@ -117,7 +117,7 @@ describe.skipIf(!ENABLED)("Publicações — prova Postgres (migration 220) e co
     expect(await received(ouvidoria)).toEqual([])
     expect(await chat("ouvidoria")).toEqual([])
     const stored = (await db.query<{ content_html: string }>(`select content_html from communications where id = $1`, [id])).rows[0]!
-    expect(stored.content_html).toContain(`<a href="https://www.vivo.com.br/meuvivo" target="_blank" rel="noopener noreferrer nofollow">o Meu Vivo</a>`)
+    expect(stored.content_html).toContain(`<a href="https://www.telnova.com.br/meutelnova" target="_blank" rel="noopener noreferrer nofollow">o Meu Telnova</a>`)
 
     // Chegou a hora (simulada): a Ouvidoria recebe e o chat usa o comunicado com autoria e cargo do cadastro; Vendas não.
     await db.query(`update communications set published_at = now() - interval '1 minute' where id = $1`, [id])

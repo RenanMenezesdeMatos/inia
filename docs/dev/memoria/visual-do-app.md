@@ -6,7 +6,7 @@ visual de uma tela.
 ## Origem (2026-11-10)
 
 O responsável achou o Apoio com Anjo "muito branco, sem separação entre seções e grupos de campos, e a ação principal parecendo
-link". Referência pedida: a Área do Cliente da Vivo logada no Chrome (observada só em leitura — central de faturas e início):
+link". Referência pedida: a área logada do site do cliente no Chrome (observada só em leitura — central de faturas e início):
 fundo branco com cartões de borda clara e raio de 16 px, rótulo de seção curto em caixa alta cinza, selo de estado tingido com
 ícone, lista com ícone em círculo tingido e divisória, fundo cinza ao passar o mouse, botões em pílula, valor de destaque na cor
 primária. Aplicado primeiro ao módulo Anjo (`docs/dev/memoria/apoio-com-anjo.md`, "Visual do módulo") e depois estendido ao app.

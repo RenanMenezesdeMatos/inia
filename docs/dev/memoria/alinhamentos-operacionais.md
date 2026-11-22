@@ -13,7 +13,7 @@ usuário, 17/11). Quando conflita com a base, prevalece só no trecho conflitant
 oficial nunca é alterado.
 
 Exemplo-guia (Ouvidoria): o PR manda enviar a fatura; o alinhamento do Grupo Ouvidoria (B2C, 10/11 a 30/11) manda orientar o App
-Meu Vivo ou o site.
+Meu Telnova ou o site.
 
 ## Cadastro
 
@@ -196,7 +196,7 @@ chamada. Superado = `NOT_APPLICABLE` → fora de desvio, de acerto e de inconclu
 `backend/scripts/dev/operational-alignments/paid-battery.ts` (`--teto`, `--so C1,M1`): modelo REAL (gemini-3.8-flash pela rota da
 organização), cenário em memória (nada gravado). Chat com o mesmo texto de instruções da conversa; monitoria com o motor real.
 Resultado final: 12/12.
-- C1 Ouvidoria na vigência → App Meu Vivo/site, "orientação operacional temporária", AO-… e vigência; C2 outro Grupo → PR oficial;
+- C1 Ouvidoria na vigência → App Meu Telnova/site, "orientação operacional temporária", AO-… e vigência; C2 outro Grupo → PR oficial;
   C3 depois do término, com a resposta antiga na conversa → "aquela orientação temporária não está mais em vigor" + PR oficial;
   C4 histórico → chamou `alinhamentos_anteriores` e respondeu como registro; C5 alinhamento de cancelamento direto contra assunto
   proibido → "não pode cancelar direto… retenção" (a 1ª verificação da bateria tinha uma expressão errada; a resposta estava certa);

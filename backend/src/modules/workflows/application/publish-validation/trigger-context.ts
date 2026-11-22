@@ -1,6 +1,6 @@
 import { interactionFeedbackModuleEnabled } from "../../../interaction-feedback/application/pipeline-wiring.js"
 import { DomainError } from "../../../../shared/domain/domain-error.js"
-import { nodeBranches, resolveNodeContexts, type FlowGraph } from "../../domain/graph-schema.js"
+import { isRandomMonitoringNode, nodeBranches, resolveNodeContexts, type FlowGraph } from "../../domain/graph-schema.js"
 import type { TriggerConfig } from "../../domain/trigger-config-schema.js"
 import type { PublishGraphContext, PublishTriggerContext } from "./context.js"
 import { findPaidCycleWithoutWait } from "../../domain/paid-node-cycles.js"
@@ -200,9 +200,23 @@ export function validateInteractionFeedbackSource(context: PublishTriggerContext
   }
 }
 
-/** Conformidade e Avaliação de processo exigem a transcrição: Flag ou Manual com interação. */
+/**
+ * Conformidade e Avaliação de processo exigem a transcrição: Flag ou Manual com interação — ou, só na Avaliação de processo do
+ * "Chamar agente", a MONITORIA ALEATÓRIA (Agenda/Manual por colaborador + "Amostra de chamadas"), que sorteia a chamada.
+ */
 export function validateTranscriptRequirements(context: PublishTriggerContext): void {
   const { graph, origin } = context
+  if (origin === "schedule") {
+    for (const node of graph.nodes) {
+      if (!isRandomMonitoringNode(node) || node.type !== "action" || node.config.actionType !== "CALL_AGENT" || node.config.scheduledDataSource?.kind !== "MONITORING") continue
+      if (node.config.scheduledDataSource.sampleSize !== 1) {
+        throw new DomainError(`O nó "${node.label}" faz monitoria aleatória: cada execução sorteia UMA chamada por colaborador. Para mais monitorias, aumente a frequência do gatilho.`, "WORKFLOW_RANDOM_MONITORING_SINGLE_CALL", 422, { nodeId: node.id })
+      }
+      if (context.row.consolidatedStructure) {
+        throw new DomainError(`O nó "${node.label}" faz monitoria aleatória, que analisa um colaborador por execução: use o modo Individual (sem Estrutura Consolidada).`, "WORKFLOW_RANDOM_MONITORING_INDIVIDUAL_ONLY", 422, { nodeId: node.id })
+      }
+    }
+  }
   // Conformidade de processo (PROCESS_AUDIT) compara procedimento oficial × transcrição — só
   // existe transcrição quando a execução carrega uma interação: Flag de canal ou Manual com interação (ver run-agent.ts).
   if (origin !== "channel_flag") {
@@ -216,11 +230,11 @@ export function validateTranscriptRequirements(context: PublishTriggerContext): 
     }
     // V1.6.0 — avaliação de processo também compara transcrição × base: só com Flag.
     const assessmentNode = graph.nodes.find((node) =>
-      (node.type === "action" && node.config.actionType === "CALL_AGENT" && node.config.outputContract === "PROCESS_ASSESSMENT") ||
+      (node.type === "action" && node.config.actionType === "CALL_AGENT" && node.config.outputContract === "PROCESS_ASSESSMENT" && !(origin === "schedule" && isRandomMonitoringNode(node))) ||
       (node.type === "orchestrator" && node.config.specialistOutputContract === "PROCESS_ASSESSMENT"))
     if (assessmentNode) {
       throw new DomainError(
-        `O nó "${assessmentNode.label}" usa o formato "Avaliação de processo", que exige uma transcrição de chamada — só disponível com gatilho por Flag de canal ou Manual com interação.`,
+        `O nó "${assessmentNode.label}" usa o formato "Avaliação de processo", que exige uma transcrição de chamada — só disponível com gatilho por Flag de canal, Manual com interação ou, no "Chamar agente", com a fonte "Amostra de chamadas" no gatilho por Agenda ou Manual por colaborador (monitoria aleatória).`,
         "WORKFLOW_PROCESS_ASSESSMENT_REQUIRES_FLAG",
         422,
       )

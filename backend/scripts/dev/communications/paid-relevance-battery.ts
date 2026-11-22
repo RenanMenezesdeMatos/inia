@@ -70,13 +70,13 @@ const at = (iso: string) => new Date(iso)
 const B_CATALOG: Pick<RelevanceInput, "communications" | "alignments"> = {
   communications: [
     { id: "festa", title: "Festa de fim de ano: 23/11 em Fortaleza e Curitiba", summary: "Confraternização de Natal e fim de ano no dia 23/11.", plainText: "", publishedAt: at("2026-11-17T18:11:00Z"), tags: ["Aviso"] },
-    { id: "app", title: "Segunda via da fatura no App Meu Vivo", summary: "Onde fica a segunda via no app: Conta > Faturas.", plainText: "", publishedAt: at("2026-11-12T13:00:00Z"), tags: ["Processos"] },
+    { id: "app", title: "Segunda via da fatura no App Meu Telnova", summary: "Onde fica a segunda via no app: Conta > Faturas.", plainText: "", publishedAt: at("2026-11-12T13:00:00Z"), tags: ["Processos"] },
     { id: "manut", title: "Manutenção do sistema de atendimento no sábado", summary: "O sistema fica fora do ar das 22h às 2h de sábado para domingo.", plainText: "", publishedAt: at("2026-11-14T12:00:00Z"), tags: ["Aviso"] },
     { id: "bf", title: "Campanha Black Friday", summary: "Ofertas de planos pós-pago válidas de 24 a 30/11.", plainText: "", publishedAt: at("2026-11-16T12:00:00Z"), tags: ["Campanha"] },
     { id: "ponto", title: "Novo registro de ponto pelo app RH", summary: "A partir de 01/12 o ponto passa a ser registrado pelo app do RH.", plainText: "", publishedAt: at("2026-11-10T12:00:00Z"), tags: ["Aviso"] },
   ],
   alignments: [
-    { alignmentId: "envio-fatura", title: "Fatura: orientar o app em vez de enviar", guidance: "Durante a troca do sistema, oriente o cliente a acessar a fatura pelo App Meu Vivo ou pelo site. Não envie a fatura por e-mail.", processes: ["PR — Envio de fatura"], startsOn: "2026-11-10", endsOn: "2026-11-30" },
+    { alignmentId: "envio-fatura", title: "Fatura: orientar o app em vez de enviar", guidance: "Durante a troca do sistema, oriente o cliente a acessar a fatura pelo App Meu Telnova ou pelo site. Não envie a fatura por e-mail.", processes: ["PR — Envio de fatura"], startsOn: "2026-11-10", endsOn: "2026-11-30" },
   ],
 }
 const B_CASES: Case[] = [

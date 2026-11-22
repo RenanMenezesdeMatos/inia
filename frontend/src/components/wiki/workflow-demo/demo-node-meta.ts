@@ -1,15 +1,8 @@
-import { Sparkles, TrendingUp, Variable, Zap, type LucideIcon } from "lucide-react"
-
-import { ACTION_TYPE_LABELS, NODE_ICONS } from "@/components/admin/workflows/node-visuals"
+import { ACTION_TYPE_LABELS } from "@/components/admin/workflows/node-visuals"
 import { NODE_TYPE_LABELS, type FlowNode } from "@/schemas/admin/workflow-graph.schema"
 
-/** Ícone e nome do nó, iguais aos da paleta do editor (cada Ação tem o seu). */
-const ACTION_ICONS: Partial<Record<string, LucideIcon>> = { CALL_AGENT: Zap, GENERATE_FEEDBACK: Sparkles, ESCALATE: TrendingUp, SET_VARIABLE: Variable }
-
-export function nodeIconOf(node: FlowNode): LucideIcon {
-  if (node.type === "action") return ACTION_ICONS[node.config.actionType] ?? NODE_ICONS.action
-  return NODE_ICONS[node.type]
-}
+/** Ícone do nó: o mesmo do editor (cada Ação tem o seu). */
+export { nodeIconOf } from "@/components/admin/workflows/node-visuals"
 
 export function nodeKindText(node: FlowNode): string {
   return node.type === "action" ? ACTION_TYPE_LABELS[node.config.actionType] : NODE_TYPE_LABELS[node.type]

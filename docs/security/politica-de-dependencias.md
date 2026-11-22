@@ -2,7 +2,7 @@
 
 Atende ao ASVS 5.0.0 V15.1.1 ("prazos de correção por risco para vulnerabilidades de componentes de terceiros") e ao V15.2.1.
 **Proposta para a INIA aprovar** — os prazos abaixo são um ponto de partida e podem ser ajustados ao acordo de nível de serviço
-com a Vivo; enquanto não houver aprovação formal, valem como referência interna.
+com o cliente; enquanto não houver aprovação formal, valem como referência interna.
 
 ## Onde as vulnerabilidades aparecem
 

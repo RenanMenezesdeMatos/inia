@@ -29,7 +29,16 @@ export const loginInputSchema = z.object({
   email: z.string().trim().email("Informe um e-mail válido."),
   password: z.string().min(1, "Informe sua senha."),
 })
-export type LoginInput = z.infer<typeof loginInputSchema>
+/** Login pela rede: matrícula de rede + senha de rede, conferidas no AD pelo backend. */
+export const networkLoginInputSchema = z.object({
+  matricula: z.string().trim().min(1, "Informe sua matrícula de rede."),
+  password: z.string().min(1, "Informe sua senha de rede."),
+})
+export type LoginInput = z.infer<typeof loginInputSchema> | z.infer<typeof networkLoginInputSchema>
+
+/** Que login a tela mostra (`GET /auth/login-options`): com o login pela rede ligado, a matrícula; o e-mail fica para o administrador. */
+export const loginOptionsSchema = z.object({ networkLogin: z.boolean().default(false) })
+export type LoginOptions = z.infer<typeof loginOptionsSchema>
 
 const identityFields = {
   avatarUrl: z.string().nullable(),
@@ -51,7 +60,7 @@ export const accessCapabilitiesSchema = z.object({
   canAssignRoles: capability,
   canManagePeople: capability,
   canManageAgents: capability,
-  /** Listar, consultar, reativar e excluir agentes inativos (PEN-001/PEN-068; perfis da Vivo: PEN-032). */
+  /** Listar, consultar, reativar e excluir agentes inativos (PEN-001/PEN-068; perfis do cliente: PEN-032). */
   canManageInactiveAgents: capability,
   canManageKnowledge: capability,
   canManageWorkflows: capability,
@@ -164,6 +173,8 @@ export const currentUserSchema = z.object({
   temporaryPasswordExpiresAt: z.string().nullable().default(null),
   // Sessão parada além disso é encerrada pelo servidor; a tela avisa antes. 0 = sem encerramento por inatividade.
   sessionIdleTimeoutMinutes: z.number().int().min(0).default(0),
+  // Credencial que a pessoa usa para confirmar a ciência: a de rede (matrícula + senha de rede) ou a local (e-mail + senha).
+  credentialMode: z.enum(["NETWORK", "LOCAL"]).default("LOCAL"),
   // Módulos LIGADOS neste ambiente (não é permissão). Módulo desligado ≠ sem permissão: a UI esconde o módulo, nunca diz
   // "sem permissão" por causa de uma flag (V1.5.8a).
   features: featuresSchema.default(() => featuresSchema.parse({})),

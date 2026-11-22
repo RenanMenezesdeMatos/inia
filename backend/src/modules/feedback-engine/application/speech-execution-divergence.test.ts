@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
@@ -368,7 +368,8 @@ describe("ocorrência pela PARTE descumprida (V11 B: 'motivo + protocolo' parcia
 describe("o cartão resume o conjunto FINAL (V11 A: a frase sobre 'localizar no histórico' caiu do corpo e ficou no cartão)", () => {
   const here = dirname(fileURLToPath(import.meta.url))
   const artifact = join(here, "../../../../scripts/feedback-engine/evaluation/larissa/results/round-v11-paid-2026-10-02T18-29-18-162Z.json")
-  it("as MESMAS respostas pagas de redação e verificação: o cartão que cita S3 (fora do corpo) é recusado e o resumo sai da frase principal", async () => {
+  // A rodada paga fica só na cópia local (cita o nome do cliente e é evidência que não se edita): na cópia publicada o teste pula.
+  it.skipIf(!existsSync(artifact))("as MESMAS respostas pagas de redação e verificação: o cartão que cita S3 (fora do corpo) é recusado e o resumo sai da frase principal", async () => {
     const paid = JSON.parse(readFileSync(artifact, "utf8")) as { A: { generation: { message: { brief: FeedbackBrief; card: string } } }; responses: { phase: string; stage: string; tag: string | null; text: string }[] }
     const recorded = paid.responses.filter((entry) => entry.phase === "A" && (entry.stage === "COMPOSITION" || entry.stage === "VERIFICATION"))
     expect(recorded.map((entry) => `${entry.stage}:${entry.tag}`)).toEqual(["COMPOSITION:draft", "VERIFICATION:draft", "COMPOSITION:repair", "VERIFICATION:repair", "VERIFICATION:coherence"])

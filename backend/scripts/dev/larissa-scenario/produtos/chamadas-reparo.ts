@@ -21,7 +21,7 @@ export const CHAMADAS_REPARO: ProductScenarioCall[] = [
       note: "Titular e serviço confirmados, modem desligado por 30 segundos com leitura das luzes, teste remoto antes do chamado, prazo de 24 horas, visita oferecida porque o teste remoto falhou, protocolo e pergunta de dúvida.",
     },
     lines: [
-      "O: Vivo, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Boa tarde, aqui é o Rodrigo Valadares.",
       "O: Olá, Rodrigo. Em que posso te ajudar?",
       "C: Minha internet de casa caiu desde ontem à noite. Lá pelas dez horas parou tudo e até agora não voltou.",
@@ -70,7 +70,7 @@ export const CHAMADAS_REPARO: ProductScenarioCall[] = [
       note: "Verifica a cobertura no endereço e pede o reinício do aparelho (RLM1 ok), mas não reconfigura o APN (RLM2) e promete visita técnica com prazo de 24 horas — linha móvel não tem visita e a análise de rede é em até 72 horas (RLM3, R4). Titular, serviço e protocolo ok.",
     },
     lines: [
-      "O: Vivo, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Oi, boa tarde. É a Patrícia Nogueira.",
       "O: Olá, Patrícia. Como posso te ajudar?",
       "C: É o meu celular, o 11 98822-4410. Desde sábado ele está sem internet e, dentro de casa, fica sem sinal nenhum. Não consigo nem fazer ligação da sala.",
@@ -118,7 +118,7 @@ export const CHAMADAS_REPARO: ProductScenarioCall[] = [
       note: "CNPJ e contato técnico confirmados, teste remoto do tronco antes do chamado e faixa de ramais confirmada (RVA1, RVA2, RDDR1 ok); informa 4 horas, que é o prazo de SIP, em vez das 8 horas do DDR (RDDR2, R4). Protocolo ok.",
     },
     lines: [
-      "O: Vivo, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Boa tarde. Aqui é o Marcelo Antunes, da Contábil Serra Azul. Eu cuido da parte de tecnologia aqui do escritório.",
       "O: Olá, Marcelo. Como posso te ajudar?",
       "C: Os ramais do DDR pararam de receber ligação. Desde umas onze da manhã, o cliente liga para o ramal direto e cai numa mensagem de número inexistente. Para fora a gente ainda consegue ligar.",
@@ -164,7 +164,7 @@ export const CHAMADAS_REPARO: ProductScenarioCall[] = [
       note: "Titular e serviço confirmados, resultado do ping e do traceroute pedido, verificação do circuito antes do chamado, chamado no NOC com a LP, SLA de 4 horas e protocolo.",
     },
     lines: [
-      "O: Vivo, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Boa tarde, aqui é a Fernanda Quaresma, da Pardal Transportes.",
       "O: Olá, Fernanda. Como posso te ajudar?",
       "C: O link da empresa está fora. Caiu umas doze e meia e desde então ninguém aqui acessa o sistema de rastreamento dos caminhões.",
@@ -205,14 +205,14 @@ export const CHAMADAS_REPARO: ProductScenarioCall[] = [
     durationSeconds: 420,
     reason: "Reparo",
     intent: {
-      product: "Cliente usa o apelido “aluguel de equipamentos” (descrição do Vivo Soluciona TI); ninguém diz o nome do produto.",
-      expectedIdentification: "Vivo Soluciona TI",
+      product: "Cliente usa o apelido “aluguel de equipamentos” (descrição do Telnova Soluciona TI); ninguém diz o nome do produto.",
+      expectedIdentification: "Telnova Soluciona TI",
       good: false,
       failures: ["RVS2", "R4"],
       note: "Titular e equipamento confirmados e tomada/carregador conferidos; promete troca amanhã em vez de até 5 dias úteis (RVS2, R4). A coleta no mesmo dia da entrega está certa (RVS3 ok). Protocolo ok. Ir direto para a troca sem suporte remoto NÃO é falha aqui: o notebook não liga (nem tela, nem ventilador), então o acesso remoto é impossível — a análise real (21/10) leu RVS1 como “não se aplica”, corretamente; o roteiro tinha plantado RVS1 por engano.",
     },
     lines: [
-      "O: Vivo, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Boa tarde, é a Juliana Tavares, da Clínica Sorriso Pleno.",
       "O: Olá, Juliana. Em que posso ajudar?",
       "C: Um dos notebooks do aluguel de equipamentos não liga. É o da recepção: desde hoje cedo ele não dá sinal de vida, e a gente agenda os pacientes por ele.",
@@ -258,7 +258,7 @@ export const CHAMADAS_REPARO: ProductScenarioCall[] = [
       note: "Titular e serviço confirmados, testes genéricos (aparelhos, teste de velocidade, verificação remota) antes do chamado, chamado com protocolo e prazo de 24 horas. Com o produto em conflito, nada que dependa do produto (testes específicos, prazo) pode virar erro; só valem as regras gerais.",
     },
     lines: [
-      "O: Vivo, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Boa tarde, meu nome é Edson Carvalho.",
       "O: Olá, Edson. Como posso ajudar?",
       "C: Minha internet está lenta. Faz uns três dias que está assim: abre as coisas devagar, vídeo trava, e à noite piora.",
@@ -304,7 +304,7 @@ export const CHAMADAS_REPARO: ProductScenarioCall[] = [
       note: "Titular e serviço confirmados, ping e traceroute pedidos, alimentação do rack verificada antes do chamado, chamado no NOC com a LP, SLA de 2 horas, acesso físico agendado com 24 horas de antecedência com os nomes autorizados e protocolo.",
     },
     lines: [
-      "O: Vivo, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Boa tarde, aqui é o Thiago Rezende, da Nuvem Paulista Hospedagem.",
       "O: Olá, Thiago. Como posso te ajudar?",
       "C: O rack do colocation está sem energia. Desde umas duas da tarde, todos os servidores que estão nele saíram do ar ao mesmo tempo. E eu preciso que um técnico nosso entre no datacenter para olhar os equipamentos.",

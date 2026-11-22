@@ -70,7 +70,7 @@ describe("base de boas práticas — mecanismo sobre o dataset sintético", () =
   it("obrigação cumprida por todos, omissão do aviso obrigatório, frase isolada, poucas avaliações, áudio e instrução injetada nunca viram padrão", async () => {
     const { run, store } = await setup()
     const report = await run(TMA)
-    expect(contextOf(report, "Saudar com boas-vindas à Vivo e se apresentar", "Fatura").outcome).toBe("COMMON_TO_BOTH")
+    expect(contextOf(report, "Saudar com boas-vindas à Telnova e se apresentar", "Fatura").outcome).toBe("COMMON_TO_BOTH")
     const skip = candidate(report, "Encerrar a chamada de forma direta, sem o aviso final")
     expect(contextOf(report, skip.name, "Fatura").outcome).toBe("SUPPORTED")
     expect(skip.decision).toBe("DISCARDED_CONFLICT")
@@ -164,6 +164,33 @@ describe("base de boas práticas — mecanismo sobre o dataset sintético", () =
   })
 })
 
+describe("BEST_PRACTICE_ANALYSIS_V4 — chamada curta (regra geral da organização) não entra", () => {
+  const runWith = async (minimumQualityCallSeconds: number | null) => {
+    const store = createInMemoryBestPracticeStore()
+    const request: AnalysisRequest = { id: `analysis-short-${minimumQualityCallSeconds}`, organizationId: ORG, origin: "SYNTHETIC", syntheticDatasetId: DATASET_ID, indicatorDefinitionId: TMA.id, channelFlagId: null, callOutcome: null, teamId: null, subteamId: null, referencePeriods: [SYNTHETIC_PERIOD], contextLevel: "SUB_REASON", channel: null, comparison: "TOP_QUARTILE_VS_REST", modelMode: "SIMULATED_ANSWER_KEY", parameters: { ...DEFAULT_SAMPLING, maxModelCalls: 80, hypotheses: [] } }
+    store.setMode(request.id, request.modelMode)
+    const corpus = createSyntheticCallCorpus(dataset.corpus, { indicatorCode: TMA.code, datasetLabel: dataset.label })
+    return runBestPracticeAnalysis({ corpus, store, model: createSimulatedAnswerKeyModel(dataset.corpus, dataset.answerKey), indicator: TMA, minimumQualityCallSeconds, now: () => new Date("2026-10-20T12:00:00Z") }, request)
+  }
+
+  it("abaixo do mínimo fica fora, a quantidade vai para as limitações e o mínimo para a proveniência", async () => {
+    const { report, provenance } = await runWith(400)
+    expect(report.limitations.some((line) => /chamada\(s\) com menos de 400 s .* ficaram fora/.test(line))).toBe(true)
+    expect(provenance).toMatchObject({ logicVersion: "BEST_PRACTICE_ANALYSIS_V4", minimumQualityCallSeconds: 400 })
+  })
+
+  it("sem a regra (dados sintéticos), nada é tirado pela duração", async () => {
+    const { report, provenance } = await runWith(null)
+    expect(report.limitations.some((line) => line.includes("chamada curta"))).toBe(false)
+    expect(provenance).toMatchObject({ minimumQualityCallSeconds: null })
+  })
+
+  it("todas as chamadas curtas: dados insuficientes, sem descoberta", async () => {
+    const { report } = await runWith(600)
+    expect(report.outcome).toBe("INSUFFICIENT_DATA")
+  })
+})
+
 describe("BEST_PRACTICE_ANALYSIS_V3 — pelo sinal da chamada (nota da URA por chamada)", () => {
   const SIGNAL = { id: "55555555-5555-4555-8555-555555555555", flagName: "nota_ura", name: "Nota da URA", outcome: { kind: "NUMERIC" as const, good: { operator: "GTE" as const, value: 4 }, bad: { operator: "LTE" as const, value: 2 } } }
   const runBySignal = async (store = createInMemoryBestPracticeStore()) => {
@@ -187,7 +214,7 @@ describe("BEST_PRACTICE_ANALYSIS_V3 — pelo sinal da chamada (nota da URA por c
     expect(adapt.decision).toBe("PATTERN_CREATED")
     expect(contextOf(report, adapt.name, "Fatura").outcome).toBe("SUPPORTED")
     // Obrigação cumprida por todos continua comum aos dois grupos — nunca boa prática, também pelo sinal.
-    expect(contextOf(report, "Saudar com boas-vindas à Vivo e se apresentar", "Fatura").outcome).toBe("COMMON_TO_BOTH")
+    expect(contextOf(report, "Saudar com boas-vindas à Telnova e se apresentar", "Fatura").outcome).toBe("COMMON_TO_BOTH")
     // O padrão pertence ao SINAL (sem indicador): identidade e revisão separadas dos padrões por indicador.
     expect(store.patterns.length).toBeGreaterThan(0)
     expect(store.patterns.every((pattern) => pattern.scope.channelFlagId === SIGNAL.id && pattern.scope.indicatorDefinitionId === null)).toBe(true)

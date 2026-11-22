@@ -9,16 +9,32 @@ import {
   fetchGlossaryTermsPage,
   fetchProhibitedTopics,
   fetchProhibitedTopicsPage,
+  fetchQualityCallRule,
   fetchResponseCheckSummary,
   fetchResponseChecksPage,
   setGlossaryTermActive,
   setProhibitedTopicActive,
   updateGlossaryTerm,
   updateProhibitedTopic,
+  updateQualityCallRule,
   type GovernanceListParams,
 } from "@/services/admin/governance-service"
 
 import { adminQueryKeys } from "./admin-query-keys"
+
+const QUALITY_CALL_RULE_KEY = [...adminQueryKeys.all, "quality-call-rule"] as const
+
+export function useQualityCallRuleQuery() {
+  return useQuery({ queryKey: QUALITY_CALL_RULE_KEY, queryFn: fetchQualityCallRule, retry: false })
+}
+
+export function useUpdateQualityCallRuleMutation() {
+  return useAdminMutation({
+    mutationFn: (seconds: number) => updateQualityCallRule(seconds),
+    invalidateKey: QUALITY_CALL_RULE_KEY,
+    successMessage: "Regra de chamada curta salva.",
+  })
+}
 
 export function useResponseCheckSummaryQuery() {
   return useQuery({ queryKey: [...adminQueryKeys.all, "response-checks", "summary"], queryFn: fetchResponseCheckSummary, retry: false })

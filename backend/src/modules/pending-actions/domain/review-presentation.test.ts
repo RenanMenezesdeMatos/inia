@@ -10,9 +10,9 @@ const agentOutput = {
     evidenceFound: "Mês anterior — TMA: 467 SECONDS (meta vigente: 400 SECONDS)",
     observedBehavior: "TMA médio de 467 SECONDS no período (meta 400 SECONDS)",
     contextSnapshot: { periodSummary: { measurementIds: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] } },
-    structured: { title: "TMA acima da meta", summary: "Melhorou 11,1% e segue 14,8% acima do subgrupo.", relatedProcedure: "Jeito Vivo de Atender", recommendation: "Texto ao colaborador." },
+    structured: { title: "TMA acima da meta", summary: "Melhorou 11,1% e segue 14,8% acima do subgrupo.", relatedProcedure: "Jeito Telnova de Atender", recommendation: "Texto ao colaborador." },
   },
-  supportMaterials: [{ materialId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", title: "Jeito Vivo de Atender", reason: "orienta o aviso de pausa" }],
+  supportMaterials: [{ materialId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", title: "Jeito Telnova de Atender", reason: "orienta o aviso de pausa" }],
   toolTrace: [
     { sequence: 1, tool: "get_indicator_snapshot", label: "Consultar indicador", capability: "INDICATOR_ANALYSIS", argumentsSummary: {}, resultSummary: "TMA: 467 s · meta 400 (fora)", quality: null, provenance: null, status: "COMPLETED", startedAt: "", completedAt: "", round: 0, ledgerRef: "F1" },
     { sequence: 2, tool: "compare_periods", label: "Comparar períodos", capability: "INDICATOR_ANALYSIS", argumentsSummary: {}, resultSummary: "ago 467 × jul 525 → -11,1% · IMPROVED", quality: null, provenance: null, status: "COMPLETED", startedAt: "", completedAt: "", round: 1, ledgerRef: "F2" },
@@ -40,7 +40,7 @@ describe("Review Presentation (HUMAN REVIEW CONTEXT)", () => {
     expect(presentation.behavioralClaims[0]).toEqual({ text: "na interação analisada você repetiu a confirmação", scope: "INTERACTION_SPECIFIC", evidenceRefs: ["F4"] })
     expect(presentation.recommendationSupport[0]!.basis).toBe("KNOWLEDGE_GUIDANCE")
     expect(presentation.representativeness[0]).toMatchObject({ ref: "F4", analyzed: 2, universe: 1267, level: "ANECDOTAL" })
-    expect(presentation.materials).toEqual([{ title: "Jeito Vivo de Atender", reason: "orienta o aviso de pausa" }])
+    expect(presentation.materials).toEqual([{ title: "Jeito Telnova de Atender", reason: "orienta o aviso de pausa" }])
     expect(presentation.toolSummary).toEqual({ executed: 3, preflight: 1, investigation: 2, budget: 12, outcome: "ANSWERED", rejectedClaims: 1, corrected: true })
     expect(JSON.stringify(presentation)).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/)
     expect(JSON.stringify(presentation)).not.toContain("contextSnapshot")

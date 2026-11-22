@@ -24,7 +24,7 @@ Em “Recapitulação obrigatória”, você fez parte do que o procedimento pre
 
 _Procedimento Operacional — Contestação de Contas Móvel · Seção: Recapitulação obrigatória_ — [Abrir processo ↗](/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65)
 
-_Exemplo presente no material (não é regra):_ “Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Vivo após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184.”
+_Exemplo presente no material (não é regra):_ “Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Telnova após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184.”
 
 **Como aplicar:** Na próxima chamada, antes de encerrar, informe: conta analisada, lançamento contestado, valor, ação realizada, serviço cancelado, quando aplicável, conta ajustada, valor a pagar, prazo, canal de retorno e protocolo.
 

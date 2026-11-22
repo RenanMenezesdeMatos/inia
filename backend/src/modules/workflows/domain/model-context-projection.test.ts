@@ -16,9 +16,9 @@ describe("projeção de nodeOutputs para o modelo (V1.2 — prova do 'JSON gigan
         indicatorCode: "TMA",
         indicatorName: "Tempo Médio de Atendimento",
         evidenceFound: "Mês anterior — TMA: 467 SECONDS (meta 400)",
-        structured: { title: "TMA acima da meta", summary: "Melhorou 11%", relatedProcedure: "Jeito Vivo", recommendation: "Texto ao colaborador." },
+        structured: { title: "TMA acima da meta", summary: "Melhorou 11%", relatedProcedure: "Jeito Telnova", recommendation: "Texto ao colaborador." },
       },
-      supportMaterials: [{ materialId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", title: "Jeito Vivo de Atender", reason: "motivo" }],
+      supportMaterials: [{ materialId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", title: "Jeito Telnova de Atender", reason: "motivo" }],
       toolTrace: [{ sequence: 1, tool: "get_indicator_snapshot", argumentsSummary: { indicatorCode: "TMA" }, resultSummary: "TMA: 467 s", startedAt: "2026-09-17T23:00:00.000Z", completedAt: "2026-09-17T23:00:01.000Z", provenance: { method: "resolvedor único…" } }],
       investigation: { toolCalls: 10, budget: 12, outcome: "ANSWERED", tokens: { total: 30119 }, synthesis: { supportedHypotheses: ["acima do subgrupo (F4)"], unsupportedHypotheses: [], limitations: ["amostra de 2 interações"], behavioralClaims: [], recommendationSupport: [] } },
     }
@@ -30,7 +30,7 @@ describe("projeção de nodeOutputs para o modelo (V1.2 — prova do 'JSON gigan
     expect(projected).not.toContain("resolvedor")
     expect(projected).toContain("TMA acima da meta")
     expect(projected).toContain("Texto ao colaborador.")
-    expect(projected).toContain("Jeito Vivo de Atender")
+    expect(projected).toContain("Jeito Telnova de Atender")
     expect(projected).toContain("acima do subgrupo (F4)")
     expect(projected).toContain("amostra de 2 interações")
     expect(projected).toContain('"decision":"approved"')

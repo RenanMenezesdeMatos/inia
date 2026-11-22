@@ -23,7 +23,7 @@ beforeAll(installJsdomStubs)
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 const base: MyAlignment = {
-  alignmentId: "a-1", versionId: "v-1", version: 1, title: "Fatura pelo App Meu Vivo", guidance: "Oriente o cliente a acessar a fatura pelo App Meu Vivo.\nNão envie a fatura.",
+  alignmentId: "a-1", versionId: "v-1", version: 1, title: "Fatura pelo App Meu Telnova", guidance: "Oriente o cliente a acessar a fatura pelo App Meu Telnova.\nNão envie a fatura.",
   justification: "Envio suspenso durante a troca do sistema.", changeReason: null, affectedTopic: "Envio da fatura", processes: ["PR — Envio de fatura"], productName: null,
   audienceLabel: "Ouvidoria", startsOn: "2026-11-24", endsOn: "2026-11-30", timeZone: "America/Sao_Paulo", effectiveFrom: "2026-11-24T03:00:00.000Z", effectiveUntil: "2026-12-01T03:00:00.000Z",
   state: "IN_FORCE", noLongerValidSince: null, endedEarly: false, publishedAt: "2026-11-21T19:02:00.000Z", definedBy: { name: "Ana Souza", jobTitle: "Supervisora" }, readAt: null,
@@ -36,7 +36,7 @@ describe("cartão do alinhamento no Acompanhamento do operador", () => {
     expect(screen.getByTestId("alignment-upcoming-banner")).toHaveTextContent("Até lá, siga o procedimento de hoje.")
     expect(screen.getByText("Começa em 24/11")).toBeInTheDocument()
     expect(screen.getByTestId("alignment-period")).toHaveTextContent("Vigência 24/11/2026 a 30/11/2026")
-    expect(screen.getByRole("heading", { name: "Fatura pelo App Meu Vivo" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Fatura pelo App Meu Telnova" })).toBeInTheDocument()
     expect(screen.getByText("Definido por Ana Souza (Supervisora)")).toBeInTheDocument()
   })
 
@@ -98,7 +98,7 @@ describe("alinhamentos no feed do operador", () => {
   it("entram na timeline, têm o filtro \"Alinhamentos\" e o link do sino destaca o item", async () => {
     service.fetchMyAlignments.mockResolvedValue([base, { ...base, alignmentId: "a-2", versionId: "w-1", title: "Prazo de retorno", publishedAt: "2026-11-20T12:00:00.000Z", state: "ENDED", noLongerValidSince: "2026-11-21" }])
     renderWithQuery(<OperatorDailyFeedbackFeed indicators={{ current: [], history: [] }} highlightItemKey="alignment:a-2" />)
-    expect(await screen.findByRole("heading", { name: "Fatura pelo App Meu Vivo" })).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: "Fatura pelo App Meu Telnova" })).toBeInTheDocument()
     expect(screen.getAllByTestId("alignment-entry")).toHaveLength(2)
     await waitFor(() => expect(document.querySelector("[data-testid=alignment-entry][data-highlighted]")).toHaveAttribute("data-state", "ENDED"))
     fireEvent.click(screen.getByRole("button", { name: /Filtrar o Acompanhamento por tipo/ }))

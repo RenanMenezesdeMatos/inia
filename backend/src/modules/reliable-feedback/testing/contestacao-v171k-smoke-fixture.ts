@@ -16,21 +16,21 @@ export const V171K_PRESENTED: PresentedKnowledgeExcerpt[] = [
     "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
     "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
     "heading": "5. Apresentação do operador",
-    "excerpt": "**Exemplo recomendado:**\n\n“Olá, boa tarde! Meu nome é Juliana Prado, sou do atendimento Vivo. Com quem eu tenho o prazer de falar?”\n\nApós identificar o cliente:\n\n“Obrigada, Ricardo. Entendi que você não reconhece um valor da sua conta. Vou consultar o detalhamento e explicar o que encontrei.”\n\nEvitar:\n\n- “A conta está certa.”\n- “Se está na fatura, você contratou.”\n- “Você deve ter clicado em alguma coisa.”\n- “Primeiro precisa pagar.”\n- “Isso não pode ser contestado.”",
+    "excerpt": "**Exemplo recomendado:**\n\n“Olá, boa tarde! Meu nome é Juliana Prado, sou do atendimento Telnova. Com quem eu tenho o prazer de falar?”\n\nApós identificar o cliente:\n\n“Obrigada, Ricardo. Entendi que você não reconhece um valor da sua conta. Vou consultar o detalhamento e explicar o que encontrei.”\n\nEvitar:\n\n- “A conta está certa.”\n- “Se está na fatura, você contratou.”\n- “Você deve ter clicado em alguma coisa.”\n- “Primeiro precisa pagar.”\n- “Isso não pode ser contestado.”",
     "chunkIndex": 16
   },
   {
     "documentId": "b8da52ca-e65c-419c-bace-83431f04ba2c",
-    "documentTitle": "Procedimento Operacional Jeito Vivo de Atender",
+    "documentTitle": "Procedimento Operacional Jeito Telnova de Atender",
     "heading": "Perguntas recomendadas",
     "excerpt": "- “A solução atendeu ao que você precisava?”\n- “Você conseguiu acessar?”\n- “O serviço está funcionando agora?”\n- “Ficou alguma dúvida sobre o prazo?”\n- “Posso ajudar em mais alguma questão?”\n\nEvitar:\n\n- “Era só isso?”\n- “Terminou?”\n- “Mais alguma coisa?”, em tom apressado.\n- Encerrar imediatamente após executar a ação.",
     "chunkIndex": 63
   },
   {
     "documentId": "b8da52ca-e65c-419c-bace-83431f04ba2c",
-    "documentTitle": "Procedimento Operacional Jeito Vivo de Atender",
+    "documentTitle": "Procedimento Operacional Jeito Telnova de Atender",
     "heading": "Modelo completo",
-    "excerpt": "“[Nome do cliente], sua solicitação foi concluída e o protocolo é [número]. Você poderá acompanhar pelo Meu Vivo. Posso ajudar em mais alguma coisa?”\n\nApós a resposta:\n\n“Obrigado por entrar em contato com a Vivo. Tenha uma ótima tarde.”",
+    "excerpt": "“[Nome do cliente], sua solicitação foi concluída e o protocolo é [número]. Você poderá acompanhar pelo Meu Telnova. Posso ajudar em mais alguma coisa?”\n\nApós a resposta:\n\n“Obrigado por entrar em contato com a Telnova. Tenha uma ótima tarde.”",
     "chunkIndex": 65
   },
   {
@@ -56,7 +56,7 @@ export const V171K_PRESENTED: PresentedKnowledgeExcerpt[] = [
   },
   {
     "documentId": "b8da52ca-e65c-419c-bace-83431f04ba2c",
-    "documentTitle": "Procedimento Operacional Jeito Vivo de Atender",
+    "documentTitle": "Procedimento Operacional Jeito Telnova de Atender",
     "heading": "Frases de condução",
     "excerpt": "- “Vou consultar a situação da linha.”\n- “Agora vou verificar as condições disponíveis.”\n- “Localizei a origem da cobrança.”\n- “Temos duas opções para resolver.”\n- “Antes de confirmar, vou explicar os impactos.”\n- “A solicitação foi concluída. Vamos testar?”\n- “Ainda não concluímos. O próximo passo será este.”\n\nO cliente não deve precisar perguntar repetidamente o que está acontecendo.",
     "chunkIndex": 26
@@ -72,7 +72,7 @@ export const V171K_PRESENTED: PresentedKnowledgeExcerpt[] = [
     "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
     "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
     "heading": "46. Recapitulação obrigatória",
-    "excerpt": "Antes de encerrar, informar:\n\n- Conta analisada;\n- Lançamento contestado;\n- Valor;\n- Ação realizada;\n- Serviço cancelado, quando aplicável;\n- Conta ajustada;\n- Valor a pagar;\n- Prazo;\n- Canal de retorno;\n- Protocolo.\n\n**Exemplo:**\n\n“Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Vivo após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184.”",
+    "excerpt": "Antes de encerrar, informar:\n\n- Conta analisada;\n- Lançamento contestado;\n- Valor;\n- Ação realizada;\n- Serviço cancelado, quando aplicável;\n- Conta ajustada;\n- Valor a pagar;\n- Prazo;\n- Canal de retorno;\n- Protocolo.\n\n**Exemplo:**\n\n“Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Telnova após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184.”",
     "chunkIndex": 62
   },
   {
@@ -98,7 +98,7 @@ export const V171K_PRESENTED: PresentedKnowledgeExcerpt[] = [
   },
   {
     "documentId": "b8da52ca-e65c-419c-bace-83431f04ba2c",
-    "documentTitle": "Procedimento Operacional Jeito Vivo de Atender",
+    "documentTitle": "Procedimento Operacional Jeito Telnova de Atender",
     "heading": "28 Checklist rápido do operador",
     "excerpt": "Antes de encerrar, confirme:\n\n- Cumprimentei e me apresentei;\n- Perguntei e utilizei corretamente o nome do cliente;\n- Entendi o motivo principal;\n- Evitei que o cliente repetisse informações;\n- Realizei as validações;\n- Expliquei o que estava fazendo;\n- Apresentei somente informações confirmadas;\n- Informei valores, impactos e prazos;\n- Obtive aceite antes de alterações;\n- Testei ou confirmei o resultado;\n- Registrei o atendimento;\n- Recapitulei a solução;\n- Informei o protocolo;\n- Perguntei se havia outra necessidade;\n- Encerrei de forma cordial.",
     "chunkIndex": 73

@@ -22,9 +22,12 @@ function uiScheduleSourceKind(source: ScheduledDataSource | undefined): UiSchedu
 export function ScheduledDataSourceForm({
   source,
   onChange,
+  singleCall = false,
 }: {
   source: ScheduledDataSource | undefined
   onChange: (next: ScheduledDataSource) => void
+  /** Monitoria aleatória ("Avaliação de processo"): uma chamada sorteada por execução — a quantidade não é escolhida aqui. */
+  singleCall?: boolean
 }) {
   const uiKind = uiScheduleSourceKind(source)
   const fieldId = useId()
@@ -61,7 +64,14 @@ export function ScheduledDataSourceForm({
         </div>
       ) : null}
 
-      {uiKind === "MONITORING" && source?.kind === "MONITORING" ? (
+      {uiKind === "MONITORING" && source?.kind === "MONITORING" && singleCall ? (
+        <p className="text-xs text-muted-foreground">
+          Uma chamada do colaborador é sorteada a cada execução, entre as do período que têm transcrição, que não são curtas (regra geral em
+          Governança) e que ainda não tiveram monitoria. Para mais monitorias, aumente a frequência ou os horários do gatilho.
+        </p>
+      ) : null}
+
+      {uiKind === "MONITORING" && source?.kind === "MONITORING" && !singleCall ? (
         <div className="space-y-1.5">
           <Label htmlFor={`${fieldId}-sample-size`}>Quantas chamadas amostrar</Label>
           <Input

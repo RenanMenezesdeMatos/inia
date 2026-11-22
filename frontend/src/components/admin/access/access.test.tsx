@@ -161,7 +161,8 @@ describe("Usuários e acessos — o que cada um enxerga vem das capabilities (de
   it("abas por capability; sem nenhuma, a tela explica e não carrega nada", async () => {
     service.fetchIdentifiedUsers.mockResolvedValue(page([]))
     const accessAdmin = renderWithQuery(<UsersAndAccessPage capabilities={caps({ canViewUsers: true, canViewRoles: true, canManageUsers: true, canAssignRoles: true })} />)
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Acessos", "Papéis"])
+    // Quem gerencia acessos também vê o login pela rede (o backend ainda exige a organização inteira).
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Acessos", "Papéis", "Login pela rede"])
     accessAdmin.unmount()
     renderWithQuery(<UsersAndAccessPage capabilities={caps()} />)
     expect(screen.getByText(/não tem permissão/)).toBeInTheDocument()

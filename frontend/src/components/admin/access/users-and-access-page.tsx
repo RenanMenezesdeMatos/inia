@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { KeyRound, ShieldCheck, Users, UsersRound } from "lucide-react"
+import { KeyRound, Network, ShieldCheck, Users, UsersRound } from "lucide-react"
 
 import { UsersPage } from "@/components/admin/users/users-page"
 import { PageHeader } from "@/components/ui/surface"
@@ -11,6 +11,7 @@ import type { AccessCapabilities } from "@/schemas/auth/auth.schema"
 
 import { AccessUsersView, type AccessFocus } from "./access-users-view"
 import { AccessRolesView } from "./access-roles-view"
+import { NetworkLoginView } from "./network-login/network-login-view"
 
 /**
  * Administração › Usuários e acessos (V1.5.7). Três conceitos separados: ACESSOS (pessoas identificadas × situação do login ×
@@ -23,6 +24,8 @@ export function UsersAndAccessPage({ capabilities }: { capabilities: AccessCapab
     capabilities.canViewUsers ? { value: "access", label: "Acessos", icon: KeyRound } : null,
     capabilities.canManagePeople ? { value: "people", label: "Pessoas", icon: UsersRound } : null,
     capabilities.canViewRoles ? { value: "roles", label: "Papéis", icon: ShieldCheck } : null,
+    // Login pela rede (AD): só quem gerencia acessos; o backend exige a organização inteira.
+    capabilities.canManageUsers ? { value: "network-login", label: "Login pela rede", icon: Network } : null,
   ].filter((tab) => tab !== null)
   const [tab, setTab] = useState<string | null>(null)
   // Pessoas → Acessos já na pessoa (ex.: matrícula que já existe no "Novo usuário"); a chave remonta a lista com o foco novo.
@@ -50,6 +53,7 @@ export function UsersAndAccessPage({ capabilities }: { capabilities: AccessCapab
             {capabilities.canViewUsers ? <TabsContent value="access"><AccessUsersView key={accessFocus?.key ?? 0} canManageUsers={capabilities.canManageUsers} canAssignRoles={capabilities.canAssignRoles} focus={accessFocus} /></TabsContent> : null}
             {capabilities.canManagePeople ? <TabsContent value="people"><UsersPage canViewAccess={capabilities.canViewUsers} canAssignRoles={capabilities.canAssignRoles} canManageAccess={capabilities.canManageUsers} canExportSubjectData={capabilities.canExportSubjectData} onOpenAccess={openAccess} /></TabsContent> : null}
             {capabilities.canViewRoles ? <TabsContent value="roles"><AccessRolesView /></TabsContent> : null}
+            {capabilities.canManageUsers ? <TabsContent value="network-login"><NetworkLoginView /></TabsContent> : null}
           </Tabs>
         </CardContent>
       </Card>

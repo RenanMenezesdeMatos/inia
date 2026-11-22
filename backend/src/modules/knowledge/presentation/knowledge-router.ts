@@ -1,4 +1,5 @@
 import { scopeLinkProblems } from "../../../shared/domain/scope-links/scope-links.js"
+import { DOCUMENT_BUDGET_CHARS } from "../../feedback-engine/domain/document-selection.js"
 import { Router } from "express"
 import multer from "multer"
 import { z } from "zod"
@@ -230,6 +231,8 @@ async function fetchDocumentDetail(db: Database, organizationId: string, id: str
     ...document.rows[0],
     // Os produtos que valem agora; os do rascunho estão na configuração dele e só valem quando a versão entrar em uso.
     inUseProductNodeIds: await openProductNodeIds(db, organizationId, "KNOWLEDGE_DOCUMENT", id),
+    // Quanto texto de procedimentos a monitoria lê por chamada (todas as bases do especialista juntas): a tela avisa a base maior que isso.
+    monitoringReadLimitChars: DOCUMENT_BUDGET_CHARS,
     latestVersion: latest ? { version: latest.version, content: contentOf(latest), status: latest.status, createdAt: latest.created_at, restricted: isRestricted(latest) } : null,
     inUse: live?.status === "PUBLISHED"
       ? { id: live.id, version: live.version, status: live.status, content: contentOf(live), extraction: extractionOf(live), publishedAt: live.published_at, publishedByName: live.published_by_name, changeSummary: live.change_summary }

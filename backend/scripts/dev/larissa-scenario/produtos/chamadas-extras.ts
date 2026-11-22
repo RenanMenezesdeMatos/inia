@@ -22,7 +22,7 @@ export const CHAMADAS_EXTRAS: ProductScenarioCall[] = [
       note: "Na conta do celular a operadora usa o procedimento da Banda Larga (e-mail, até 2 horas) em vez do SMS para a própria linha em até 10 minutos (LM1) — certo para a Banda Larga, errado para a Linha Móvel. Na conta da banda larga faz certo (e-mail cadastrado, até 2 horas — BL1). Titular validado, canal confirmado, protocolo e dúvidas ok. Prova que a regra de um produto não passa para o pedido do outro.",
     },
     lines: [
-      "O: Vivo, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Bom dia, é a Renata Campos.",
       "O: Olá, Renata. Como posso ajudar?",
       "C: Eu preciso da segunda via de duas contas: a do meu celular e a outra conta de casa. As duas sumiram do meu e-mail.",
@@ -63,7 +63,7 @@ export const CHAMADAS_EXTRAS: ProductScenarioCall[] = [
       note: "Valida CNPJ e responsável, confirma o e-mail cadastrado, envia, informa o protocolo e pergunta se ficou dúvida. Com o produto indefinido, as regras gerais são avaliadas e as de cada produto possível aparecem em “Depende do produto”, sem virar erro nem acerto. Falhas gerais que o roteiro não previa (achadas na análise real de 21/10): não diz em quanto tempo a segunda via chega (argumentário geral “confirmar canal e prazo”) e não agradece a espera ao voltar.",
     },
     lines: [
-      "O: Vivo, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Boa tarde, é a Patrícia Lemos, do financeiro da Gráfica Ponto Fino.",
       "O: Olá, Patrícia. Em que posso ajudar?",
       "C: Eu preciso da segunda via da conta da empresa. O boleto deste mês não chegou.",

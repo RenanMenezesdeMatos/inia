@@ -2,7 +2,7 @@
  * CENÁRIO "PRODUTOS — SEGUNDA VIA E REPARO" DA LARISSA MONTEIRO (DEMO-OP-0001) — teste de ponta a ponta do cadastro de produtos (21/10/2026).
  *
  * Conteúdo FICTÍCIO (`conteudo.ts`): bases de conhecimento e argumentários de segunda via e reparo com "Vale para" geral, por categoria,
- * por produto e por vários produtos, e prazos que mudam por produto; a categoria "Soluciona TI" com o produto Vivo Soluciona TI; dois
+ * por produto e por vários produtos, e prazos que mudam por produto; a categoria "Soluciona TI" com o produto Telnova Soluciona TI; dois
  * agentes de teste (um por processo) ligados só a essas bases; dois Workflows MANUAIS ("Executar agora" numa chamada → Gerar feedback →
  * Acompanhamento da Larissa); e 15 chamadas da Larissa (`chamadas-*.ts`) que testam cada forma de o produto aparecer.
  *

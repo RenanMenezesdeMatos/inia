@@ -5,13 +5,15 @@ import { CALL_ALREADY_MONITORED, PERIOD_ALREADY_DELIVERED } from "../domain/deli
 import { startOfLocalDate } from "../../workflows/application/time-window.js"
 import { NEUTRAL_INTERACTION_TITLE, readableSubjectOf } from "../../feedbacks/domain/feedback-heading.js"
 import { argumentRequirementOf, buildMonitoringBrief, type FeedbackBrief, type SourceLineMeta } from "../domain/feedback-brief.js"
+import { limitNarrativeFailures, mergeMonitoringBriefs } from "../domain/narrative-selection.js"
 import { buildProcedureContext, listContextOf, type ListContext } from "../domain/procedure.js"
 import { buildIndicatorBrief, examplePhrasingKeyOf, informativeHasContent, practiceSubjectKeysOf, type ExamplePhrasings } from "../domain/indicator-brief.js"
 import { onePerInteraction, practiceKeyOf, withCurrentPracticeTitles, type IndicatorInvestigation } from "../domain/indicator-investigation.js"
-import { callAnalysisRefOf, ENGINE_MESSAGE_NODE_OUTPUT_KIND, isIndicatorAnalysisNodeOutput, sourceAgentIdOf, type EngineMessageNodeOutput } from "../domain/node-output.js"
+import { callAnalysisRefsOf, ENGINE_MESSAGE_NODE_OUTPUT_KIND, isIndicatorAnalysisNodeOutput, isNoEligibleCallNodeOutput, NO_ELIGIBLE_CALL, sourceAgentIdOf, type EngineMessageNodeOutput } from "../domain/node-output.js"
 import { analyzeCall, metricsSummaryOf, type AnalyzeCallDeps } from "./analyze-call.js"
 import { isLegacyPendingOutcome } from "../domain/analysis-recovery.js"
 import { composeFeedback } from "./compose-feedback.js"
+import { ENGINE_LEASE_SECONDS, holdEngineLease, type EngineLeaseHold } from "./engine-lease.js"
 import { investigateIndicator, type InvestigateIndicatorDeps, type InvestigationTarget } from "./investigate-indicator.js"
 import { withCitedInText, type FeedbackBestPractices } from "../../best-practices/domain/feedback-section.js"
 import { basePracticesOf, citedPracticeIdsOf, establishedProductsOfBrief } from "../domain/base-practices.js"
@@ -28,7 +30,8 @@ import type { FeedbackMemoryStore, FeedbackMessageStore, MaterialRecommendation,
  * concorrência ou reprocessamento devolvem a mesma mensagem, e a mesma análise nunca é recontada. Falha técnica (provedor)
  * lança erro classificado — o motor do Workflow aplica a política de nova tentativa; a análise já gravada continua lá.
  */
-export const MESSAGE_LEASE_SECONDS = 600
+/** Posse curta, renovada enquanto a execução está viva (`ENGINE_LEASE_V1`). */
+export const MESSAGE_LEASE_SECONDS = ENGINE_LEASE_SECONDS
 export const RULE_VIOLATION_REASON = "RULE_VIOLATION"
 export const HISTORY_WINDOW_DAYS = 90
 
@@ -94,7 +97,7 @@ export function nodeOutputOfMessage(record: MessageRecord, reused: boolean): Eng
     card: message.card,
     text: message.text,
     analysisRunIds: record.analysisRunIds,
-    findings: { developments: brief.developments.filter((finding) => (message.communicatedRefs ?? [finding.ref]).includes(finding.ref)).length, strengths: brief.strengths.filter((finding) => (message.communicatedRefs ?? [finding.ref]).includes(finding.ref)).length, suppressed: brief.suppressed.length },
+    findings: { developments: brief.developments.filter((finding) => (message.communicatedRefs ?? [finding.ref]).includes(finding.ref)).length, strengths: brief.strengths.filter((finding) => (message.communicatedRefs ?? [finding.ref]).includes(finding.ref)).length, suppressed: brief.suppressed.length, ...((brief.additionalDevelopments ?? []).length > 0 ? { beyondNarrative: brief.additionalDevelopments!.length } : {}) },
     limitations: brief.limitations,
     reused,
   }
@@ -115,38 +118,54 @@ async function subjectNamesOf(deps: GenerateFeedbackDeps, organizationId: string
 const dateLabelOf = (at: Date, timeZone: string) => new Intl.DateTimeFormat("pt-BR", { timeZone, day: "2-digit", month: "2-digit", year: "numeric" }).format(at)
 
 async function monitoringBrief(deps: GenerateFeedbackDeps, request: GenerateFeedbackRequest): Promise<{ brief: FeedbackBrief | null; runIds: string[]; abstain: string | null; assessment: StoredCallAssessment | null }> {
+  // Monitoria aleatória sem chamada elegível no período (`RANDOM_MONITORING_SAMPLE_V1`): nada a analisar nem a dizer.
+  if (isNoEligibleCallNodeOutput(request.sourceNodeOutput)) return { brief: null, runIds: [], abstain: `${NO_ELIGIBLE_CALL}:${request.sourceNodeOutput.detail}`, assessment: null }
   if (!request.interactionId) return { brief: null, runIds: [], abstain: "NO_INTERACTION", assessment: null }
   // `ONE_MONITORING_PER_CALL_V1`: chamada já monitorada (qualquer Workflow, qualquer caminho) não recebe outra monitoria — nada é
   // analisado nem composto; a origem desta execução (outro sinal, outro Workflow) não muda isso.
   const monitored = await deps.memory.deliveredMonitoringOf(request.organizationId, request.interactionId)
   if (monitored) return { brief: null, runIds: [], abstain: CALL_ALREADY_MONITORED, assessment: null }
-  const ref = callAnalysisRefOf(request.sourceNodeOutput)
-  let runId: string
-  let assessment: StoredCallAssessment | null
+  // `MULTI_SPECIALIST_MERGE_V1` (V2 na junção, `narrative-selection.ts`): a análise de CADA especialista da origem (Orquestrador) entra no feedback — antes só a do primeiro.
+  const refs = callAnalysisRefsOf(request.sourceNodeOutput).filter((ref) => ref.interactionId === request.interactionId && ref.personId === request.collaboratorId)
   const analyzeNow = () => analyzeCall(deps.analyze, { organizationId: request.organizationId, interactionId: request.interactionId!, collaboratorId: request.collaboratorId, agentId: sourceAgentIdOf(request.sourceNodeOutput, request.configuredAgentId), trigger: { kind: "FEEDBACK_GENERATION", workflowId: request.workflowId, workflowVersionId: request.workflowVersionId, enrollmentId: request.enrollmentId, nodeId: request.nodeId, selectionReason: request.selectionReason } })
-  if (ref && ref.interactionId === request.interactionId && ref.personId === request.collaboratorId) {
-    runId = ref.analysisRunId
-    assessment = await deps.memory.getCallAssessmentByRun(request.organizationId, runId)
+  const loaded: { runId: string; assessment: StoredCallAssessment | null }[] = []
+  if (refs.length > 0) {
+    for (const ref of refs) loaded.push({ runId: ref.analysisRunId, assessment: await deps.memory.getCallAssessmentByRun(request.organizationId, ref.analysisRunId) })
   } else {
     // Origem sem análise do motor (contrato anterior, execução antiga): a análise é feita agora, com o especialista da origem.
     const analyzed = await analyzeNow()
-    runId = analyzed.runId
-    assessment = analyzed.assessment
+    loaded.push({ runId: analyzed.runId, assessment: analyzed.assessment })
   }
   // Leitura gravada antes da correção da recuperação SEM revisão (`REVIEW_UNAVAILABLE`): é pendência técnica, não conclusão —
   // retoma só a revisão (as propostas já pagas são reaproveitadas); se a revisão falhar de novo, a falha é técnica (nova tentativa).
-  if (assessment && isLegacyPendingOutcome(assessment.analysis.outcomeReasons)) {
+  // Só a do especialista principal é retomada aqui (é o agente que `analyzeNow` conhece); a de outro especialista pendente fica de fora.
+  const primary = loaded[0]!
+  if (primary.assessment && isLegacyPendingOutcome(primary.assessment.analysis.outcomeReasons)) {
     const resumed = await analyzeNow()
-    runId = resumed.runId
-    assessment = resumed.assessment
+    loaded[0] = { runId: resumed.runId, assessment: resumed.assessment }
   }
-  if (!assessment) return { brief: null, runIds: [runId], abstain: "ANALYSIS_NOT_FOUND", assessment: null }
+  const runIds = loaded.map((entry) => entry.runId)
+  const usable = loaded.filter((entry, index): entry is { runId: string; assessment: StoredCallAssessment } => Boolean(entry.assessment) && entry.assessment!.analysis.outcome !== "INSUFFICIENT_EVIDENCE" && (index === 0 || !isLegacyPendingOutcome(entry.assessment!.analysis.outcomeReasons)))
+  if (usable.length === 0) {
+    const first = loaded[0]!
+    if (!first.assessment) return { brief: null, runIds, abstain: "ANALYSIS_NOT_FOUND", assessment: null }
+    return { brief: null, runIds, abstain: `INSUFFICIENT_EVIDENCE:${first.assessment.analysis.outcomeReasons.join(",")}`, assessment: first.assessment }
+  }
+  const briefs: FeedbackBrief[] = []
+  for (const entry of usable) briefs.push(await briefOfAssessment(deps, request, entry.runId, entry.assessment))
+  // `NARRATIVE_TOP_FAILURES_V1`: o texto fala das 3 falhas mais graves; as demais vão só para os cards (e ficam registradas).
+  return { brief: limitNarrativeFailures(mergeMonitoringBriefs(briefs)), runIds, abstain: null, assessment: usable[0]!.assessment }
+}
+
+/** O brief de UMA análise de chamada (um especialista). */
+async function briefOfAssessment(deps: GenerateFeedbackDeps, request: GenerateFeedbackRequest, runId: string, assessment: StoredCallAssessment): Promise<FeedbackBrief> {
   const analysis = assessment.analysis
-  if (analysis.outcome === "INSUFFICIENT_EVIDENCE") return { brief: null, runIds: [runId], abstain: `INSUFFICIENT_EVIDENCE:${analysis.outcomeReasons.join(",")}`, assessment }
+  // Só é chamado com a chamada da execução (checada antes, em `monitoringBrief`).
+  const interactionId = request.interactionId!
   const keys = Object.values(assessment.criterionKeys)
   const occurredAt = assessment.snapshot.occurredAt
-  const practice = await practiceContextOf(deps, request.organizationId, request.collaboratorId, request.interactionId, keys, occurredAt, assessment.snapshot.timeZone)
-  const candidateFindings = [...keys.map((key) => `CALL:${request.interactionId}:${key}`), `CALL:${request.interactionId}:PATH:${analysis.scenario.procedureDocumentId ?? "none"}`]
+  const practice = await practiceContextOf(deps, request.organizationId, request.collaboratorId, interactionId, keys, occurredAt, assessment.snapshot.timeZone)
+  const candidateFindings = [...keys.map((key) => `CALL:${interactionId}:${key}`), `CALL:${interactionId}:PATH:${analysis.scenario.procedureDocumentId ?? "none"}`]
   const delivered = new Set((await deps.memory.deliveredFindings(request.organizationId, request.collaboratorId, candidateFindings)).map((entry) => entry.findingKey))
   const documentIds = [...new Set(analysis.criteria.map((criterion) => criterion.documentId))]
   const titles = await deps.loadDocumentTitles(request.organizationId, documentIds)
@@ -161,7 +180,7 @@ async function monitoringBrief(deps: GenerateFeedbackDeps, request: GenerateFeed
   const lineTitles = await practiceLineTitlesOf(deps, request.organizationId, analysis.criteria.flatMap((criterion) => [criterion.lineKey, ...(criterion.sources ?? []).map((source) => source.lineKey)]))
   const brief = buildMonitoringBrief({
     analysis,
-    interactionId: request.interactionId,
+    interactionId: interactionId,
     label: subject?.text ?? NEUTRAL_INTERACTION_TITLE,
     subjectSource: subject?.source ?? "NONE",
     dateLabel: dateLabelOf(occurredAt, assessment.snapshot.timeZone),
@@ -177,7 +196,7 @@ async function monitoringBrief(deps: GenerateFeedbackDeps, request: GenerateFeed
     ...(sourceLines ? { sourceLines } : {}),
     ...(lineTitles.size > 0 ? { lineTitles } : {}),
   })
-  return { brief, runIds: [runId], abstain: null, assessment }
+  return brief
 }
 
 /**
@@ -373,6 +392,15 @@ async function indicatorBrief(deps: GenerateFeedbackDeps, request: GenerateFeedb
   return { brief: mergeIndicatorBriefs(briefs), runIds: refs.map((ref) => ref.runId), abstain: null, investigations }
 }
 
+/** As portas de modelo desta mensagem (redação, análise de chamada e investigação) recusam a chamada depois que a posse foi perdida. */
+function leaseGuardedDeps(deps: GenerateFeedbackDeps, lease: EngineLeaseHold): GenerateFeedbackDeps {
+  // Portas ausentes (ensaios e testes que montam só parte das dependências) ficam como estão.
+  const guarded: GenerateFeedbackDeps = { ...deps, model: lease.guard(deps.model) }
+  if (deps.analyze) guarded.analyze = { ...deps.analyze, model: lease.guard(deps.analyze.model) }
+  if (deps.investigate?.analyze) guarded.investigate = { ...deps.investigate, analyze: { ...deps.investigate.analyze, model: lease.guard(deps.investigate.analyze.model) } }
+  return guarded
+}
+
 export async function generateFeedback(deps: GenerateFeedbackDeps, request: GenerateFeedbackRequest): Promise<GenerateFeedbackResult> {
   const now = deps.now()
   const claim = await deps.messages.claimMessage({ organizationId: request.organizationId, messageKey: messageKeyOf(request), enrollmentId: request.enrollmentId, workflowId: request.workflowId, workflowVersionId: request.workflowVersionId, nodeId: request.nodeId, sourceNodeId: request.sourceNodeId, personId: request.collaboratorId, domain: request.domain }, now, MESSAGE_LEASE_SECONDS)
@@ -380,11 +408,16 @@ export async function generateFeedback(deps: GenerateFeedbackDeps, request: Gene
   if (claim.kind === "IN_PROGRESS") throw new FeedbackGenerationInProgressError()
   const messageId = claim.messageId
   const metrics: ModelCallMetric[] = []
+  const owner = { attempt: claim.attempt }
+  const lease = holdEngineLease({ label: `feedback-message:${messageId}`, recordId: messageId, initial: claim.leaseUntil, renew: (token) => deps.messages.renewMessageLease(request.organizationId, messageId, token, MESSAGE_LEASE_SECONDS) })
+  // Quem perdeu a posse para (`ENGINE_LEASE_V1`): nenhuma chamada de modelo desta mensagem (redação, análises e investigações que ela
+  // dispara) é paga depois da perda.
+  const leased = leaseGuardedDeps(deps, lease)
   try {
-    const prepared = request.domain === "MONITORING" ? await monitoringBrief(deps, request) : await indicatorBrief(deps, request)
+    const prepared = request.domain === "MONITORING" ? await monitoringBrief(leased, request) : await indicatorBrief(leased, request)
     const base = { analysisRunIds: prepared.runIds, composition: null, message: null, materials: [] as MaterialRecommendation[] }
     if (!prepared.brief) {
-      const record = await deps.messages.completeMessage(request.organizationId, messageId, { ...base, status: "ABSTAINED", abstainReason: prepared.abstain ?? "NO_BRIEF", findingKeys: [], brief: null, suppressed: [], metrics: { durationMs: deps.now().getTime() - now.getTime() } }, deps.now())
+      const record = await deps.messages.completeMessage(request.organizationId, messageId, { ...base, status: "ABSTAINED", abstainReason: prepared.abstain ?? "NO_BRIEF", findingKeys: [], brief: null, suppressed: [], metrics: { durationMs: deps.now().getTime() - now.getTime() } }, deps.now(), owner)
       return resultOf(record, false)
     }
     // Já houve retorno deste mesmo caso e não há AJUSTE novo: reconhecimentos que ficaram de fora da primeira mensagem não
@@ -392,7 +425,7 @@ export async function generateFeedback(deps: GenerateFeedbackDeps, request: Gene
     const caseBrief = prepared.brief
     const alreadyAnswered = caseBrief.suppressed.length > 0 && caseBrief.developments.length === 0
     if (alreadyAnswered || (caseBrief.developments.length === 0 && caseBrief.strengths.length === 0 && caseBrief.tone !== "INFORMATIVE")) {
-      const record = await deps.messages.completeMessage(request.organizationId, messageId, { ...base, status: "ABSTAINED", abstainReason: caseBrief.suppressed.length > 0 ? "ALREADY_DELIVERED" : "NOTHING_MATERIAL", findingKeys: [], brief: caseBrief, suppressed: caseBrief.suppressed, metrics: { durationMs: deps.now().getTime() - now.getTime() } }, deps.now())
+      const record = await deps.messages.completeMessage(request.organizationId, messageId, { ...base, status: "ABSTAINED", abstainReason: caseBrief.suppressed.length > 0 ? "ALREADY_DELIVERED" : "NOTHING_MATERIAL", findingKeys: [], brief: caseBrief, suppressed: caseBrief.suppressed, metrics: { durationMs: deps.now().getTime() - now.getTime() } }, deps.now(), owner)
       return resultOf(record, false)
     }
     // Boas práticas da base (opcionais, separadas do processo): escolhidas pelo sistema ANTES da redação (`BASE_PRACTICES_IN_TEXT_V1`) — o
@@ -406,10 +439,10 @@ export async function generateFeedback(deps: GenerateFeedbackDeps, request: Gene
       : null
     const basePractices = basePracticesOf(bestPractices)
     const brief: FeedbackBrief = basePractices.length > 0 ? { ...caseBrief, basePractices } : caseBrief
-    const { message: assembled, audit } = await composeFeedback(deps.model, brief, metrics)
+    const { message: assembled, audit } = await composeFeedback(leased.model, brief, metrics)
     if (!assembled) {
       // Sem mensagem útil, coerente e sustentada: a análise fica na memória; nada é publicado "para não ficar sem feedback".
-      const record = await deps.messages.completeMessage(request.organizationId, messageId, { ...base, status: "ABSTAINED", abstainReason: `NO_SAFE_MESSAGE:${audit.reason ?? "UNKNOWN"}`, findingKeys: [], brief, composition: audit as unknown as Record<string, unknown>, suppressed: brief.suppressed, metrics: { ...metricsSummaryOf(metrics), durationMs: deps.now().getTime() - now.getTime(), ...(deps.meter ? { budget: deps.meter.summary() } : {}) } }, deps.now())
+      const record = await deps.messages.completeMessage(request.organizationId, messageId, { ...base, status: "ABSTAINED", abstainReason: `NO_SAFE_MESSAGE:${audit.reason ?? "UNKNOWN"}`, findingKeys: [], brief, composition: audit as unknown as Record<string, unknown>, suppressed: brief.suppressed, metrics: { ...metricsSummaryOf(metrics), durationMs: deps.now().getTime() - now.getTime(), ...(deps.meter ? { budget: deps.meter.summary() } : {}) } }, deps.now(), owner)
       return resultOf(record, false)
     }
     // O bloco marca as práticas que o texto citou (a aplicação do feedback não as repete na conclusão).
@@ -418,15 +451,18 @@ export async function generateFeedback(deps: GenerateFeedbackDeps, request: Gene
     const message = { card: assembled.card, paragraphs: assembled.paragraphs, sentences: assembled.sentences, view, text: assembled.text, source: assembled.source, communicatedRefs: assembled.communicatedRefs, ...(assembled.trusted ? { trusted: assembled.trusted } : {}) }
     // PEN-018: a mensagem pronta é conferida contra as regras antes de ficar publicável. Só lê a mensagem. Em AUDIT (o padrão) ela segue e fica o registro; em
     // ENFORCE, violação é abstenção com motivo (a análise continua na memória) e falha da conferência volta pela política de novas tentativas: nada é publicado sem conferir.
+    lease.assertHeld()
     const conference = deps.responseCheck ? await deps.responseCheck({ organizationId: request.organizationId, messageId, enrollmentId: request.enrollmentId, agentId: sourceAgentIdOf(request.sourceNodeOutput, request.configuredAgentId), view, brief }) : null
     if (conference?.decision === "VIOLATION") {
-      const record = await deps.messages.completeMessage(request.organizationId, messageId, { ...base, status: "ABSTAINED", abstainReason: `NO_SAFE_MESSAGE:${RULE_VIOLATION_REASON}`, findingKeys: [], brief, composition: { ...audit, responseCheck: { rules: conference.hits, reason: conference.reason, rejectedText: assembled.text } } as unknown as Record<string, unknown>, suppressed: brief.suppressed, metrics: { ...metricsSummaryOf(metrics), durationMs: deps.now().getTime() - now.getTime(), limited: brief.tone === "INFORMATIVE", ...(deps.meter ? { budget: deps.meter.summary() } : {}) } }, deps.now())
+      const record = await deps.messages.completeMessage(request.organizationId, messageId, { ...base, status: "ABSTAINED", abstainReason: `NO_SAFE_MESSAGE:${RULE_VIOLATION_REASON}`, findingKeys: [], brief, composition: { ...audit, responseCheck: { rules: conference.hits, reason: conference.reason, rejectedText: assembled.text } } as unknown as Record<string, unknown>, suppressed: brief.suppressed, metrics: { ...metricsSummaryOf(metrics), durationMs: deps.now().getTime() - now.getTime(), limited: brief.tone === "INFORMATIVE", ...(deps.meter ? { budget: deps.meter.summary() } : {}) } }, deps.now(), owner)
       return resultOf(record, false)
     }
     if (conference?.decision === "CHECK_FAILED") throw new DomainError("A conferência da mensagem não pôde ser concluída. Nada foi publicado.", RESPONSE_CHECK_UNAVAILABLE_CODE, 503)
     // Só o que a mensagem COMUNICOU conta como entregue (o resto continua disponível para outro retorno).
     const communicated = new Set(assembled.communicatedRefs)
-    const findingKeys = [...brief.developments, ...brief.strengths].filter((finding) => communicated.has(finding.ref)).flatMap((finding) => [finding.findingKey, ...(finding.memberFindingKeys ?? [])])
+    // `NARRATIVE_TOP_FAILURES_V1`: os ajustes além dos 3 do texto aparecem nos cards — também foram entregues ao colaborador.
+    const findingKeys = [...[...brief.developments, ...brief.strengths].filter((finding) => communicated.has(finding.ref)), ...(brief.additionalDevelopments ?? [])].flatMap((finding) => [finding.findingKey, ...(finding.memberFindingKeys ?? [])])
+    lease.assertHeld()
     const record = await deps.messages.completeMessage(request.organizationId, messageId, {
       status: "PUBLISHABLE",
       analysisRunIds: prepared.runIds,
@@ -438,10 +474,14 @@ export async function generateFeedback(deps: GenerateFeedbackDeps, request: Gene
       suppressed: brief.suppressed,
       metrics: { ...metricsSummaryOf(metrics), durationMs: deps.now().getTime() - now.getTime(), limited: brief.tone === "INFORMATIVE", ...(deps.meter ? { budget: deps.meter.summary() } : {}) },
       materials: brief.materials.filter((material) => message.view.materials.some((shown) => shown.documentId === material.documentId)).map((material) => ({ documentId: material.documentId, documentVersion: material.documentVersion, criterionKeys: material.criterionKeys, reason: material.reason })),
-    }, deps.now())
+    }, deps.now(), owner)
     return resultOf(record, false)
   } catch (error) {
-    await deps.messages.failMessage(request.organizationId, messageId, error instanceof Error ? `${error.name}: ${error.message}` : "erro desconhecido", deps.now()).catch(() => undefined)
+    await deps.messages.failMessage(request.organizationId, messageId, error instanceof Error ? `${error.name}: ${error.message}` : "erro desconhecido", deps.now(), owner).catch(() => undefined)
+    // Posse perdida para outra execução: esta para sem gravar; a nova tentativa reaproveita a mensagem que a outra concluir.
+    if (lease.isLossOf(error)) throw new FeedbackGenerationInProgressError()
     throw error
+  } finally {
+    lease.stop()
   }
 }

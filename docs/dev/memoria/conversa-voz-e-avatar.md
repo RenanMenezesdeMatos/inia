@@ -126,7 +126,7 @@ Na voz, `/tool-call` responde de uma vez, então a etapa interna da consulta nã
 
 ## Sair da tela não cancela a resposta; só o "Parar" cancela (19/11/2026, migration 245)
 
-Relato do responsável (VM da empresa, respostas pelas bases de 10 a 35 s pelo Violeta): trocar de aba no meio da resposta e, ao voltar, a pergunta ficava sem resposta.
+Relato do responsável (VM da empresa, respostas pelas bases de 10 a 35 s pelo modelo do cliente): trocar de aba no meio da resposta e, ao voltar, a pergunta ficava sem resposta.
 
 **Causa comprovada** (stack isolada, IA falsa, banco `inia_chattab`): trocar de ÁREA da INIA (Acompanhamento → Indicadores, no operador `/operator` e na liderança `/supervisor`) tira o chat da árvore (`profile-workspace.tsx` só renderiza a área ativa, por causa do Canvas do avatar). O desmonte de `operator-inia-chat.tsx` abortava o `fetch` do SSE; o `close` da resposta no servidor (`realtime-router.ts`, `POST /messages`) cancelava a geração (`runWithAiCancellation`) e não gravava nada. Log `assistant_reply_cancelled`, só a pergunta em `assistant_interactions`, e ao voltar a tela mostrava a pergunta sem resposta. A ABA DO NAVEGADOR escondida, sozinha, NÃO mata a resposta: no Chrome 157 de verdade (CDP, hidden 60 s e hidden→visible) a resposta terminou, foi gravada e apareceu. O mesmo risco existe quando o navegador descarta/recarrega a aba (Memory Saver do Chrome, sleeping tabs do Edge) — a recarga fechava a conexão e caía no mesmo cancelamento.
 

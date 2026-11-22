@@ -99,7 +99,7 @@
         "href": "/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
         "quote": "Antes de encerrar, informar:\n\n- Conta analisada;\n- Lançamento contestado;\n- Valor;\n- Ação realizada;\n- Serviço cancelado, quando aplicável;\n- Conta ajustada;\n- Valor a pagar;\n- Prazo;\n- Canal de retorno;\n- Protocolo.",
         "detail": {
-          "quote": "Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Vivo após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184.",
+          "quote": "Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Telnova após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184.",
           "heading": "46. Recapitulação obrigatória",
           "version": 1,
           "chunkIndex": 62,
@@ -116,7 +116,7 @@
         "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
         "sectionExamples": [
           "**Exemplo:**",
-          "Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Vivo após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184."
+          "Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Telnova após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184."
         ],
         "applicabilityBasis": "LEXICAL_ANCHOR"
       },
@@ -1810,7 +1810,7 @@
         "rejectedUnits": [],
         "declaredStatus": "NOT_FOLLOWED",
         "knowledgeDetail": {
-          "quote": "Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Vivo após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184.",
+          "quote": "Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Telnova após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184.",
           "heading": "46. Recapitulação obrigatória",
           "version": 1,
           "chunkIndex": 62,

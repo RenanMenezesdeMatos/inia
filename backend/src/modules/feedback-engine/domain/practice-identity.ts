@@ -54,8 +54,10 @@ export type PracticeIdentityResult = {
 export const newPracticeKeyOf = (firstLineKey: string) => `KP-${createHash("sha256").update(`PRACTICE|${firstLineKey}`).digest("hex").slice(0, 12)}`
 
 /** Lote máximo de regras por pedido (cada parte vê as práticas que as anteriores criaram). 120 foi cortado na carga do dev (05/10:
- * 78 regras num pedido, JSON inválido); uma análise de chamada costuma trazer bem menos de 40 regras novas. */
-export const PRACTICE_LINES_PER_REQUEST = 40
+ * 78 regras num pedido, JSON inválido). 40 bateu no teto de saída na validação paga de 21/11/2026 (32.754 de 32.768 tokens, com o
+ * raciocínio, em 238 s de 240 s): a resposta cortada deixava as regras sem prática — títulos crus nos cards e a mesma conduta de dois
+ * especialistas sem juntar. 20 = metade da saída, longe dos dois tetos. */
+export const PRACTICE_LINES_PER_REQUEST = 20
 
 export const PRACTICE_IDENTITY_SYSTEM_PROMPT = `Você organiza as regras dos procedimentos e argumentários de uma operação de atendimento em PRÁTICAS. Uma prática é UMA conduta que se espera do operador numa situação do atendimento. É por prática que a liderança acompanha quem cumpre e quem não cumpre, e é por prática que o feedback lembra o que já aconteceu antes com a pessoa. Por isso:
 - a mesma conduta escrita de jeitos diferentes — em outra seção, em outro documento, num checklist, numa pergunta de autoverificação ("Forneci o protocolo?"), num argumentário ou numa versão nova do texto — fica na MESMA prática;

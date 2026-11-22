@@ -76,6 +76,8 @@ export type SourceLineMeta = { documentId: string; documentTitle: string; headin
  * dela — status confirmado, falas verificadas ou ausência, regra literal. Sem isso o redator via só o status do ponto inteiro e as
  * duas primeiras falas, e orientava uma etapa ("ofereça o bloqueio preventivo") sem poder dizer que ela faltou (avaliação de 05/10).
  */
+/** Ajuste e reconhecimento da MESMA conduta vindos de especialistas diferentes: fica o ajuste (`kept`); o reconhecimento (`dropped`) sai. */
+export type MergeConflict = { kind: "STRENGTH_VS_DEVELOPMENT"; kept: string; dropped: string; practiceKey: string | null; sharedKeys: string[] }
 export type BriefStep = { title: string; status: CriterionStatus; quotes: BriefQuote[]; absentInCall: boolean; declaredOnly: boolean; rule: BriefRule | null; /** `RULE_SOURCES_V1`: todas as fontes da etapa (a primeira = `rule`). */ rules?: BriefRule[]; findingKey?: string }
 export type BriefFinding = {
   ref: string
@@ -182,6 +184,9 @@ export type FeedbackBrief = {
   /** Falas verificadas do cenário (condições e caminho) — fatos que situam a conversa. */
   scenarioQuotes?: BriefQuote[]
   developments: BriefFinding[]
+  /** `NARRATIVE_TOP_FAILURES_V1`: ajustes além dos 3 mais graves — aparecem só nos cards de "Entenda este feedback" (fatos do sistema),
+   * ficam no registro da mensagem e no Diagnóstico; nunca vão ao redator nem ao verificador. */
+  additionalDevelopments?: BriefFinding[]
   strengths: BriefFinding[]
   limitations: string[]
   materials: BriefMaterial[]
@@ -196,6 +201,8 @@ export type FeedbackBrief = {
   tone: "RECOGNITION" | "DEVELOPMENT" | "MIXED" | "INFORMATIVE"
   /** Achados suprimidos por já terem sido entregues (a observação continua na memória). */
   suppressed: { findingKey: string; title: string; reason: "ALREADY_DELIVERED" }[]
+  /** `MULTI_SPECIALIST_MERGE_V2`: o que a junção entre especialistas deixou de fora por contradição (auditoria; nunca vai ao redator). */
+  mergeConflicts?: MergeConflict[]
   /**
    * CURRENT_RULE_REEVALUATION = a regra usada foi publicada DEPOIS da chamada (não havia versão vigente na data): o que ela aponta é
    * orientação para as próximas chamadas pela regra atual, nunca culpa por não ter seguido uma regra que ainda não existia.
@@ -421,8 +428,8 @@ export function verifiedStatementOf(input: { kind: "DEVELOPMENT" | "STRENGTH"; s
 }
 
 /** Quantos reconhecimentos são OFERECIDOS ao redator (ele escolhe o que comunicar; a mensagem não reconta a chamada item a item). */
-const STRENGTHS_WITH_DEVELOPMENT = 3
-const STRENGTHS_ALONE = 3
+export const STRENGTHS_WITH_DEVELOPMENT = 3
+export const STRENGTHS_ALONE = 3
 const MAX_OPEN_POINTS = 2
 /** Ordem pelo papel no caso: central antes de apoio (ou sem leitura) antes de rotina. */
 export const ROLE_RANK: Record<string, number> = { CENTRAL: 0, SUPPORTING: 1, ROUTINE: 2 }
@@ -710,7 +717,7 @@ export function buildMonitoringBrief(input: MonitoringBriefInput): FeedbackBrief
 }
 
 /** Com uma regra por origem (`RULE_SOURCES_V1`), um ponto de duas etapas já tem 4–6 regras (base, argumentário, "evitar"). */
-const RULES_PER_POINT = 8
+export const RULES_PER_POINT = 8
 const STEPS_PER_POINT = 8
 const stepOf = (finding: BriefFinding): BriefStep => ({ title: finding.title, status: finding.status as CriterionStatus, quotes: finding.quotes.slice(0, 2), absentInCall: Boolean(finding.absence), declaredOnly: finding.declaredOnly, rule: finding.rules[0] ?? null, ...(finding.rules.length > 1 ? { rules: finding.rules } : {}), findingKey: finding.findingKey })
 /** Título de um ponto que junta etapas de uma mesma origem: o nome do argumentário (a seção dele é só o campo do cadastro) ou a seção da base. */

@@ -858,7 +858,17 @@ export function resolveFeedbackDomain(selection: FeedbackDomainSelection, trigge
   if (triggerKind === "schedule" && sourceType === "AGENT" && sourceContract === "PRV_CLOSING_DIAGNOSIS") return "INDICATOR"
   // INDICATOR DIAGNOSIS V2 — agenda + "Diagnóstico do indicador" (fechamento oficial de UM indicador, sem PRV) = feedback de indicador.
   if (triggerKind === "schedule" && sourceType === "AGENT" && sourceContract === "INDICATOR_DIAGNOSIS") return "INDICATOR"
+  // Monitoria aleatória — agenda + "Avaliação de processo" sobre a chamada sorteada (RANDOM_MONITORING_SAMPLE_V1) = monitoria.
+  if (triggerKind === "schedule" && sourceType === "AGENT" && sourceContract === "PROCESS_ASSESSMENT") return "MONITORING"
   return null
+}
+
+/**
+ * MONITORIA ALEATÓRIA (`RANDOM_MONITORING_SAMPLE_V1`): "Chamar agente" com fonte "Amostra de chamadas" e formato "Avaliação de
+ * processo" — no gatilho por Agenda ou Manual por colaborador, sorteia UMA chamada elegível do colaborador por execução.
+ */
+export function isRandomMonitoringNode(node: FlowNode | undefined | null): boolean {
+  return Boolean(node) && node!.type === "action" && node!.config.actionType === "CALL_AGENT" && node!.config.outputContract === "PROCESS_ASSESSMENT" && node!.config.scheduledDataSource?.kind === "MONITORING"
 }
 
 /**

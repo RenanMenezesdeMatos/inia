@@ -31,8 +31,8 @@ export type PracticeThemeResult = {
 /** Chave do tema NOVO: derivada da primeira prática que o criou (determinística — execuções concorrentes chegam à mesma chave). */
 export const newThemeKeyOf = (firstPracticeKey: string) => `KT-${createHash("sha256").update(`THEME|${firstPracticeKey}`).digest("hex").slice(0, 12)}`
 
-/** Práticas por pedido (cada pedido vê os temas que os anteriores criaram). Uma prática pesa bem menos que uma regra com a lista. */
-export const PRACTICES_PER_THEME_REQUEST = 60
+/** Práticas por pedido (cada pedido vê os temas que os anteriores criaram). 30 desde 21/11/2026 (antes 60): mesma folga do lote de regras (`PRACTICE_LINES_PER_REQUEST`) contra o teto de saída e de tempo. */
+export const PRACTICES_PER_THEME_REQUEST = 30
 /** Limites de FORMA do que vira rótulo de tela (nome curto do ponto e nome do tema). Fora disso a prática fica sem tema e volta. */
 export const SHORT_TITLE_MAX_CHARS = 60
 export const THEME_TITLE_MAX_CHARS = 48

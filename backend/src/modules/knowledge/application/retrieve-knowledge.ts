@@ -123,7 +123,7 @@ export type AskerQuestionRetrievalTrace = {
  * as seções que avaliam essa fase:
  *   1. o PROCESSO identificado → todas as suas seções de fechamento (checklist, recapitulação, confirmação de entendimento,
  *      encerramento). V1.7.1m: o processo é o DOCUMENTO PRIMÁRIO (`primary-process.ts`: assunto estruturado da interação
- *      ancorado no título — nunca o maior score do ranking, que no smoke V1.7.1l elegeu a diretriz transversal "Jeito Vivo" e
+ *      ancorado no título — nunca o maior score do ranking, que no smoke V1.7.1l elegeu a diretriz transversal "Jeito Telnova" e
  *      deixou de fora a "Recapitulação obrigatória" do procedimento específico); 2+ ancorados = ambíguo, todos entram (nenhum
  *      escolhido em silêncio); nenhum = só as checklists;
  *   2. as CHECKLISTS das outras bases vinculadas ao especialista (diretrizes transversais: Jeito de Atender, Checklist de

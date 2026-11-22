@@ -18,6 +18,8 @@ export type AuthenticateResult =
   | { kind: "LOCKED"; retryAt: Date }
   | { kind: "ACCESS_DISABLED" }
   | { kind: "TEMPORARY_PASSWORD_EXPIRED" }
+  /** Senha local certa, mas a organização usa o login pela rede e a conta não é de emergência. */
+  | { kind: "NETWORK_LOGIN_REQUIRED" }
 
 // Hash de uma senha que ninguém conhece: e-mail inexistente custa o mesmo bcrypt que um existente (o tempo da resposta não
 // revela quem tem conta). Calculado uma vez, na primeira vez que for preciso.
@@ -81,11 +83,18 @@ export async function authenticate(deps: AuthenticateDeps, input: { login: strin
     await settle(account.id, "ACCESS_DISABLED")
     return { kind: "ACCESS_DISABLED" }
   }
+  // LOGIN PELA REDE ligado na organização: e-mail e senha só valem para a conta local de emergência (migration 247). Revelado
+  // só a quem já provou a senha — e a pessoa entende por que não entra.
+  if (account.networkLoginEnabled && !account.emergencyLocalAccess) {
+    await settle(account.id, "ACCESS_DISABLED")
+    return { kind: "NETWORK_LOGIN_REQUIRED" }
+  }
   if (account.passwordChangeRequired && (!account.temporaryPasswordExpiresAt || account.temporaryPasswordExpiresAt.getTime() <= now.getTime())) {
     await settle(account.id, "TEMPORARY_PASSWORD_EXPIRED")
     return { kind: "TEMPORARY_PASSWORD_EXPIRED" }
   }
   await settle(account.id, "SUCCEEDED")
   await deps.store.markLoggedIn({ accountId: account.id, identifierHash, at: now })
+  if (account.networkLoginEnabled) await deps.store.recordEmergencyLocalLogin({ organizationId: account.organizationId, accountId: account.id, personId: account.personId, at: now })
   return { kind: "SUCCEEDED", account }
 }

@@ -4,6 +4,7 @@ import type { CredentialStore, LoginAccount, PasswordState } from "../applicatio
 import type { SessionAccountState } from "../domain/session-state.js"
 import { derivedKey } from "./derived-keys.js"
 import type { PlatformRole } from "./jwt.js"
+import { personIdsWithOrganizationWidePermission } from "../../access/application/permission-holders.js"
 
 type Queryable = Pick<Database, "query">
 
@@ -24,28 +25,76 @@ const toSessionState = (row: SessionRow): SessionAccountState => ({
 })
 const SESSION_COLUMNS = "ua.active, ua.session_version, ua.password_change_required, ua.temporary_password_expires_at, (select pa.active from people pa where pa.id = ua.person_id) person_active"
 
-type LoginRow = SessionRow & { id: string; organization_id: string; person_id: string; name: string; role: PlatformRole; email: string; password_hash: string; avatar_url: string | null; job_title: string | null; team_id: string | null; team_name: string | null }
+type LoginRow = SessionRow & { id: string; organization_id: string; person_id: string; name: string; role: PlatformRole; email: string; password_hash: string; avatar_url: string | null; job_title: string | null; team_id: string | null; team_name: string | null; matricula: string | null; network_login_enabled: boolean | null; emergency_local_access: boolean | null }
 
-export function createPostgresCredentialStore(db: Queryable): CredentialStore {
-  return {
-    async findByLogin(login) {
-      const result = await db.query<LoginRow>(
-        `select ua.id, ua.organization_id, p.id person_id, p.name, p.role, ua.email, ua.password_hash, ${SESSION_COLUMNS},
-                p.avatar_url, p.job_title, p.team_id, t.name team_name
+const LOGIN_SELECT = `select ua.id, ua.organization_id, p.id person_id, p.name, p.role, ua.email, ua.password_hash, ${SESSION_COLUMNS},
+                p.avatar_url, p.job_title, p.team_id, t.name team_name, p.matricula, o.network_login_enabled, ua.emergency_local_access
          from user_accounts ua
          join people p on p.id = ua.person_id
-         left join teams t on t.id = p.team_id
-         where lower(ua.email) = lower($1)`,
-        [login.trim()],
-      )
+         join organizations o on o.id = ua.organization_id
+         left join teams t on t.id = p.team_id`
+
+const toLoginAccount = (row: LoginRow): LoginAccount => ({
+  ...toSessionState(row),
+  id: row.id, organizationId: row.organization_id, personId: row.person_id, name: row.name, role: row.role, email: row.email, passwordHash: row.password_hash,
+  avatarUrl: row.avatar_url ?? null, jobTitle: row.job_title ?? null, teamId: row.team_id ?? null, teamName: row.team_name ?? null,
+  matricula: row.matricula ?? null, networkLoginEnabled: row.network_login_enabled === true, emergencyLocalAccess: row.emergency_local_access === true,
+})
+
+export function createPostgresCredentialStore(db: Queryable): CredentialStore {
+  const store: CredentialStore = {
+    async findByLogin(login) {
+      const result = await db.query<LoginRow>(`${LOGIN_SELECT} where lower(ua.email) = lower($1)`, [login.trim()])
       const row = result.rows[0]
-      if (!row) return null
-      const account: LoginAccount = {
-        ...toSessionState(row),
-        id: row.id, organizationId: row.organization_id, personId: row.person_id, name: row.name, role: row.role, email: row.email, passwordHash: row.password_hash,
-        avatarUrl: row.avatar_url ?? null, jobTitle: row.job_title ?? null, teamId: row.team_id ?? null, teamName: row.team_name ?? null,
+      return row ? toLoginAccount(row) : null
+    },
+
+    async findByNetworkLogin(networkLogin) {
+      // Só organizações com o login pela rede LIGADO. A mesma matrícula em duas organizações ligadas = ambígua: ninguém entra
+      // (nunca escolher uma das duas às cegas).
+      const result = await db.query<LoginRow>(`${LOGIN_SELECT} where o.network_login_enabled and upper(btrim(p.matricula)) = $1 limit 2`, [networkLogin])
+      return result.rows.length === 1 ? toLoginAccount(result.rows[0]!) : null
+    },
+
+    async completeNetworkLogin({ accountId, identifierHash, at, retiredPasswordHash }) {
+      // A senha temporária que ainda esperava a troca deixa de existir: quem entrou pela rede não usa senha local, e ela não pode
+      // virar senha permanente se o login pela rede for desligado depois (a pessoa pede uma nova ao administrador).
+      await db.query(
+        `update user_accounts
+            set password_hash = case when password_change_required and not emergency_local_access then $3 else password_hash end,
+                temporary_password_issued_at = case when password_change_required and not emergency_local_access then null else temporary_password_issued_at end,
+                temporary_password_expires_at = case when password_change_required and not emergency_local_access then null else temporary_password_expires_at end,
+                password_change_required = case when not emergency_local_access then false else password_change_required end,
+                updated_at = case when password_change_required and not emergency_local_access then $2 else updated_at end
+          where id = $1`,
+        [accountId, at, retiredPasswordHash],
+      )
+      await store.markLoggedIn({ accountId, identifierHash, at })
+    },
+
+    async recordEmergencyLocalLogin({ organizationId, accountId, personId, at }) {
+      await db.query(
+        `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload, created_at)
+         values ($1, $2, 'ACCESS_EMERGENCY_LOCAL_LOGIN', 'user_account', $3, jsonb_build_object('reason', 'NETWORK_LOGIN_ENABLED'), $4)`,
+        [organizationId, personId, accountId, at],
+      )
+      // Aviso a quem administra os acessos da organização inteira (papéis, nunca o nível hierárquico), inclusive a própria pessoa.
+      const recipients = await personIdsWithOrganizationWidePermission(db, organizationId, "access.users.manage")
+      const who = (await db.query<{ name: string }>(`select p.name from user_accounts ua join people p on p.id = ua.person_id where ua.id = $1`, [accountId])).rows[0]?.name ?? "Conta de emergência"
+      for (const recipient of recipients) {
+        await db.query(
+          `insert into alerts (organization_id, recipient_id, title, description, severity, alert_type, dedupe_key, created_at)
+           values ($1, $2, $3, $4, 'HIGH', 'ACCESS_EMERGENCY_LOCAL_LOGIN', $5, $6) on conflict (dedupe_key) do nothing`,
+          [
+            organizationId,
+            recipient,
+            "Entrada pela conta de emergência",
+            `${who} entrou com e-mail e senha local enquanto o login pela rede está ligado (${at.toISOString().slice(0, 16).replace("T", " ")} UTC). Se não foi um uso combinado, encerre as sessões da conta e troque a senha.`,
+            `emergency_local_login:${accountId}:${at.toISOString()}:${recipient}`,
+            at,
+          ],
+        )
       }
-      return account
     },
 
     async sessionState(organizationId, accountId, sessionId) {
@@ -115,16 +164,18 @@ export function createPostgresCredentialStore(db: Queryable): CredentialStore {
       return id === undefined || id === null ? null : String(id)
     },
 
-    async recentFailures(identifierHash, since, excludeAttemptId = null) {
+    async recentFailures(identifierHash, since, excludeAttemptId = null, options = {}) {
+      // As MAIS RECENTES primeiro (o LIMIT corta as antigas); `limit null` = todas. Devolve em ordem cronológica.
       const result = await db.query<{ attempted_at: Date }>(
         `select attempted_at from auth_login_attempts
          where identifier_hash = $1 and outcome = 'INVALID_CREDENTIALS' and attempted_at > $2
            and ($3::bigint is null or id <> $3::bigint)
            and attempted_at > coalesce((select max(attempted_at) from auth_login_attempts where identifier_hash = $1 and outcome = 'SUCCEEDED'), '-infinity'::timestamptz)
-         order by attempted_at`,
-        [identifierHash, since, excludeAttemptId],
+         order by attempted_at desc
+         limit $4::int`,
+        [identifierHash, since, excludeAttemptId, options.limit ?? null],
       )
-      return result.rows.map((row) => toDate(row.attempted_at)!)
+      return result.rows.map((row) => toDate(row.attempted_at)!).reverse()
     },
 
     async resolveAttempt({ attemptId, identifierHash, accountId, outcome, at }) {
@@ -171,6 +222,7 @@ export function createPostgresCredentialStore(db: Queryable): CredentialStore {
       return row ? { sessionVersion: row.session_version } : null
     },
   }
+  return store
 }
 
 /**

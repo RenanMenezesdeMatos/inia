@@ -337,6 +337,10 @@ Acima de ~300 conexões, considere um PgBouncer (modo *session*: a INIA usa `LIS
 | `idle_in_transaction_session_timeout` | 5min | 5min | Uma conexão esquecida em transação não segura travas |
 | `log_min_duration_statement` | 1000 | 1000 | Registra consultas acima de 1 s |
 | `effective_io_concurrency` | 200 | não configure | No Windows o PostgreSQL não usa e recusa valor diferente de 0 |
+| `shared_preload_libraries` | `'pg_stat_statements'` | `'pg_stat_statements'` | Mostra quais consultas mais custam (sem ela não há como achar a origem das varreduras). Depois do reinício: `create extension if not exists pg_stat_statements;` no banco `inia`. Custo de 1–2% de CPU. Numa instalação que já está no ar, só com janela combinada (exige reinício) |
+| `pg_stat_statements.max` | 5000 | 5000 | Quantas consultas diferentes guarda |
+| `track_io_timing` | on | on | Tempo de leitura de disco por consulta |
+| `log_lock_waits` | on | on | Registra quem esperou trava por mais de `deadlock_timeout` (1 s) |
 
 Confira depois: `select count(*) from pg_stat_activity where datname = 'inia';` perto do pico (deve ficar bem abaixo de
 `max_connections`) e o `pool.waiting` de cada API em `/internal/metrics`.

@@ -8,7 +8,7 @@ import { verificationRecordOf } from "../infrastructure/postgres-feedback-memory
 
 /**
  * ALINHAMENTO OPERACIONAL NA MONITORIA — caminho completo com modelo falso (zero IA): a base oficial da Ouvidoria manda ENVIAR a fatura;
- * o alinhamento do Grupo Ouvidoria (B2C, 10/11 a 30/11/2026) manda orientar o App Meu Vivo ou o site. Comprova contratos e execução
+ * o alinhamento do Grupo Ouvidoria (B2C, 10/11 a 30/11/2026) manda orientar o App Meu Telnova ou o site. Comprova contratos e execução
  * (o que chega ao modelo, a precedência aplicada por código, o que a memória guarda), nunca a qualidade de um modelo real.
  */
 const ORG = "00000000-0000-4000-8000-000000000001"
@@ -35,7 +35,7 @@ const TRANSCRIPT = [
   "Cliente: É a Marina. Preciso da minha fatura.",
   "Operador: Marina, me confirma seu nome completo?",
   "Cliente: Marina Souza Prado.",
-  "Operador: Obrigada. Você consegue ver e baixar a fatura agora pelo App Meu Vivo ou pelo site, na área de faturas.",
+  "Operador: Obrigada. Você consegue ver e baixar a fatura agora pelo App Meu Telnova ou pelo site, na área de faturas.",
   "Cliente: Ah, tá bom, vou olhar no app.",
 ].join("\n")
 
@@ -43,8 +43,8 @@ const ALIGNMENT: AlignmentCandidate = {
   alignmentId: "aaaaaaaa-0000-4000-8000-000000000001",
   versionId: "bbbbbbbb-0000-4000-8000-000000000001",
   version: 1,
-  title: "Fatura pelo App Meu Vivo ou site",
-  guidance: "Oriente o cliente a acessar a fatura pelo App Meu Vivo ou pelo site.\nNão envie a fatura por e-mail durante a vigência.",
+  title: "Fatura pelo App Meu Telnova ou site",
+  guidance: "Oriente o cliente a acessar a fatura pelo App Meu Telnova ou pelo site.\nNão envie a fatura por e-mail durante a vigência.",
   justification: "Envio de fatura suspenso na Ouvidoria enquanto o sistema de envio é substituído.",
   affectedDocuments: [{ id: DOC, title: "PR — Envio de fatura" }],
   affectedTopic: "Envio da fatura quando o cliente solicita",
@@ -93,7 +93,7 @@ const obligation = (id: string, sources: string[], action: string, finding: stri
   evidence: evidence.map((quote) => ({ ...quote, role: "CONDUCT" })), opportunityTurn, materiality: "HIGH", role: "CENTRAL", rationale: action, guidance: finding === "NOT_MET" ? { moment: "Quando a cliente pediu a fatura", action: "Enviar a fatura por e-mail." } : null,
 })
 const NAME = { turn: "T3", speaker: "OPERADOR", quote: "me confirma seu nome completo?" }
-const APP = { turn: "T5", speaker: "OPERADOR", quote: "Você consegue ver e baixar a fatura agora pelo App Meu Vivo ou pelo site" }
+const APP = { turn: "T5", speaker: "OPERADOR", quote: "Você consegue ver e baixar a fatura agora pelo App Meu Telnova ou pelo site" }
 
 /** Leitura com o alinhamento: o trecho oficial conflita com o alinhamento (declarado em sourceConflicts) e a conduta é julgada por ele. */
 const analysisWithAlignment = (handle: (text: string) => string) => ({
@@ -102,7 +102,7 @@ const analysisWithAlignment = (handle: (text: string) => string) => ({
   argumentScripts: [],
   obligations: [
     obligation("OBL-1", [handle("Confirmar o nome completo")], "Confirmar o nome completo", "MET", [NAME]),
-    obligation("OBL-2", [handle("Oriente o cliente a acessar a fatura")], "Orientar o App Meu Vivo ou o site", "MET", [APP]),
+    obligation("OBL-2", [handle("Oriente o cliente a acessar a fatura")], "Orientar o App Meu Telnova ou o site", "MET", [APP]),
     // Mesmo que a leitura ainda proponha a falha pela regra oficial, o código não a deixa valer: o trecho foi substituído.
     obligation("OBL-3", [handle("Enviar a fatura ao cliente")], "Enviar a fatura por e-mail", "NOT_MET", [], "T5"),
   ],
@@ -137,7 +137,7 @@ describe("alinhamento operacional na monitoria (cenário da Ouvidoria)", () => {
     const result = await analyzeCall(deps, request())
     const analysisCall = fake.calls.find((call) => call.stage === "CALL_ANALYSIS")!
     expect(analysisCall.systemPrompt).toContain("ALINHAMENTOS OPERACIONAIS (A-n")
-    expect(analysisCall.contents[0]!.text).toContain("=== A1 · Alinhamento operacional \"Fatura pelo App Meu Vivo ou site\" (AO-AAAAAAAA v1 · vigente de 10/11/2026 a 30/11/2026")
+    expect(analysisCall.contents[0]!.text).toContain("=== A1 · Alinhamento operacional \"Fatura pelo App Meu Telnova ou site\" (AO-AAAAAAAA v1 · vigente de 10/11/2026 a 30/11/2026")
     // A revisão recebe o alinhamento e as instruções dele.
     const review = fake.calls.find((call) => call.stage === "CALL_REVIEW")!
     expect(review.systemPrompt).toContain("ALINHAMENTOS OPERACIONAIS (A-n")

@@ -1,3 +1,4 @@
+import { loadMinimumQualityCallSeconds } from "../../interactions/application/quality-call-rule.js"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { runWithAiOrganization } from "../../../shared/application/model-routing/ai-runtime.js"
@@ -136,7 +137,7 @@ export async function claimAnalyses(db: Database, limit: number): Promise<Claime
 
 export type AnalysisRuntime = { model?: (analysis: ClaimedAnalysis) => BestPracticeModelPort | null }
 
-async function dependenciesOf(db: Database, analysis: ClaimedAnalysis, runtime: AnalysisRuntime): Promise<{ indicator: IndicatorInfo | null; signal: SignalInfo | null; corpus: CallCorpus; model: BestPracticeModelPort }> {
+async function dependenciesOf(db: Database, analysis: ClaimedAnalysis, runtime: AnalysisRuntime): Promise<{ indicator: IndicatorInfo | null; signal: SignalInfo | null; corpus: CallCorpus; model: BestPracticeModelPort; minimumQualityCallSeconds?: number | null }> {
   let info: IndicatorInfo | null = null
   let signal: SignalInfo | null = null
   if (analysis.channel_flag_id) {
@@ -154,7 +155,7 @@ async function dependenciesOf(db: Database, analysis: ClaimedAnalysis, runtime: 
     if (!team) throw new DomainError("Grupo da análise não existe mais.", "BEST_PRACTICE_TEAM_NOT_FOUND", 422)
     const subteam = analysis.subteam_id ? (await db.query<{ name: string }>(`select name from subteams where id = $1 and organization_id = $2`, [analysis.subteam_id, analysis.organization_id])).rows[0] : null
     if (analysis.subteam_id && !subteam) throw new DomainError("Subgrupo da análise não existe mais.", "BEST_PRACTICE_SUBTEAM_NOT_FOUND", 422)
-    return { indicator: info, signal, corpus: createRealCallCorpus(db, { organizationId: analysis.organization_id, teamId: analysis.team_id!, teamName: team.name, subteamId: analysis.subteam_id, subteamName: subteam?.name ?? null }), model: injected ?? createGatewayBestPracticeModel() }
+    return { indicator: info, signal, minimumQualityCallSeconds: await loadMinimumQualityCallSeconds(db, analysis.organization_id), corpus: createRealCallCorpus(db, { organizationId: analysis.organization_id, teamId: analysis.team_id!, teamName: team.name, subteamId: analysis.subteam_id, subteamName: subteam?.name ?? null }), model: injected ?? createGatewayBestPracticeModel() }
   }
   if (isProductionEnvironment()) throw new DomainError("Dados sintéticos não são analisados em produção.", "BEST_PRACTICE_SYNTHETIC_DISABLED", 403)
   const dataset = (await db.query<{ label: string; corpus: unknown; answer_key: unknown }>(`select label, corpus, answer_key from best_practice_synthetic_datasets where id = $1 and organization_id = $2`, [analysis.synthetic_dataset_id, analysis.organization_id])).rows[0]

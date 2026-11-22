@@ -77,7 +77,7 @@ export default function HowItConnectsPage() {
 ├ Especialista de Retenção e Cancelamento
 │  └ Cancelamento de Produtos e Serviços
 └ Especialista de Experiência do Cliente
-   └ Jeito Vivo de Atender · Checklist de Encerramento`}</pre>
+   └ Padrão de Atendimento · Checklist de Encerramento`}</pre>
         </ExampleCard>
       </WikiSection>
 
@@ -144,7 +144,7 @@ export default function HowItConnectsPage() {
             { label: "Uma interação VOICE chega com transcrição e a flag rechamada = true", detail: "a flag já vem calculada — a INIA não a deriva do áudio", tone: "input" },
             { label: "O Trigger “Flag de canal: rechamada” matricula o operador daquela chamada no Workflow", detail: "elegibilidade = Abrangência do Workflow; sempre Individual", tone: "core" },
             { label: "Condition “Valor da flag = True” → TRUE", detail: "determinística; sem IA", tone: "core" },
-            { label: "Chamar agente → Especialista de Experiência do Cliente", detail: "recebe a transcrição + só os trechos pertinentes de “Jeito Vivo de Atender” e “Checklist de Encerramento”", tone: "ai" },
+            { label: "Chamar agente → Especialista de Experiência do Cliente", detail: "recebe a transcrição + só os trechos pertinentes de “Padrão de Atendimento” e “Checklist de Encerramento”", tone: "ai" },
             { label: "O Agent devolve feedback com evidência literal; o código confere a literalidade", detail: "se a citação não for literal, o resultado é descartado", tone: "ai" },
             { label: "Revisão humana → Supervisor do operador, em Pendências", detail: "Aprovar publica; Reprovar não publica; Escalar → Escalonar ao Gerente com o conteúdo", tone: "people" },
             { label: "Output → O próprio operador · Acompanhamento", detail: "cria o caso, registra a evidência e publica o Feedback", tone: "output" },

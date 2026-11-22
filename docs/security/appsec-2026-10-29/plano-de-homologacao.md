@@ -7,7 +7,7 @@ homologação, quando houver alvo autorizado por escrito. Até lá, nada aqui de
 
 | Item | Quem decide | Por quê |
 |---|---|---|
-| URL(s) exata(s) do alvo e janela de execução | responsável pela homologação (Vivo/INIA) | teste ativo só no alvo autorizado |
+| URL(s) exata(s) do alvo e janela de execução | responsável pela homologação (cliente/INIA) | teste ativo só no alvo autorizado |
 | Confirmação de que o ambiente usa **só dados sintéticos** e banco próprio | idem | o ZAP ativo grava dados de teste |
 | Contas de teste: 1 administrador geral; 1 ADMINISTRADOR de Grupo; 1 ADMINISTRADOR de Subgrupo; 1 Gerente com `GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO`; 1 Supervisor; 2 operadores do mesmo Grupo; 1 operador de outro Grupo; 1 conta com `LEITOR_DE_CONVERSAS_INIA` de Grupo | idem | escalonamento vertical, horizontal e entre Grupos |
 | Se houver mais de uma organização: 1 administrador geral de cada | idem | isolamento entre organizações (R-01) |
@@ -41,5 +41,5 @@ autorizado.
 - V12 (TLS) e HSTS só podem ser verificados com o IIS real.
 - R-32/R-35: conta de serviço e ACL dos `.env`/backups no Windows (`icacls`, só leitura).
 - N03 da auditoria Cloudflare: ACL efetiva de `C:\inia\backups`.
-- Antivírus e cofre de segredos (V5.4.3, V13.3.1) dependem do padrão da Vivo.
+- Antivírus e cofre de segredos (V5.4.3, V13.3.1) dependem do padrão do cliente.
 - MFA/SSO (V6.3.3): decisão de integração com o IdP corporativo.

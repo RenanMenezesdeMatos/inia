@@ -319,15 +319,15 @@ describe("Treinamento — competência, conteúdos aprovados e atividades (sem I
       ...DETAIL,
       type: { key: "TREINAR", name: "Treinar", capabilities: [{ key: "TRAINING", label: "Treinamento" }] },
       availableActions: ["ACCEPT", "EDIT", "UPDATE_ITEM"],
-      plan: { competencyKeys: ["ESPERA"], contents: [{ documentId: "doc-1", title: "Procedimento Jeito Vivo de Atender" }] },
+      plan: { competencyKeys: ["ESPERA"], contents: [{ documentId: "doc-1", title: "Procedimento Jeito Telnova de Atender" }] },
       items: [{ id: "it-1", kind: "ACTIVITY", title: "Estudar o procedimento de espera", description: "Ler e anotar dúvidas.", ownerId: "op-1", ownerName: "Karoline", dueAt: "2026-10-28", status: "PENDING", result: null, completedAt: null, completedByName: null, position: 0, overdue: false }],
     })
     service.fetchTrainingCompetencies.mockResolvedValue([
-      { key: "ESPERA", name: "Gestão da espera", description: "", indicatorCodes: ["TMA"], contents: [{ documentId: "doc-1", title: "Procedimento Jeito Vivo de Atender" }], activities: [{ title: "Estudar o procedimento de espera", description: "", kind: "STUDY", estimatedMinutes: 30 }] },
+      { key: "ESPERA", name: "Gestão da espera", description: "", indicatorCodes: ["TMA"], contents: [{ documentId: "doc-1", title: "Procedimento Jeito Telnova de Atender" }], activities: [{ title: "Estudar o procedimento de espera", description: "", kind: "STUDY", estimatedMinutes: 30 }] },
     ])
     renderWithQuery(<InterventionPanel interventionId="int-1" />)
     expect(await screen.findByText("Gestão da espera")).toBeInTheDocument()
-    expect(screen.getByText("Procedimento Jeito Vivo de Atender")).toBeInTheDocument()
+    expect(screen.getByText("Procedimento Jeito Telnova de Atender")).toBeInTheDocument()
     expect(screen.getByText("Estudar o procedimento de espera")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Aplicar competência" })).toBeDisabled()
     expect(screen.getByLabelText("Escolher competência")).toBeInTheDocument()

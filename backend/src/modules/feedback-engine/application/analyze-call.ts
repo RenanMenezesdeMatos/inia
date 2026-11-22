@@ -22,6 +22,7 @@ import { buildProcedureContext, listContextOf, listOpeningsOf, transcriptStatusO
 import { CALL_ANALYSIS_LOGIC_VERSION, CALL_ANALYSIS_PROMPT_VERSION, CRITERIA_EXTRACTION_VERSION } from "../domain/versions.js"
 import { CALL_ANALYSIS_CHECKPOINT_VERSION, checkpointOf, type CallAnalysisCheckpoint, type PendingReason, type StageResponse } from "../domain/analysis-recovery.js"
 import { isBudgetExhausted } from "./engine-meter.js"
+import { ENGINE_LEASE_SECONDS, holdEngineLease } from "./engine-lease.js"
 import type { TranscriptProjection } from "../../investigation/domain/transcript-projection.js"
 import type { AgentProfile, InteractionForAnalysis } from "../infrastructure/postgres-engine-loaders.js"
 import type { AnalysisTrigger, EngineModelPort, EngineModelRequest, EngineModelResponse, FeedbackMemoryStore, ModelCallMetric, StoredCallAssessment } from "./ports.js"
@@ -42,8 +43,15 @@ import type { CriterionIdentity } from "../domain/criteria-identity.js"
  * chave de PROPOSTA é reaproveitada, e a de revisão com o mesmo pedido também — mudou só a lógica ou o contrato da revisão, só a
  * revisão é refeita. Concorrência: a posse é atômica (uma execução por chave; duas retomadas nunca pagam a mesma revisão).
  */
-export const ANALYSIS_LEASE_SECONDS = 300
-export const TRANSCRIPT_MAX_CHARS = 40_000
+/** Posse curta, renovada enquanto a execução está viva (`ENGINE_LEASE_V1`). */
+export const ANALYSIS_LEASE_SECONDS = ENGINE_LEASE_SECONDS
+/**
+ * Transcrição que a análise lê (caracteres da projeção "[Tn] FALANTE: …"). 80 mil desde 21/11/2026 (antes 40 mil): numa ligação real
+ * com as duas pessoas falando, 40 mil davam ~45–50 min, e uma chamada longa de 50 min perdia o FIM (recapitulação, protocolo,
+ * encerramento) — a análise marcava a transcrição como incompleta e não podia apontar o que faltou. 80 mil ≈ 20 mil tokens de entrada
+ * (~US$ 0,015 a mais por análise no pior caso); chamadas que já cabiam em 40 mil não mudam em nada.
+ */
+export const TRANSCRIPT_MAX_CHARS = 80_000
 
 export type AnalyzeCallDeps = {
   memory: FeedbackMemoryStore
@@ -347,6 +355,10 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
   }
   const runId = claim.runId
   const metrics: ModelCallMetric[] = []
+  const owner = { attempt: claim.attempt }
+  const lease = holdEngineLease({ label: `call-analysis:${runId}`, recordId: runId, initial: claim.leaseUntil, renew: (token) => deps.memory.renewAnalysisLease(request.organizationId, runId, token, ANALYSIS_LEASE_SECONDS) })
+  // Quem perdeu a posse para (`ENGINE_LEASE_V1`): nenhuma chamada de modelo é paga depois da perda.
+  const engine: AnalyzeCallDeps = { ...deps, model: lease.guard(deps.model) }
   try {
     // Esta MESMA execução pode estar sendo retomada (estava suspensa com a revisão pendente).
     const previousCheckpoint = checkpointOf((await deps.memory.getRun(request.organizationId, runId))?.result)
@@ -395,7 +407,7 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
     if ((selection.selected.length === 0 && presentedScripts.length === 0) || transcriptStatus === "UNAVAILABLE") {
       const reason = transcriptStatus === "UNAVAILABLE" ? "TRANSCRIPT_UNAVAILABLE" : agent ? "NO_AUTHORIZED_KNOWLEDGE" : "NO_SPECIALIST"
       const analysis = emptyAnalysis(transcriptStatus, reason)
-      await deps.memory.completeCallAnalysis(request.organizationId, runId, { snapshot, analysis, identities: new Map(), documentVersions: new Map(), provenance, metrics: { ...metricsSummaryOf(metrics), durationMs: deps.now().getTime() - startedAt.getTime() } }, deps.now())
+      await deps.memory.completeCallAnalysis(request.organizationId, runId, { snapshot, analysis, identities: new Map(), documentVersions: new Map(), provenance, metrics: { ...metricsSummaryOf(metrics), durationMs: deps.now().getTime() - startedAt.getTime() } }, deps.now(), owner)
       const assessment = await deps.memory.getCallAssessmentByRun(request.organizationId, runId)
       return { runId, reused: false, assessment, outcome: analysis.outcome, outcomeReasons: analysis.outcomeReasons }
     }
@@ -436,11 +448,11 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
       // formulário por linha do documento. A mesma mensagem do usuário do contrato anterior (fontes, transcrição, argumentários).
       const userTurn = renderCallAnalysisUserTurn({ specialist, interaction: interactionView(request.trigger.selectionReason), projection, transcriptStatus, context, products })
       const base: EngineModelRequest = { stage: "CALL_ANALYSIS", systemPrompt: contract.systemPrompt, contents: [{ role: "user", text: userTurn }], responseSchema: contract.schema, tag: "analysis" }
-      const first = await callModel(deps.model, base, metrics)
+      const first = await callModel(engine.model, base, metrics)
       let parsed = parseAnalysisProposals(first.text)
       let lastText = first.text
       if (!parsed.ok) {
-        const retry = await callModel(deps.model, { ...base, contents: [...base.contents, { role: "model", text: first.text.slice(0, 20_000) }, { role: "user", text: CALL_ANALYSIS_FORMAT_RETRY }], tag: "retry:format" }, metrics)
+        const retry = await callModel(engine.model, { ...base, contents: [...base.contents, { role: "model", text: first.text.slice(0, 20_000) }, { role: "user", text: CALL_ANALYSIS_FORMAT_RETRY }], tag: "retry:format" }, metrics)
         parsed = parseAnalysisProposals(retry.text)
         lastText = retry.text
         if (!parsed.ok) throw new ModelOutputContractError(`A análise da chamada não respeitou o contrato (${parsed.error}).`, "FEEDBACK_CALL_ANALYSIS_INVALID", { contract: "CALL_ANALYSIS", contractVersion: CALL_ANALYSIS_PROMPT_VERSION, violations: [{ path: "", code: parsed.error, message: "resposta fora do contrato" }], rawResponse: retry.text.slice(0, 60_000) })
@@ -452,7 +464,7 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
 
     // ETAPA 2 — revisão (a já paga com o mesmo pedido é reaproveitada) e confirmação focal do que só a revisão encontrou.
     const reviewInputs = { context, projection, transcriptStatus, interactionId: interaction.id, subject, anchored: selection.anchoredDocumentIds, storedReviews: prior.flatMap((entry) => (entry.review ? [entry.review] : [])), storedConfirmations: prior.flatMap((entry) => (entry.confirmation ? [entry.confirmation] : [])) }
-    const reviewed = proposals.contract === "OBLIGATIONS_V1" ? await reviewObligationAnalysis(deps, { model: proposals.value, ...reviewInputs, products }, metrics) : await reviewAnalysis(deps, { model: proposals.value, ...reviewInputs }, metrics)
+    const reviewed = proposals.contract === "OBLIGATIONS_V1" ? await reviewObligationAnalysis(engine, { model: proposals.value, ...reviewInputs, products }, metrics) : await reviewAnalysis(engine, { model: proposals.value, ...reviewInputs }, metrics)
     // Respostas BRUTAS (com a assinatura do pedido): permitem retomar/reaproveitar uma etapa paga — nunca vão a nenhuma tela.
     provenance.modelResponses = { analysis: analysisResponse, review: reviewed.raw, ...(reviewed.confirmationRaw ? { confirmation: reviewed.confirmationRaw } : {}) }
     provenance.stageReuse = { analysis: resumedFrom ? { reused: true, fromRunId: resumedFrom.runId, fromStatus: resumedFrom.status } : { reused: false }, review: { reused: reviewed.reviewReused } }
@@ -464,7 +476,8 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
       // execução; resposta fora do contrato encerra esta execução (outra execução pode tentar de novo).
       const at = deps.now().toISOString()
       const checkpoint: CallAnalysisCheckpoint = { version: CALL_ANALYSIS_CHECKPOINT_VERSION, stage: "REVIEW_PENDING", proposalKey, reason: reviewed.pending.reason, error: reviewed.pending.error, reviewAttempts: (previousCheckpoint?.reviewAttempts ?? 0) + (reviewed.pending.attempted ? 1 : 0), since: previousCheckpoint?.since ?? at, lastAttemptAt: at }
-      await deps.memory.suspendCallAnalysis(request.organizationId, runId, { error: `REVIEW_PENDING:${reviewed.pending.reason}:${reviewed.pending.error}`, checkpoint, provenance, metrics: metricsNow() }, deps.now())
+      lease.assertHeld()
+      await deps.memory.suspendCallAnalysis(request.organizationId, runId, { error: `REVIEW_PENDING:${reviewed.pending.reason}:${reviewed.pending.error}`, checkpoint, provenance, metrics: metricsNow() }, deps.now(), owner)
       if (reviewed.pending.reason === "BUDGET") throw reviewed.pending.cause
       if (reviewed.pending.reason === "CONTRACT") throw new ModelOutputContractError("A revisão da análise não respeitou o contrato — a análise ficou guardada para ser revisada de novo.", "FEEDBACK_CALL_REVIEW_INVALID", { contract: "CALL_REVIEW", contractVersion: CALL_REVIEW_PROMPT_VERSION, violations: [{ path: "", code: reviewed.pending.error, message: "resposta fora do contrato" }], rawResponse: "" })
       throw new CallReviewPendingError(reviewed.pending.reason, reviewed.pending.error)
@@ -475,7 +488,7 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
     // orçamento ou com falha, o que faltou fica com a própria identidade e volta na próxima vez.
     if (deps.organizePractices) {
       // Alinhamento é temporário: suas linhas não viram prática permanente da base.
-      const organized = await organizePracticesOfAnalysis({ memory: deps.memory, call: (request) => callModel(deps.model, request, metrics), now: deps.now }, request.organizationId, withoutOperationalAlignments(context), reviewed.analysis.criteria.filter((criterion) => criterion.operationalAlignment?.role !== "GUIDANCE"))
+      const organized = await organizePracticesOfAnalysis({ memory: deps.memory, call: (request) => callModel(engine.model, request, metrics), now: deps.now }, request.organizationId, withoutOperationalAlignments(context), reviewed.analysis.criteria.filter((criterion) => criterion.operationalAlignment?.role !== "GUIDANCE"))
       provenance.practices = organized.lines
       if (organized.combined) provenance.practiceCombined = organized.combined
       if (organized.themes) provenance.practiceThemes = organized.themes
@@ -484,13 +497,18 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
     const analysis = reviewed.analysis
     if (hasOperationalAlignments(context)) provenance.operationalAlignments = alignmentAssessmentRecordOf(context, analysis.criteria, analysis.sourceConflicts ?? [])
     const documentVersions = new Map([...selection.selected.map((document) => [document.documentId, { version: document.version, perspective: document.perspective }] as const), ...presentedScripts.map((document) => [document.documentId, { version: document.version, perspective: document.perspective }] as const)])
-    await deps.memory.completeCallAnalysis(request.organizationId, runId, { snapshot, analysis, identities, documentVersions, provenance, metrics: metricsNow() }, deps.now())
+    lease.assertHeld()
+    await deps.memory.completeCallAnalysis(request.organizationId, runId, { snapshot, analysis, identities, documentVersions, provenance, metrics: metricsNow() }, deps.now(), owner)
     const assessment = await deps.memory.getCallAssessmentByRun(request.organizationId, runId)
     return { runId, reused: false, assessment, outcome: analysis.outcome, outcomeReasons: analysis.outcomeReasons }
   } catch (error) {
     // Suspensa (revisão pendente) já não está RUNNING: isto só marca falhas das outras etapas.
-    await deps.memory.failAnalysis(request.organizationId, runId, error instanceof Error ? `${error.name}: ${error.message}`.slice(0, 2_000) : "erro desconhecido", deps.now()).catch(() => undefined)
+    await deps.memory.failAnalysis(request.organizationId, runId, error instanceof Error ? `${error.name}: ${error.message}`.slice(0, 2_000) : "erro desconhecido", deps.now(), owner).catch(() => undefined)
+    // Posse perdida para outra execução: esta para sem gravar; o Workflow tenta de novo e reaproveita o que a outra concluir.
+    if (lease.isLossOf(error)) throw new AnalysisInProgressError()
     throw error
+  } finally {
+    lease.stop()
   }
 }
 

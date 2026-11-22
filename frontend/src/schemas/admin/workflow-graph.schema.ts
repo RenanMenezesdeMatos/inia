@@ -905,7 +905,14 @@ export function resolveFeedbackDomain(selection: FeedbackDomainSelection, trigge
   if (triggerKind === "schedule" && sourceType === "AGENT" && sourceContract === "PRV_CLOSING_DIAGNOSIS") return "INDICATOR"
   // Indicator Diagnosis V2 — agenda + "Diagnóstico de um indicador" (fechamento oficial, sem PRV).
   if (triggerKind === "schedule" && sourceType === "AGENT" && sourceContract === "INDICATOR_DIAGNOSIS") return "INDICATOR"
+  // Monitoria aleatória — agenda + "Avaliação de processo" sobre a chamada sorteada (espelho do backend).
+  if (triggerKind === "schedule" && sourceType === "AGENT" && sourceContract === "PROCESS_ASSESSMENT") return "MONITORING"
   return null
+}
+
+/** Espelho de isRandomMonitoringNode (backend): "Chamar agente" com "Amostra de chamadas" + "Avaliação de processo" sorteia UMA chamada por execução. */
+export function isRandomMonitoringNode(node: FlowNode | undefined | null): boolean {
+  return Boolean(node) && node!.type === "action" && node!.config.actionType === "CALL_AGENT" && node!.config.outputContract === "PROCESS_ASSESSMENT" && node!.config.scheduledDataSource?.kind === "MONITORING"
 }
 
 /** Espelho de isClosingDiagnosisSource (backend): diagnóstico a partir do fechamento oficial — do PRV (V1) ou de um indicador (V2). */

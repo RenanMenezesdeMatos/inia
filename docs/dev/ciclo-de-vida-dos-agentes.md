@@ -17,7 +17,7 @@ Decisões funcionais implementadas (ESP-INIA-03 §4.1; matriz por critério em E
 - **PEN-076**: versões do orquestrador.
 - **PEN-047**, só o ponto "não publicado".
 
-**PEN-032** (perfis da Vivo) e **PEN-059** continuam abertas.
+**PEN-032** (perfis do cliente) e **PEN-059** continuam abertas.
 
 ## 1. Modelo de dados (migration 164)
 
@@ -89,7 +89,7 @@ Migration 166 (revisão):
   - Conta como dependência: Workflow (rascunho, versão vigente ou versão de execução em andamento) e orquestrador (ativo ou inativo).
   - Referência fora do alcance aparece só como aviso.
   - A exclusão trava a linha do agente (`FOR UPDATE`) e o registro de execução a trava em `FOR SHARE` (`effect-sink.ts`). Nunca fica execução registrada para agente excluído.
-- **Inativos**: listar, ler, consultar histórico, execuções e versões, reativar e excluir exigem a permissão nova `agents.inactive.manage` no alcance do agente. Hoje ela está nos papéis ADMINISTRADOR_GERAL e ADMINISTRADOR. Quais perfis da Vivo a terão é a PEN-032. Sem a permissão, o servidor devolve `403 AGENT_INACTIVE_RESTRICTED` e a lista nunca traz inativos.
+- **Inativos**: listar, ler, consultar histórico, execuções e versões, reativar e excluir exigem a permissão nova `agents.inactive.manage` no alcance do agente. Hoje ela está nos papéis ADMINISTRADOR_GERAL e ADMINISTRADOR. Quais perfis do cliente a terão é a PEN-032. Sem a permissão, o servidor devolve `403 AGENT_INACTIVE_RESTRICTED` e a lista nunca traz inativos.
 - **Orquestrador** (`assistant/application/orchestrator-versions.ts`):
   - Toda gravação publica uma versão nova da configuração (`specialists: [{agentId, toolName}]`), sem versão de agente.
   - A tela mostra a versão vigente de cada agente; publicar um agente muda o que o orquestrador executa sem gravar o orquestrador.

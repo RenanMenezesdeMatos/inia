@@ -8,6 +8,7 @@ import type { CallAnalysisCheckpoint, StageResponses } from "../domain/analysis-
 import type { CatalogPractice, PracticeIdentityResult } from "../domain/practice-identity.js"
 import type { CatalogTheme, PracticeThemeResult, PracticeToTheme } from "../domain/practice-themes.js"
 import type { DeliveredMonitoring } from "../domain/delivery-guards.js"
+import type { RandomMonitoringSample } from "../domain/node-output.js"
 
 /**
  * PORTAS do motor de feedback. Produção = Postgres + gateway de IA; QA Lab e testes = memória + modelo falso. Toda leitura e
@@ -48,6 +49,8 @@ export type AnalysisTrigger = {
   nodeId?: string | null
   selectionReason: string
   parentRunId?: string | null
+  /** Monitoria aleatória: o registro do sorteio (`RANDOM_MONITORING_SAMPLE_V2`) — também a escolha que a nova tentativa reaproveita. */
+  randomSample?: RandomMonitoringSample
 }
 export type AnalysisIdentity = {
   organizationId: string
@@ -73,7 +76,11 @@ export type AnalysisRunRecord = AnalysisIdentity & {
   metrics: Record<string, unknown>
   completedAt: Date | null
 }
-export type AnalysisClaim = { kind: "CLAIMED"; runId: string } | { kind: "COMPLETED"; run: AnalysisRunRecord } | { kind: "IN_PROGRESS" }
+/**
+ * `leaseUntil` = a posse gravada (relógio do BANCO); é também o token da renovação (só renova quem ainda a detém — `ENGINE_LEASE_V1`).
+ * `attempt` = a tentativa gravada no claim: concluir/falhar com o `LeaseOwner` só grava se a linha ainda for desta tentativa.
+ */
+export type AnalysisClaim = { kind: "CLAIMED"; runId: string; leaseUntil: Date; attempt: number } | { kind: "COMPLETED"; run: AnalysisRunRecord } | { kind: "IN_PROGRESS" }
 
 /** Contexto da chamada gravado com a leitura (o que as agregações da liderança usam). */
 export type CallSnapshot = {
@@ -123,17 +130,27 @@ export type CallAnalysisSuspension = { error: string; checkpoint: CallAnalysisCh
  */
 export type { MemoryAssessment, MemoryCriterionRow, MemoryQuery, MemorySnapshot, MemoryWindow } from "../domain/memory-queries.js"
 
+/** Dona da posse (`ENGINE_LEASE_V1`, run-9): a tentativa do claim. Ausente = grava sem conferir (provas e scripts antigos). */
+export type LeaseOwner = { attempt: number }
+
 export type FeedbackMemoryStore = {
   claimAnalysis(identity: AnalysisIdentity, now: Date, leaseSeconds: number): Promise<AnalysisClaim>
-  completeCallAnalysis(organizationId: string, runId: string, data: CallAnalysisPersist, now: Date): Promise<{ callAssessmentId: string; current: boolean }>
-  completeIndicatorInvestigation(organizationId: string, runId: string, data: IndicatorInvestigationPersist, now: Date): Promise<{ investigationId: string; current: boolean }>
-  completeInsufficient(organizationId: string, runId: string, outcome: { outcomeReasons: string[]; result: unknown; provenance: Record<string, unknown>; metrics: Record<string, unknown> }, now: Date): Promise<void>
-  failAnalysis(organizationId: string, runId: string, error: string, now: Date): Promise<void>
+  /**
+   * Renova a posse se ainda for de quem a detém (`token` = a posse atual) por mais `leaseSeconds` a partir do relógio do banco: devolve a
+   * nova posse, ou null se a perdeu.
+   */
+  renewAnalysisLease(organizationId: string, runId: string, token: Date, leaseSeconds: number): Promise<Date | null>
+  /** Com `owner`: só grava se a execução ainda for desta tentativa — senão nada é gravado e sai `EngineLeaseLostError`. */
+  completeCallAnalysis(organizationId: string, runId: string, data: CallAnalysisPersist, now: Date, owner?: LeaseOwner): Promise<{ callAssessmentId: string; current: boolean }>
+  completeIndicatorInvestigation(organizationId: string, runId: string, data: IndicatorInvestigationPersist, now: Date, owner?: LeaseOwner): Promise<{ investigationId: string; current: boolean }>
+  completeInsufficient(organizationId: string, runId: string, outcome: { outcomeReasons: string[]; result: unknown; provenance: Record<string, unknown>; metrics: Record<string, unknown> }, now: Date, owner?: LeaseOwner): Promise<void>
+  /** Com `owner`: só marca a falha se a execução ainda for desta tentativa (nunca derruba a tentativa de outra execução). */
+  failAnalysis(organizationId: string, runId: string, error: string, now: Date, owner?: LeaseOwner): Promise<void>
   /**
    * Revisão PENDENTE (falha técnica, orçamento, resposta fora do contrato): a execução fica suspensa (não concluída, retomável)
    * com as propostas e a proveniência — nada vai para a memória consultada pela investigação e pela liderança.
    */
-  suspendCallAnalysis(organizationId: string, runId: string, data: CallAnalysisSuspension, now: Date): Promise<void>
+  suspendCallAnalysis(organizationId: string, runId: string, data: CallAnalysisSuspension, now: Date, owner?: LeaseOwner): Promise<void>
   /** Respostas já pagas (análise/revisão) desta chamada com a mesma chave de PROPOSTA — ou da chave antiga equivalente. */
   findStageResponses(organizationId: string, query: { interactionId: string; proposalKey: string; legacyAnalysisKeys: readonly string[] }): Promise<StageResponses[]>
   /** Chamadas (entre estas) com revisão pendente: suspensa, ou gravada antes desta versão como `REVIEW_UNAVAILABLE`. */
@@ -209,7 +226,7 @@ export type MessageRecord = MessageIdentity & {
   metrics: Record<string, unknown>
   completedAt: Date | null
 }
-export type MessageClaim = { kind: "CLAIMED"; messageId: string } | { kind: "COMPLETED"; record: MessageRecord } | { kind: "IN_PROGRESS" }
+export type MessageClaim = { kind: "CLAIMED"; messageId: string; leaseUntil: Date; attempt: number } | { kind: "COMPLETED"; record: MessageRecord } | { kind: "IN_PROGRESS" }
 export type MaterialRecommendation = { documentId: string; documentVersion: number | null; criterionKeys: string[]; reason: string }
 export type MessageCompletion = {
   status: "PUBLISHABLE" | "ABSTAINED"
@@ -225,8 +242,10 @@ export type MessageCompletion = {
 }
 export type FeedbackMessageStore = {
   claimMessage(identity: MessageIdentity, now: Date, leaseSeconds: number): Promise<MessageClaim>
-  completeMessage(organizationId: string, messageId: string, data: MessageCompletion, now: Date): Promise<MessageRecord>
-  failMessage(organizationId: string, messageId: string, error: string, now: Date): Promise<void>
+  renewMessageLease(organizationId: string, messageId: string, token: Date, leaseSeconds: number): Promise<Date | null>
+  /** Com `owner`: só grava se a mensagem ainda for desta tentativa — senão nada é gravado e sai `EngineLeaseLostError`. */
+  completeMessage(organizationId: string, messageId: string, data: MessageCompletion, now: Date, owner?: LeaseOwner): Promise<MessageRecord>
+  failMessage(organizationId: string, messageId: string, error: string, now: Date, owner?: LeaseOwner): Promise<void>
   getMessage(organizationId: string, messageId: string): Promise<MessageRecord | null>
 }
 

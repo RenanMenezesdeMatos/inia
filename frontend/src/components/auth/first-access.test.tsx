@@ -126,3 +126,38 @@ describe("tela de criar senha", () => {
     expect(navigation.replace).not.toHaveBeenCalled()
   })
 })
+
+describe("login pela rede", () => {
+  it("com o login pela rede ligado pede matrícula + senha de rede e envia a matrícula", async () => {
+    auth.login.mockResolvedValue({ id: "acc-1", personId: "p-1", name: "Larissa", role: "OPERATOR", email: "larissa@inia.local", avatarUrl: null, jobTitle: null, teamId: null, teamName: null, passwordChangeRequired: false })
+    auth.fetchCurrentUser.mockResolvedValue(ME)
+    renderWithQuery(<LoginFields networkLogin />)
+    expect(screen.queryByLabelText("E-mail corporativo")).toBeNull()
+    expect(screen.queryByText("Esqueci minha senha")).toBeNull()
+    fireEvent.change(screen.getByLabelText("Matrícula de rede"), { target: { value: "g0055350" } })
+    fireEvent.change(screen.getByLabelText("Senha de rede"), { target: { value: "Rede#2026" } })
+    fireEvent.click(screen.getByRole("button", { name: "Entrar" }))
+    await waitFor(() => expect(auth.login).toHaveBeenCalledWith({ matricula: "g0055350", password: "Rede#2026" }))
+    await waitFor(() => expect(documentLoad).toHaveBeenCalledWith("/operator"))
+  })
+  it("o administrador troca para e-mail (conta de emergência) e volta", () => {
+    renderWithQuery(<LoginFields networkLogin />)
+    fireEvent.click(screen.getByRole("button", { name: "Entrar com e-mail (administrador)" }))
+    expect(screen.getByLabelText("E-mail da conta de emergência")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Voltar para o login com matrícula de rede" }))
+    expect(screen.getByLabelText("Matrícula de rede")).toBeInTheDocument()
+  })
+  it("recusa da conta de rede mostra a mensagem do backend", async () => {
+    auth.login.mockRejectedValue(new LoginRefusedError("Sua conta de rede está bloqueada. Procure o suporte de TI para desbloquear.", "NETWORK_ACCOUNT_LOCKED"))
+    renderWithQuery(<LoginFields networkLogin />)
+    fireEvent.change(screen.getByLabelText("Matrícula de rede"), { target: { value: "G0055350" } })
+    fireEvent.change(screen.getByLabelText("Senha de rede"), { target: { value: "x" } })
+    fireEvent.click(screen.getByRole("button", { name: "Entrar" }))
+    expect(await screen.findByText("Sua conta de rede está bloqueada. Procure o suporte de TI para desbloquear.")).toBeInTheDocument()
+  })
+  it("sem o login pela rede a tela continua só com e-mail", () => {
+    renderWithQuery(<LoginFields />)
+    expect(screen.getByLabelText("E-mail corporativo")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Entrar com e-mail (administrador)" })).toBeNull()
+  })
+})

@@ -17,8 +17,8 @@ import { loadLeaderStructureBlock } from "./leader-structure-context.js"
 const OUVIDORIA = "11111111-1111-4111-8111-111111111111"
 const VENDAS = "22222222-2222-4222-8222-222222222222"
 const ALIGNMENT = {
-  alignment_id: "aaaaaaaa-0000-4000-8000-000000000001", version_id: "bbbbbbbb-0000-4000-8000-000000000001", version: 1, title: "Fatura pelo App Meu Vivo ou site",
-  guidance: "Oriente o cliente a acessar a fatura pelo App Meu Vivo ou pelo site. Não envie a fatura.", justification: "Envio suspenso durante a troca do sistema.",
+  alignment_id: "aaaaaaaa-0000-4000-8000-000000000001", version_id: "bbbbbbbb-0000-4000-8000-000000000001", version: 1, title: "Fatura pelo App Meu Telnova ou site",
+  guidance: "Oriente o cliente a acessar a fatura pelo App Meu Telnova ou pelo site. Não envie a fatura.", justification: "Envio suspenso durante a troca do sistema.",
   documents: [{ id: DOC, title: "PR — Envio de fatura" }], affected_topic: "Envio da fatura quando o cliente solicita", operating_universe: "B2C", scope_type: "GROUPS",
   links: [{ teamId: OUVIDORIA, teamName: "Ouvidoria", subteamId: null, subteamName: null }], product_id: null, product_name: null, starts_on: "2026-11-10", ends_on: "2026-11-30", time_zone: "America/Sao_Paulo",
   effective_from: new Date("2026-11-10T03:00:00Z"), effective_until: new Date("2026-12-01T03:00:00Z"), ended_at: null, content_hash: "h", published_at: new Date("2026-11-09T18:00:00Z"), relations: [],
@@ -78,7 +78,7 @@ describe("visão da estrutura do gestor — chat só de liderança", () => {
   it("traz o alinhamento da estrutura relacionado à pergunta; pergunta sem relação não traz nada", async () => {
     const sqls: { sql: string; params: unknown[] }[] = []
     const related = await loadLeaderStructureBlock(fakeDb(sqls), { organizationId: "org-1", scope: { kind: "LEADER_STRUCTURE", leaderPersonId: "carlos", teamIds: null }, question: "Mudou alguma coisa no envio da fatura?", at: AT })
-    expect(related.alignments.map((candidate) => candidate.title)).toEqual(["Fatura pelo App Meu Vivo ou site"])
+    expect(related.alignments.map((candidate) => candidate.title)).toEqual(["Fatura pelo App Meu Telnova ou site"])
     expect(related.text).toContain("PÚBLICOS DA ESTRUTURA DE QUEM PERGUNTA")
     expect(related.text).toContain("público: B2C · Grupo Ouvidoria")
     await new Promise((resolve) => setTimeout(resolve, 0))

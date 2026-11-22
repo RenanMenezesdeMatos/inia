@@ -41,7 +41,15 @@ export type EngineBudgetLimits = {
  * versão (≈ 3× o medido) recusaram o planejamento da investigação no replay da V10 sob o teto de custo do ensaio.
  */
 export const DEFAULT_COMPOSITION_RESERVE = { calls: 2, inputTokens: 24_000, outputTokens: 16_384 } as const
-export const DEFAULT_ENGINE_BUDGET: EngineBudgetLimits = { maxModelCalls: 40, maxInputTokens: 1_500_000, maxOutputTokens: 500_000, maxCostUsd: null, maxDurationMs: 15 * 60_000, transientRetries: 1, compositionReserve: { ...DEFAULT_COMPOSITION_RESERVE } }
+/**
+ * Tempo máximo de UMA execução do motor (análise de chamada, investigação de indicador ou "Gerar feedback") — e a posse de cada uma
+ * (`ANALYSIS_LEASE_SECONDS`, `INVESTIGATION_LEASE_SECONDS`, `MESSAGE_LEASE_SECONDS`), que nunca pode vencer antes do tempo máximo: uma
+ * execução ainda dentro do prazo que perdesse a posse deixaria outra pagar a mesma análise de novo. 30 min (21/11/2026, antes 15 min de
+ * execução e posses de 5/10/15 min): uma análise real com três especialistas levou 4–5 min cada, e chamadas longas com milhares de
+ * bases tendem a levar mais. Quem caiu no meio só é retomado depois desse prazo (a matrícula no worker tem posse própria, renovada).
+ */
+export const ENGINE_MAX_RUN_SECONDS = 30 * 60
+export const DEFAULT_ENGINE_BUDGET: EngineBudgetLimits = { maxModelCalls: 40, maxInputTokens: 1_500_000, maxOutputTokens: 500_000, maxCostUsd: null, maxDurationMs: ENGINE_MAX_RUN_SECONDS * 1000, transientRetries: 1, compositionReserve: { ...DEFAULT_COMPOSITION_RESERVE } }
 /** Etapas que podem usar a reserva da redação. */
 const RESERVE_STAGES: readonly EngineModelStage[] = ["COMPOSITION", "VERIFICATION"]
 

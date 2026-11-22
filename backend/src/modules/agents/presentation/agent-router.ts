@@ -34,7 +34,7 @@ import { sessionUser } from "../../auth/presentation/session-user.js"
  * - PEN-002 / PEN-050: alterações vão para um RASCUNHO (revisão otimista contra sobrescrita silenciosa); publicar cria versão
  *   imutável e vigente; reverter publica de novo uma versão anterior como versão nova; publicar não reativa.
  * - PEN-001 / PEN-068: agente INATIVO — listar, consultar o cadastro, ver o histórico completo, reativar e excluir só com
- *   `agents.inactive.manage` (administradores; o mapeamento dos perfis da Vivo é a PEN-032), conferido aqui no servidor.
+ *   `agents.inactive.manage` (administradores; o mapeamento dos perfis do cliente é a PEN-032), conferido aqui no servidor.
  * - PEN-001 / PEN-065 / PEN-066 / PEN-069: exclusão só sem histórico de uso e sem dependências (agent-deletion.ts).
  */
 

@@ -5,11 +5,19 @@ import { booleanParam, respondList, searchParam, SqlFilter } from "../../../shar
 import { canOrganizationWide } from "../../access/domain/access-decision.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 import { responseCheckMode, responseCheckModeOf } from "../domain/response-compliance.js"
+import { loadMinimumQualityCallSeconds, updateMinimumQualityCallSeconds } from "../../interactions/application/quality-call-rule.js"
+import { describeQualityCallRule, MINIMUM_QUALITY_CALL_SECONDS_LIMITS, QUALITY_CALL_RULE_VERSION } from "../../interactions/domain/quality-call-rule.js"
 
 const topicSchema = z.object({ name: z.string().trim().min(2), requiredBehavior: z.string().trim().min(5) })
 const topicUpdateSchema = z.object({ name: z.string().trim().min(2).optional(), requiredBehavior: z.string().trim().min(5).optional(), active: z.boolean().optional() })
 const glossarySchema = z.object({ term: z.string().trim().min(1), definition: z.string().trim().min(2), feedbackApplication: z.string().trim().min(2) })
 const glossaryUpdateSchema = z.object({ term: z.string().trim().min(1).optional(), definition: z.string().trim().min(2).optional(), feedbackApplication: z.string().trim().min(2).optional(), active: z.boolean().optional() })
+
+const qualityCallRuleSchema = z.object({ minimumQualityCallSeconds: z.number().int().min(MINIMUM_QUALITY_CALL_SECONDS_LIMITS.min).max(MINIMUM_QUALITY_CALL_SECONDS_LIMITS.max) })
+/** `canEdit`: a regra vale para a organização inteira — só quem administra a configuração em toda a organização a troca (o PUT confere
+ * de novo, `orgWideWrites`); a tela desabilita o Salvar com o motivo (run-9, SFW-09). */
+const qualityCallRuleOf = (seconds: number, canEdit: boolean) => ({ minimumQualityCallSeconds: seconds, ruleVersion: QUALITY_CALL_RULE_VERSION, description: describeQualityCallRule(seconds), limits: MINIMUM_QUALITY_CALL_SECONDS_LIMITS, canEdit })
+const editsOrganizationConfiguration = (request: { access?: Parameters<typeof canOrganizationWide>[0] | undefined }) => Boolean(request.access && canOrganizationWide(request.access, "configuration.manage"))
 
 const listGovernanceSchema = z.object({ search: searchParam, active: booleanParam })
 
@@ -58,6 +66,17 @@ export function createGovernanceRouter(db: Database) {
     if (!requireOrganizationWide(request, response)) return
     const data = await respondList(db, request.query, { select: SELECT_RESPONSE_CHECKS, filter: new SqlFilter([sessionUser(request).organizationId]), orderBy: 'q."createdAt" desc, q.id' })
     response.json({ data })
+  })
+
+  /** Regra geral de chamada curta (migration 246): vale para a organização inteira — a escrita passa por `orgWideWrites`. */
+  router.get("/quality-call-rule", async (request, response) => {
+    response.json({ data: qualityCallRuleOf(await loadMinimumQualityCallSeconds(db, sessionUser(request).organizationId), editsOrganizationConfiguration(request)) })
+  })
+  router.put("/quality-call-rule", async (request, response) => {
+    const input = qualityCallRuleSchema.parse(request.body)
+    const user = sessionUser(request)
+    const seconds = await updateMinimumQualityCallSeconds(db, { organizationId: user.organizationId, actorPersonId: user.personId ?? null, seconds: input.minimumQualityCallSeconds })
+    response.json({ data: qualityCallRuleOf(seconds, editsOrganizationConfiguration(request)) })
   })
 
   router.get("/prohibited-topics", async (request, response) => {

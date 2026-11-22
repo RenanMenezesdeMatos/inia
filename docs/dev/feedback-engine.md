@@ -1186,7 +1186,7 @@ alternativa traz princípios novos junto com a estrutura; a comparação não se
 
 **Rodada real** (`evaluate-round-v10.ts`, 13 requisições, US$ 0,1896; análise de A/B = resposta paga da comparação):
 - **A (C07)** — consultas internas, "abrir análise" e estorno × crédito saíram dos acertos/descumprimentos (declaração, fora da
-  conversa, combinação indefinida); validação, identificação, recapitulação e dúvidas confirmadas; marca "Vivo" × "Conecta" parcial
+  conversa, combinação indefinida); validação, identificação, recapitulação e dúvidas confirmadas; marca "cliente" × "Conecta" parcial
   (leitura literal da base; provável inconsistência da massa demo) sustentou o caminho "parcialmente correto". **Cancelamento
   pendente não achado.** Mensagem só de reconhecimento, com uma pressuposição leve ("respaldando a verificação do histórico").
 - **B (DEMO-INT-0001-08)** — protocolo antes de transferir PARCIAL confirmado; e-mail barrado pelo código (intenção/declaração) e,
@@ -1424,7 +1424,7 @@ do número e nomes. Prática que orienta sem nenhuma frase que a use = lacuna de
 `STRENGTH_WITH_GOOD_RESULT_V1`: com o resultado oficial bom, a conduta consistente das chamadas analisadas é reconhecível mesmo com um
 recorte examinado. O prompt deixou de mandar "parar no número" e pede fatos técnicos das ferramentas só em palavras comuns.
 
-**Análise prompt V9.** A pergunta 2 inclui as regras acionadas por SITUAÇÕES da conversa. Na C07 a análise declarou o Jeito Vivo como
+**Análise prompt V9.** A pergunta 2 inclui as regras acionadas por SITUAÇÕES da conversa. Na C07 a análise declarou o Jeito Telnova como
 fonte relacionada e não formou nenhuma obrigação dele (§19, "Quando não houver solução imediata") — o texto não bastou; o próximo passo
 é estrutural (resposta por seção de situação das fontes relacionadas).
 
@@ -1473,7 +1473,7 @@ preciso possível (onde erra, como melhorar) e o retorno gera valor.
 - **Situações** (`SITUATION_SECTIONS_V1`, prompt da análise V10, revisão prompt V4, lógica `CALL_ANALYSIS_LOGIC_V14`): a análise declara
   `situations` (seção S-n acionada por situação, aconteceu YES/NO/UNCLEAR, fala). Com fala verificada e YES, as linhas dessa seção que
   ninguém avaliou vão à revisão (`situationsInPlay`, teto 30) — ela aponta em `missed` o que valia e faltou (confirmação focal). Cobertura
-  registra declaradas × aconteceram × mostradas × apontadas. Resposta ao Jeito Vivo §19 da C07 (declarado, nunca ligado).
+  registra declaradas × aconteceram × mostradas × apontadas. Resposta ao Jeito Telnova §19 da C07 (declarado, nunca ligado).
 - Cenário de dados (dev): cópias de teste de setembro da Larissa movidas para a pessoa "Larissa Monteiro · QA (cópias de teste)"
   (`scripts/dev/larissa-scenario/move-test-copies.ts`, desfazível pelo manifesto) e cenário "TMA ruim em setembro"
   (`scripts/dev/larissa-scenario/tma-setembro.ts`: 10 contestações dela em 22–30/09 com erros de regra vigente, 10 de colegas, medição

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 /**
  * SUPERFÍCIES E SINALIZAÇÃO DO APP (só apresentação, sem regra): cartão sobre a superfície da página, aviso tingido pelo estado,
  * rótulo curto de seção em caixa alta, selo de estado com ícone e texto (a cor nunca é a única informação), ícone num círculo
- * tingido e o cabeçalho de página. Nasceu no Apoio com Anjo (referência: área logada da Vivo — cartões com borda e raio grande,
+ * tingido e o cabeçalho de página. Nasceu no Apoio com Anjo (referência: área logada do cliente — cartões com borda e raio grande,
  * rótulos de seção, selos tingidos, botões em pílula) e vale para o app inteiro. Cores pelos tokens do tema (primária, muted,
  * border) e verde/âmbar para "pronto"/"aguardando", com par claro/escuro.
  */

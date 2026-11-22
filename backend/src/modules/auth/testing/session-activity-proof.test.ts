@@ -1,5 +1,5 @@
 /**
- * PROVA contra o banco de TESTE real: encerramento da sessão por inatividade e "sair de todos os aparelhos" (liberação na Vivo,
+ * PROVA contra o banco de TESTE real: encerramento da sessão por inatividade e "sair de todos os aparelhos" (liberação na Telnova,
  * migration 149). Cria uma organização própria, uma pessoa e uma conta, entra pela rota de login de verdade e apaga tudo no fim.
  *   INIA_DB_PROOF=1 NODE_ENV=test npx vitest run session-activity-proof
  */

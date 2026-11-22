@@ -338,7 +338,7 @@ PDF impresso do navegador ("Print To PDF") chega sem camada de texto e com os pr
 **Medido, mas limitado**
 
 - Amostra pequena: 22 respostas na rodada principal, sobre documentos pequenos e fictícios. Serve para achar defeito, não para afirmar taxa.
-- Modelo de teste é Gemini. O modelo de destino da Vivo não está acessível aqui.
+- Modelo de teste é Gemini. O modelo de destino do cliente não está acessível aqui.
 
 **Não medido (hipóteses)**
 

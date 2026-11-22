@@ -116,7 +116,8 @@ export function isValidEmail(email: string): boolean {
 /**
  * Administrador geral da organização: pessoa "fora da hierarquia" + conta com SENHA TEMPORÁRIA aleatória (gerada
  * aqui, mostrada uma vez, guardada só como hash) + papel ADMINISTRADOR_GERAL com escopo da organização. No primeiro
- * login a INIA exige que ele crie a própria senha. Nunca existe senha fixa compartilhada.
+ * login a INIA exige que ele crie a própria senha. Nunca existe senha fixa compartilhada. A conta é LOCAL DE EMERGÊNCIA: com o
+ * login pela rede ligado, e-mail e senha continuam valendo só para contas assim.
  */
 export async function createAdministrator(client: Client, input: AdministratorInput): Promise<CreatedAdministrator> {
   const email = normalizeEmail(input.email)
@@ -135,13 +136,16 @@ export async function createAdministrator(client: Client, input: AdministratorIn
   const accounts = createPostgresAccountAccessRepository(client as unknown as Parameters<typeof createPostgresAccountAccessRepository>[0])
   const created = await accounts.createWithTemporaryPassword({ organizationId: INSTALLATION_ORGANIZATION_ID, personId, email, passwordHash: await hashPassword(temporaryPassword), issuedAt: now, expiresAt, actorPersonId: null, actorAccountId: null })
   if (!created.ok) throw new Error(`Não foi possível criar a conta (${created.error}).`)
+  // Conta local de EMERGÊNCIA (migration 247): continua entrando com e-mail e senha se a organização ligar o login pela rede
+  // (o administrador entra mesmo com o AD fora do ar).
+  await client.query(`update user_accounts set emergency_local_access = true where id = $1`, [created.accountId])
   await client.query(
     `insert into access_role_assignments (organization_id, user_account_id, role_code, scope_type, source, granted_at) values ($1, $2, 'ADMINISTRADOR_GERAL', 'ORGANIZATION', 'INSTALLATION', $3)`,
     [INSTALLATION_ORGANIZATION_ID, created.accountId, now],
   )
   await client.query(
     `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, null, 'INSTALLATION_ADMIN_CREATED', 'user_account', $2, $3)`,
-    [INSTALLATION_ORGANIZATION_ID, created.accountId, JSON.stringify({ email, role: "ADMINISTRADOR_GERAL", temporaryPasswordExpiresAt: expiresAt.toISOString() })],
+    [INSTALLATION_ORGANIZATION_ID, created.accountId, JSON.stringify({ email, role: "ADMINISTRADOR_GERAL", emergencyLocalAccess: true, temporaryPasswordExpiresAt: expiresAt.toISOString() })],
   )
   return { personId, accountId: created.accountId, email, temporaryPassword, expiresAt }
 }

@@ -257,7 +257,13 @@ export const INDICATOR_INVESTIGATION_LOGIC_VERSION = "INDICATOR_INVESTIGATION_V1
  * saiu como "Para IP Dedicado" por ter vindo de uma chamada desse produto. */
 /** V35 (22/10/2026, `BASE_PRACTICES_IN_TEXT_V3`): o fato B-n leva `result` (o que o resultado mede, pelo cadastro do indicador). */
 /** V36 (22/10/2026, `BASE_PRACTICES_IN_TEXT_V4`): o fato B-n leva `howItHelps` (aprovado na revisão) no lugar de `result` (V35). */
-export const COMPOSITION_VERSION = "FEEDBACK_COMPOSITION_V36" as const
+/** V37 (21/11/2026, `NARRATIVE_TOP_FAILURES_V1` + `MULTI_SPECIALIST_MERGE_V1`): as análises de todos os especialistas do Orquestrador viram um
+ * brief só; o texto fala das 3 falhas mais graves (caminho, materialidade, reincidência, ordem na chamada) e as demais vão para
+ * `additionalDevelopments` (cards, registro e Diagnóstico; nunca ao redator), com o aviso do sistema no fim do texto. Prompts sem mudança. */
+/** V38 (22/11/2026, `MULTI_SPECIALIST_MERGE_V2`, run-9 SFW-03): na junção entre especialistas, a mesma conduta como ajuste e como
+ * reconhecimento fica só como ajuste (o conflito vai para `mergeConflicts`, nunca ao redator), e o achado com chave parcialmente
+ * repetida é juntado ao dono (as chaves próprias dele vão junto e ficam entregues quando o ponto é comunicado). Prompts sem mudança. */
+export const COMPOSITION_VERSION = "FEEDBACK_COMPOSITION_V38" as const
 /** V6 = ordem de importância + ponto principal, pontos em aberto (O-n), sem superlativo de rotina, reavaliação dita com naturalidade,
  * junção de repetição mantendo o detalhe do caso, reconhecimento da parte feita de um ponto parcial. */
 /** V7 = ponto em aberto nunca vira lembrete que insinua falha; sistema fora da conversa nunca é assunto; argumentário: paráfrase, "pode". */

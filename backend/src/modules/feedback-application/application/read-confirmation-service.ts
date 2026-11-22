@@ -21,6 +21,8 @@ import { readAgreementInputSchema, sameAgreement, type ReadAgreementInput, type 
 import { findReadAgreement, recordReadAgreement } from "../../feedback-rating/application/read-agreement-service.js"
 import { loadFeedbackEvaluation } from "../../feedback-rating/application/feedback-evaluation-reader.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
+import { networkLoginMatches, normalizeNetworkLogin } from "../../auth/domain/network-login.js"
+import type { NetworkPasswordCheck } from "../../auth/application/authenticate-network.js"
 
 /**
  * CONFIRMAÇÃO DE CIÊNCIA COM LOGIN E SENHA (ver domain/read-confirmation.ts) — `/api/v1/feedback-read-confirmations`.
@@ -61,6 +63,22 @@ export type ReadConfirmationResult = {
 }
 
 export type PasswordVerifier = (plain: string, hash: string) => Promise<boolean>
+
+/**
+ * Conferência da senha de REDE para a ciência (login pela rede ligado e conta comum): passa pelo MESMO portão da matrícula do
+ * login (auth/application/authenticate-network.ts), então login e ciência somam as mesmas falhas e nunca chegam perto do
+ * bloqueio da conta de rede. Só é chamada com a matrícula da PRÓPRIA pessoa.
+ */
+export type NetworkPasswordVerifier = (input: { normalized: string; password: string; accountId: string }) => Promise<NetworkPasswordCheck>
+
+/** Recusas vindas da rede, no formato `status, code, message` que o inventário do catálogo de erros lê. */
+export const NETWORK_CREDENTIAL_ERRORS = {
+  LOCKED: { status: 429, code: "READ_CONFIRMATION_TOO_MANY_ATTEMPTS", message: "Muitas tentativas com a senha de rede errada. Aguarde alguns minutos — insistir pode bloquear a sua conta de rede." },
+  ACCOUNT_LOCKED: { status: 403, code: "NETWORK_ACCOUNT_LOCKED", message: "Sua conta de rede está bloqueada. Procure o suporte de TI para desbloquear." },
+  PASSWORD_EXPIRED: { status: 403, code: "NETWORK_PASSWORD_EXPIRED", message: "Sua senha de rede venceu ou precisa ser trocada. Troque a senha de rede e tente de novo." },
+  ACCOUNT_DISABLED: { status: 403, code: "NETWORK_ACCOUNT_DISABLED", message: "Sua conta de rede está desativada ou sem permissão de acesso agora. Procure o suporte de TI." },
+  UNAVAILABLE: { status: 503, code: "NETWORK_LOGIN_UNAVAILABLE", message: "A conferência pela rede está indisponível no momento. Tente de novo em alguns minutos." },
+} as const
 
 type OwnedSourceState = { acknowledgedAt: Date | null }
 
@@ -142,10 +160,111 @@ async function recentCredentialFailures(db: Queryable, scope: ReadConfirmationSc
   return result.rows.map((row) => new Date(row.occurred_at))
 }
 
+type CredentialAccountRow = { email: string; password_hash: string; active: boolean; matricula: string | null; network: boolean }
+
+async function loadCredentialAccount(db: Queryable, scope: ReadConfirmationScope): Promise<CredentialAccountRow | undefined> {
+  return (
+    await db.query<CredentialAccountRow>(
+      `select ua.email, ua.password_hash, ua.active, p.matricula, (o.network_login_enabled and not ua.emergency_local_access) network
+         from user_accounts ua join people p on p.id = ua.person_id join organizations o on o.id = ua.organization_id
+        where ua.id = $1 and ua.organization_id = $2 and ua.person_id = $3`,
+      [scope.accountId, scope.organizationId, scope.personId],
+    )
+  ).rows[0]
+}
+
+const lockCredential = (client: Queryable, scope: ReadConfirmationScope) => client.query("select pg_advisory_xact_lock(hashtext('read_confirmation_credential:' || $1::text))", [scope.accountId])
+
+type CredentialVerdict =
+  | { kind: "OK" }
+  | { kind: "BLOCKED"; retryAt: Date }
+  | { kind: "FAILED"; remaining: number; network: boolean }
+  | { kind: "NETWORK"; problem: keyof typeof NETWORK_CREDENTIAL_ERRORS }
+  | { kind: "CHANGED" }
+
+/**
+ * Confere as credenciais da ciência. Contar falhas → conferir a senha → gravar a falha acontece SOB uma trava por conta (achado
+ * I-F9): sem ela, N tentativas em paralelo leem "menos de 5 falhas" antes de qualquer uma ser gravada e o limite deixa de valer.
+ * A falha é gravada e CONFIRMADA antes do erro sair (o erro é lançado fora da transação).
+ *
+ * Senha LOCAL (bcrypt, ~100 ms): tudo numa transação curta. Senha de REDE (achados SLR-05/DADOS-02/QA-09 da run-9): a chamada
+ * ao AD pode levar segundos por servidor e NUNCA fica dentro de transação nem segurando conexão do pool. Três passos:
+ *  1. transação curta: trava por conta, contador da ciência, conta e a matrícula digitada (precisa ser a da PRÓPRIA pessoa);
+ *  2. fora de transação: o portão da matrícula + o AD (autocommit; a reserva gravada antes do AD segura tentativas paralelas — o
+ *     limite de N senhas de rede no AD continua valendo mesmo com o contador da ciência lido antes);
+ *  3. transação curta: trava por conta de novo, confere que a conta não mudou no meio (ainda pela rede, habilitada, mesma
+ *     matrícula) e grava a falha (senha errada ou trava da matrícula = FAILED, como as demais).
+ */
+async function verifyReadConfirmationCredentials(
+  db: Database,
+  scope: ReadConfirmationScope,
+  attempt: ReadConfirmationAttempt,
+  input: { login: string; password: string },
+  now: Date,
+  deps: { verifyPassword: PasswordVerifier; verifyNetworkPassword?: NetworkPasswordVerifier },
+  application: EventRow["application"],
+): Promise<CredentialVerdict> {
+  const first = await inTransaction(db, async (client): Promise<CredentialVerdict | { kind: "CHECK_NETWORK"; normalized: string }> => {
+    await lockCredential(client, scope)
+    const throttle = readConfirmationThrottle(await recentCredentialFailures(client, scope, now), now)
+    if (throttle.blocked) {
+      await insertEvent(client, scope, { attempt, event: "FAILED", failureReason: "TOO_MANY_ATTEMPTS", application }, now)
+      return { kind: "BLOCKED", retryAt: throttle.retryAt }
+    }
+    const account = await loadCredentialAccount(client, scope)
+    if (account?.network) {
+      // LOGIN PELA REDE: a matrícula digitada precisa ser a da PRÓPRIA pessoa ANTES de qualquer chamada ao AD (nunca conferir a
+      // senha de rede de outra matrícula). Sem o verificador de rede (instalação sem AD) = indisponível, nunca a senha local.
+      const loginMatches = networkLoginMatches(input.login, account.matricula)
+      const failure = credentialFailureOf({ accountActive: account.active, loginMatches, passwordMatches: false })
+      if (failure === "WRONG_LOGIN") {
+        await insertEvent(client, scope, { attempt, event: "FAILED", failureReason: failure, application }, now)
+        return { kind: "FAILED", remaining: Math.max(0, throttle.remaining - 1), network: true }
+      }
+      if (!deps.verifyNetworkPassword) return { kind: "NETWORK", problem: "UNAVAILABLE" }
+      return { kind: "CHECK_NETWORK", normalized: normalizeNetworkLogin(account.matricula ?? "")! }
+    }
+    const loginMatches = account ? loginMatchesAccount(input.login, account.email) : false
+    // A senha é sempre conferida contra a PRÓPRIA conta (nunca contra a conta do login digitado).
+    const passwordMatches = account ? await deps.verifyPassword(input.password, account.password_hash) : false
+    const failure = credentialFailureOf({ accountActive: Boolean(account?.active), loginMatches, passwordMatches })
+    if (failure) {
+      await insertEvent(client, scope, { attempt, event: "FAILED", failureReason: failure, application }, now)
+      return { kind: "FAILED", remaining: Math.max(0, throttle.remaining - 1), network: false }
+    }
+    return { kind: "OK" }
+  })
+  if (first.kind !== "CHECK_NETWORK") return first
+
+  // Passo 2 — fora de transação, sem conexão presa: portão da matrícula + AD.
+  const check = await deps.verifyNetworkPassword!({ normalized: first.normalized, password: input.password, accountId: scope.accountId })
+
+  // Passo 3 — transação curta: nada mudou no meio? grava a falha.
+  return inTransaction(db, async (client): Promise<CredentialVerdict> => {
+    await lockCredential(client, scope)
+    const current = await loadCredentialAccount(client, scope)
+    const unchanged = current?.network === true && current.active && normalizeNetworkLogin(current.matricula ?? "") === first.normalized
+    switch (check) {
+      case "OK":
+        return unchanged ? { kind: "OK" } : { kind: "CHANGED" }
+      case "INVALID":
+        await insertEvent(client, scope, { attempt, event: "FAILED", failureReason: "WRONG_PASSWORD", application }, now)
+        return { kind: "FAILED", remaining: 0, network: true }
+      case "LOCKED":
+        // A trava da matrícula (3, somando o login) disparou: a tentativa entra no rastro da ciência como as demais (SLR-09).
+        await insertEvent(client, scope, { attempt, event: "FAILED", failureReason: "TOO_MANY_ATTEMPTS", application }, now)
+        return { kind: "NETWORK", problem: "LOCKED" }
+      default:
+        // Situação da conta de rede ou AD fora do ar: a senha nem foi recusada; não vira evento de senha errada.
+        return { kind: "NETWORK", problem: check }
+    }
+  })
+}
+
 
 /**
  * Confirma a ciência com o login e a senha da própria conta. Falha de credencial = evento FAILED + 422 (mensagem única, com as
- * tentativas que restam); trava = evento FAILED (TOO_MANY_ATTEMPTS) + 429 com o horário em que libera. Sucesso = ciência +
+ * tentativas que restam — pela rede, sem a contagem); trava = evento FAILED (TOO_MANY_ATTEMPTS) + 429 com o horário em que libera. Sucesso = ciência +
  * conclusão da aplicação em andamento + evento CONFIRMED, tudo numa transação.
  */
 export async function confirmFeedbackReading(
@@ -153,7 +272,7 @@ export async function confirmFeedbackReading(
   scope: ReadConfirmationScope,
   input: ReadConfirmationAttempt & { login: string; password: string; agreement: ReadAgreementInput },
   now: Date,
-  deps: { verifyPassword: PasswordVerifier },
+  deps: { verifyPassword: PasswordVerifier; verifyNetworkPassword?: NetworkPasswordVerifier },
 ): Promise<ReadConfirmationResult> {
   const attempt: ReadConfirmationAttempt = { source: input.source, entryPoint: input.entryPoint, attemptId: input.attemptId, device: input.device, elapsedMs: input.elapsedMs }
   // A escolha é validada (e a justificativa aparada) AQUI também, antes das credenciais — vale para qualquer chamador, não só a rota.
@@ -162,35 +281,21 @@ export async function confirmFeedbackReading(
   const before = await findApplicationViewBySource(db, scope, input.source)
   const applicationBefore = before && { id: before.id, status: before.status }
 
-  // Contar falhas → conferir a senha → gravar a falha acontece SOB uma trava por conta (achado I-F9): sem ela, N tentativas em
-  // paralelo leem "menos de 5 falhas" antes de qualquer uma ser gravada e o limite deixa de valer. A falha é gravada e
-  // CONFIRMADA antes do erro sair (o erro é lançado fora da transação).
-  const verdict = await inTransaction(db, async (client) => {
-    await client.query("select pg_advisory_xact_lock(hashtext('read_confirmation_credential:' || $1::text))", [scope.accountId])
-    const throttle = readConfirmationThrottle(await recentCredentialFailures(client, scope, now), now)
-    if (throttle.blocked) {
-      await insertEvent(client, scope, { attempt, event: "FAILED", failureReason: "TOO_MANY_ATTEMPTS", application: applicationBefore }, now)
-      return { kind: "BLOCKED" as const, retryAt: throttle.retryAt }
-    }
-    const account = (
-      await client.query<{ email: string; password_hash: string; active: boolean }>(
-        `select email, password_hash, active from user_accounts where id = $1 and organization_id = $2 and person_id = $3`,
-        [scope.accountId, scope.organizationId, scope.personId],
-      )
-    ).rows[0]
-    // A senha é sempre conferida contra a PRÓPRIA conta (nunca contra a conta do login digitado).
-    const passwordMatches = account ? await deps.verifyPassword(input.password, account.password_hash) : false
-    const failure = credentialFailureOf({ accountActive: Boolean(account?.active), loginMatches: account ? loginMatchesAccount(input.login, account.email) : false, passwordMatches })
-    if (failure) {
-      await insertEvent(client, scope, { attempt, event: "FAILED", failureReason: failure, application: applicationBefore }, now)
-      return { kind: "FAILED" as const, remaining: Math.max(0, throttle.remaining - 1) }
-    }
-    return { kind: "OK" as const }
-  })
+  const verdict = await verifyReadConfirmationCredentials(db, scope, attempt, input, now, deps, applicationBefore)
+  if (verdict.kind === "NETWORK") {
+    // Recusa vinda da rede (fora a senha errada e a trava, gravadas como FAILED): a situação é da conta de rede.
+    const problem = NETWORK_CREDENTIAL_ERRORS[verdict.problem]
+    throw new DomainError(problem.message, problem.code, problem.status)
+  }
+  if (verdict.kind === "CHANGED") {
+    throw new DomainError("A forma de entrar da sua conta mudou durante a confirmação. Abra a confirmação de novo e tente outra vez.", "READ_CONFIRMATION_ACCOUNT_CHANGED", 409)
+  }
   if (verdict.kind === "BLOCKED") {
     throw new DomainError("Muitas tentativas com login ou senha incorretos. Aguarde alguns minutos e tente de novo.", "READ_CONFIRMATION_TOO_MANY_ATTEMPTS", 429, { retryAt: verdict.retryAt.toISOString() })
   }
   if (verdict.kind === "FAILED") {
+    // Pela rede, sem "restam N": a trava que vale é a da matrícula (3, somando o login), não o contador da ciência.
+    if (verdict.network) throw new DomainError("Matrícula ou senha de rede não conferem com a sua conta. Atenção: várias senhas erradas bloqueiam a sua conta de rede.", "READ_CONFIRMATION_INVALID_CREDENTIALS", 422)
     throw new DomainError("Login ou senha não conferem com a sua conta.", "READ_CONFIRMATION_INVALID_CREDENTIALS", 422, { remainingAttempts: verdict.remaining })
   }
 

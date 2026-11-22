@@ -14,8 +14,8 @@ export type EvaluationCase = {
   transcript: string[]
 }
 
-const SEGUNDA_VIA = ["Procedimento Operacional Segunda Via de Conta", "Checklist de Encerramento de Chamada", "Procedimento Operacional Jeito Vivo de Atender"]
-const NEGOCIACAO = ["Procedimento Operacional Negociação de Débito", "Checklist de Encerramento de Chamada", "Procedimento Operacional Jeito Vivo de Atender"]
+const SEGUNDA_VIA = ["Procedimento Operacional Segunda Via de Conta", "Checklist de Encerramento de Chamada", "Procedimento Operacional Jeito Telnova de Atender"]
+const NEGOCIACAO = ["Procedimento Operacional Negociação de Débito", "Checklist de Encerramento de Chamada", "Procedimento Operacional Jeito Telnova de Atender"]
 
 export const CASES: EvaluationCase[] = [
   {
@@ -24,13 +24,13 @@ export const CASES: EvaluationCase[] = [
     documents: SEGUNDA_VIA,
     flags: [{ name: "nota_ura", value: "1" }],
     transcript: [
-      "Operador: Vivo, boa tarde, meu nome é Paula. Com quem eu falo?",
+      "Operador: Telnova, boa tarde, meu nome é Paula. Com quem eu falo?",
       "Cliente: É a Marta. Preciso da segunda via da conta deste mês, perdi o boleto.",
       "Operador: Claro, Marta. Para sua segurança, me confirma o CPF do titular e a data de nascimento?",
       "Cliente: 123.456.789-00, nascida em 12 de março de 1980.",
-      "Operador: Obrigada, validado. A segunda via da sua conta está disponível nos canais digitais da Vivo. Você tem o aplicativo Meu Vivo no celular?",
+      "Operador: Obrigada, validado. A segunda via da sua conta está disponível nos canais digitais da Telnova. Você tem o aplicativo Meu Telnova no celular?",
       "Cliente: Tenho, mas eu queria que vocês mandassem. Sempre é essa novela.",
-      "Operador: Entendo. Vou te orientar agora e fico com você até aparecer. Abre o Meu Vivo, toca em Contas e depois em Segunda via.",
+      "Operador: Entendo. Vou te orientar agora e fico com você até aparecer. Abre o Meu Telnova, toca em Contas e depois em Segunda via.",
       "Cliente: Abri... cliquei em Contas. Apareceu a de setembro.",
       "Operador: Isso. Toca nela e depois em Baixar PDF. Você consegue ver o código de barras e o Pix?",
       "Cliente: Consegui, baixou aqui.",
@@ -47,7 +47,7 @@ export const CASES: EvaluationCase[] = [
     documents: SEGUNDA_VIA,
     flags: [{ name: "rechamada", value: "sim" }],
     transcript: [
-      "Operador: Vivo, bom dia, aqui é o Diego. Em que posso ajudar?",
+      "Operador: Telnova, bom dia, aqui é o Diego. Em que posso ajudar?",
       "Cliente: Bom dia, preciso da segunda via da conta de agosto.",
       "Operador: Claro. Me confirma o CPF do titular?",
       "Cliente: 987.654.321-00.",
@@ -66,7 +66,7 @@ export const CASES: EvaluationCase[] = [
     documents: SEGUNDA_VIA,
     flags: [{ name: "detrator", value: "sim" }],
     transcript: [
-      "Operador: Vivo, boa noite, meu nome é Renata. Com quem falo?",
+      "Operador: Telnova, boa noite, meu nome é Renata. Com quem falo?",
       "Cliente: Aqui é o Paulo. Já tentei três vezes pegar a segunda via e não consigo. Se não resolverem hoje eu vou abrir reclamação na Anatel.",
       "Operador: Entendo, Paulo, e vou registrar essa manifestação no seu atendimento. Para seguir, me confirma o CPF do titular e a data de nascimento?",
       "Cliente: 111.222.333-44, 5 de junho de 1975.",
@@ -87,7 +87,7 @@ export const CASES: EvaluationCase[] = [
     documents: SEGUNDA_VIA,
     flags: [{ name: "rechamada", value: "sim" }],
     transcript: [
-      "Operador: Vivo, boa tarde, meu nome é Renata. Com quem falo?",
+      "Operador: Telnova, boa tarde, meu nome é Renata. Com quem falo?",
       "Cliente: Aqui é o Paulo. Preciso da segunda via da conta de setembro.",
       "Operador: Claro, Paulo. Me confirma o CPF do titular e a data de nascimento?",
       "Cliente: 111.222.333-44, 5 de junho de 1975.",
@@ -107,7 +107,7 @@ export const CASES: EvaluationCase[] = [
     documents: SEGUNDA_VIA,
     flags: [{ name: "rechamada", value: "sim" }],
     transcript: [
-      "Operador: Vivo, bom dia, meu nome é Carla.",
+      "Operador: Telnova, bom dia, meu nome é Carla.",
       "Cliente: Bom dia. O aplicativo dá erro quando eu tento baixar a conta.",
       "Operador: Tudo bem, não se preocupa. Me passa o CPF do titular?",
       "Cliente: 555.666.777-88.",
@@ -124,11 +124,11 @@ export const CASES: EvaluationCase[] = [
     documents: SEGUNDA_VIA,
     flags: [{ name: "rechamada", value: "sim" }],
     transcript: [
-      "Operador: Vivo, boa tarde, meu nome é Sílvia. Com quem eu falo?",
+      "Operador: Telnova, boa tarde, meu nome é Sílvia. Com quem eu falo?",
       "Cliente: É o Roberto. Quero a segunda via da conta.",
       "Operador: Claro, Roberto. Me confirma o CPF do titular e a data de nascimento?",
       "Cliente: 222.333.444-55, 1 de fevereiro de 1990.",
-      "Operador: Obrigada, validado. A segunda via está disponível no aplicativo Meu Vivo. Você consegue abrir o aplicativo agora?",
+      "Operador: Obrigada, validado. A segunda via está disponível no aplicativo Meu Telnova. Você consegue abrir o aplicativo agora?",
       "Cliente: Deixa eu ver, estou abrindo...",
       "[TRANSCRIÇÃO INTERROMPIDA — falha na gravação]",
     ],
@@ -139,11 +139,11 @@ export const CASES: EvaluationCase[] = [
     documents: SEGUNDA_VIA,
     flags: [{ name: "rechamada", value: "sim" }],
     transcript: [
-      "Operador: Vivo, boa tarde, aqui é o Marcos.",
+      "Operador: Telnova, boa tarde, aqui é o Marcos.",
       "Cliente: Boa tarde, liguei ontem, o protocolo de ontem era 2026-0929-1188. Ainda não consegui a segunda via.",
       "Operador: Entendi. Me confirma o CPF do titular e a data de nascimento?",
       "Cliente: 333.444.555-66, 20 de outubro de 1985.",
-      "Operador: Validado. A segunda via está no aplicativo Meu Vivo, em Contas e depois Segunda via. Você consegue abrir aí?",
+      "Operador: Validado. A segunda via está no aplicativo Meu Telnova, em Contas e depois Segunda via. Você consegue abrir aí?",
       "Cliente: Abri. Achei a conta, baixei o PDF.",
       "Operador: Ótimo. Ficou alguma dúvida?",
       "Cliente: Não, obrigado.",
@@ -156,7 +156,7 @@ export const CASES: EvaluationCase[] = [
     documents: NEGOCIACAO,
     flags: [{ name: "rechamada", value: "sim" }],
     transcript: [
-      "Operador: Vivo, bom dia, meu nome é André. Com quem eu falo?",
+      "Operador: Telnova, bom dia, meu nome é André. Com quem eu falo?",
       "Cliente: É a Luciana. Tenho duas contas atrasadas e quero negociar.",
       "Operador: Claro, Luciana. Me confirma o CPF do titular e a data de nascimento?",
       "Cliente: 444.555.666-77, 8 de agosto de 1988.",
@@ -176,7 +176,7 @@ export const CASES: EvaluationCase[] = [
     documents: NEGOCIACAO,
     flags: [{ name: "nota_ura", value: "5" }],
     transcript: [
-      "Operador: Vivo, boa tarde, meu nome é Beatriz. Com quem eu falo?",
+      "Operador: Telnova, boa tarde, meu nome é Beatriz. Com quem eu falo?",
       "Cliente: É o Fernando. Recebi aviso do Serasa por causa de uma conta atrasada e quero resolver hoje.",
       "Operador: Entendo, Fernando. Para sua segurança, me confirma o CPF do titular e a data de nascimento?",
       "Cliente: 666.777.888-99, 30 de novembro de 1979.",

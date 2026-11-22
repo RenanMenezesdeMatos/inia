@@ -271,7 +271,7 @@ que estava reescrevendo o modelo deles (migrations 210/211) — nesta rodada, s�
   leitura), botão "Publicar" no perfil e retirar. Ajustes que saíram da conferência: "Fechar" em português na prévia, espaçamento da
   página de leitura, texto travado quando arquivado, botões de retirar/sair em vermelho, o aviso de saída passou a ser o hook
   compartilhado `hooks/use-unsaved-changes-guard.ts` (antes só do perfil; trata também o "voltar" do navegador). A publicação
-  "[TESTE QA] Segunda via da fatura no App Meu Vivo" ficou RETIRADA no `inia` (aparece em Itens excluídos).
+  "[TESTE QA] Segunda via da fatura no App Meu Telnova" ficou RETIRADA no `inia` (aparece em Itens excluídos).
 - **Moderação (pedido do usuário, 17/11: "o administrador geral também retira, caso alguém tente alguma gracinha")**: permissão própria
   `communications.moderate` (só escopo de organização; vem SÓ com o Administrador geral — nenhum outro papel), capacidade
   `canModerateCommunications`. A moderação NUNCA edita o texto de ninguém: só retira (exclusão lógica) com MOTIVO (10–500 caracteres).

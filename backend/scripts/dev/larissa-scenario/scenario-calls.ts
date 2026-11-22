@@ -1,13 +1,13 @@
 /**
  * CENÁRIO "TMA RUIM EM SETEMBRO" DA LARISSA MONTEIRO (DEMO-OP-0001) — chamadas (02/10/2026).
  *
- * As bases (Contestação de Contas Móvel, Jeito Vivo, Checklist) foram publicadas em 10/09/2026: toda chamada aqui é DEPOIS disso,
+ * As bases (Contestação de Contas Móvel, Jeito Telnova, Checklist) foram publicadas em 10/09/2026: toda chamada aqui é DEPOIS disso,
  * então os erros são de regra VIGENTE ("puxão de orelha" legítimo). A partir de 22/09 a Larissa passa a ter contestações longas com
  * erros que alongam a chamada; três chamadas boas no mesmo período servem de contraste. Cinco colegas de melhor resultado têm duas
  * contestações bem conduzidas cada (15–19/09), para a comparação com o grupo de referência.
  *
  * Cada erro aponta a regra que viola (só para quem lê este arquivo — nada daqui vai ao motor; o motor lê só a transcrição):
- *   ESPERA_SEM_AVISO      Jeito Vivo §10 (avisar motivo, previsão, pedir autorização, não deixar em silêncio)
+ *   ESPERA_SEM_AVISO      Jeito Telnova §10 (avisar motivo, previsão, pedir autorização, não deixar em silêncio)
  *   PRAZO_VAGO            Contestação §35 ("informar o prazo exibido na ferramenta"; evitar "é só aguardar", "o setor vai verificar")
  *   SEM_RECAPITULACAO     Contestação §46 e §49 ("encerrar sem recapitulação" é proibido)
  *   SEM_PROTOCOLO         Contestação §46/§48; Checklist (2) informe o número do protocolo
@@ -41,7 +41,7 @@ export const SCENARIO_CALLS: ScenarioCall[] = [
     reason: "Contestação de cobrança",
     intent: { good: false, failures: ["ESPERA_SEM_AVISO", "PRAZO_VAGO", "SEM_RECAPITULACAO", "SEM_PROTOCOLO"] },
     lines: [
-      "O: Vivo, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Bom dia, aqui é o Marcelo Antunes.",
       "O: Olá, Marcelo. Como posso te ajudar?",
       "C: Apareceu na minha conta de setembro uma cobrança de vinte e nove e noventa de um tal de Cine Fácil. Eu nunca assinei isso.",
@@ -64,7 +64,7 @@ export const SCENARIO_CALLS: ScenarioCall[] = [
       "C: Mas aguardar quanto tempo? E como eu vou saber?",
       "O: Eles entram em contato com você.",
       "C: Tá bom, né. Mais alguma coisa?",
-      "O: Não, só isso. A Vivo agradece a sua ligação, tenha um bom dia.",
+      "O: Não, só isso. A Telnova agradece a sua ligação, tenha um bom dia.",
     ],
   },
   {
@@ -76,7 +76,7 @@ export const SCENARIO_CALLS: ScenarioCall[] = [
     reason: "Contestação de cobrança",
     intent: { good: false, failures: ["DETALHE_ANTES_VALIDAR", "ESPERA_SEM_AVISO", "PROMESSA_ESTORNO", "PRAZO_VAGO", "SEM_RECAPITULACAO"] },
     lines: [
-      "O: Vivo, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Boa tarde, aqui é a Sílvia Rocha. Eu cancelei uma linha em agosto e continuo sendo cobrada.",
       "O: Deixa eu abrir aqui. Já estou vendo a conta da linha final 4471: mensalidade de cinquenta e nove e noventa em setembro, e tem também uma linha final 8802 no mesmo cadastro.",
       "C: A 8802 é do meu ex-marido, eu nem sabia que ainda estava no meu nome.",
@@ -108,7 +108,7 @@ export const SCENARIO_CALLS: ScenarioCall[] = [
     reason: "Contestação de cobrança",
     intent: { good: true, failures: [] },
     lines: [
-      "O: Vivo, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Bom dia, sou a Helena Duarte.",
       "O: Olá, Helena. Como posso te ajudar?",
       "C: Veio um pacote de internet adicional de quinze reais na minha conta que eu não pedi.",
@@ -140,7 +140,7 @@ export const SCENARIO_CALLS: ScenarioCall[] = [
     reason: "Contestação de cobrança",
     intent: { good: false, failures: ["CULPA_CLIENTE", "ESPERA_SEM_AVISO", "PRAZO_VAGO", "SEM_RECAPITULACAO"] },
     lines: [
-      "O: Vivo, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Aqui é o Rogério Pires. Olha, é a terceira vez que eu ligo por causa disso. Tem um Jogos Mais de dezenove e noventa na minha conta.",
       "O: Certo. Me confirma o CPF e a data de nascimento do titular, por favor?",
       "C: 129.874.330-62, quatro de janeiro de setenta e nove.",
@@ -170,7 +170,7 @@ export const SCENARIO_CALLS: ScenarioCall[] = [
     reason: "Contestação de cobrança",
     intent: { good: false, failures: ["SEM_CONFIRMAR", "PRAZO_VAGO", "SEM_RECAPITULACAO"] },
     lines: [
-      "O: Vivo, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Bom dia, aqui é a Patrícia Lemos. A minha mensalidade veio cobrada duas vezes.",
       "O: Vou te ajudar. Me informa o CPF do titular e a data de nascimento?",
       "C: 384.551.209-44, dezoito de outubro de oitenta e oito.",
@@ -186,7 +186,7 @@ export const SCENARIO_CALLS: ScenarioCall[] = [
       "C: Mas em quantos dias?",
       "O: Depende do setor. Seu protocolo é 202609241130.",
       "C: Tá bom.",
-      "O: A Vivo agradece, tenha um bom dia.",
+      "O: A Telnova agradece, tenha um bom dia.",
     ],
   },
   {
@@ -198,7 +198,7 @@ export const SCENARIO_CALLS: ScenarioCall[] = [
     reason: "Contestação de cobrança",
     intent: { good: false, failures: ["ESPERA_SEM_AVISO", "PRAZO_VAGO", "SEM_RECAPITULACAO", "SEM_PROTOCOLO"] },
     lines: [
-      "O: Vivo, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Bom dia, Wagner Teles. O desconto de vinte reais do meu plano não veio na conta.",
       "O: Me confirma o CPF e a data de nascimento do titular, por favor?",
       "C: 502.663.871-09, trinta de maio de noventa e cinco.",
@@ -228,7 +228,7 @@ export const SCENARIO_CALLS: ScenarioCall[] = [
     reason: "Contestação de cobrança",
     intent: { good: true, failures: [] },
     lines: [
-      "O: Vivo, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Boa tarde, Daniela Fontes. Tem uma assinatura de música de dezesseis e noventa que eu não conheço.",
       "O: Entendi, Daniela. Antes de consultar, preciso confirmar o CPF do titular e a data de nascimento.",
       "C: 611.204.337-58, dois de fevereiro de noventa e nove.",
@@ -257,7 +257,7 @@ export const SCENARIO_CALLS: ScenarioCall[] = [
     reason: "Contestação de cobrança",
     intent: { good: false, failures: ["ESPERA_SEM_AVISO", "TRANSFERE_SEM_CONTEXTO", "SEM_PROTOCOLO", "PRAZO_VAGO"] },
     lines: [
-      "O: Vivo, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Bom dia, aqui é o Fábio Monteiro. Vieram umas parcelas de aparelho na minha conta e eu nunca comprei aparelho com vocês.",
       "O: Me confirma o CPF e a data de nascimento do titular?",
       "C: 733.091.442-81, nove de setembro de oitenta e dois.",
@@ -282,7 +282,7 @@ export const SCENARIO_CALLS: ScenarioCall[] = [
     reason: "Contestação de cobrança",
     intent: { good: false, failures: ["PROMESSA_ESTORNO", "PRAZO_VAGO", "SEM_RECAPITULACAO", "ESPERA_SEM_AVISO"] },
     lines: [
-      "O: Vivo, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, boa tarde, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Boa tarde, aqui é a Beatriz Salgado. Paguei a conta e depois vi um serviço de notícias de doze reais que eu não assinei.",
       "O: Me confirma o CPF e a data de nascimento do titular, por favor?",
       "C: 288.910.645-17, vinte e dois de novembro de noventa e três.",
@@ -308,7 +308,7 @@ export const SCENARIO_CALLS: ScenarioCall[] = [
     reason: "Contestação de cobrança",
     intent: { good: true, failures: [] },
     lines: [
-      "O: Vivo, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
       "C: Bom dia, aqui é o Igor Batista. Veio uma cobrança de roaming na minha conta, mas eu não viajei.",
       "O: Entendi, Igor. Antes de consultar, preciso confirmar o CPF e a data de nascimento do titular.",
       "C: 145.660.982-33, quinze de agosto de oitenta e quatro.",
@@ -341,7 +341,7 @@ function peerCalls(): ScenarioCall[] {
     reason: "Contestação de cobrança",
     intent: { good: true, failures: [] },
     lines: [
-      "O: Vivo, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
+      "O: Telnova, bom dia, meu nome é {OPERADOR}. Com quem eu falo?",
       `C: Bom dia, aqui é ${customer}. Tem ${charge} de ${value} na minha conta que eu não reconheço.`,
       "O: Entendi. Antes de consultar, preciso confirmar o CPF e a data de nascimento do titular, por segurança.",
       "C: Claro. CPF e data, aqui estão.",

@@ -1,4 +1,4 @@
-import { nodeBranches, resolveNodeContexts, type FlowNode } from "../workflow-graph.schema"
+import { isRandomMonitoringNode, nodeBranches, resolveNodeContexts, type FlowNode } from "../workflow-graph.schema"
 import { triggerDataOrigin } from "../workflow.schema"
 import type { ValidationContext } from "./types"
 
@@ -195,6 +195,14 @@ export function validateInteractionFeedbackSource(context: ValidationContext): v
 /** Conformidade e Avaliação de processo exigem a transcrição: Flag ou Manual com interação. */
 export function validateTranscriptRequirements(context: ValidationContext): void {
   const { graph, trigger, issues } = context
+  // Monitoria aleatória (espelho do backend): uma chamada por execução, no modo Individual.
+  if (triggerDataOrigin(trigger) === "schedule") {
+    for (const node of graph.nodes) {
+      if (!isRandomMonitoringNode(node) || node.type !== "action" || node.config.actionType !== "CALL_AGENT" || node.config.scheduledDataSource?.kind !== "MONITORING") continue
+      if (node.config.scheduledDataSource.sampleSize !== 1) issues.push({ nodeId: node.id, code: "WORKFLOW_RANDOM_MONITORING_SINGLE_CALL", message: `"${node.label}" faz monitoria aleatória: cada execução sorteia UMA chamada por colaborador. Para mais monitorias, aumente a frequência do gatilho.` })
+      if (context.isConsolidatedMode) issues.push({ nodeId: node.id, code: "WORKFLOW_RANDOM_MONITORING_INDIVIDUAL_ONLY", message: `"${node.label}" faz monitoria aleatória, que analisa um colaborador por execução: use o modo Individual (sem Estrutura Consolidada).` })
+    }
+  }
   // Conformidade de processo compara procedimento oficial × transcrição — só existe transcrição
   // com gatilho por Flag de canal (mesma regra do backend, workflow-router.ts).
   if (triggerDataOrigin(trigger) !== "channel_flag") {
@@ -202,8 +210,8 @@ export function validateTranscriptRequirements(context: ValidationContext): void
       if (node.type === "action" && node.config.actionType === "CALL_AGENT" && node.config.outputContract === "PROCESS_AUDIT") {
         issues.push({ nodeId: node.id, code: "WORKFLOW_PROCESS_AUDIT_REQUIRES_FLAG", message: "\"Conformidade de processo\" exige uma transcrição de chamada — só disponível com gatilho por Flag de canal ou Manual com interação." })
       }
-      if ((node.type === "action" && node.config.actionType === "CALL_AGENT" && node.config.outputContract === "PROCESS_ASSESSMENT") || (node.type === "orchestrator" && node.config.specialistOutputContract === "PROCESS_ASSESSMENT")) {
-        issues.push({ nodeId: node.id, code: "WORKFLOW_PROCESS_ASSESSMENT_REQUIRES_FLAG", message: "\"Avaliação de processo\" exige uma transcrição de chamada — só disponível com gatilho por Flag de canal ou Manual com interação." })
+      if ((node.type === "action" && node.config.actionType === "CALL_AGENT" && node.config.outputContract === "PROCESS_ASSESSMENT" && !(triggerDataOrigin(trigger) === "schedule" && isRandomMonitoringNode(node))) || (node.type === "orchestrator" && node.config.specialistOutputContract === "PROCESS_ASSESSMENT")) {
+        issues.push({ nodeId: node.id, code: "WORKFLOW_PROCESS_ASSESSMENT_REQUIRES_FLAG", message: "\"Avaliação de processo\" exige uma transcrição de chamada — só disponível com gatilho por Flag de canal, Manual com interação ou, no \"Chamar agente\", com a fonte \"Amostra de chamadas\" no gatilho por Agenda ou Manual por colaborador (monitoria aleatória)." })
       }
     }
   }

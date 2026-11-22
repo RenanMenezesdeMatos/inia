@@ -91,7 +91,7 @@ foram lidos um a um:
 backend e 385 no frontend). Alertas de **licença** (não são vulnerabilidade): `LGPL-3.0-or-later` (10 pacotes no frontend —
 binários `@img/sharp-libvips-*`, ligados dinamicamente), `(MIT OR GPL-3.0-or-later)` (`jszip`, escolher MIT), `Python-2.0`
 (`argparse`), `CC-BY-4.0` (`caniuse-lite`, dado de build) e 132 pacotes sem licença declarada no manifesto — revisão jurídica,
-em linha com a memória "INIA cedida à Vivo".
+em linha com a memória "INIA cedida ao cliente".
 
 ### 3.5 Verificações nativas
 
@@ -170,8 +170,8 @@ validação própria de cada candidato. Os testes dinâmicos estão em `registro
 2. JWT do cookie carrega nome, e-mail, cargo, foto e Grupo (SESS-02): reduzir a `sub`, `organizationId`, `sv`, `jti`, `exp`.
 3. HSTS: **as páginas já enviam** quando a instalação é HTTPS (`next.config.ts`, `httpsDeployment` a partir do `NEXT_PUBLIC_INIA_API_URL`; conferido carregando a configuração com URL `https://` e `http://`) — no teste local em HTTP ele não aparece, como deve. Resta alinhar o `includeSubDomains` (a API o envia, as páginas não). CSP com `report-to`. ~~R-07 (`style-src 'unsafe-inline'`)~~ — isolado em 29/10 (§4.5 e §5): `'unsafe-inline'` só em `style-src-attr`.
 4. Lista de senhas vazadas local (top-10k) e mínimo maior para administradores (R-22); lista de sessões ativas com encerramento individual (V7.5.2).
-5. Cofre de segredos no servidor da Vivo (DPAPI/Key Vault) para `JWT_SECRET` e `DATA_HUB_SECRET_KEY` (V13.3.1).
-6. Antivírus nos uploads (bases e Central de Dados) conforme o padrão da Vivo (V5.4.3).
+5. Cofre de segredos no servidor do cliente (DPAPI/Key Vault) para `JWT_SECRET` e `DATA_HUB_SECRET_KEY` (V13.3.1).
+6. Antivírus nos uploads (bases e Central de Dados) conforme o padrão do cliente (V5.4.3).
 7. Prazos de correção de dependências por gravidade: **proposta em `../politica-de-dependencias.md`** (aprovação pendente). Implantação com `npm ci --omit=dev`.
 8. `encodeURIComponent` nos ids interpolados no frontend (A5); ~~`BEGIN READ ONLY` real no "Testar diagnóstico"~~ — feito em `40b73a1a` pela sessão da auditoria Cloudflare (cada leitura numa transação `read only`, o PostgreSQL recusa escrita); falta a mensagem de erro genérica (A7); `stripImageMetadata` recusar estrutura desconhecida em vez de devolver igual.
 9. Revisão B3/B6/B7: destinatário/revisor fixo de Workflow conferido contra o escopo (não só a organização); dependências de domínio de negócio listam Agents de outros Grupos; leituras pesadas sem limite por conta (`/leadership/query`, export do diagnóstico).

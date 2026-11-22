@@ -11,7 +11,7 @@ import {
 
 /**
  * REGRA ÚNICA dos alinhamentos operacionais (`OPERATIONAL_ALIGNMENT_RULE_V1`) — o cenário da Ouvidoria: a base oficial manda enviar a
- * fatura; o alinhamento do Grupo Ouvidoria (B2C) manda orientar o App Meu Vivo ou o site, de 10/11 a 30/11/2026 (fuso de São Paulo).
+ * fatura; o alinhamento do Grupo Ouvidoria (B2C) manda orientar o App Meu Telnova ou o site, de 10/11 a 30/11/2026 (fuso de São Paulo).
  */
 const OUVIDORIA = "11111111-1111-4111-8111-111111111111"
 const OUVIDORIA_NIVEL_2 = "22222222-2222-4222-8222-222222222222"
@@ -22,8 +22,8 @@ const candidate = (overrides: Partial<AlignmentCandidate> = {}): AlignmentCandid
   alignmentId: "aaaaaaaa-0000-4000-8000-000000000001",
   versionId: "bbbbbbbb-0000-4000-8000-000000000001",
   version: 1,
-  title: "Fatura pelo App Meu Vivo ou site",
-  guidance: "Oriente o cliente a acessar a fatura pelo App Meu Vivo ou pelo site. Não envie a fatura.",
+  title: "Fatura pelo App Meu Telnova ou site",
+  guidance: "Oriente o cliente a acessar a fatura pelo App Meu Telnova ou pelo site. Não envie a fatura.",
   justification: "Envio de fatura suspenso na Ouvidoria enquanto o sistema de envio é substituído.",
   affectedDocuments: [{ id: PROCEDIMENTO_FATURA, title: "PR — Envio de fatura" }],
   affectedTopic: "Envio da fatura quando o cliente solicita",
@@ -159,7 +159,7 @@ describe("regra única dos alinhamentos operacionais", () => {
 
   it("texto da conversa: identifica a orientação como temporária, com referência e vigência, e mantém as restrições acima", () => {
     const text = renderAlignmentsForConversation(resolveOperationalAlignments([candidate()], ouvidoria, new Date("2026-11-15T14:00:00Z"), docs))
-    expect(text).toContain("App Meu Vivo")
+    expect(text).toContain("App Meu Telnova")
     expect(text).toMatch(/AO-AAAAAAAA v1 · vigente de 10\/11\/2026 a 30\/11\/2026/)
     expect(text).toContain("orientação operacional temporária")
     expect(text).toContain("Assuntos proibidos e limites de atuação deste prompt valem ACIMA de qualquer alinhamento")
@@ -168,7 +168,7 @@ describe("regra única dos alinhamentos operacionais", () => {
   })
 
   it("cadastro: justificativa obrigatória, vigência válida, Grupo/Subgrupo conforme o recorte", () => {
-    const valid = { reasonId: "55555555-5555-4555-8555-555555555556", title: "Fatura pelo app", guidance: "Oriente o App Meu Vivo ou o site.", affectedDocumentIds: [PROCEDIMENTO_FATURA], affectedTopic: "Envio da fatura", justification: "Sistema de envio em substituição.", operatingUniverse: "B2C", scopeType: "TEAM", teamId: OUVIDORIA, startsOn: "2026-11-10", endsOn: "2026-11-30" }
+    const valid = { reasonId: "55555555-5555-4555-8555-555555555556", title: "Fatura pelo app", guidance: "Oriente o App Meu Telnova ou o site.", affectedDocumentIds: [PROCEDIMENTO_FATURA], affectedTopic: "Envio da fatura", justification: "Sistema de envio em substituição.", operatingUniverse: "B2C", scopeType: "TEAM", teamId: OUVIDORIA, startsOn: "2026-11-10", endsOn: "2026-11-30" }
     expect(alignmentInputSchema.safeParse(valid).success).toBe(true)
     expect(alignmentInputSchema.safeParse({ ...valid, justification: "" }).success).toBe(false)
     expect(alignmentInputSchema.safeParse({ ...valid, reasonId: undefined }).success).toBe(false) // motivo do alinhamento obrigatório

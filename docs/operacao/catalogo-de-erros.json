@@ -8872,7 +8872,8 @@
         401
       ],
       "messages": [
-        "E-mail ou senha inválidos."
+        "E-mail ou senha inválidos.",
+        "Matrícula ou senha de rede inválidas. Atenção: várias senhas erradas bloqueiam a sua conta de rede."
       ],
       "refs": [
         "backend/src/modules/auth/presentation/auth-router.ts"
@@ -9740,7 +9741,8 @@
         429
       ],
       "messages": [
-        "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente."
+        "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente.",
+        "Muitas tentativas com senha errada. Aguarde alguns minutos antes de tentar de novo — insistir pode bloquear a sua conta de rede."
       ],
       "refs": [
         "backend/src/modules/auth/presentation/auth-router.ts"
@@ -9798,6 +9800,137 @@
         "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
       ],
       "family": "FAMILIA-DEPENDENCIA"
+    },
+    {
+      "code": "NETWORK_ACCOUNT_DISABLED",
+      "module": "auth",
+      "statuses": [
+        403
+      ],
+      "messages": [
+        "Sua conta de rede está desativada ou sem permissão de acesso agora. Procure o suporte de TI."
+      ],
+      "refs": [
+        "backend/src/modules/auth/presentation/auth-router.ts",
+        "backend/src/modules/feedback-application/application/read-confirmation-service.ts"
+      ],
+      "family": "FAMILIA-ACESSO"
+    },
+    {
+      "code": "NETWORK_ACCOUNT_LOCKED",
+      "module": "auth",
+      "statuses": [
+        403
+      ],
+      "messages": [
+        "Sua conta de rede está bloqueada. Procure o suporte de TI para desbloquear."
+      ],
+      "refs": [
+        "backend/src/modules/auth/presentation/auth-router.ts",
+        "backend/src/modules/feedback-application/application/read-confirmation-service.ts"
+      ],
+      "family": "FAMILIA-ACESSO"
+    },
+    {
+      "code": "NETWORK_LOGIN_AMBIGUOUS_MATRICULA",
+      "module": "auth",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Há matrículas repetidas com grafias diferentes (maiúscula ou espaço). Corrija o cadastro dessas pessoas antes de ligar: com a matrícula repetida, ninguém consegue entrar por ela."
+      ],
+      "refs": [
+        "backend/src/modules/auth/application/network-login-settings.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "NETWORK_LOGIN_EMERGENCY_ACCOUNT_REQUIRED",
+      "module": "auth",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Antes de ligar, é preciso ao menos uma conta de emergência habilitada (crie com npm run admin:create)."
+      ],
+      "refs": [
+        "backend/src/modules/auth/application/network-login-settings.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "NETWORK_LOGIN_HTTPS_REQUIRED",
+      "module": "auth",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Ligue o HTTPS antes: a senha de rede não pode passar por uma conexão sem criptografia."
+      ],
+      "refs": [
+        "backend/src/modules/auth/application/network-login-settings.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "NETWORK_LOGIN_NOT_CONFIGURED",
+      "module": "auth",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "O login pela rede não está configurado nesta instalação (AD_LDAP_URLS e AD_DOMAIN)."
+      ],
+      "refs": [
+        "backend/src/modules/auth/application/network-login-settings.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "NETWORK_LOGIN_REQUIRED",
+      "module": "auth",
+      "statuses": [
+        403
+      ],
+      "messages": [
+        "Na sua organização o acesso à INIA é pela matrícula e senha de rede."
+      ],
+      "refs": [
+        "backend/src/modules/auth/presentation/auth-router.ts"
+      ],
+      "family": "FAMILIA-ACESSO"
+    },
+    {
+      "code": "NETWORK_LOGIN_UNAVAILABLE",
+      "module": "auth",
+      "statuses": [
+        503
+      ],
+      "messages": [
+        "O login pela rede está indisponível no momento. Tente de novo em alguns minutos.",
+        "A conferência pela rede está indisponível no momento. Tente de novo em alguns minutos."
+      ],
+      "refs": [
+        "backend/src/modules/auth/presentation/auth-router.ts",
+        "backend/src/modules/feedback-application/application/read-confirmation-service.ts"
+      ],
+      "family": "FAMILIA-DEPENDENCIA"
+    },
+    {
+      "code": "NETWORK_PASSWORD_EXPIRED",
+      "module": "auth",
+      "statuses": [
+        403
+      ],
+      "messages": [
+        "Sua senha de rede venceu ou precisa ser trocada. Troque a senha de rede e tente de novo."
+      ],
+      "refs": [
+        "backend/src/modules/auth/presentation/auth-router.ts",
+        "backend/src/modules/feedback-application/application/read-confirmation-service.ts"
+      ],
+      "family": "FAMILIA-ACESSO"
     },
     {
       "code": "NO_CHANGE",
@@ -12215,6 +12348,18 @@
       "family": "FAMILIA-DEPENDENCIA"
     },
     {
+      "code": "RATE_LIMITED",
+      "module": "shared",
+      "statuses": [
+        429
+      ],
+      "messages": [],
+      "refs": [
+        "backend/src/shared/presentation/rate-limit.ts"
+      ],
+      "family": "FAMILIA-LIMITE"
+    },
+    {
       "code": "RATING_DETAILS_NOT_ALLOWED",
       "module": "assistant",
       "statuses": [
@@ -12229,12 +12374,27 @@
       "family": "FAMILIA-REGRA-DE-NEGOCIO"
     },
     {
+      "code": "READ_CONFIRMATION_ACCOUNT_CHANGED",
+      "module": "feedback-application",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "A forma de entrar da sua conta mudou durante a confirmação. Abra a confirmação de novo e tente outra vez."
+      ],
+      "refs": [
+        "backend/src/modules/feedback-application/application/read-confirmation-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
       "code": "READ_CONFIRMATION_INVALID_CREDENTIALS",
       "module": "feedback-application",
       "statuses": [
         422
       ],
       "messages": [
+        "Matrícula ou senha de rede não conferem com a sua conta. Atenção: várias senhas erradas bloqueiam a sua conta de rede.",
         "Login ou senha não conferem com a sua conta."
       ],
       "refs": [
@@ -12249,7 +12409,8 @@
         429
       ],
       "messages": [
-        "Muitas tentativas com login ou senha incorretos. Aguarde alguns minutos e tente de novo."
+        "Muitas tentativas com login ou senha incorretos. Aguarde alguns minutos e tente de novo.",
+        "Muitas tentativas com a senha de rede errada. Aguarde alguns minutos — insistir pode bloquear a sua conta de rede."
       ],
       "refs": [
         "backend/src/modules/feedback-application/application/read-confirmation-service.ts"
@@ -14062,7 +14223,7 @@
         422
       ],
       "messages": [
-        "\"${node.label}\" é feedback de monitoria, que precisa da interação do gatilho por Flag de canal ou Manual com interação (modo Individual)."
+        "\"${node.label}\" é feedback de monitoria, que precisa de uma chamada: a do gatilho por Flag de canal ou Manual com interação, ou a sorteada por um \"Chamar agente\" com \"Amostra de chamadas\" + \"Avaliação de processo\" na …"
       ],
       "refs": [
         "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
@@ -14939,7 +15100,7 @@
         422
       ],
       "messages": [
-        "O nó \"${assessmentNode.label}\" usa o formato \"Avaliação de processo\", que exige uma transcrição de chamada — só disponível com gatilho por Flag de canal ou Manual com interação."
+        "O nó \"${assessmentNode.label}\" usa o formato \"Avaliação de processo\", que exige uma transcrição de chamada — só disponível com gatilho por Flag de canal, Manual com interação ou, no \"Chamar agente\", com a fonte \"Amost…"
       ],
       "refs": [
         "backend/src/modules/workflows/application/publish-validation/trigger-context.ts"
@@ -14973,6 +15134,34 @@
       "refs": [
         "backend/src/modules/workflows/application/publish-validation/indicator-diagnosis.ts",
         "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "WORKFLOW_RANDOM_MONITORING_INDIVIDUAL_ONLY",
+      "module": "workflows",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "O nó \"${node.label}\" faz monitoria aleatória, que analisa um colaborador por execução: use o modo Individual (sem Estrutura Consolidada)."
+      ],
+      "refs": [
+        "backend/src/modules/workflows/application/publish-validation/trigger-context.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "WORKFLOW_RANDOM_MONITORING_SINGLE_CALL",
+      "module": "workflows",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "O nó \"${node.label}\" faz monitoria aleatória: cada execução sorteia UMA chamada por colaborador. Para mais monitorias, aumente a frequência do gatilho."
+      ],
+      "refs": [
+        "backend/src/modules/workflows/application/publish-validation/trigger-context.ts"
       ],
       "family": "FAMILIA-REGRA-DE-NEGOCIO"
     },

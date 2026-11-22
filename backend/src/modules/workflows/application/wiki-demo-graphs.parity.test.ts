@@ -46,32 +46,29 @@ describe("exemplos da Wiki de Workflows — publicáveis nos dois lados", () => 
 })
 
 /**
- * O que a Wiki afirma que o módulo NÃO aceita. O exemplo "Orientação em dois momentos do dia" foi adaptado por causa destas regras: se
- * uma delas cair, o exemplo pode voltar à forma pedida, e o texto da Wiki (`dois-momentos-do-dia.ts › support`) precisa mudar junto.
+ * O que a Wiki afirma sobre a monitoria aleatória (`dois-momentos-do-dia.ts › support`): uma chamada por execução, só no modo Individual,
+ * e só com a fonte "Amostra de chamadas". Se uma destas regras mudar, o texto da Wiki precisa mudar junto.
  */
 describe("limites que a Wiki ensina", () => {
   const schedule = DEMO_GRAPHS.find((definition) => definition.slug === "dois-momentos-do-dia")!
-  const withNodes = (mutate: (graph: { nodes: unknown[]; edges: unknown[] }) => void): ParitySetup => {
-    const graph = structuredClone(schedule.graph) as unknown as { nodes: unknown[]; edges: unknown[] }
-    mutate(graph)
+  const withAnalysis = (mutate: (config: Record<string, unknown>) => void): ParitySetup => {
+    const graph = structuredClone(schedule.graph) as unknown as { nodes: { id: string; config: Record<string, unknown> }[]; edges: unknown[] }
+    mutate(graph.nodes.find((node) => node.id === "analise")!.config)
     return { ...setupOf(schedule), graph }
   }
 
-  it("Agenda + \"Gerar feedback\" de monitoria não publica", async () => {
-    const setup = withNodes((graph) => {
-      graph.nodes.push({ id: "feedback", type: "action", label: "Gerar feedback", position: { x: 0, y: 0 }, config: { actionType: "GENERATE_FEEDBACK", sourceNodeId: "analise", feedbackDomain: "MONITORING" } })
-      graph.edges = graph.edges.filter((edge) => (edge as { source: string }).source !== "analise")
-      graph.edges.push({ id: "a", source: "analise", sourceHandle: "always", target: "feedback" }, { id: "b", source: "feedback", sourceHandle: "always", target: "entrega" })
-      ;(graph.nodes.find((node) => (node as { id: string }).id === "entrega") as { config: { source: string } }).config.source = "nodeOutputs.feedback"
+  it("monitoria aleatória sorteia uma chamada por execução: mais de uma não publica", async () => {
+    const setup = withAnalysis((config) => {
+      config.scheduledDataSource = { kind: "MONITORING", sampleSize: 2, period: "TODAY" }
     })
-    expect((await backendVerdict(setup))?.code).toBe("WORKFLOW_FEEDBACK_MONITORING_REQUIRES_INTERACTION")
+    expect((await backendVerdict(setup))?.code).toBe("WORKFLOW_RANDOM_MONITORING_SINGLE_CALL")
+    expect((await editorIssues(setup)).map((issue) => issue.code)).toContain("WORKFLOW_RANDOM_MONITORING_SINGLE_CALL")
   })
 
-  it("Agenda + \"Avaliação de processo\" não publica", async () => {
-    const setup = withNodes((graph) => {
-      const node = graph.nodes.find((candidate) => (candidate as { id: string }).id === "analise") as { config: Record<string, unknown> }
-      node.config.outputContract = "PROCESS_ASSESSMENT"
+  it("Agenda + feedback de monitoria sem a amostra de chamadas não publica", async () => {
+    const setup = withAnalysis((config) => {
+      config.scheduledDataSource = { kind: "INDICATOR", indicatorCode: null, period: "TODAY" }
     })
-    expect((await backendVerdict(setup))?.code).toBe("WORKFLOW_PROCESS_ASSESSMENT_REQUIRES_FLAG")
+    expect((await backendVerdict(setup))?.code).toBe("WORKFLOW_FEEDBACK_MONITORING_REQUIRES_INTERACTION")
   })
 })

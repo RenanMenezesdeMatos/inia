@@ -1,4 +1,4 @@
--- Registro de LEITURA de dados pessoais de outra pessoa (liberação na Vivo, 2026-10-20 — LGPD).
+-- Registro de LEITURA de dados pessoais de outra pessoa (liberação no cliente, 2026-10-20 — LGPD).
 --
 -- `audit_logs` guarda alterações e ações administrativas; até aqui não havia como responder "quem viu os dados desta pessoa e
 -- quando". Esta tabela registra quem ABRIU, de outra pessoa: a transcrição de uma chamada (Diagnóstico e QA Lab), uma conversa

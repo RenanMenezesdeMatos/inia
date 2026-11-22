@@ -129,7 +129,7 @@ describe("V1.7.3 — requisito de AVALIAÇÃO × requisito do PROCESSO e o plane
     expect(must.map((entry) => entry.canonicalBehavior).sort()).toEqual(["CANCEL_RECURRING_SERVICE", "CHECK_PAYMENT", "CONFIRM_UNDERSTANDING", "IDENTIFY_CHARGE", "INFORM_DEADLINE", "OPEN_ANALYSIS", "PROVIDE_PROTOCOL", "RECAPITULATE_INTERACTION", "REGISTER_DISPUTE", "VALIDATE_HOLDER"])
     expect(must.find((entry) => entry.ref === REF.recap)?.assessmentBasis).toBe("PROCESS_REQUIRED")
     expect(must.filter((entry) => entry.ref !== REF.recap).every((entry) => entry.assessmentBasis === "PRIMARY_PROCESS_BEHAVIOR")).toBe(true)
-    // Documento transversal (Checklist de Encerramento, Jeito Vivo) nunca vira MUST_ASSESS sozinho; etapa sem comportamento é MAY_ASSESS.
+    // Documento transversal (Checklist de Encerramento, Jeito Telnova) nunca vira MUST_ASSESS sozinho; etapa sem comportamento é MAY_ASSESS.
     expect(CATALOG.entries.filter((entry) => !entry.primaryProcess).every((entry) => entry.assessmentRequirement !== "MUST_ASSESS")).toBe(true)
     expect(CATALOG.entries.find((entry) => entry.ref === REF.compareBills)?.assessmentRequirement).toBe("MAY_ASSESS")
     // Sem plano (chamada que não chegou ao fim / diagnóstico de indicador): nada é MUST_ASSESS.

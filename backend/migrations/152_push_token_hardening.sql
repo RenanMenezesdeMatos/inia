@@ -1,4 +1,4 @@
--- Endurecimento da API Push (liberação na Vivo, 2026-10-20 — R-28/R-29).
+-- Endurecimento da API Push (liberação no cliente, 2026-10-20 — R-28/R-29).
 --
 -- Token de integração com VALIDADE e REDES autorizadas: um token vazado deixa de valer sozinho no prazo e não funciona fora da
 -- rede do sistema que integra. Tokens já emitidos ficam como eram (sem validade, qualquer rede) até serem rotacionados.

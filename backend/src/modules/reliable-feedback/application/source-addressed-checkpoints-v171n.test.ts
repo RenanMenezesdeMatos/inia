@@ -67,7 +67,7 @@ describe("V1.7.1n — catálogo de etapas (checkpointRef) e representação apre
     expect(entry(REF.protocol)).toMatchObject({ kind: "LIST_ITEM", sourceText: "- [ ] Forneci protocolo?", canonicalBehavior: "PROVIDE_PROTOCOL" })
     expect(entry(REF.deadline)).toMatchObject({ kind: "SENTENCE", heading: "35. Prazo da análise", canonicalBehavior: "INFORM_DEADLINE" })
     expect(entry(REF.recap)).toMatchObject({ kind: "COMPOSITE_LIST", composite: true, canonicalBehavior: "RECAPITULATE_INTERACTION", processRequirement: "REQUIRED", assessmentRequirement: "MUST_ASSESS", assessmentBasis: "PROCESS_REQUIRED", primaryProcess: true })
-    // Nenhuma fala-modelo, lista de referência ou seção de exemplos (Jeito Vivo "Perguntas recomendadas") vira etapa.
+    // Nenhuma fala-modelo, lista de referência ou seção de exemplos (Jeito Telnova "Perguntas recomendadas") vira etapa.
     expect(CATALOG.entries.some((candidate) => /cinco dias úteis\. O retorno|Ajuste dentro da alçada|A solução atendeu/.test(candidate.sourceText))).toBe(false)
     // Pergunta PRESCRITA por "Perguntar:" é etapa (regra), mesmo entre aspas.
     expect(CATALOG.entries.find((candidate) => candidate.sourceText === "- “As informações ficaram claras?”")).toMatchObject({ segmentRole: "RULE", canonicalBehavior: "CONFIRM_UNDERSTANDING" })
@@ -75,7 +75,7 @@ describe("V1.7.1n — catálogo de etapas (checkpointRef) e representação apre
 
   it("§10/§11 obrigatória NO PROCESSO só para a recapitulação composta do processo PRIMÁRIO com o plano de cobertura ativo; transversal nunca", () => {
     expect(CATALOG.entries.filter((entry) => entry.processRequirement === "REQUIRED").map((entry) => entry.ref)).toEqual([REF.recap])
-    // "Recapitulei as ações?" (checklist do procedimento) e "Recapitulei a solução" (Jeito Vivo) = só apoio do mesmo comportamento.
+    // "Recapitulei as ações?" (checklist do procedimento) e "Recapitulei a solução" (Jeito Telnova) = só apoio do mesmo comportamento.
     expect(CATALOG.entries.filter((entry) => entry.assessmentRequirement === "SUPPORT_ONLY").map((entry) => entry.sourceText)).toEqual(["- [ ] Recapitulei as ações?", "- Recapitulei a solução;"])
     // V1.7.3 — transversal nunca é MUST_ASSESS por conta própria.
     expect(CATALOG.entries.filter((entry) => entry.assessmentRequirement === "MUST_ASSESS").every((entry) => entry.primaryProcess)).toBe(true)

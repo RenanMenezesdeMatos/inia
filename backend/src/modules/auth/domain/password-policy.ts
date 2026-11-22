@@ -19,7 +19,7 @@ export const PASSWORD_POLICY_MESSAGES: Record<PasswordPolicyViolation, string> =
 
 /**
  * Palavras-base das senhas que se tenta primeiro numa conta (listas públicas de senhas vazadas, em português, e termos da
- * operação): "palavra + números/símbolos" — Senha123, Vivo2026, Mudar@123, Primavera2026 — é recusado (achado AUTH-12 da
+ * operação): "palavra + números/símbolos" — Senha123, Empresa2026, Mudar@123, Primavera2026 — é recusado (achado AUTH-12 da
  * auditoria de 17/10/2026). Espelhada em frontend/src/schemas/auth/password-policy.ts para o checklist ao vivo.
  */
 export const PREDICTABLE_PASSWORD_WORDS: readonly string[] = [

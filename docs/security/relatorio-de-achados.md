@@ -1024,3 +1024,36 @@ Revisões de 21/11/2026 (com o responsável de volta):
   `docs/dev/memoria/agentes-e-conhecimento.md` § "Associar agentes a partir da base". Sem mudança de comportamento; provas de banco das
   áreas tocadas rodadas uma a uma (associação, alcance das bases, multi-grupo, opções do seletor, envio com acompanhamento, OCR, imagens,
   ciclo de versão, universo) e a prova nova `knowledge-agent-fit-proof`.
+
+## Décima segunda rodada (22/11/2026, run-9: segurança por recorte, QA e arquitetura, arquitetura de dados, varredura AppSec)
+
+Escopo: `6d1b8b13..ec7424d9` (258 arquivos, migrations 246 e 247): login pela rede (AD por LDAPS, conta de emergência, ciência pela
+matrícula), feedback com as 3 falhas mais graves e posse renovada do motor (ENGINE_LEASE_V1), monitoria aleatória e regra de chamada curta,
+aviso de base grande e a retirada do nome do cliente do que vai ao GitHub. Novidade: um auditor de **arquitetura de dados** do esquema
+inteiro (catálogo, estatísticas e EXPLAIN sem ANALYZE no banco de dev, só leitura), com um checklist de boas práticas de PostgreSQL de uma
+skill pública. Relatórios em `~/security-audit-skill/inia/run-9/agents/{sec-login-rede,sec-feedback-workflows,qa-arquitetura,dados}/relatorio.md`.
+Nenhum achado crítico; nenhum vazamento entre organizações. Varredura AppSec (Semgrep, Gitleaks, OSV): 0 achado novo.
+
+| Id | Sev. | Achado | Situação |
+|---|---|---|---|
+| R12-01 (SLR-01) | Média | A trava de 3 falhas da matrícula usava janela fixa; o AD só zera depois de 15 min sem falha — uma tentativa a cada 5 min nunca travava e bloqueava a conta de rede na 10ª | Corrigido: trava por cadeia de falhas (`networkLoginThrottle`), com teste da tentativa a cada 5 min |
+| R12-02 (SLR-02, QA-01) | Alta para ligar | O limite por IP + login lia só o e-mail: todas as matrículas atrás do mesmo IP (VDI, NAT) dividiam 20 logins em 5 min | Corrigido: chave `ip\|matricula:<X>`; 429 fala em matrícula |
+| R12-03 (SLR-05, DADOS-02, QA-09) | Alta para ligar | Ciência pela rede chamava o AD dentro de transação e pedia uma 2ª conexão do pool | Corrigido: três passos, AD fora de transação; 409 `READ_CONFIRMATION_ACCOUNT_CHANGED` se a conta mudou no meio |
+| R12-04 (SLR-06) | Baixa | Matrícula repetida por maiúscula/espaço deixava a pessoa sem entrar | Corrigido: a tela lista as repetidas e ligar recusa (409 `NETWORK_LOGIN_AMBIGUOUS_MATRICULA`); índice de expressão (248) |
+| R12-05 (QA-02/03/04, SLR-09 parte) | Média–Baixa | Falha ao ler as opções de login caía em silêncio no e-mail; contador de tentativas errado na ciência; mensagem da trava trocada pela genérica; senha de rede travada sem evento FAILED | Corrigido |
+| R12-06 (ARQ-01/02/03, QA-10) | Média–Baixa | Catálogo de erros sem os códigos do login; SQL na apresentação; estados de tela fora do catálogo; regras novas sem teste | Corrigido: códigos declarados no formato do inventário (981), repositório em `auth/infrastructure`, estados do kit, testes da rota admin, `login-options`, recusas e ciência |
+| R12-07 (SFW-01/02, ARQ-05) | Média | Posse do motor pelo relógio do processo e quem perdia a posse continuava pagando e gravando | Corrigido: posse pelo `now()` do banco; `lease.guard` antes de cada chamada de modelo; conclusão só da dona (tentativa) |
+| R12-08 (SFW-03) | Baixa | Junção de especialistas dizia "fez bem" e "faltou" da mesma conduta; achado com chave parcial sumia inteiro | Corrigido: fica o ajuste; conflito em `brief.mergeConflicts` (auditoria); `FEEDBACK_COMPOSITION_V38` |
+| R12-09 (DADOS-01, SFW-04/05, QA-05, ARQ-04, B-07) | Alta (dados) | "Já tem monitoria?" varria 4 tabelas por chamada e o sorteio conferia só 25 e afirmava algo falso; nova tentativa sorteava outra chamada; fuso padrão; transcrição descomprimida | Corrigido: exclusão no SQL do sorteio (uma consulta), escolha reaproveitada na nova tentativa, fuso da organização, `RANDOM_MONITORING_SAMPLE_V2` gravado; índices na 248 |
+| R12-10 (DADOS-03..06, B-03, B-09) | Média–Baixa | `feedbacks(case_id)` sem índice; 5 índices redundantes; estatísticas de série velhas; contagem de execuções lendo o histórico; agrupamento em memória quadrático | Corrigido: migration 248 e `Map` em `structure-overview.ts` |
+| R12-11 (SFW-06/08/09, QA-07/11) | Baixa | Teste da senha sem o nome do cliente; marca fictícia em exemplos de campo e na Wiki; Salvar habilitado sem permissão | Corrigido: teste percorre a lista inteira; exemplos neutros; `canEdit` na regra de chamada curta |
+
+Aceitos (risco registrado, sem mudança): SLR-03 (quem tem conta pode ser notado pela resposta do AD fora do ar/lento ou "conta de rede
+bloqueada" — mandar ao AD matrícula sem conta deixaria a INIA bloquear contas de rede de terceiros), SLR-04 (servidor que cai depois de
+receber a senha passa ao próximo sem contar na trava), SLR-07 (a marca de emergência não tem tela; tentativas erradas contra ela não
+avisam), SLR-08 (HTTPS conferido só ao ligar; `SECLEVEL=1` na conexão com o AD), SLR-09 (ligar não encerra as sessões abertas com senha
+local), QA-06 (ajuste recusado pelo verificador entre os 3 — decisão de produto), SFW-07 (a trava "não repetir a V11" fica no script
+congelado), QA-08 (cenários de dev buscam bases pelo título antigo), QA-12. Em aberto: R-50. Dados: os itens "quando o volume crescer" e
+o que está bom como está ficaram em `docs/dev/memoria/banco-e-consultas.md` § "Auditoria de arquitetura de dados — run-9".
+Provas de banco rodadas uma a uma no banco de teste com a 248: login-throttle, read-confirmation, feedback-engine-workflow, feedback-delivery,
+installation, workflow-engine-concurrency.

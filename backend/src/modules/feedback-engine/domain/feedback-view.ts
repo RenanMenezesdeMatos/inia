@@ -39,6 +39,8 @@ export type FeedbackViewDevelopment = {
   suggestedResponseProduct?: string | null
   itemIndexes: number[]
   consolidates?: string[]
+  /** `NARRATIVE_TOP_FAILURES_V1`: ponto que o texto não detalha (além dos 3 mais graves) — só fatos do sistema, mostrado nos cards. */
+  beyondNarrative?: true
 }
 /** `INDICATOR_SUBJECTS_V1` — os assuntos da pessoa nos dois períodos (texto pronto do sistema; a tela só exibe). */
 export type FeedbackViewSubjectRow = { label: string; previous: string | null; current: string | null; change: string | null; trend: "WORSE" | "BETTER" | "STABLE" | "NOT_COMPARED"; reading: string; focus: boolean; analyzed: string | null }
@@ -296,18 +298,31 @@ function shownFindingsOf(brief: FeedbackBrief, communicatedRefs: readonly string
  * reprojetar os feedbacks já publicados (`reproject-feedback-materials.ts`).
  */
 export function viewMaterialsOf(brief: FeedbackBrief, communicatedRefs?: readonly string[]): FeedbackView["materials"] {
-  const { developmentsShown, strengthsShown } = shownFindingsOf(brief, communicatedRefs)
+  const shown = shownFindingsOf(brief, communicatedRefs)
+  const strengthsShown = shown.strengthsShown
+  // `NARRATIVE_TOP_FAILURES_V1`: os ajustes só dos cards também sustentam material (o colaborador lê cada um nos detalhes).
+  const developmentsShown = [...shown.developmentsShown, ...(brief.additionalDevelopments ?? [])]
   if (brief.developments.length > 0) return brief.materials.filter((material) => developmentsShown.some((finding) => finding.criterionKeys.some((key) => material.criterionKeys.includes(key)))).map((material) => ({ documentId: material.documentId, title: material.title, href: null, usedIn: material.usedIn.filter((title) => developmentsShown.some((finding) => finding.title === title)), sections: material.sections }))
   return materialsOf(strengthsShown, new Map()).map((material) => ({ documentId: material.documentId, title: material.title, href: null, usedIn: material.usedIn, sections: material.sections }))
 }
 
 /**
- * Os detalhes mostram a PROVA só dos pontos que a mensagem comunicou (`communicatedRefs`): um ponto que a narrativa não
- * mencionou não aparece "de surpresa" nos detalhes nem é marcado como entregue — continua na memória.
+ * Os detalhes mostram a PROVA dos pontos que a mensagem comunicou (`communicatedRefs`) — um dos 3 mais graves que a narrativa não
+ * conseguiu dizer (frase recusada pelo verificador) não aparece "de surpresa" nem é marcado como entregue. `NARRATIVE_TOP_FAILURES_V1`:
+ * os ajustes além dos 3 (`additionalDevelopments`) aparecem todos nos cards, marcados `beyondNarrative`, e o texto ganha o aviso do
+ * sistema que aponta para eles.
  */
 export function feedbackViewOf(brief: FeedbackBrief, message: { card: string; paragraphs: string[]; sentences: readonly ComposedSentence[]; communicatedRefs?: readonly string[] }): FeedbackView {
-  const { communicated, developmentsShown, strengthsShown } = shownFindingsOf(brief, message.communicatedRefs)
-  const developments = developmentsShown.flatMap((finding, index) => ((finding.steps ?? []).length > 1 ? stepDevelopmentsOf(finding, finding.steps!, index) : [developmentOf(finding, index)]))
+  const { communicated, developmentsShown: narratedShown, strengthsShown } = shownFindingsOf(brief, message.communicatedRefs)
+  // `NARRATIVE_TOP_FAILURES_V1`: além dos ajustes que o texto comunicou, TODOS os demais da chamada aparecem nos cards (mesmo card, só fatos
+  // do sistema: fala literal, ausência confirmada, regra literal e fraseologia oficial — nunca leitura do modelo).
+  const beyond = brief.additionalDevelopments ?? []
+  const developmentsShown = [...narratedShown, ...beyond]
+  const cardsOf = (finding: BriefFinding, index: number) => ((finding.steps ?? []).length > 1 ? stepDevelopmentsOf(finding, finding.steps!, index) : [developmentOf(finding, index)])
+  const developments = [
+    ...narratedShown.flatMap((finding, index) => cardsOf(finding, index)),
+    ...beyond.flatMap((finding, index) => cardsOf(finding, narratedShown.length + index).map((card) => ({ ...card, beyondNarrative: true as const }))),
+  ]
   const maintain = strengthsShown.length > 0
     ? {
         // Sem resumo: a narrativa já reconheceu; aqui fica a PROVA (a fala e o fato do sistema), não uma repetição nem o "por que importa"
@@ -332,7 +347,7 @@ export function feedbackViewOf(brief: FeedbackBrief, message: { card: string; pa
     heading: brief.heading,
     card: message.card,
     greeting: null,
-    narrative: withOfficialTable(message.paragraphs, brief.domain === "INDICATOR" ? officialTableMarkdownOf(brief.officialTable) : null),
+    narrative: [...withOfficialTable(message.paragraphs, brief.domain === "INDICATOR" ? officialTableMarkdownOf(brief.officialTable) : null), ...beyondNarrativeNoteOf(beyond.length)],
     developments,
     maintain,
     attention,
@@ -350,6 +365,14 @@ export function feedbackViewOf(brief: FeedbackBrief, message: { card: string; pa
         }
       : {}),
   }
+}
+
+/** Aviso do SISTEMA no fim do texto quando há ajustes além dos detalhados: onde o colaborador encontra cada um. */
+export function beyondNarrativeNoteOf(count: number): string[] {
+  if (count <= 0) return []
+  return [count === 1
+    ? "Esta chamada teve mais um ponto de melhoria. Você encontra os detalhes dele em “Entenda este feedback”, no bloco “O que precisa ser ajustado”."
+    : `Esta chamada teve mais ${count} pontos de melhoria. Você encontra os detalhes de cada um em “Entenda este feedback”, no bloco “O que precisa ser ajustado”.`]
 }
 
 /**

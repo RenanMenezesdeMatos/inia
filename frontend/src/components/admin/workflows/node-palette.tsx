@@ -5,7 +5,7 @@ import { Bot, ClipboardCheck, Clock, Flag, GitBranch, GitMerge, Send, ShieldChec
 import type { FlowNode, FlowNodeType } from "@/schemas/admin/workflow-graph.schema"
 import { cn } from "@/lib/utils"
 
-import { NODE_COLORS } from "./node-visuals"
+import { nodeColorsFor } from "./node-visuals"
 
 export type ActionPreset = Extract<FlowNode, { type: "action" }>["config"]["actionType"]
 
@@ -96,7 +96,7 @@ export function NodePalette({ isConsolidatedMode, onAddNode }: { isConsolidatedM
           <p className="pt-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">{group.title}</p>
           {group.entries.map((entry) => {
             const Icon = entry.icon
-            const colors = NODE_COLORS[entry.type]
+            const colors = nodeColorsFor(entry.type, entry.actionType)
             return (
               <div
                 key={entry.id}

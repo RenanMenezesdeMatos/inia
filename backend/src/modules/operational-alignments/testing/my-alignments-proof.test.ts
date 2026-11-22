@@ -80,7 +80,7 @@ describe.skipIf(!ENABLED)("Alinhamento no Acompanhamento do operador — prova P
     const gestor = await login(admin.email)
     const base = "/api/v1/admin/operational-alignments"
     const reasonId = (await client.query<{ id: string }>("select id from operational_alignment_reasons where organization_id = $1 and name = 'Contingência'", [ORG])).rows[0]!.id
-    const body = { reasonId, title: "Fatura pelo App Meu Vivo", guidance: "Oriente o cliente a acessar a fatura pelo App Meu Vivo. Não envie a fatura.", affectedDocumentIds: [doc], affectedTopic: "Envio da fatura", justification: "Envio suspenso durante a troca do sistema de faturas.", operatingUniverse: "B2C", scopeType: "TEAM", teamId: ouvidoria, startsOn: civil(-2), endsOn: civil(10) }
+    const body = { reasonId, title: "Fatura pelo App Meu Telnova", guidance: "Oriente o cliente a acessar a fatura pelo App Meu Telnova. Não envie a fatura.", affectedDocumentIds: [doc], affectedTopic: "Envio da fatura", justification: "Envio suspenso durante a troca do sistema de faturas.", operatingUniverse: "B2C", scopeType: "TEAM", teamId: ouvidoria, startsOn: civil(-2), endsOn: civil(10) }
     const publish = async (payload: typeof body, relations: { alignmentId: string; relation: string }[] = []) => {
       const id = (await gestor.post(base).send(payload)).body.data.id as string
       const published = await gestor.post(`${base}/${id}/publish`).send({ relations })
@@ -102,7 +102,7 @@ describe.skipIf(!ENABLED)("Alinhamento no Acompanhamento do operador — prova P
 
     // No chat, "temos algum alinhamento?" usa a MESMA leitura, de todos os processos: os dois aparecem para ela; o outro Grupo não tem nenhum.
     const inForce = (await executeAlignmentsInForce(client, { organizationId: ORG, personId: ana.id })).text
-    expect(inForce).toContain('"Fatura pelo App Meu Vivo" — em vigor')
+    expect(inForce).toContain('"Fatura pelo App Meu Telnova" — em vigor')
     expect(inForce).toContain('"Prazo de retorno da Ouvidoria" — começa em')
     expect(inForce).toContain("Definido por: Proof MA 1")
     expect((await executeAlignmentsInForce(client, { organizationId: ORG, personId: caio.id })).text).toContain("Nenhum alinhamento operacional vale hoje nem está programado")
@@ -130,7 +130,7 @@ describe.skipIf(!ENABLED)("Alinhamento no Acompanhamento do operador — prova P
     const alignmentItems = async (extra: Record<string, unknown> = {}) => (await repository.loadFollowUpFeed({ ...feedBase, ...extra })).items.filter((item) => item.kind === "ALIGNMENT")
     const all = await alignmentItems()
     expect(all.map((item) => item.id).sort()).toEqual([emVigor, aComecar].sort())
-    expect(all.find((item) => item.id === emVigor)).toMatchObject({ category: "ALIGNMENT", title: "Fatura pelo App Meu Vivo", alignment: { reach: { people: 2, read: 1 } } })
+    expect(all.find((item) => item.id === emVigor)).toMatchObject({ category: "ALIGNMENT", title: "Fatura pelo App Meu Telnova", alignment: { reach: { people: 2, read: 1 } } })
     expect((await alignmentItems({ types: ["ALIGNMENT"] })).length).toBe(2)
     expect((await repository.loadFollowUpFeed({ ...feedBase, types: ["ALIGNMENT"] })).items.every((item) => item.kind === "ALIGNMENT")).toBe(true)
     expect(await alignmentItems({ types: ["MONITORING"] })).toEqual([])
@@ -144,14 +144,14 @@ describe.skipIf(!ENABLED)("Alinhamento no Acompanhamento do operador — prova P
     expect([...firstPage.items, ...secondPage.items].map((item) => item.id).sort()).toEqual([emVigor, aComecar].sort())
 
     // Nova versão: enquanto não começa, o item continua na v1 (lida); quando começa, mostra a v2 com o motivo e pede leitura de novo.
-    expect((await gestor.put(`${base}/${emVigor}/draft`).send({ ...body, startsOn: civil(1), guidance: "Oriente o App Meu Vivo ou o site.", changeReason: "Inclusão do site" })).status).toBe(200)
+    expect((await gestor.put(`${base}/${emVigor}/draft`).send({ ...body, startsOn: civil(1), guidance: "Oriente o App Meu Telnova ou o site.", changeReason: "Inclusão do site" })).status).toBe(200)
     expect((await gestor.post(`${base}/${emVigor}/publish`).send({ relations: [{ alignmentId: aComecar, relation: "INDEPENDENT" }] })).status).toBe(200)
     const atV1 = (await listMyAlignments(client, { organizationId: ORG, personId: ana.id })).find((item) => item.alignmentId === emVigor)!
     expect(atV1).toMatchObject({ version: 1, state: "IN_FORCE" })
     expect(atV1.readAt).not.toBeNull()
     const v2At = new Date(Date.now() + 2 * DAY)
     const atV2 = (await listMyAlignments(client, { organizationId: ORG, personId: ana.id, now: v2At })).find((item) => item.alignmentId === emVigor)!
-    expect(atV2).toMatchObject({ version: 2, state: "IN_FORCE", changeReason: "Inclusão do site", readAt: null, guidance: "Oriente o App Meu Vivo ou o site." })
+    expect(atV2).toMatchObject({ version: 2, state: "IN_FORCE", changeReason: "Inclusão do site", readAt: null, guidance: "Oriente o App Meu Telnova ou o site." })
     expect((await markMyAlignmentRead(client, { organizationId: ORG, personId: ana.id, alignmentId: emVigor, versionId: atV2.versionId, now: v2At })).readAt).toBeTruthy()
 
     // Depois do fim: histórico "não vale mais desde" (dia seguinte ao último) e sem leitura.

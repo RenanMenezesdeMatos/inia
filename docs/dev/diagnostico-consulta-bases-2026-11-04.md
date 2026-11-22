@@ -4,7 +4,7 @@ Somente diagnóstico, com código, testes, rastros e amostras já existentes. `P
 
 ## A. Veredito
 
-O maior custo medido é a decisão depois da leitura: mediana de 12,9 s em pergunta nova (n=17) e 30,8 s na continuação de Banda Larga (n=4), contra cerca de 7 s da decisão que pede leitura. A perda mais frequente vem antes dela, na escolha do que ler: q08 perdeu débitos e prazo em 5 de 14 amostras padrão sem que essas seções tivessem sido lidas. A segunda seleção descartou informação necessária em Banda Larga (1 de 12 no padrão, em contexto congelado; as outras 11 perguntaram), mas nas 11 amostras padrão em que descartou seções nenhuma seção esperada se perdeu. Os três casos de omissão têm o esperado em base fictícia de teste, competindo com um procedimento amplo, então não se sabe quanto valem para o catálogo da Vivo. Não há evidência para mudar a arquitetura nem para eliminar a segunda decisão, que também pergunta, recusa e declara conflitos.
+O maior custo medido é a decisão depois da leitura: mediana de 12,9 s em pergunta nova (n=17) e 30,8 s na continuação de Banda Larga (n=4), contra cerca de 7 s da decisão que pede leitura. A perda mais frequente vem antes dela, na escolha do que ler: q08 perdeu débitos e prazo em 5 de 14 amostras padrão sem que essas seções tivessem sido lidas. A segunda seleção descartou informação necessária em Banda Larga (1 de 12 no padrão, em contexto congelado; as outras 11 perguntaram), mas nas 11 amostras padrão em que descartou seções nenhuma seção esperada se perdeu. Os três casos de omissão têm o esperado em base fictícia de teste, competindo com um procedimento amplo, então não se sabe quanto valem para o catálogo do cliente. Não há evidência para mudar a arquitetura nem para eliminar a segunda decisão, que também pergunta, recusa e declara conflitos.
 
 ## B. Estado analisado
 
@@ -115,7 +115,7 @@ VOZ: as mesmas etapas por /tool-call (router:887), sem redação em fluxo.
 | --- | --- | --- | --- | --- | --- | --- |
 | 1. Manter o fluxo, preservando a evidência da escolha | seção lida de base citada pela opção escolhida entra na redação, dentro de 24 mil | nenhum; acrescenta contexto (benefício: hipótese) | ataca A1-6; só a escolha atual, com versão e acesso de agora | contexto maior; não resolve o que não foi lido | nenhuma | pequeno |
 | 2. Ler inteira a base pequena tocada | seção lida ou base escolhida de até 8 mil entra inteira, ampliando o `readSmallBases` da branch | rodada de READ na continuação (medido, misturado com cache: 3 → 2 chamadas); na qualidade, hipótese | cobre q08 e `complementar` OFF 2; mantém tetos; regra só de tamanho e origem | 2 de 14 bases sem título de teste são pequenas; a decisão ainda pode não citar; não cobre Segunda via | nenhuma | pequeno |
-| 3. Unir decisão final e redação | a chamada depois da leitura já redige quando decidir responder | uma chamada no caminho ANSWER (hipótese) | exige manter CLARIFY, INSUFFICIENT, conflitos e marcadores | muda prompt e contrato; qualidade sensível ao raciocínio (Etapa A) | saída estruturada em fluxo; não medida na Vivo | alto |
+| 3. Unir decisão final e redação | a chamada depois da leitura já redige quando decidir responder | uma chamada no caminho ANSWER (hipótese) | exige manter CLARIFY, INSUFFICIENT, conflitos e marcadores | muda prompt e contrato; qualidade sensível ao raciocínio (Etapa A) | saída estruturada em fluxo; não medida no cliente | alto |
 
 As regras acima são genéricas de integridade, sem lista de palavras nem regra de negócio. Nenhuma envia todas as bases: o relevante continua vindo da escolha da pessoa e da seção que a IA pediu.
 
@@ -126,7 +126,7 @@ As regras acima são genéricas de integridade, sem lista de palavras nem regra 
 - **Por que:** a causa mais frequente observada é a seção não lida, não o descarte depois da leitura. A alternativa 2 atua nela sem prompt nem contrato; a 1 cobre o caso restante.
 - **Preservar:** a decisão pós-leitura com CLARIFY, INSUFFICIENT e conflitos; citar por título; versão, acesso e cenário abandonado; marcadores.
 - **Evidência que falta:**
-  - catálogo da Vivo: quantas bases pequenas e quantas sobreposições entre bases;
+  - catálogo do cliente: quantas bases pequenas e quantas sobreposições entre bases;
   - resposta final de q08 (a redação não foi chamada);
   - rastro por seção (lidas, citadas, filtradas, levadas à redação), sem conteúdo;
   - saída bruta fora da Etapa A;
@@ -142,7 +142,7 @@ As regras acima são genéricas de integridade, sem lista de palavras nem regra 
 - Os tetos de 15 mil, 30 mil e 24 mil continuam valendo, e corte vira registro.
 - Pergunta nova sem base pequena envia exatamente os mesmos prompts.
 
-**2. Comparação futura com a Vivo, não executar:**
+**2. Comparação futura com o cliente, não executar:**
 
 | Caso | Conteúdo esperado | Falha crítica |
 | --- | --- | --- |
@@ -155,7 +155,7 @@ As regras acima são genéricas de integridade, sem lista de palavras nem regra 
 | 24 horas × § 30 e contradição controlada | avisar e mostrar os dois lados | conflito omitido |
 | Alteração de escolha; acesso removido | só o cenário e o acesso atuais | conteúdo abandonado ou fora do acesso |
 
-Rodada inicial pequena, por cenário, com preço e limites confirmados na conexão da Vivo. Custo: não estimado.
+Rodada inicial pequena, por cenário, com preço e limites confirmados na conexão do cliente. Custo: não estimado.
 
 ## I. Índice de evidências
 

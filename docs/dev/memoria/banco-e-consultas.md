@@ -130,3 +130,39 @@ Para a lacuna não virar ordem diferente entre instalação nova e banco atualiz
 pendente com número menor que a mais nova já aplicada (`outOfOrderMigrations`, `MigrationOrderError`; teste `run-migrations.test.ts`).
 Migration nova entra sempre depois da última aplicada (hoje, 246 em diante). O `inia_holdout_v2`, congelado, tem pendências fora de ordem
 desde a homologação e nunca é migrado.
+
+### Auditoria de arquitetura de dados — run-9 (22/11/2026, migration 248)
+
+Pergunta: as estruturas de dados são as mais eficientes? Resposta medida no banco de dev (catálogo, estatísticas e EXPLAIN sem
+ANALYZE; sem `pg_stat_statements`) e projetada para o volume de produção desta memória e de escala-e-operacao: **na maior parte, sim**.
+Checklist de referência: boas práticas genéricas de PostgreSQL (lidas de uma skill pública), sempre conferidas contra o uso real.
+
+Corrigido nesta rodada:
+- Entrega única da monitoria (`deliveredMonitoringOfSql`) varria `feedbacks`, `feedback_engine_messages` e `evidences` inteiras por chamada
+  e a monitoria aleatória a chamava em série; reescrita para excluir as já monitoradas no próprio SQL do sorteio.
+- Ciência pela rede chamava o AD dentro de transação aberta (e pedia uma 2ª conexão do pool): AD agora fora de transação.
+- 248: `feedbacks (case_id)`; `people (upper(btrim(matricula)))` NÃO único de propósito (achar a matrícula repetida); parcial de
+  execuções vivas por Workflow; 5 índices que repetiam o começo de um único removidos (o maior: `idx_interaction_flags_interaction`);
+  `autovacuum_*` mais frequente em `indicator_measurements_all` (em `_all`, a visão não aceita), `interactions`, `transcripts`,
+  `interaction_flags` e `ai_usage_events` (estatística de "últimos N dias" ficava ~37 dias atrasada).
+- Agrupamento em memória por indicador em `structure-overview.ts` (`Map` em vez de `filter` por definição).
+
+Fica para quando o volume crescer (cada um com o gatilho; não fazer antes):
+- UUIDv7 como default do `id` em `interactions`, `transcripts`, `interaction_flags` e `indicator_measurements_all` — índices dessas
+  tabelas > ~50% da RAM do servidor de dados ou `apply` da carga subindo mês a mês. Só o default muda (PG17 não tem `uuidv7()`).
+- FKs sem índice criadas depois da 137 (best_practice_*, `workflow_enrollment_events.agent_run_id`, `workday_reconciliations.alert_id`,
+  `assistant_interaction_ratings`…) e as proteções da retenção apontando para a visão — ANTES de ligar a primeira política de retenção.
+- `ai_usage_events` com 12 índices — junto com a partição mensal (> 10 M linhas).
+- Read model em tabelas UNLOGGED (~1 GB/dia de WAL de dado derivado) — se o WAL incomodar; exige detectar "vazio ⇒ reconstruir".
+- `fillfactor = 90` em `indicator_measurements_all` — se `n_tup_upd / n_tup_ins` > 20%.
+- Sorteio sem descomprimir transcrição (ingestão garantir que vazia não é gravada) — janela mensal em escala.
+- Keyset nas listas de rejeições da carga (Run > 50 mil rejeições); índices de `goals` por equipe (> 50 mil), lista de casos
+  (> 100 mil), sucesso em `auth_login_attempts` (força bruta).
+- Partição: não agora. Ordem quando a retenção for decidida: `ai_usage_events`, `transcripts`, `indicator_measurements_all`;
+  `interactions` continua com DELETE em lotes (13 FKs apontam para ela).
+- `pg_stat_statements` na tabela de parâmetros da instalação (instalação nova sem custo; na VM só com janela combinada).
+
+Está bom como está (e por quê): uuid nas tabelas de negócio e configuração (pequenas); `organization_id` na frente dos índices;
+FKs para pais que nunca são apagados; visões sobre `_all` (o planejador usa os índices sem parcial em `deleted_at`); cargas em lote
+set-based com `on conflict ... where mudou`; triggers por statement; jsonb em `node_outputs`; text + check; posse renovada a cada 40 s;
+`auth_login_attempts` com `matricula:<X>`; os 5 índices de medições.

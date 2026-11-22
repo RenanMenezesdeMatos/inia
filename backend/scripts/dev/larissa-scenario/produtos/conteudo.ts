@@ -14,8 +14,8 @@
  *     Voz Avançada (SIP + DDR) VA1 vai ao e-mail do gestor do contrato, em até 1 dia útil · VA2 confirmar CNPJ e nome do gestor
  *     SIP                      SIP1 detalhamento de chamadas por tronco: Portal Empresas, em até 48 horas
  *     Dados + Soluciona TI     DS1 fatura no Portal Empresas; reenvio pelo gerente de contas em até 3 dias úteis · DS2 citar a LP (IP Dedicado,
- *     (IP Ded., Coloc., VSTI)  Colocation) ou o número do contrato (Vivo Soluciona TI) como referência
- *     Vivo Soluciona TI        VS1 nota fiscal do aluguel é separada da fatura; por e-mail em até 5 dias úteis após o fechamento · VS2 informar
+ *     (IP Ded., Coloc., VSTI)  Colocation) ou o número do contrato (Telnova Soluciona TI) como referência
+ *     Telnova Soluciona TI        VS1 nota fiscal do aluguel é separada da fatura; por e-mail em até 5 dias úteis após o fechamento · VS2 informar
  *                              a quantidade de equipamentos do contrato
  *   REPARO
  *     Geral (todos)            R1 confirmar titular e a linha/serviço afetado · R2 testes básicos do produto ANTES do chamado · R3 abrir o chamado
@@ -30,7 +30,7 @@
  *     Dados Avançados (cat.)   RDA1 chamado no NOC com o número da LP · RDA2 pedir o resultado do ping/traceroute, quando houver
  *     IP Dedicado              RIPD1 prazo (SLA) de 4 horas
  *     Colocation               RCOLO1 prazo (SLA) de 2 horas · RCOLO2 acesso físico ao datacenter: agendar com 24 horas e informar os nomes
- *     Vivo Soluciona TI        RVS1 suporte remoto primeiro (com autorização) · RVS2 sem solução: troca do equipamento em até 5 dias úteis ·
+ *     Telnova Soluciona TI        RVS1 suporte remoto primeiro (com autorização) · RVS2 sem solução: troca do equipamento em até 5 dias úteis ·
  *                              RVS3 coleta do equipamento com defeito no mesmo dia da entrega do novo
  */
 import type { TestArgumentScript, TestDocument } from "./tipos.js"
@@ -41,7 +41,7 @@ const AVISO = "> Conteúdo fictício para teste do cadastro de produtos da INIA 
 /** O produto novo: uma categoria com um produto só, chamado de vários jeitos. */
 export const SOLUCIONA_TI = {
   category: { code: "SOLUCIONA_TI", name: "Soluciona TI", description: "soluciona TI" },
-  product: { code: "VIVO_SOLUCIONA_TI", name: "Vivo Soluciona TI", description: "VSTI, Vivo Soluciona TI, aluguel de equipamentos, Vivo Tech" },
+  product: { code: "TELNOVA_SOLUCIONA_TI", name: "Telnova Soluciona TI", description: "VSTI, Telnova Soluciona TI, aluguel de equipamentos, Telnova Tech" },
 } as const
 
 export const DOCUMENTS: TestDocument[] = [
@@ -146,23 +146,23 @@ O prazo e o canal da segunda via mudam conforme o produto — siga o procediment
   {
     key: "SV-DADOS-VSTI",
     process: "SEGUNDA_VIA",
-    title: `${PREFIX} Segunda via — faturamento corporativo (IP Dedicado, Colocation e Vivo Soluciona TI)`,
-    products: ["IP_DEDICADO", "COLOCATION", "VIVO_SOLUCIONA_TI"],
+    title: `${PREFIX} Segunda via — faturamento corporativo (IP Dedicado, Colocation e Telnova Soluciona TI)`,
+    products: ["IP_DEDICADO", "COLOCATION", "TELNOVA_SOLUCIONA_TI"],
     content: `${AVISO}
 
-# Segunda via — faturamento corporativo (IP Dedicado, Colocation e Vivo Soluciona TI)
+# Segunda via — faturamento corporativo (IP Dedicado, Colocation e Telnova Soluciona TI)
 
 1. A fatura fica disponível no Portal Empresas. Se o cliente pedir o reenvio, ele é feito pelo gerente de contas em até 3 dias úteis.
-2. Use como referência o número da LP (IP Dedicado e Colocation) ou o número do contrato (Vivo Soluciona TI).`,
+2. Use como referência o número da LP (IP Dedicado e Colocation) ou o número do contrato (Telnova Soluciona TI).`,
   },
   {
     key: "SV-VSTI",
     process: "SEGUNDA_VIA",
-    title: `${PREFIX} Segunda via — Vivo Soluciona TI (aluguel de equipamentos)`,
-    products: ["VIVO_SOLUCIONA_TI"],
+    title: `${PREFIX} Segunda via — Telnova Soluciona TI (aluguel de equipamentos)`,
+    products: ["TELNOVA_SOLUCIONA_TI"],
     content: `${AVISO}
 
-# Segunda via — Vivo Soluciona TI (aluguel de equipamentos)
+# Segunda via — Telnova Soluciona TI (aluguel de equipamentos)
 
 1. A cobrança do aluguel de equipamentos tem nota fiscal de serviço separada da fatura. A nota é enviada por e-mail em até 5 dias úteis depois do fechamento.
 2. Informe ao cliente a quantidade de equipamentos que consta no contrato.`,
@@ -294,11 +294,11 @@ O prazo e o canal da segunda via mudam conforme o produto — siga o procediment
   {
     key: "RP-VSTI",
     process: "REPARO",
-    title: `${PREFIX} Reparo — Vivo Soluciona TI (aluguel de equipamentos)`,
-    products: ["VIVO_SOLUCIONA_TI"],
+    title: `${PREFIX} Reparo — Telnova Soluciona TI (aluguel de equipamentos)`,
+    products: ["TELNOVA_SOLUCIONA_TI"],
     content: `${AVISO}
 
-# Reparo — Vivo Soluciona TI (aluguel de equipamentos)
+# Reparo — Telnova Soluciona TI (aluguel de equipamentos)
 
 1. Faça primeiro o suporte remoto, com o acesso remoto autorizado pelo cliente.
 2. Se o suporte remoto não resolver, abra a troca do equipamento: o prazo é de até 5 dias úteis.
@@ -376,9 +376,9 @@ export const ARGUMENT_SCRIPTS: TestArgumentScript[] = [
   {
     key: "ARG-RP-VSTI",
     process: "REPARO",
-    name: `${PREFIX} Reparo de equipamento alugado — Vivo Soluciona TI`,
-    products: ["VIVO_SOLUCIONA_TI"],
-    trigger: "O cliente do Vivo Soluciona TI relata defeito num equipamento alugado.",
+    name: `${PREFIX} Reparo de equipamento alugado — Telnova Soluciona TI`,
+    products: ["TELNOVA_SOLUCIONA_TI"],
+    trigger: "O cliente do Telnova Soluciona TI relata defeito num equipamento alugado.",
     notApplicableWhen: null,
     guidance: [{ text: "Fazer o suporte remoto antes de abrir a troca.", modality: "MUST" }],
     requiredPoints: [{ mode: "ALL", items: ["A troca do equipamento acontece em até 5 dias úteis.", "A coleta do equipamento com defeito é no mesmo dia da entrega do novo."] }],

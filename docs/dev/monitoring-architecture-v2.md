@@ -213,7 +213,7 @@ Commit `bb91dca`. No contrato V5 (monitoria) o redator de itens **não é chamad
 
 **Smoke ao vivo (3 chamadas, Workflow real, `-MW2P4`, 6 chamadas de IA, US$ 0,0112; fase 3: 10 chamadas, US$ 0,0176):**
 
-- **Mista (2):** READY, narrativa do redator aceita e correta (força Vivo em Dia independente, ajuste da garantia de aprovação).
+- **Mista (2):** READY, narrativa do redator aceita e correta (força Telnova em Dia independente, ajuste da garantia de aprovação).
 - **Desenvolvimento (4):** READY, factual, sem elogio.
   - O rascunho do redator estava correto, mas foi recusado por `GUARANTEED_EFFECT` ("para garantir a clareza").
   - Entrou o texto do sistema: "faltou avaliar se a funcionalidade… e não foi seguida a orientação “Não prometer desbloqueio imediato”".

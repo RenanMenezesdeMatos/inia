@@ -162,7 +162,7 @@ const WORDS: ReadonlyArray<readonly [string, string]> = [
   ["ok", "o . 'k e j"],
   ["app", "'E . p i"],
   ["WhatsApp", "w a t . 's a . p i"],
-  ["Vivo", "'v i . v u"],
+  ["vivo", "'v i . v u"],
   ["INIA", "i . 'n i . 6"],
   ["status", "i s . 't a . t u s"],
   // Vogal tônica aberta sem acento (léxico/sufixo) × fechada.

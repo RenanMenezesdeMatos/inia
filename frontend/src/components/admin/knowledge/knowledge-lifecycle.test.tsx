@@ -1008,3 +1008,29 @@ describe("editor da base (moldes de Publicações)", () => {
     expect(screen.getByText(/salvar grava o rascunho e não reativa a base/i)).toBeInTheDocument()
   })
 })
+
+describe("Base grande para a monitoria — aviso, nunca bloqueio", () => {
+  const big = "Regra do procedimento. ".repeat(5_000) // ~115 mil caracteres
+
+  it("versão em uso maior que o que a monitoria lê: aviso com o tamanho e o que fazer", async () => {
+    await renderDetail(detail({ monitoringReadLimitChars: 90_000, inUse: { ...IN_USE, content: big } }))
+    expect(screen.getByText("Versão em uso grande para a monitoria")).toBeInTheDocument()
+    expect(screen.getByTestId("knowledge-size-warning")).toHaveTextContent("Base grande para a monitoria: 115 mil caracteres, e a monitoria lê até 90 mil caracteres de procedimentos por chamada")
+    expect(screen.getByTestId("knowledge-size-warning")).toHaveTextContent("divida em bases menores, uma por processo")
+  })
+
+  it("rascunho grande: o aviso aparece antes de publicar, e Publicar continua disponível", async () => {
+    await renderDetail(withDraft({ monitoringReadLimitChars: 90_000, draft: { ...DRAFT, content: big } }))
+    expect(screen.getByTestId("knowledge-size-warning")).toHaveTextContent("115 mil caracteres")
+    expect(screen.getByRole("button", { name: /Publicar/ })).toBeEnabled()
+  })
+
+  it("base dentro do limite, ou resposta antiga sem o limite: nenhum aviso", async () => {
+    await renderDetail(detail({ monitoringReadLimitChars: 90_000 }))
+    expect(screen.queryByTestId("knowledge-size-warning")).toBeNull()
+    cleanup()
+    await renderDetail(detail({ inUse: { ...IN_USE, content: big } }))
+    expect(screen.queryByTestId("knowledge-size-warning")).toBeNull()
+  })
+})
+

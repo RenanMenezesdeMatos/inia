@@ -2,7 +2,7 @@
  * V1.7.1m — DOCUMENTO PRIMÁRIO DO PROCESSO (`PRIMARY_PROCESS_DOCUMENT_V1`, domínio puro, sem LLM, nunca pelo ranking).
  *
  * No smoke V1.7.1l o plano de cobertura do fechamento elegeu como "processo" o documento de MAIOR relevância somada no ranking
- * lexical — o "Procedimento Operacional Jeito Vivo de Atender", uma diretriz TRANSVERSAL de atendimento — e as seções de
+ * lexical — o "Procedimento Operacional Jeito Telnova de Atender", uma diretriz TRANSVERSAL de atendimento — e as seções de
  * fechamento do procedimento ESPECÍFICO (46. Recapitulação obrigatória, 47, 48 de "Contestação de Contas Móvel") ficaram fora.
  * A recapitulação composta do processo real foi substituída pelo "Recapitulei as ações?" genérico.
  *

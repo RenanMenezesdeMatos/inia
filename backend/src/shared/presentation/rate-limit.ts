@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express"
 import { createMemoryRateLimitStore, rateLimitBucket, type MaybePromise, type RateLimitDecision, type RateLimitStore } from "../application/rate-limit/rate-limit-store.js"
+import { normalizeNetworkLogin } from "../../modules/auth/domain/network-login.js"
 
 export { rateLimitBucket }
 
@@ -26,7 +27,8 @@ export type RateLimitRule = {
    * (achado AUTH-2). O teto vale para falhas + tentativas ainda em andamento.
    */
   countOnlyFailures?: boolean
-  message?: string
+  /** Mensagem do 429; uma função escolhe pela requisição (ex.: login por e-mail × pela matrícula). */
+  message?: string | ((request: Request) => string)
 }
 
 const STORE_WARNING_INTERVAL_MS = 60_000
@@ -45,7 +47,7 @@ function settle(ruleName: string, pending: MaybePromise<void>): void {
 }
 
 export function createRateLimiter(rule: RateLimitRule, store: RateLimitStore = createMemoryRateLimitStore()) {
-  const message = rule.message ?? "Muitas requisições em pouco tempo. Aguarde um instante e tente de novo."
+  const messageOf = (request: Request) => (typeof rule.message === "function" ? rule.message(request) : rule.message) ?? "Muitas requisições em pouco tempo. Aguarde um instante e tente de novo."
 
   return function rateLimit(request: Request, response: Response, next: NextFunction) {
     if (rule.max <= 0) return next()
@@ -56,7 +58,7 @@ export function createRateLimiter(rule: RateLimitRule, store: RateLimitStore = c
       if (!decision.allowed) {
         const retryAfterSeconds = Math.max(1, Math.ceil(decision.retryAfterMs / 1000))
         response.set("Retry-After", String(retryAfterSeconds))
-        response.status(429).json({ error: { code: "RATE_LIMITED", message, details: { retryAfterSeconds } } })
+        response.status(429).json({ error: { code: "RATE_LIMITED", message: messageOf(request), details: { retryAfterSeconds } } })
         return
       }
       if (rule.countOnlyFailures && decision.windowIndex !== undefined) {
@@ -104,13 +106,23 @@ export const clientIpKey = (request: Request) => normalizeClientIp(request.ip ??
 /** Conta da sessão (rotas montadas DEPOIS do requireAuth); sem sessão, não limita (o guard já respondeu 401). */
 export const accountKey = (request: Request) => request.user?.sub ?? null
 
+/** O corpo do login traz a matrícula de rede (login pela rede) em vez do e-mail. */
+export const isNetworkLoginRequest = (request: Request) => typeof (request.body as { matricula?: unknown } | undefined)?.matricula === "string"
+
 /**
- * Login por IP + e-mail digitado (normalizado): na virada de turno centenas de pessoas entram pelo MESMO IP (Citrix, VDI,
- * NAT) e cada uma tem o seu contador. Sem e-mail no corpo, só o IP (o login responde 400 de qualquer jeito).
+ * Login por IP + login digitado (normalizado): na virada de turno centenas de pessoas entram pelo MESMO IP (Citrix, VDI,
+ * NAT) e cada uma tem o seu contador. O login é o e-mail (minúsculas) ou, no login pela rede, a matrícula normalizada como no
+ * AD (`normalizeNetworkLogin`; fora do formato, o texto aparado em maiúsculas — achado SLR-02/QA-01: sem isso todas as
+ * matrículas do mesmo IP dividiam um contador só). Sem login no corpo, só o IP (o login responde 400 de qualquer jeito).
  */
-export const clientIpAndEmailKey = (request: Request) => {
-  const email = (request.body as { email?: unknown } | undefined)?.email
-  const normalized = typeof email === "string" ? email.trim().toLowerCase() : ""
+export const clientIpAndLoginKey = (request: Request) => {
+  const body = request.body as { email?: unknown; matricula?: unknown } | undefined
+  if (typeof body?.matricula === "string") {
+    const typed = body.matricula
+    const normalized = normalizeNetworkLogin(typed) ?? typed.trim().toUpperCase().slice(0, 80)
+    return `${clientIpKey(request)}|matricula:${normalized}`
+  }
+  const normalized = typeof body?.email === "string" ? body.email.trim().toLowerCase() : ""
   return `${clientIpKey(request)}|${normalized}`
 }
 

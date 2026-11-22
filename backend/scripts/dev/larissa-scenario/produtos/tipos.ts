@@ -7,7 +7,7 @@
  * NUNCA recebe isto; ele lê a transcrição, o assunto e o cadastro. Números vão inteiros na transcrição (como a fonte grava); a máscara que
  * preserva o formato (`SUBJECT_PII_MASK_V2`) é aplicada só no texto que vai à IA e ao colaborador.
  */
-export type NodeCode = "FIXA_BASICA" | "MOVEL" | "VOZ_AVANCADA" | "DADOS_AVANCADOS" | "SOLUCIONA_TI" | "LINHA_ANALOGICA" | "BANDA_LARGA" | "LINHA_MOVEL" | "SIP" | "DDR" | "IP_DEDICADO" | "COLOCATION" | "VIVO_SOLUCIONA_TI"
+export type NodeCode = "FIXA_BASICA" | "MOVEL" | "VOZ_AVANCADA" | "DADOS_AVANCADOS" | "SOLUCIONA_TI" | "LINHA_ANALOGICA" | "BANDA_LARGA" | "LINHA_MOVEL" | "SIP" | "DDR" | "IP_DEDICADO" | "COLOCATION" | "TELNOVA_SOLUCIONA_TI"
 export type Process = "SEGUNDA_VIA" | "REPARO"
 
 /** Base de conhecimento do teste: `products` vazio = vale para todos os produtos (geral). */

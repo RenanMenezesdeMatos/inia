@@ -92,13 +92,13 @@ describe("relação com o feedback em tela (calculada pelo sistema)", () => {
     const documents = consultedDocumentsOf([
       { documentId: DOC_PRAZO, documentTitle: "Procedimento — Contestação de contas", heading: "Procedimento — Contestação de contas" },
       { documentId: DOC_PRAZO, documentTitle: "Procedimento — Contestação de contas", heading: "35. Prazo da análise" },
-      { documentId: DOC_OUTRO, documentTitle: "Jeito Vivo de Atender", heading: "" },
+      { documentId: DOC_OUTRO, documentTitle: "Jeito Telnova de Atender", heading: "" },
       { documentId: DOC_PRAZO, documentTitle: "Procedimento — Contestação de contas", heading: "36. Retorno ao cliente" },
       { documentId: DOC_PRAZO, documentTitle: "Procedimento — Contestação de contas", heading: "35. Prazo da análise" },
     ])
     expect(documents).toEqual([
       { documentId: DOC_PRAZO, title: "Procedimento — Contestação de contas", sections: ["35. Prazo da análise", "36. Retorno ao cliente"] },
-      { documentId: DOC_OUTRO, title: "Jeito Vivo de Atender", sections: [] },
+      { documentId: DOC_OUTRO, title: "Jeito Telnova de Atender", sections: [] },
     ])
   })
 
@@ -106,14 +106,14 @@ describe("relação com o feedback em tela (calculada pelo sistema)", () => {
     const relation = renderConsultationRelation(consultation, {
       documents: [
         { documentId: DOC_PRAZO, title: "Procedimento — Contestação de contas", sections: ["35. Prazo da análise"], updatedAfterFeedback: true },
-        { documentId: DOC_OUTRO, title: "Jeito Vivo de Atender", sections: [], updatedAfterFeedback: false },
+        { documentId: DOC_OUTRO, title: "Jeito Telnova de Atender", sections: [], updatedAfterFeedback: false },
       ],
       indicatorWindowDays: 7,
     })
     expect(relation).toContain("Feedback em tela: “TMA” — Agosto de 2026 — publicado em 10/09/2026.")
     expect(relation).toContain("“Procedimento — Contestação de contas” (seções: 35. Prazo da análise): é o MESMO documento usado neste feedback. Este documento ganhou versão nova depois deste feedback")
-    expect(relation).toContain("“Jeito Vivo de Atender”: não foi usado neste feedback.")
-    expect(relation).not.toMatch(/Jeito Vivo de Atender”: não foi usado neste feedback\. Este documento ganhou/)
+    expect(relation).toContain("“Jeito Telnova de Atender”: não foi usado neste feedback.")
+    expect(relation).not.toMatch(/Jeito Telnova de Atender”: não foi usado neste feedback\. Este documento ganhou/)
   })
 
   it("números atuais × números do feedback: cada um com o seu período, nunca evolução", () => {

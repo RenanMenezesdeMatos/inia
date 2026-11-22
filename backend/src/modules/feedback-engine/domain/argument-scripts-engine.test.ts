@@ -24,7 +24,7 @@ const PROCEDURE = `# Atendimento geral (teste)
 - Não mencionar nomes de sistemas internos.
 - Confirmar se o cliente tem mais alguma dúvida.
 `
-const SUGGESTED = "Para consultar os valores em aberto e verificar as opções de parcelamento disponíveis, você pode acessar o Vivo em Dia."
+const SUGGESTED = "Para consultar os valores em aberto e verificar as opções de parcelamento disponíveis, você pode acessar o Telnova em Dia."
 const overdue = (version = 1, previous: ArgumentScriptSource["content"] | null = null) =>
   argumentScriptSourceOf({
     scriptId: SCRIPT,
@@ -38,11 +38,11 @@ const overdue = (version = 1, previous: ArgumentScriptSource["content"] | null =
     content: normalizeArgumentScriptContent({
       trigger: "O cliente tem contas em atraso no momento da ligação.",
       notApplicableWhen: "A conta já foi paga ou a menção é a uma situação antiga já resolvida.",
-      operatorGuidance: [{ key: "g-vivo", text: "Indicar o Vivo em Dia para consultar os valores em aberto.", modality: "MUST" }, { key: "g-parc", text: "Verificar opções de parcelamento, caso o cliente precise.", modality: "MAY" }],
-      requiredPoints: [{ key: "rp-1", mode: "ALL", items: [{ key: "p-acesso", text: "Orientar o acesso ao Vivo em Dia e mencionar a possibilidade de consultar débitos e opções de parcelamento.", condition: null }] }],
+      operatorGuidance: [{ key: "g-vivo", text: "Indicar o Telnova em Dia para consultar os valores em aberto.", modality: "MUST" }, { key: "g-parc", text: "Verificar opções de parcelamento, caso o cliente precise.", modality: "MAY" }],
+      requiredPoints: [{ key: "rp-1", mode: "ALL", items: [{ key: "p-acesso", text: "Orientar o acesso ao Telnova em Dia e mencionar a possibilidade de consultar débitos e opções de parcelamento.", condition: null }] }],
       avoid: [{ key: "a-garantia", text: "Não garantir condições, quantidade de parcelas ou aprovação antes da consulta." }, { key: "a-sistemas", text: "Não mencionar nomes de sistemas internos." }],
       suggestedScript: SUGGESTED,
-      monitoringReference: "A transcrição deve registrar a indicação do Vivo em Dia e a possibilidade de parcelamento.",
+      monitoringReference: "A transcrição deve registrar a indicação do Telnova em Dia e a possibilidade de parcelamento.",
     }),
     contentHash: `h${version}`,
     effectiveFrom: new Date("2026-09-01T00:00:00Z"),
@@ -96,7 +96,7 @@ function run(setupResult: ReturnType<typeof setup>, analysis: ModelCallAnalysis,
 const briefInputOf = (setupResult: ReturnType<typeof setup>, result: ReturnType<typeof run>) => ({ analysis: result, listContext: listContextOf(setupResult.context), interactionId: INTERACTION, label: "Conta em atraso", dateLabel: "01/10/2026", selectionReason: "teste", criterionKeys: new Map(result.criteria.map((entry) => [entry.lineKey, entry.argument?.criterionKey ?? `KC-${entry.lineHandle}`])), documentTitles: new Map([[DOC, "Atendimento geral"]]), documentVersions: new Map([[DOC, 1]]), history: new Map(), delivered: new Set<string>() })
 const briefOf = (setupResult: ReturnType<typeof setup>, result: ReturnType<typeof run>) => buildMonitoringBrief(briefInputOf(setupResult, result))
 
-const CURRENT_DEBT = ["Cliente: Estou com duas contas atrasadas e queria resolver.", "Operador: Pelo Vivo em Dia você vê tudo o que está em aberto e pode parcelar, se tiver a opção para a sua linha.", "Cliente: Ótimo, obrigado.", "Operador: Por nada, tenha um bom dia."].join("\n")
+const CURRENT_DEBT = ["Cliente: Estou com duas contas atrasadas e queria resolver.", "Operador: Pelo Telnova em Dia você vê tudo o que está em aberto e pode parcelar, se tiver a opção para a sua linha.", "Cliente: Ótimo, obrigado.", "Operador: Por nada, tenha um bom dia."].join("\n")
 const PAID = ["Cliente: Eu tinha uma conta atrasada, mas já paguei semana passada.", "Operador: Certo, então está tudo regularizado.", "Cliente: Isso, era só confirmar.", "Operador: Perfeito, até mais."].join("\n")
 const CORRECTED = ["Cliente: Acho que tenho uma conta atrasada.", "Operador: Vou verificar.", "Cliente: Ah, não, desculpa, era a conta do meu irmão. A minha está em dia.", "Operador: Sem problemas, até mais."].join("\n")
 
@@ -106,7 +106,7 @@ describe("estrutura preservada no contexto do motor", () => {
     const rendered = renderCallAnalysisUserTurn({ specialist: null, interaction: { dateLabel: "01/10/2026", channel: "VOICE", subject: null, durationSeconds: null, signals: [], selectionReason: "teste" }, projection: projectTranscript(CURRENT_DEBT), transcriptStatus: "COMPLETE", context })
     expect(rendered).toContain('Argumentário "Contas em atraso" (versão 1 · vigente na data da chamada · área: Cobrança · vale para: todos os grupos)')
     expect(rendered).toContain("CONDIÇÃO / GATILHO (situação a reconhecer na conversa inteira — não é busca de palavras): O cliente tem contas em atraso no momento da ligação.")
-    expect(rendered).toMatch(/\[L\d+\] \(deve\) Indicar o Vivo em Dia/)
+    expect(rendered).toMatch(/\[L\d+\] \(deve\) Indicar o Telnova em Dia/)
     expect(rendered).toMatch(/\[L\d+\] \(pode — opcional: não fazer não é falha\) Verificar opções de parcelamento/)
     expect(rendered).toMatch(/\[L\d+\] Pelo menos uma destas alternativas: \(1\) Pagamento com cartão.*; \(2\) Pagamento por boleto/)
     expect(rendered).toContain(`ARGUMENTÁRIO SUGERIDO (EXEMPLO de abordagem — não é texto obrigatório, nunca compare literalmente com a fala, não cria exigência): ${SUGGESTED}`)
@@ -145,13 +145,13 @@ describe("a situação do argumentário é reconhecida pela LEITURA, não por pa
 
   it("dívida ATUAL: o argumentário se aplica (fala verificada) e os pontos dele entram na cobertura; paráfrase cumpre; o exemplo não é exigido", () => {
     const s = setup(CURRENT_DEBT)
-    const point = s.handle("Orientar o acesso ao Vivo em Dia")
-    const speech = { turn: "T2", speaker: "OPERADOR", quote: "Pelo Vivo em Dia você vê tudo o que está em aberto e pode parcelar, se tiver a opção para a sua linha." }
+    const point = s.handle("Orientar o acesso ao Telnova em Dia")
+    const speech = { turn: "T2", speaker: "OPERADOR", quote: "Pelo Telnova em Dia você vê tudo o que está em aberto e pode parcelar, se tiver a opção para a sua linha." }
     const analysis = model([criterion({ line: point, status: "MET", evidenceKind: "CONDUCT_OBSERVED", evidence: [speech] })], { argumentScripts: [{ script: "G1", applicability: "APPLIES", situation: "Contas em atraso hoje", evidence: [T1_DEBT], rationale: "A cliente disse que está com contas atrasadas." }] })
     // Sem disposição para os outros itens avaliáveis, a cobertura os pede à revisão (o "pode" não é cobrado).
     // `DUPLICATE_BY_MEANING_V1`: o item "evitar" com o mesmo texto da base não é mais descartado antes da análise — também deve
     // disposição (ou uma duplicidade declarada por sentido).
-    expect(missingCoverageOf(analysis, s.context, "COMPLETE", s.projection).map((line) => line.text)).toEqual(["Indicar o Vivo em Dia para consultar os valores em aberto.", "Não garantir condições, quantidade de parcelas ou aprovação antes da consulta.", "Não mencionar nomes de sistemas internos."])
+    expect(missingCoverageOf(analysis, s.context, "COMPLETE", s.projection).map((line) => line.text)).toEqual(["Indicar o Telnova em Dia para consultar os valores em aberto.", "Não garantir condições, quantidade de parcelas ou aprovação antes da consulta.", "Não mencionar nomes de sistemas internos."])
     const result = run(s, analysis, [confirm(point, { conditionEvidence: [T1_DEBT] })])
     expect(result.argumentScripts).toEqual([expect.objectContaining({ applicability: "APPLIES", declaredApplicability: "APPLIES" })])
     expect(result.criteria.find((entry) => entry.lineHandle === point)).toMatchObject({ status: "MET", confirmation: "CONFIRMED", argument: expect.objectContaining({ scriptId: SCRIPT, field: "REQUIRED_POINT" }) })
@@ -168,7 +168,7 @@ describe("a situação do argumentário é reconhecida pela LEITURA, não por pa
 
   it("dívida JÁ PAGA (menção antiga): não se aplica — nenhum ponto do argumentário vira desvio nem acerto", () => {
     const s = setup(PAID)
-    const point = s.handle("Orientar o acesso ao Vivo em Dia")
+    const point = s.handle("Orientar o acesso ao Telnova em Dia")
     const analysis = model([criterion({ line: point, status: "NOT_MET", evidenceKind: "OMISSION", opportunityTurn: "T2" })], { argumentScripts: [{ script: "G1", applicability: "DOES_NOT_APPLY", situation: "Conta já paga", evidence: [{ turn: "T1", speaker: "CLIENTE", quote: "Eu tinha uma conta atrasada, mas já paguei semana passada." }], rationale: "A conta já foi paga: a menção ao atraso é a uma situação resolvida." }] })
     const result = run(s, analysis, [confirm(point)])
     expect(result.criteria.find((entry) => entry.lineHandle === point)).toMatchObject({ status: "NOT_APPLICABLE", applicability: "DOES_NOT_APPLY", downgrades: ["SCRIPT_DOES_NOT_APPLY"] })
@@ -178,14 +178,14 @@ describe("a situação do argumentário é reconhecida pela LEITURA, não por pa
 
   it("situação CORRIGIDA pela cliente durante a conversa: a leitura da conversa inteira vale (não se aplica)", () => {
     const s = setup(CORRECTED)
-    const point = s.handle("Orientar o acesso ao Vivo em Dia")
+    const point = s.handle("Orientar o acesso ao Telnova em Dia")
     const result = run(s, model([criterion({ line: point, status: "NOT_MET", evidenceKind: "OMISSION", opportunityTurn: "T4" })], { argumentScripts: [{ script: "G1", applicability: "DOES_NOT_APPLY", situation: "Corrigido: a conta atrasada era de outra pessoa", evidence: [{ turn: "T3", speaker: "CLIENTE", quote: "Ah, não, desculpa, era a conta do meu irmão. A minha está em dia." }], rationale: "A cliente corrigiu a informação." }] }), [confirm(point)])
     expect(result.criteria.find((entry) => entry.lineHandle === point)!.status).toBe("NOT_APPLICABLE")
   })
 
   it("'se aplica' sem fala verificada (citação inventada) não se sustenta: situação incerta — o 'não cumpriu' cai", () => {
     const s = setup(CORRECTED)
-    const point = s.handle("Orientar o acesso ao Vivo em Dia")
+    const point = s.handle("Orientar o acesso ao Telnova em Dia")
     const result = run(s, model([criterion({ line: point, status: "NOT_MET", evidenceKind: "OMISSION", opportunityTurn: "T4" })], { argumentScripts: [{ script: "G1", applicability: "APPLIES", situation: "Contas em atraso", evidence: [{ turn: "T1", speaker: "CLIENTE", quote: "Estou devendo três faturas." }], rationale: "x" }] }), [confirm(point)])
     expect(result.argumentScripts![0]).toMatchObject({ applicability: "UNCERTAIN", downgrade: "SCRIPT_APPLIES_WITHOUT_VERIFIED_EVIDENCE" })
     expect(result.criteria.find((entry) => entry.lineHandle === point)).toMatchObject({ status: "NOT_OBSERVABLE", downgrades: ["SCRIPT_SITUATION_NOT_ESTABLISHED"] })
@@ -194,7 +194,7 @@ describe("a situação do argumentário é reconhecida pela LEITURA, não por pa
   it("ponto obrigatório AUSENTE com a situação estabelecida e oportunidade: desvio confirmado só com a fala da situação na revisão", () => {
     const transcript = ["Cliente: Estou com duas contas atrasadas e queria resolver.", "Operador: Entendi, vou anotar aqui.", "Cliente: Tá bom.", "Operador: Mais alguma coisa? Tenha um bom dia."].join("\n")
     const s = setup(transcript)
-    const point = s.handle("Orientar o acesso ao Vivo em Dia")
+    const point = s.handle("Orientar o acesso ao Telnova em Dia")
     const analysis = model([criterion({ line: point, status: "NOT_MET", evidenceKind: "OMISSION", opportunityTurn: "T2" })], { argumentScripts: [{ script: "G1", applicability: "APPLIES", situation: "Contas em atraso", evidence: [T1_DEBT], rationale: "x" }] })
     expect(run(s, analysis, [confirm(point)]).criteria.find((entry) => entry.lineHandle === point)).toMatchObject({ confirmation: "UNCONFIRMED", confirmationReasons: ["CONDITION_NOT_EVIDENCED"] })
     expect(run(s, analysis, [confirm(point, { conditionEvidence: [T1_DEBT] })]).criteria.find((entry) => entry.lineHandle === point)).toMatchObject({ status: "NOT_MET", confirmation: "CONFIRMED" })
@@ -203,7 +203,7 @@ describe("a situação do argumentário é reconhecida pela LEITURA, não por pa
   it("`ARGUMENT_PHRASING_V1`: a fraseologia sugerida do argumentário chega ao redator como FATO do ponto de desenvolvimento (base do exemplo de como dizer), nunca como critério", () => {
     const transcript = ["Cliente: Estou com duas contas atrasadas e queria resolver.", "Operador: Entendi, vou anotar aqui.", "Cliente: Tá bom.", "Operador: Mais alguma coisa? Tenha um bom dia."].join("\n")
     const s = setup(transcript)
-    const point = s.handle("Orientar o acesso ao Vivo em Dia")
+    const point = s.handle("Orientar o acesso ao Telnova em Dia")
     const analysis = model([criterion({ line: point, status: "NOT_MET", evidenceKind: "OMISSION", opportunityTurn: "T2" })], { argumentScripts: [{ script: "G1", applicability: "APPLIES", situation: "Contas em atraso", evidence: [T1_DEBT], rationale: "x" }] })
     const result = run(s, analysis, [confirm(point, { conditionEvidence: [T1_DEBT] })])
     const withPhrasing = buildMonitoringBrief({ ...briefInputOf(s, result), argumentPhrasings: new Map([[SCRIPT, { name: "Contas em atraso", text: SUGGESTED }]]) })
@@ -233,9 +233,9 @@ describe("a situação do argumentário é reconhecida pela LEITURA, não por pa
 
   it("CONFLITO entre argumentário e procedimento: registrado, nunca usado para acusar; o resto continua avaliado", () => {
     const s = setup(CURRENT_DEBT)
-    const point = s.handle("Orientar o acesso ao Vivo em Dia")
-    const guidance = s.handle("Indicar o Vivo em Dia para consultar")
-    const analysis = model([criterion({ line: point, status: "NOT_MET", evidenceKind: "OMISSION", opportunityTurn: "T2" }), criterion({ line: guidance, status: "MET", evidenceKind: "CONDUCT_OBSERVED", evidence: [{ turn: "T2", speaker: "OPERADOR", quote: "Pelo Vivo em Dia você vê tudo o que está em aberto e pode parcelar, se tiver a opção para a sua linha." }] })], {
+    const point = s.handle("Orientar o acesso ao Telnova em Dia")
+    const guidance = s.handle("Indicar o Telnova em Dia para consultar")
+    const analysis = model([criterion({ line: point, status: "NOT_MET", evidenceKind: "OMISSION", opportunityTurn: "T2" }), criterion({ line: guidance, status: "MET", evidenceKind: "CONDUCT_OBSERVED", evidence: [{ turn: "T2", speaker: "OPERADOR", quote: "Pelo Telnova em Dia você vê tudo o que está em aberto e pode parcelar, se tiver a opção para a sua linha." }] })], {
       argumentScripts: [{ script: "G1", applicability: "APPLIES", situation: "x", evidence: [T1_DEBT], rationale: "x" }],
       sourceConflicts: [{ lines: [point, s.handle("Confirmar se o cliente tem mais alguma dúvida")], description: "Prazo/condição divergente entre as fontes." }],
     })
@@ -247,7 +247,7 @@ describe("a situação do argumentário é reconhecida pela LEITURA, não por pa
 
   it("duplicidade declarada SEM a equivalência por dimensão (só 'mesma exigência') é recusada: a linha do argumentário continua avaliada", () => {
     const s = setup(CURRENT_DEBT)
-    const point = s.handle("Orientar o acesso ao Vivo em Dia")
+    const point = s.handle("Orientar o acesso ao Telnova em Dia")
     const docLine = s.handle("Confirmar se o cliente tem mais alguma dúvida")
     const analysis = model([criterion({ line: point, status: "NOT_MET", evidenceKind: "OMISSION", opportunityTurn: "T2" }), criterion({ line: docLine, status: "NOT_OBSERVABLE" })], { argumentScripts: [{ script: "G1", applicability: "APPLIES", situation: "x", evidence: [T1_DEBT], rationale: "x" }], duplicates: [{ line: point, sameAs: docLine, rationale: "mesma exigência" }] })
     const result = run(s, analysis)
@@ -259,7 +259,7 @@ describe("a situação do argumentário é reconhecida pela LEITURA, não por pa
 describe("identidade e versão na memória", () => {
   it("item igual entre versões = mesma identidade; texto/condição/modo mudados = critério novo com o anterior registrado", () => {
     const v1 = overdue(1)
-    const v2Content = normalizeArgumentScriptContent({ ...v1.content, requiredPoints: [{ key: "rp-1", mode: "ALL", items: [{ key: "p-acesso", text: "Orientar o acesso ao Vivo em Dia e mencionar a consulta de débitos e o parcelamento disponível.", condition: null }] }] })
+    const v2Content = normalizeArgumentScriptContent({ ...v1.content, requiredPoints: [{ key: "rp-1", mode: "ALL", items: [{ key: "p-acesso", text: "Orientar o acesso ao Telnova em Dia e mencionar a consulta de débitos e o parcelamento disponível.", condition: null }] }] })
     const v2 = overdue(2, v1.content)
     const v2Changed = argumentScriptSourceOf({ ...v2, content: v2Content }, v1.content)
     expect(v2.identities.get("p-acesso")).toMatchObject({ basis: "UNCHANGED", criterionKey: v1.identities.get("p-acesso")!.criterionKey })
@@ -382,7 +382,7 @@ describe("argumentário em REAVALIAÇÃO pela regra atual (chamada anterior à p
     const rendered = renderCallAnalysisUserTurn({ specialist: null, interaction: { dateLabel: "01/10/2026", channel: "VOICE", subject: null, durationSeconds: null, signals: [], selectionReason: "teste" }, projection: s.projection, transcriptStatus: "COMPLETE", context: s.context })
     expect(rendered).toContain('Argumentário "Contas em atraso" (versão 1 · versão atual — REAVALIAÇÃO: não estava vigente na data da chamada')
     expect(rendered).not.toContain('Argumentário "Contas em atraso" (versão 1 · vigente na data da chamada')
-    const point = s.handle("Orientar o acesso ao Vivo em Dia")
+    const point = s.handle("Orientar o acesso ao Telnova em Dia")
     const analysis = model([criterion({ line: point, status: "NOT_MET", evidenceKind: "OMISSION", opportunityTurn: "T2", applicabilityEvidence: [T1_DEBT] })], { argumentScripts: [{ script: "G1", applicability: "APPLIES", situation: "Contas atrasadas hoje.", evidence: [T1_DEBT], rationale: "x" }] })
     const result = run(s, analysis, [confirm(point, { conditionEvidence: [T1_DEBT] })])
     expect(result.criteria.find((entry) => entry.lineHandle === point)).toMatchObject({ status: "NOT_MET", argument: expect.objectContaining({ perspective: "CURRENT_RULE_REEVALUATION" }) })

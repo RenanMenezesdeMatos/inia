@@ -2,7 +2,15 @@ import { z } from "zod"
 
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
 import { pageResultSchema, toQueryString, type ListParams, type PageResult } from "@/lib/admin/list-query"
-import { glossaryTermSchema, prohibitedTopicSchema, responseCheckEventSchema, responseCheckSummarySchema, type GlossaryTerm, type ProhibitedTopic, type ResponseCheckEvent, type ResponseCheckSummary } from "@/schemas/admin/governance.schema"
+import { glossaryTermSchema, prohibitedTopicSchema, qualityCallRuleSchema, responseCheckEventSchema, responseCheckSummarySchema, type GlossaryTerm, type ProhibitedTopic, type QualityCallRule, type ResponseCheckEvent, type ResponseCheckSummary } from "@/schemas/admin/governance.schema"
+
+export async function fetchQualityCallRule(): Promise<QualityCallRule> {
+  return qualityCallRuleSchema.parse(await adminGet("/api/v1/admin/quality-call-rule"))
+}
+
+export async function updateQualityCallRule(minimumQualityCallSeconds: number): Promise<QualityCallRule> {
+  return qualityCallRuleSchema.parse(await adminSend("/api/v1/admin/quality-call-rule", "PUT", { minimumQualityCallSeconds }))
+}
 
 export async function fetchResponseCheckSummary(): Promise<ResponseCheckSummary> {
   return responseCheckSummarySchema.parse(await adminGet("/api/v1/admin/response-checks/summary"))

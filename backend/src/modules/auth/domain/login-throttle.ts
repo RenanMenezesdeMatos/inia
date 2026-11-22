@@ -8,9 +8,10 @@ export const LOGIN_FAILURE_WINDOW_MINUTES = 15
 
 export type LoginThrottle = { locked: false } | { locked: true; retryAt: Date }
 
-export function loginThrottle(failures: readonly Date[], now: Date): LoginThrottle {
+/** `maxFailures`: o login pela rede usa um limite menor (domain/network-login.ts), abaixo do bloqueio da conta de rede. */
+export function loginThrottle(failures: readonly Date[], now: Date, maxFailures: number = LOGIN_MAX_FAILURES): LoginThrottle {
   const windowMs = LOGIN_FAILURE_WINDOW_MINUTES * 60_000
   const recent = failures.filter((at) => now.getTime() - at.getTime() < windowMs).sort((a, b) => a.getTime() - b.getTime())
-  if (recent.length < LOGIN_MAX_FAILURES) return { locked: false }
-  return { locked: true, retryAt: new Date(recent[recent.length - LOGIN_MAX_FAILURES]!.getTime() + windowMs) }
+  if (recent.length < maxFailures) return { locked: false }
+  return { locked: true, retryAt: new Date(recent[recent.length - maxFailures]!.getTime() + windowMs) }
 }

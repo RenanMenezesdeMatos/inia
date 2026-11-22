@@ -23,7 +23,7 @@ const presentation: ReviewPresentation = {
   behavioralClaims: [{ text: "Na interação analisada você repetiu a confirmação", scope: "INTERACTION_SPECIFIC", evidenceRefs: ["F4"] }],
   recommendationSupport: [{ text: "Avise antes de pausar", basis: "KNOWLEDGE_GUIDANCE", evidenceRefs: [] }],
   representativeness: [{ ref: "F4", analyzed: 2, universe: 1267, level: "ANECDOTAL" }],
-  materials: [{ title: "Jeito Vivo de Atender", reason: "orienta o aviso de pausa" }],
+  materials: [{ title: "Jeito Telnova de Atender", reason: "orienta o aviso de pausa" }],
   toolSummary: { executed: 10, preflight: 3, investigation: 7, budget: 12, outcome: "ANSWERED", rejectedClaims: 1, corrected: true },
 }
 
@@ -41,7 +41,7 @@ describe("Review Presentation (Revisão humana — desktop e mobile)", () => {
     expect(view).toHaveTextContent("Anedótica")
     expect(view).toHaveTextContent("amostra de 2 interações")
     expect(view).toHaveTextContent("Avise antes de pausar — Orientação da base de conhecimento")
-    expect(view).toHaveTextContent("Jeito Vivo de Atender — orienta o aviso de pausa")
+    expect(view).toHaveTextContent("Jeito Telnova de Atender — orienta o aviso de pausa")
     expect(screen.getByTestId("review-tool-summary")).toHaveTextContent("10 chamada(s) · 3 no preflight · 7 escolhida(s) pelo Agent de 12 · respondida · 1 afirmação(ões) sem evidência corrigida(s)")
     expect(screen.queryByTestId("raw-json")).not.toBeInTheDocument()
     fireEvent.click(screen.getByTestId("review-technical-details"))

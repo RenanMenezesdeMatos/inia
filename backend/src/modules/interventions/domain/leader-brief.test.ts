@@ -120,10 +120,10 @@ describe("resumo da INIA para a liderança", () => {
   it("tira tabela e marcação Markdown sem mudar as palavras; nunca corta dentro de uma citação literal", () => {
     const markdown = ["**Ponto forte**", "", "Você confirmou o cadastro.", "", "| | TMA |", "|---|---|", "| Meta | 400 s |", "", "- Revise o checklist", "2. Use o roteiro"].join("\n")
     expect(clipText(markdown, 320)).toBe("Ponto forte Você confirmou o cadastro. • Revise o checklist • Use o roteiro")
-    const quoted = `Ao encerrar, você disse “A Vivo agradece o contato. Tenha uma boa noite!”, sem checar a compreensão do cliente.`
+    const quoted = `Ao encerrar, você disse “A Telnova agradece o contato. Tenha uma boa noite!”, sem checar a compreensão do cliente.`
     // O corte cairia no meio da citação: recua para antes dela.
     expect(clipText(quoted, 60)).toBe("Ao encerrar, você disse…")
     // Citação inteira dentro do limite continua inteira.
-    expect(clipText(quoted, 90)).toBe("Ao encerrar, você disse “A Vivo agradece o contato. Tenha uma boa noite!”, sem checar a…")
+    expect(clipText(quoted, 93)).toBe("Ao encerrar, você disse “A Telnova agradece o contato. Tenha uma boa noite!”, sem checar a…")
   })
 })

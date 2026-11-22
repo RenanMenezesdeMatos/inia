@@ -14,6 +14,12 @@ export type LoginAccount = SessionAccountState & {
   jobTitle: string | null
   teamId: string | null
   teamName: string | null
+  /** Matrícula da pessoa (login de rede quando o login pela rede está ligado). */
+  matricula: string | null
+  /** O login pela rede está ligado na organização da conta. */
+  networkLoginEnabled: boolean
+  /** Conta local de emergência: aceita e-mail e senha mesmo com o login pela rede ligado (migration 247). */
+  emergencyLocalAccess: boolean
 }
 
 export type LoginAttemptOutcome = "SUCCEEDED" | "INVALID_CREDENTIALS" | "ACCESS_DISABLED" | "TEMPORARY_PASSWORD_EXPIRED" | "LOCKED"
@@ -27,6 +33,15 @@ export type PasswordState = SessionAccountState & { email: string; passwordHash:
  */
 export interface CredentialStore {
   findByLogin(login: string): Promise<LoginAccount | null>
+  /** Conta pela matrícula de rede JÁ normalizada, só em organização com o login pela rede ligado; ambígua = null. */
+  findByNetworkLogin(networkLogin: string): Promise<LoginAccount | null>
+  /**
+   * Login pela rede bem-sucedido: marca o login e, se a conta ainda esperava a troca da senha temporária (e não é de
+   * emergência), aposenta a senha temporária no lugar (`retiredPasswordHash`, uma senha que ninguém conhece).
+   */
+  completeNetworkLogin(input: { accountId: string; identifierHash: string; at: Date; retiredPasswordHash: string }): Promise<void>
+  /** Entrada pela conta de emergência com o login pela rede ligado: auditoria + aviso a quem administra os acessos. */
+  recordEmergencyLocalLogin(input: { organizationId: string; accountId: string; personId: string; at: Date }): Promise<void>
   /** Estado da conta para o guard de sessão; com `sessionId` (jti), uma sessão revogada no logout volta como `active: false`. */
   sessionState(organizationId: string, accountId: string, sessionId?: string | null): Promise<(SessionAccountState & { role?: PlatformRole }) | null>
   /** Logout: revoga só ESTA sessão (jti) até o token vencer; limpa revogações vencidas. */
@@ -44,8 +59,11 @@ export interface CredentialStore {
    * trava de 5). Devolve o id para `resolveAttempt` gravar o resultado; null = a loja não devolveu id (cai no insert).
    */
   reserveAttempt(input: { identifierHash: string; at: Date }): Promise<string | null>
-  /** Falhas de credencial do identificador desde `since` e depois do último login bem-sucedido dele, fora a própria reserva. */
-  recentFailures(identifierHash: string, since: Date, excludeAttemptId?: string | null): Promise<Date[]>
+  /**
+   * Falhas de credencial do identificador desde `since` e depois do último login bem-sucedido dele, fora a própria reserva, em
+   * ordem cronológica. `limit` = só as N mais recentes (a trava da matrícula lê 24 h).
+   */
+  recentFailures(identifierHash: string, since: Date, excludeAttemptId?: string | null, options?: { limit?: number }): Promise<Date[]>
   /** Resultado da tentativa reservada (ou uma tentativa nova, sem reserva). */
   resolveAttempt(input: { attemptId: string | null; identifierHash: string; accountId: string | null; outcome: LoginAttemptOutcome; at: Date }): Promise<void>
   markLoggedIn(input: { accountId: string; identifierHash: string; at: Date }): Promise<void>

@@ -63,3 +63,23 @@ describe("Governança — exclusão de assunto proibido e termo do glossário", 
     expect(queries[0]!.params).toEqual([null, null, false, TOPIC, ORG])
   })
 })
+
+describe("Governança — regra de chamada curta (run-9, SFW-09)", () => {
+  const appAs = (scope: { type: "ORGANIZATION" } | { type: "GROUP"; teamId: string }) => {
+    const db = { query: async () => ({ rows: [{ seconds: 60 }], rowCount: 1 }) } as unknown as Database
+    const app = express()
+    app.use(express.json())
+    app.use((req, _res, next) => {
+      req.user = user
+      ;(req as unknown as { access: unknown }).access = { organizationId: ORG, accountId: "acc-admin", personId: ADMIN, assignments: [{ id: "a1", roleCode: "ADMINISTRADOR_GERAL", scope }] }
+      next()
+    })
+    app.use("/admin", createGovernanceRouter(db))
+    return app
+  }
+
+  it("diz à tela se quem pede pode trocar a regra: só com a configuração na organização inteira", async () => {
+    expect((await request(appAs({ type: "ORGANIZATION" })).get("/admin/quality-call-rule")).body.data).toMatchObject({ minimumQualityCallSeconds: 60, canEdit: true })
+    expect((await request(appAs({ type: "GROUP", teamId: "t1" })).get("/admin/quality-call-rule")).body.data).toMatchObject({ minimumQualityCallSeconds: 60, canEdit: false })
+  })
+})

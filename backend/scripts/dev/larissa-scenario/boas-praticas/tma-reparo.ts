@@ -16,7 +16,7 @@
  *      precisa anotar") a descoberta o descreveu como "dispensando anotação" e a checagem de obrigação leu como troca da fala.
  *      V2 (22/10, depois da 1ª análise): saíram "agrupar numa pergunta só os dados da visita" (contraria "as orientações deverão ser
  *      transmitidas uma etapa por vez" do procedimento de Reparo de Banda Larga — a checagem de obrigação recusou, com razão) e
- *      "antecipar as etapas no início" (sobrepõe "Informar o que será feito" do Jeito Vivo de Atender). As transcrições dos
+ *      "antecipar as etapas no início" (sobrepõe "Informar o que será feito" do Jeito Telnova de Atender). As transcrições dos
  *      operadores de teste são reescritas por `--apply`; as da Larissa nunca mudam.
  *   2. Larissa: 5 chamadas de Reparo de base (23/09–09/10, duração normal, processo certo) e 6 chamadas de Reparo em 21/10, depois de
  *      a configuração do cenário TESTE PRODUTOS valer (bases às 18:41 UTC, "Vale para" dos argumentários gerais às 21:22 UTC), uma por
@@ -88,7 +88,7 @@ function testCall(op: string, product: TestProduct, has: Set<Behavior>): string 
     DDR: "Uma parte dos ramais do DDR não recebe chamada.",
   }
   const lines = [
-    `Operador: Vivo Empresas, ${pick(["bom dia", "boa tarde"])}, meu nome é ${op}. Com quem eu falo?`,
+    `Operador: Telnova Empresas, ${pick(["bom dia", "boa tarde"])}, meu nome é ${op}. Com quem eu falo?`,
     `Cliente: Oi, aqui é ${customer}, da ${company}. ${problem[product]}`,
   ]
   lines.push(`Operador: Me confirma o CNPJ da empresa, por favor?`, `Cliente: É ${cnpj()}.`)
@@ -108,7 +108,7 @@ function testCall(op: string, product: TestProduct, has: Set<Behavior>): string 
   const number = protocol()
   if (has.has("SMS_SUMMARY")) lines.push(`Operador: Chamado aberto. O protocolo é ${number}. ${deadline[product]} Além disso, também vou te mandar por SMS um resumo com o protocolo, o prazo e o próximo passo, para você ter tudo por escrito.`, `Cliente: Ah, ótimo, obrigado.`)
   else lines.push(`Operador: Chamado aberto. O protocolo é ${number}. ${deadline[product]}`, `Cliente: Pera, deixa eu pegar uma caneta... pode repetir o protocolo?`, `Operador: Claro: ${number.split("").join(" ")}.`, `Cliente: Anotei. Obrigado.`)
-  lines.push(`Operador: A Vivo agradece o contato. Tenha ${pick(["um bom dia", "uma boa tarde"])}!`)
+  lines.push(`Operador: A Telnova agradece o contato. Tenha ${pick(["um bom dia", "uma boa tarde"])}!`)
   return lines.join("\n")
 }
 
@@ -119,69 +119,69 @@ type LarissaCall = { key: string; local: string; seconds: number; product: strin
 const L = "Larissa"
 const BASELINE: LarissaCall[] = [
   { key: "L-BASE-1", local: "2026-09-23T10:20", seconds: 352, product: "Banda Larga", failures: [], lines: [
-    `Operador: Vivo Empresas, bom dia, meu nome é ${L}. Com quem eu falo?`, `Cliente: Bom dia, aqui é a Helena, da Clínica Bem Viver. A internet caiu.`,
+    `Operador: Telnova Empresas, bom dia, meu nome é ${L}. Com quem eu falo?`, `Cliente: Bom dia, aqui é a Helena, da Clínica Bem Viver. A internet caiu.`,
     `Operador: Me confirma o CNPJ, por favor?`, `Cliente: ${cnpj()}.`,
     `Operador: Desliga o modem da tomada por trinta segundos, liga de novo e me diz como ficaram as luzes?`, `Cliente: A luz de internet ficou vermelha.`,
     `Operador: O teste remoto também falhou. Vou abrir o chamado com visita técnica. Qual o endereço do equipamento?`, `Cliente: ${pick(STREETS)}, ${digits(3)}.`,
     `Operador: Um telefone de contato?`, `Cliente: (85) 9${digits(4)}-${digits(4)}.`,
-    `Operador: Chamado aberto, protocolo ${protocol()}. O prazo de reparo é de 24 horas.`, `Cliente: Obrigada.`, `Operador: A Vivo agradece o contato. Tenha um bom dia!`] },
+    `Operador: Chamado aberto, protocolo ${protocol()}. O prazo de reparo é de 24 horas.`, `Cliente: Obrigada.`, `Operador: A Telnova agradece o contato. Tenha um bom dia!`] },
   { key: "L-BASE-2", local: "2026-09-29T14:05", seconds: 338, product: "Linha Móvel", failures: [], lines: [
-    `Operador: Vivo Empresas, boa tarde, meu nome é ${L}. Com quem eu falo?`, `Cliente: Oi, é o Fernando, da Logística Rápida. O celular da empresa está sem sinal.`,
+    `Operador: Telnova Empresas, boa tarde, meu nome é ${L}. Com quem eu falo?`, `Cliente: Oi, é o Fernando, da Logística Rápida. O celular da empresa está sem sinal.`,
     `Operador: Me confirma o CNPJ, por favor?`, `Cliente: ${cnpj()}.`,
     `Operador: Verifiquei a cobertura no seu endereço e está normal. Reinicia o aparelho, por favor?`, `Cliente: Reiniciei, continua sem sinal.`,
     `Operador: Vou reconfigurar o APN com você: vá em Configurações, Rede móvel, Nomes dos pontos de acesso.`, `Cliente: Pronto, configurei. Continua sem sinal.`,
-    `Operador: Linha móvel não tem visita técnica. Vou abrir a análise de rede, com prazo de até 72 horas. O protocolo é ${protocol()}.`, `Cliente: Certo.`, `Operador: A Vivo agradece o contato. Tenha uma boa tarde!`] },
+    `Operador: Linha móvel não tem visita técnica. Vou abrir a análise de rede, com prazo de até 72 horas. O protocolo é ${protocol()}.`, `Cliente: Certo.`, `Operador: A Telnova agradece o contato. Tenha uma boa tarde!`] },
   { key: "L-BASE-3", local: "2026-10-02T09:40", seconds: 365, product: "SIP", failures: [], lines: [
-    `Operador: Vivo Empresas, bom dia, meu nome é ${L}. Com quem eu falo?`, `Cliente: Bom dia, aqui é o Marcos, da Contábil Horizonte. Os ramais do SIP não completam ligação.`,
+    `Operador: Telnova Empresas, bom dia, meu nome é ${L}. Com quem eu falo?`, `Cliente: Bom dia, aqui é o Marcos, da Contábil Horizonte. Os ramais do SIP não completam ligação.`,
     `Operador: Me confirma o CNPJ, por favor?`, `Cliente: ${cnpj()}.`,
     `Operador: Vou fazer o teste remoto do tronco agora.`, `Cliente: Ok.`, `Operador: O teste mostrou falha. Vou abrir o chamado empresarial. Qual o nome do contato técnico?`, `Cliente: É a Bianca, da TI.`,
-    `Operador: Chamado aberto, protocolo ${protocol()}. O prazo de solução do SIP é de 4 horas.`, `Cliente: Obrigado.`, `Operador: A Vivo agradece o contato. Tenha um bom dia!`] },
+    `Operador: Chamado aberto, protocolo ${protocol()}. O prazo de solução do SIP é de 4 horas.`, `Cliente: Obrigado.`, `Operador: A Telnova agradece o contato. Tenha um bom dia!`] },
   { key: "L-BASE-4", local: "2026-10-06T15:15", seconds: 371, product: "Linha analógica", failures: [], lines: [
-    `Operador: Vivo Empresas, boa tarde, meu nome é ${L}. Com quem eu falo?`, `Cliente: Oi, é a Lúcia, da Padaria Trigo Bom. O telefone fixo está mudo.`,
+    `Operador: Telnova Empresas, boa tarde, meu nome é ${L}. Com quem eu falo?`, `Cliente: Oi, é a Lúcia, da Padaria Trigo Bom. O telefone fixo está mudo.`,
     `Operador: Me confirma o CNPJ, por favor?`, `Cliente: ${cnpj()}.`,
     `Operador: Tem tom de discagem? Testa o aparelho em outra tomada, por favor.`, `Cliente: Sem tom em nenhuma tomada.`,
     `Operador: Vou abrir o chamado com visita técnica. O prazo de reparo é de 48 horas e o técnico vai numa janela de 4 horas. Prefere manhã ou tarde?`, `Cliente: De manhã.`,
-    `Operador: Protocolo ${protocol()}.`, `Cliente: Obrigada.`, `Operador: A Vivo agradece o contato. Tenha uma boa tarde!`] },
+    `Operador: Protocolo ${protocol()}.`, `Cliente: Obrigada.`, `Operador: A Telnova agradece o contato. Tenha uma boa tarde!`] },
   { key: "L-BASE-5", local: "2026-10-09T11:30", seconds: 344, product: "DDR", failures: [], lines: [
-    `Operador: Vivo Empresas, bom dia, meu nome é ${L}. Com quem eu falo?`, `Cliente: Bom dia, aqui é o Wagner, da Metalúrgica Forte. Parte dos ramais do DDR não recebe chamada.`,
+    `Operador: Telnova Empresas, bom dia, meu nome é ${L}. Com quem eu falo?`, `Cliente: Bom dia, aqui é o Wagner, da Metalúrgica Forte. Parte dos ramais do DDR não recebe chamada.`,
     `Operador: Me confirma o CNPJ, por favor? E qual é a faixa de ramais afetada?`, `Cliente: ${cnpj()}. Do 3000 ao 3020.`,
     `Operador: Vou fazer o teste remoto do tronco.`, `Cliente: Ok.`, `Operador: Deu falha. Vou abrir o chamado empresarial. Qual o nome do contato técnico?`, `Cliente: É o Danilo.`,
-    `Operador: Chamado aberto, protocolo ${protocol()}. O prazo de solução do DDR é de 8 horas.`, `Cliente: Obrigado.`, `Operador: A Vivo agradece o contato. Tenha um bom dia!`] },
+    `Operador: Chamado aberto, protocolo ${protocol()}. O prazo de solução do DDR é de 8 horas.`, `Cliente: Obrigado.`, `Operador: A Telnova agradece o contato. Tenha um bom dia!`] },
 ]
 const CURRENT: LarissaCall[] = [
   { key: "L-OUT-1-BL", local: "2026-10-21T18:40", seconds: 812, product: "Banda Larga", failures: ["Teste básico do produto pulado (reiniciar o modem e ver as luzes)"], lines: [
-    `Operador: Vivo Empresas, boa noite, meu nome é ${L}. Com quem eu falo?`, `Cliente: Boa noite, aqui é a Sandra, do Hotel Mar Calmo. A internet da recepção parou.`,
+    `Operador: Telnova Empresas, boa noite, meu nome é ${L}. Com quem eu falo?`, `Cliente: Boa noite, aqui é a Sandra, do Hotel Mar Calmo. A internet da recepção parou.`,
     `Operador: Me confirma o CNPJ, por favor?`, `Cliente: ${cnpj()}.`,
     `Operador: Certo. Vou abrir direto um chamado com visita técnica para a sua internet.`, `Cliente: Precisa fazer algum teste antes?`, `Operador: Não precisa, o técnico vê isso lá.`,
     `Operador: Qual o endereço onde está o equipamento?`, `Cliente: Avenida Beira Mar, ${digits(4)}.`, `Operador: E um telefone de contato?`, `Cliente: Deixa eu pegar aqui... (85) 9${digits(4)}-${digits(4)}.`,
     `Operador: Tem preferência de período?`, `Cliente: Pode ser de manhã.`, `Operador: E o nome de quem vai receber o técnico?`, `Cliente: O Paulo, da manutenção.`,
-    `Operador: Chamado aberto, protocolo ${protocol()}. O prazo de reparo é de 24 horas.`, `Cliente: Tá bom.`, `Operador: A Vivo agradece o contato. Tenha uma boa noite!`] },
+    `Operador: Chamado aberto, protocolo ${protocol()}. O prazo de reparo é de 24 horas.`, `Cliente: Tá bom.`, `Operador: A Telnova agradece o contato. Tenha uma boa noite!`] },
   { key: "L-OUT-2-LM", local: "2026-10-21T19:20", seconds: 785, product: "Linha Móvel", failures: ["Teste básico do produto pulado (cobertura, reinício e APN)", "Prometeu visita técnica, que a Linha Móvel não tem (o certo é a análise de rede, até 72 horas)"], lines: [
-    `Operador: Vivo Empresas, boa noite, meu nome é ${L}. Com quem eu falo?`, `Cliente: Oi, é o Tiago, da Transportes Serra Azul. O celular do motorista está sem internet o dia todo.`,
+    `Operador: Telnova Empresas, boa noite, meu nome é ${L}. Com quem eu falo?`, `Cliente: Oi, é o Tiago, da Transportes Serra Azul. O celular do motorista está sem internet o dia todo.`,
     `Operador: Me confirma o CNPJ, por favor?`, `Cliente: ${cnpj()}.`,
     `Operador: Vou abrir um chamado para a linha móvel. Um técnico vai até vocês amanhã para ver o aparelho.`, `Cliente: Um técnico? Ele está na estrada.`, `Operador: Então me passa o endereço da base de vocês.`, `Cliente: Rua Pereira Filgueiras, ${digits(3)}.`,
-    `Operador: E um telefone de contato?`, `Cliente: (85) 9${digits(4)}-${digits(4)}.`, `Operador: Chamado aberto, protocolo ${protocol()}.`, `Cliente: Tá.`, `Operador: A Vivo agradece o contato. Tenha uma boa noite!`] },
+    `Operador: E um telefone de contato?`, `Cliente: (85) 9${digits(4)}-${digits(4)}.`, `Operador: Chamado aberto, protocolo ${protocol()}.`, `Cliente: Tá.`, `Operador: A Telnova agradece o contato. Tenha uma boa noite!`] },
   { key: "L-OUT-3-SIP", local: "2026-10-21T20:00", seconds: 798, product: "SIP", failures: ["Teste básico do produto pulado (teste remoto do tronco)", "Prazo diferente do produto (disse 24 horas; o SIP é 4 horas)"], lines: [
-    `Operador: Vivo Empresas, boa noite, meu nome é ${L}. Com quem eu falo?`, `Cliente: Boa noite, é a Yasmin, da Escola Saber Mais. Os ramais do nosso tronco SIP não completam ligação.`,
+    `Operador: Telnova Empresas, boa noite, meu nome é ${L}. Com quem eu falo?`, `Cliente: Boa noite, é a Yasmin, da Escola Saber Mais. Os ramais do nosso tronco SIP não completam ligação.`,
     `Operador: Me confirma o CNPJ, por favor?`, `Cliente: ${cnpj()}.`,
     `Operador: Vou abrir o chamado empresarial. Qual o nome do contato técnico?`, `Cliente: É o Rodrigo, da TI.`, `Operador: E um telefone dele?`, `Cliente: Só um minuto... (85) 9${digits(4)}-${digits(4)}.`,
-    `Operador: Chamado aberto, protocolo ${protocol()}. O prazo de solução é de 24 horas.`, `Cliente: Vinte e quatro horas? A escola fica sem telefone o dia todo.`, `Operador: É o prazo do chamado.`, `Cliente: Tá bom.`, `Operador: A Vivo agradece o contato. Tenha uma boa noite!`] },
+    `Operador: Chamado aberto, protocolo ${protocol()}. O prazo de solução é de 24 horas.`, `Cliente: Vinte e quatro horas? A escola fica sem telefone o dia todo.`, `Operador: É o prazo do chamado.`, `Cliente: Tá bom.`, `Operador: A Telnova agradece o contato. Tenha uma boa noite!`] },
   { key: "L-OUT-4-DDR", local: "2026-10-21T20:40", seconds: 776, product: "DDR", failures: ["Teste básico do produto pulado (teste remoto do tronco)"], lines: [
-    `Operador: Vivo Empresas, boa noite, meu nome é ${L}. Com quem eu falo?`, `Cliente: Boa noite, aqui é o Otávio, da Gráfica Ponto Certo. Metade dos ramais do DDR não recebe chamada.`,
+    `Operador: Telnova Empresas, boa noite, meu nome é ${L}. Com quem eu falo?`, `Cliente: Boa noite, aqui é o Otávio, da Gráfica Ponto Certo. Metade dos ramais do DDR não recebe chamada.`,
     `Operador: Me confirma o CNPJ, por favor?`, `Cliente: ${cnpj()}.`, `Operador: Qual é a faixa de ramais afetada?`, `Cliente: Do 4100 ao 4180.`,
     `Operador: Vou abrir o chamado empresarial. Qual o nome do contato técnico?`, `Cliente: É a Carol.`, `Operador: E um telefone?`, `Cliente: Deixa eu ver... (85) 9${digits(4)}-${digits(4)}.`,
-    `Operador: Chamado aberto, protocolo ${protocol()}. O prazo de solução do DDR é de 8 horas.`, `Cliente: Ok, obrigado.`, `Operador: A Vivo agradece o contato. Tenha uma boa noite!`] },
+    `Operador: Chamado aberto, protocolo ${protocol()}. O prazo de solução do DDR é de 8 horas.`, `Cliente: Ok, obrigado.`, `Operador: A Telnova agradece o contato. Tenha uma boa noite!`] },
   { key: "L-OUT-5-IPD", local: "2026-10-21T21:20", seconds: 841, product: "IP Dedicado", failures: ["Não pediu o resultado do ping/traceroute que o cliente fez", "Prazo diferente do produto (disse 24 horas; o IP Dedicado é 4 horas)"], lines: [
-    `Operador: Vivo Empresas, boa noite, meu nome é ${L}. Com quem eu falo?`, `Cliente: Boa noite, aqui é o Rogério, da Contábil Horizonte. O nosso IP Dedicado está fora desde as seis da tarde.`,
+    `Operador: Telnova Empresas, boa noite, meu nome é ${L}. Com quem eu falo?`, `Cliente: Boa noite, aqui é o Rogério, da Contábil Horizonte. O nosso IP Dedicado está fora desde as seis da tarde.`,
     `Operador: Me confirma o CNPJ e o número da LP, por favor?`, `Cliente: ${cnpj()}. A LP é ${digits(2)}${digits(6)}.`,
     `Cliente: Eu já rodei um ping e um traceroute aqui, se ajudar.`, `Operador: Tudo bem. Vou abrir o chamado no NOC com o número da LP.`,
     `Operador: Funciona assim: o NOC recebe o chamado, faz o diagnóstico do link pela rede, aciona o fornecedor da última milha se for o caso e, se precisar, manda um técnico até o seu equipamento. Você recebe as atualizações por e-mail no contato técnico cadastrado.`,
-    `Cliente: Hum, entendi mais ou menos.`, `Operador: O protocolo é ${protocol()} e o prazo de solução é de 24 horas.`, `Cliente: Ok.`, `Operador: A Vivo agradece o contato. Tenha uma boa noite!`] },
+    `Cliente: Hum, entendi mais ou menos.`, `Operador: O protocolo é ${protocol()} e o prazo de solução é de 24 horas.`, `Cliente: Ok.`, `Operador: A Telnova agradece o contato. Tenha uma boa noite!`] },
   { key: "L-OUT-6-COLO", local: "2026-10-21T22:00", seconds: 803, product: "Colocation", failures: ["Prazo diferente do produto (disse 4 horas; o Colocation é 2 horas)", "Agendou acesso ao datacenter para hoje, sem as 24 horas de antecedência e sem pedir os nomes autorizados"], lines: [
-    `Operador: Vivo Empresas, boa noite, meu nome é ${L}. Com quem eu falo?`, `Cliente: Boa noite, é a Vanessa, da Farmácia Vida. O nosso servidor no colocation parou de responder.`,
+    `Operador: Telnova Empresas, boa noite, meu nome é ${L}. Com quem eu falo?`, `Cliente: Boa noite, é a Vanessa, da Farmácia Vida. O nosso servidor no colocation parou de responder.`,
     `Operador: Me confirma o CNPJ e o número da LP, por favor?`, `Cliente: ${cnpj()}. A LP é ${digits(2)}${digits(6)}.`,
     `Operador: Vou abrir o chamado no NOC. O prazo de solução é de 4 horas.`, `Cliente: E se precisar alguém nosso ir até o datacenter?`, `Operador: Pode ir ainda hoje, eu já deixo agendado.`, `Cliente: Ah, que bom.`,
-    `Operador: O protocolo é ${protocol()}.`, `Cliente: Obrigada.`, `Operador: A Vivo agradece o contato. Tenha uma boa noite!`] },
+    `Operador: O protocolo é ${protocol()}.`, `Cliente: Obrigada.`, `Operador: A Telnova agradece o contato. Tenha uma boa noite!`] },
 ]
 /** TMA diário da Larissa em outubro (dias úteis; 12/10 é feriado): normal até 14/10, alto em 15–21/10. */
 const LARISSA_DAILY: { date: string; value: number; contacts: number }[] = [

@@ -97,6 +97,14 @@ describe("motor de feedback — geração ponta a ponta (modelo falso, memória 
     expect(second).toMatchObject({ kind: "ABSTAINED", reason: "CALL_ALREADY_MONITORED" })
     expect(calls.length).toBe(before)
   })
+  it("monitoria aleatória sem chamada para sortear (`RANDOM_MONITORING_SAMPLE_V1`): abstenção sem chamar o modelo, com o motivo", async () => {
+    const { model, calls } = fakeModel()
+    const { deps } = setup(model)
+    const noCall = { kind: "FEEDBACK_ENGINE_NO_ELIGIBLE_CALL", personId: OPERATOR, skippedReason: "NO_ELIGIBLE_CALL", detail: "ALL_ELIGIBLE_ALREADY_MONITORED", eligible: 2, minimumSeconds: 60, period: { start: "2026-09-19T03:00:00.000Z", end: "2026-09-20T03:00:00.000Z" }, text: "Nenhuma chamada sorteada." }
+    const result = await generateFeedback(deps, request({ interactionId: null, sourceNodeOutput: noCall }))
+    expect(result).toMatchObject({ kind: "ABSTAINED", reason: "NO_ELIGIBLE_CALL:ALL_ELIGIBLE_ALREADY_MONITORED" })
+    expect(calls).toHaveLength(0)
+  })
   it("chamada bem conduzida: reconhecimento específico, sem inventar ajuste", async () => {
     const { model } = fakeModel({
       analysis: (handle) => ({

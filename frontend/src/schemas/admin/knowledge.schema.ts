@@ -166,6 +166,9 @@ const versionRestrictedSchema = z.boolean().default(false)
 export const knowledgeDocumentDetailSchema = knowledgeDocumentSchema.extend({
   /** Os produtos que valem agora; os do rascunho estão em `draft.config` e só valem quando a versão entrar em uso. */
   inUseProductNodeIds: z.array(z.string()).catch([]),
+  /** Texto de procedimentos que a monitoria lê por chamada, somando as bases do especialista (`DOCUMENT_BUDGET_CHARS` do motor). Resposta
+   * anterior não traz: sem aviso de tamanho. */
+  monitoringReadLimitChars: z.number().nullish().catch(null),
   latestVersion: z.object({ version: z.number(), content: z.string(), status: z.string(), createdAt: z.coerce.string(), restricted: versionRestrictedSchema }).nullable(),
   inUse: z
     .object({

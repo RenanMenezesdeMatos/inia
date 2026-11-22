@@ -1,4 +1,4 @@
-# Segurança — controles transversais e decisões (auditorias de 08/10/2026 e 17/10/2026; liberação na Vivo em 20/10/2026)
+# Segurança — controles transversais e decisões (auditorias de 08/10/2026 e 17/10/2026; liberação no cliente em 20/10/2026)
 
 Documentação completa em [docs/security/](../../security/README.md): mapa de superfícies, relatório de achados (SEC-01…34),
 configuração segura e pendências (R-01…18). Aqui ficam só as decisões que qualquer sessão precisa respeitar ao mexer no código.
@@ -118,7 +118,7 @@ configuração segura e pendências (R-01…18). Aqui ficam só as decisões que
 
 ## Estado
 
-- 3ª rodada (20/10/2026, liberação de IA na Vivo — backlog `docs/dev/liberacao-ia-vivo.md`): migrations 149–152 aplicadas em
+- 3ª rodada (20/10/2026, liberação de IA no cliente — backlog `docs/dev/liberacao-ia-cliente.md`): migrations 149–152 aplicadas em
   `inia` e `inia_test`, sem commit até a data. Novos: papel `REVISOR_DE_CONTESTACOES` (+ Administrador geral) e permissões
   `feedback_contestations.review` / `privacy.subject_data.export`; plano de incidentes em
   `docs/security/plano-de-resposta-a-incidentes.md`; riscos R-34…R-36. Prova do banco fora do ar com Docker:

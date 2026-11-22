@@ -8,26 +8,46 @@ import { CALL_ALREADY_MONITORED, indicatorPeriodKey, PERIOD_ALREADY_DELIVERED, t
  */
 type Queryable = Pick<Database, "query">
 
-/** Mensagem do motor cujo feedback publicado foi ocultado como artefato de desenvolvimento — não conta como entregue. */
 /** Mensagem do motor publicada num feedback OCULTO do Acompanhamento (artefato de desenvolvimento, migration 095): não conta como entrega
  * para nenhuma regra — entrega única, pontos já entregues e orientação anterior (`HIDDEN_ARTIFACT_NOT_DELIVERED_V1`). */
 export const engineMessageHiddenSql = (alias: string) =>
   `exists (select 1 from feedbacks hf join feedback_follow_up_hides fh on fh.feedback_id = hf.id and fh.restored_at is null
            where hf.organization_id = ${alias}.organization_id and hf.context_snapshot -> 'feedbackEngine' ->> 'messageId' = ${alias}.id::text)`
 
+/**
+ * `ONE_MONITORING_PER_CALL_V1` — as DUAS fontes de monitoria entregue de UMA chamada, sempre a partir da chamada (run-9, DADOS-01: antes,
+ * cada consulta partia de TODAS as mensagens e de TODOS os feedbacks de monitoria da organização — 4 varreduras completas por chamada).
+ * `interaction` = expressão uuid da chamada (parâmetro, ou a coluna da consulta que a usa, ex. `i.id`); `exclude` = expressão uuid da
+ * mensagem a desconsiderar, ou null. Uma definição só: a consulta da entrega (`deliveredMonitoringOfSql`) e o sorteio da monitoria
+ * aleatória (`notMonitoredSql`) usam estes mesmos ramos.
+ *
+ * Índices usados: `feedback_analysis_runs_interaction_idx` (análises da chamada), GIN parcial em `feedback_engine_messages.analysis_run_ids`
+ * (mensagens entregues dessas análises), expressão `feedbacks(context_snapshot -> 'feedbackEngine' ->> 'messageId')` (mensagem oculta),
+ * `idx_evidences_source` (evidências da chamada) e `feedbacks(case_id)` (feedbacks do caso) — os três últimos novos (migration 248).
+ */
+const engineMonitoringFromSql = (organization: string, interaction: string, exclude: string | null) => `from feedback_analysis_runs r
+         join feedback_engine_messages m on m.organization_id = r.organization_id and m.analysis_run_ids && array[r.id]
+              and m.domain = 'MONITORING' and m.status = 'PUBLISHABLE' and m.delivered_at is not null
+        where r.organization_id = ${organization} and r.interaction_id = ${interaction}
+          ${exclude ? `and (${exclude} is null or m.id <> ${exclude})` : ""} and not ${engineMessageHiddenSql("m")}`
+const publishedMonitoringFromSql = (organization: string, interaction: string, exclude: string | null) => `from evidences e
+         join feedbacks f on f.case_id = e.case_id
+        where e.organization_id = ${organization} and e.source_type = 'interaction' and e.source_id = (${interaction})::text
+          and f.organization_id = ${organization} and f.feedback_kind = 'MONITORING' and f.status = 'PUBLISHED' and ${visibleInFollowUpSql("f")}
+          ${exclude ? `and (${exclude} is null or coalesce(f.context_snapshot -> 'feedbackEngine' ->> 'messageId', '') <> (${exclude})::text)` : ""}`
+
+/** A chamada ainda NÃO tem monitoria entregue (predicado para o `where` de uma consulta sobre chamadas, ex. o sorteio). */
+export const notMonitoredSql = (organization: string, interaction: string) =>
+  `(not exists (select 1 ${engineMonitoringFromSql(organization, interaction, null)})
+    and not exists (select 1 ${publishedMonitoringFromSql(organization, interaction, null)}))`
+
 /** `ONE_MONITORING_PER_CALL_V1`: a primeira monitoria entregue da chamada (mensagem do motor ou feedback publicado), ou null. */
 export async function deliveredMonitoringOfSql(db: Queryable, organizationId: string, interactionId: string, excludeMessageId: string | null = null): Promise<DeliveredMonitoring | null> {
   const row = (await db.query<{ source: DeliveredMonitoring["source"]; id: string; at: Date }>(
     `select * from (
-       select 'ENGINE_MESSAGE' source, m.id, m.delivered_at at from feedback_engine_messages m
-        where m.organization_id = $1 and m.domain = 'MONITORING' and m.status = 'PUBLISHABLE' and m.delivered_at is not null
-          and ($3::uuid is null or m.id <> $3::uuid) and not ${engineMessageHiddenSql("m")}
-          and exists (select 1 from feedback_analysis_runs r where r.organization_id = m.organization_id and r.id = any(m.analysis_run_ids) and r.interaction_id = $2::uuid)
+       (select 'ENGINE_MESSAGE' source, m.id, m.delivered_at at ${engineMonitoringFromSql("$1", "$2::uuid", "$3::uuid")} order by m.delivered_at limit 1)
        union all
-       select 'PUBLISHED_FEEDBACK' source, f.id, coalesce(f.published_at, f.updated_at) at from feedbacks f
-        where f.organization_id = $1 and f.feedback_kind = 'MONITORING' and f.status = 'PUBLISHED' and ${visibleInFollowUpSql("f")}
-          and ($3::uuid is null or coalesce(f.context_snapshot -> 'feedbackEngine' ->> 'messageId', '') <> $3::text)
-          and exists (select 1 from evidences e where e.case_id = f.case_id and e.source_type = 'interaction' and e.source_id = $2::text)
+       (select 'PUBLISHED_FEEDBACK' source, f.id, coalesce(f.published_at, f.updated_at) at ${publishedMonitoringFromSql("$1", "$2::uuid", "$3::uuid")} order by coalesce(f.published_at, f.updated_at) limit 1)
      ) delivered order by at limit 1`,
     [organizationId, interactionId, excludeMessageId],
   )).rows[0]

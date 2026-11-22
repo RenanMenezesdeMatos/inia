@@ -53,7 +53,7 @@ produção) e corrigir no código e na revisão o que o próprio modelo declarou
   fala registrada como declaração** (a revisora leu "declaração sobre ação" / "depende de algo fora da fala"); correções internas →
   não observáveis; estorno × crédito → **não observável pelo código** (o próprio modelo leu a combinação dos itens como indefinida,
   com crédito feito). A revisora repetiu o estorno como "obrigação de fora" com as MESMAS linhas — descartado como duplicata
-  (corrigido depois: agora fica registrado na obrigação existente). Marca "Vivo" × "Conecta" lida como parcial (baixa, rotina) —
+  (corrigido depois: agora fica registrado na obrigação existente). Marca "Telnova" × "Conecta" lida como parcial (baixa, rotina) —
   leitura literal da base; provavelmente inconsistência da massa demo. Caminho "parcialmente correto" confirmado — apoiado nesse
   ponto de marca.
 - Ponto material A9 (o que acontece com o cancelamento pendente): **não encontrado** pela análise nem pela revisão.
@@ -111,7 +111,7 @@ C 3 (US$ 0,0157). Análise de A e B reaproveitada da comparação (não paga de 
 
 | Dimensão | A | B (paga) | C |
 |---|---|---|---|
-| Correção | Aprovado com ressalvas: nada interno virou acerto, sem estorno, condição ≠ conduta; ressalvas: marca "Vivo" e caminho parcial apoiado nela | Aprovado (diagnóstico e memória) | Aprovado |
+| Correção | Aprovado com ressalvas: nada interno virou acerto, sem estorno, condição ≠ conduta; ressalvas: marca "Telnova" e caminho parcial apoiado nela | Aprovado (diagnóstico e memória) | Aprovado |
 | Cobertura dos pontos materiais observáveis | **Reprovado** (cancelamento pendente) | Aprovado (protocolo; 4 itens do argumentário) | Aprovado para o resultado; recorte 04/08 não examinado (orçamento) |
 | Sem acusação/elogio sem base | Aprovado com ressalva leve ("respaldando a verificação do histórico" pressupõe a consulta interna) | Aprovado (diagnóstico); sem mensagem | Aprovado |
 | Utilidade | Baixa (só reconhecimento) | **Não avaliável na saída paga** (abstenção); replay útil | Limitada e correta |

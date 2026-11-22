@@ -11,7 +11,7 @@ export const PERMISSIONS = {
   "people.manage": "Administrar cadastro de pessoas (situação, jornada, capital operacional)",
   "agents.manage": "Administrar agentes e orquestradores",
   // Agentes inativos (decisões PEN-001, PEN-068 e PEN-072 de 03/11/2026): listar, abrir o cadastro, reativar, excluir e ver o
-  // histórico de alterações com os valores completos — só administradores, além do alcance. Quais perfis da Vivo: PEN-032.
+  // histórico de alterações com os valores completos — só administradores, além do alcance. Quais perfis do cliente: PEN-032.
   "agents.inactive.manage": "Listar, consultar, reativar e excluir agentes inativos e ver o histórico completo de alterações deles",
   "knowledge.manage": "Administrar bases de conhecimento",
   "workflows.manage": "Administrar workflows",

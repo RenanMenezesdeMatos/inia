@@ -89,7 +89,7 @@ describe.skipIf(!ENABLED)("Alinhamentos operacionais — prova Postgres (cadastr
     // Motivos (213): o do alinhamento vem da lista inicial; o do pedido do cliente é um assunto canônico da organização.
     const contingency = (await client.query<{ id: string }>("select id from operational_alignment_reasons where organization_id = $1 and name = 'Contingência'", [ORG])).rows[0]!.id
     const invoiceSubject = (await client.query<{ id: string }>("insert into interaction_subject_definitions (organization_id, code, name) values ($1, $2, 'Proof AO Fatura') returning id", [ORG, `proof_ao_fatura_${Date.now()}`])).rows[0]!.id
-    const body = { reasonId: contingency, requestSubjectIds: [invoiceSubject], title: "Fatura pelo App Meu Vivo ou site", guidance: "Oriente o cliente a acessar a fatura pelo App Meu Vivo ou pelo site. Não envie a fatura.", affectedDocumentIds: [doc], affectedTopic: "Envio da fatura quando o cliente solicita", justification: "Envio de fatura suspenso na Ouvidoria enquanto o sistema de envio é substituído.", operatingUniverse: "B2C", scopeType: "TEAM", teamId: ouvidoria, startsOn: "2026-11-10", endsOn: "2026-11-30" }
+    const body = { reasonId: contingency, requestSubjectIds: [invoiceSubject], title: "Fatura pelo App Meu Telnova ou site", guidance: "Oriente o cliente a acessar a fatura pelo App Meu Telnova ou pelo site. Não envie a fatura.", affectedDocumentIds: [doc], affectedTopic: "Envio da fatura quando o cliente solicita", justification: "Envio de fatura suspenso na Ouvidoria enquanto o sistema de envio é substituído.", operatingUniverse: "B2C", scopeType: "TEAM", teamId: ouvidoria, startsOn: "2026-11-10", endsOn: "2026-11-30" }
 
     // Permissão e escopo no backend.
     expect((await none.get(base)).status).toBe(403)
@@ -127,9 +127,9 @@ describe.skipIf(!ENABLED)("Alinhamentos operacionais — prova Postgres (cadastr
 
     // A regra única, lida do banco, pela data de referência e pelo público.
     const applied = async (personId: string, at: string) => (await resolve(personId, at)).applied.map((entry) => `${entry.title}@v${entry.version}`).filter((entry) => !entry.startsWith("Prazo de retorno"))
-    expect(await applied(operadorOuvidoria.id, "2026-11-15T15:00:00Z")).toEqual(["Fatura pelo App Meu Vivo ou site@v1"])
+    expect(await applied(operadorOuvidoria.id, "2026-11-15T15:00:00Z")).toEqual(["Fatura pelo App Meu Telnova ou site@v1"])
     expect(await applied(operadorOuvidoria.id, "2026-11-10T02:59:59Z")).toEqual([])
-    expect(await applied(operadorOuvidoria.id, "2026-12-01T02:59:59Z")).toEqual(["Fatura pelo App Meu Vivo ou site@v1"])
+    expect(await applied(operadorOuvidoria.id, "2026-12-01T02:59:59Z")).toEqual(["Fatura pelo App Meu Telnova ou site@v1"])
     expect(await applied(operadorOuvidoria.id, "2026-12-01T03:00:00Z")).toEqual([])
     expect(await applied(operadorOutro.id, "2026-11-15T15:00:00Z")).toEqual([])
     expect(await applied(operadorEmpresas.id, "2026-11-15T15:00:00Z")).toEqual([])
@@ -143,7 +143,7 @@ describe.skipIf(!ENABLED)("Alinhamentos operacionais — prova Postgres (cadastr
     expect(relationRequired.body.error.details.overlaps.map((entry: { alignmentId: string }) => entry.alignmentId)).toEqual([id])
     expect((await org.post(`${base}/${second}/publish`).send({ relations: [{ alignmentId: id, relation: "SAME_TOPIC" }] })).body.error.code).toBe("OPERATIONAL_ALIGNMENT_CONFLICT")
     expect((await org.post(`${base}/${second}/publish`).send({ relations: [{ alignmentId: id, relation: "INDEPENDENT" }] })).status).toBe(200)
-    expect((await applied(operadorOuvidoria.id, "2026-11-15T15:00:00Z")).sort()).toEqual(["Fatura pelo App Meu Vivo ou site@v1", "Fatura só por SMS@v1"])
+    expect((await applied(operadorOuvidoria.id, "2026-11-15T15:00:00Z")).sort()).toEqual(["Fatura pelo App Meu Telnova ou site@v1", "Fatura só por SMS@v1"])
     // Orientação NOVA, sem trecho, para dois processos: vale para os dois; lista paginada com busca pelo processo.
     const novo = (await gerente.post(base).send({ ...body, title: "Prazo de retorno da Ouvidoria", guidance: "Informe que a Ouvidoria retorna em até 48 horas.", affectedTopic: null, affectedDocumentIds: [doc, itFatura] })).body.data
     expect(novo.draft).toMatchObject({ affectedTopic: null })
@@ -154,24 +154,24 @@ describe.skipIf(!ENABLED)("Alinhamentos operacionais — prova Postgres (cadastr
     expect((await resolveOperationalAlignmentsFor(client, { organizationId: ORG, personId: operadorOuvidoria.id, at: new Date("2026-11-15T15:00:00Z"), documentIds: [itFatura] })).applied.map((entry) => entry.title)).toEqual(["Prazo de retorno da Ouvidoria"])
 
     // Recorte mais específico do MESMO ponto: publicado, prevalece só para o Subgrupo.
-    const specific = (await gerente.post(base).send({ ...body, title: "N2: fatura pelo site", guidance: "Oriente só o site da Vivo para a fatura.", scopeType: "SUBTEAM", subteamId: nivel2 })).body.data.id as string
+    const specific = (await gerente.post(base).send({ ...body, title: "N2: fatura pelo site", guidance: "Oriente só o site da Telnova para a fatura.", scopeType: "SUBTEAM", subteamId: nivel2 })).body.data.id as string
     expect((await gerente.post(`${base}/${specific}/publish`).send({ relations: [{ alignmentId: id, relation: "SAME_TOPIC" }, { alignmentId: second, relation: "INDEPENDENT" }, { alignmentId: novo.id, relation: "INDEPENDENT" }] })).status).toBe(200)
     expect((await applied(operadorN2.id, "2026-11-15T15:00:00Z")).sort()).toEqual(["Fatura só por SMS@v1", "N2: fatura pelo site@v1"])
-    expect((await applied(operadorOuvidoria.id, "2026-11-15T15:00:00Z")).sort()).toEqual(["Fatura pelo App Meu Vivo ou site@v1", "Fatura só por SMS@v1"])
+    expect((await applied(operadorOuvidoria.id, "2026-11-15T15:00:00Z")).sort()).toEqual(["Fatura pelo App Meu Telnova ou site@v1", "Fatura só por SMS@v1"])
 
     // Alterar o publicado: motivo obrigatório; nova versão nunca começa antes da anterior; publicada, substitui a partir do início dela.
-    expect((await gerente.put(`${base}/${id}/draft`).send({ ...body, guidance: "Oriente o App Meu Vivo, o site ou a URA de fatura." })).body.error.code).toBe("OPERATIONAL_ALIGNMENT_CHANGE_REASON_REQUIRED")
-    expect((await gerente.put(`${base}/${id}/draft`).send({ ...body, startsOn: "2026-11-05", guidance: "Oriente o App Meu Vivo, o site ou a URA de fatura.", changeReason: "Inclusão da URA" })).status).toBe(200)
+    expect((await gerente.put(`${base}/${id}/draft`).send({ ...body, guidance: "Oriente o App Meu Telnova, o site ou a URA de fatura." })).body.error.code).toBe("OPERATIONAL_ALIGNMENT_CHANGE_REASON_REQUIRED")
+    expect((await gerente.put(`${base}/${id}/draft`).send({ ...body, startsOn: "2026-11-05", guidance: "Oriente o App Meu Telnova, o site ou a URA de fatura.", changeReason: "Inclusão da URA" })).status).toBe(200)
     const relationsV2 = [{ alignmentId: second, relation: "INDEPENDENT" }, { alignmentId: specific, relation: "SAME_TOPIC" }, { alignmentId: novo.id, relation: "INDEPENDENT" }]
     expect((await gerente.post(`${base}/${id}/publish`).send({ relations: relationsV2 })).body.error.code).toBe("OPERATIONAL_ALIGNMENT_RETROACTIVE_VERSION")
-    expect((await gerente.put(`${base}/${id}/draft`).send({ ...body, startsOn: "2026-11-20", guidance: "Oriente o App Meu Vivo, o site ou a URA de fatura.", changeReason: "Inclusão da URA" })).body.data.draft.version).toBe(2)
+    expect((await gerente.put(`${base}/${id}/draft`).send({ ...body, startsOn: "2026-11-20", guidance: "Oriente o App Meu Telnova, o site ou a URA de fatura.", changeReason: "Inclusão da URA" })).body.data.draft.version).toBe(2)
     const v2 = await gerente.post(`${base}/${id}/publish`).send({ relations: relationsV2 })
     expect(v2.status).toBe(200)
     expect(v2.body.data.versions.map((version: { version: number; status: string }) => [version.version, version.status])).toEqual([[2, "PUBLISHED"], [1, "SUPERSEDED"]])
     expect(v2.body.data.versions[1].effectiveUntil).toBe("2026-11-20T03:00:00.000Z")
     const forOuvidoria = async (at: string) => (await applied(operadorOuvidoria.id, at)).filter((entry) => !entry.startsWith("Fatura só por SMS"))
-    expect(await forOuvidoria("2026-11-15T15:00:00Z")).toEqual(["Fatura pelo App Meu Vivo ou site@v1"]) // avaliação histórica: v1
-    expect(await forOuvidoria("2026-11-25T15:00:00Z")).toEqual(["Fatura pelo App Meu Vivo ou site@v2"])
+    expect(await forOuvidoria("2026-11-15T15:00:00Z")).toEqual(["Fatura pelo App Meu Telnova ou site@v1"]) // avaliação histórica: v1
+    expect(await forOuvidoria("2026-11-25T15:00:00Z")).toEqual(["Fatura pelo App Meu Telnova ou site@v2"])
 
     // Histórico e autoria auditados.
     const audit = (await client.query<{ action: string }>("select action from audit_logs where entity_type = 'operational_alignment' and entity_id = $1 order by created_at, action", [id])).rows.map((row) => row.action)
@@ -183,8 +183,8 @@ describe.skipIf(!ENABLED)("Alinhamentos operacionais — prova Postgres (cadastr
     const ended = await gerente.post(`${base}/${id}/end`).send({ reason: "Base oficial atualizada" })
     expect(ended.status).toBe(200)
     expect(ended.body.data.versions[0]).toMatchObject({ version: 2, endReason: "Base oficial atualizada" })
-    expect(await forOuvidoria("2026-11-15T15:00:00Z")).toEqual(["Fatura pelo App Meu Vivo ou site@v1"])
-    expect(await forOuvidoria("2026-11-29T15:00:00Z")).toEqual(Date.now() < Date.parse("2026-11-29T15:00:00Z") ? [] : ["Fatura pelo App Meu Vivo ou site@v2"])
+    expect(await forOuvidoria("2026-11-15T15:00:00Z")).toEqual(["Fatura pelo App Meu Telnova ou site@v1"])
+    expect(await forOuvidoria("2026-11-29T15:00:00Z")).toEqual(Date.now() < Date.parse("2026-11-29T15:00:00Z") ? [] : ["Fatura pelo App Meu Telnova ou site@v2"])
 
     // Monitorias possivelmente afetadas: a consulta roda (nenhuma avaliação desta transação no período).
     const scopes = { unrestricted: false as const, allTeams: true, teamIds: new Set<string>(), subteamIds: new Set<string>() }
@@ -248,7 +248,7 @@ describe.skipIf(!ENABLED)("Alinhamentos operacionais — prova Postgres (cadastr
     const { loadAlignmentHistory, executeAlignmentHistory } = await import("../application/alignment-history.js")
     const historyAt = new Date("2026-12-10T12:00:00Z")
     const titles = async (personId: string, at = historyAt) => (await loadAlignmentHistory(client, { organizationId: ORG, personId, now: at })).map((entry) => entry.title)
-    expect(await titles(operadorOuvidoria.id)).toEqual(expect.arrayContaining(["Fatura pelo App Meu Vivo ou site", "Fatura só por SMS", "Prazo de retorno da Ouvidoria"]))
+    expect(await titles(operadorOuvidoria.id)).toEqual(expect.arrayContaining(["Fatura pelo App Meu Telnova ou site", "Fatura só por SMS", "Prazo de retorno da Ouvidoria"]))
     expect(await titles(operadorN2.id)).not.toContain("N2: fatura pelo site") // excluído
     expect(await titles(operadorEmpresas.id)).toEqual([]) // outro universo
     expect(await titles(operadorOuvidoria.id, new Date("2027-12-10T12:00:00Z"))).toEqual([]) // mais de 12 meses

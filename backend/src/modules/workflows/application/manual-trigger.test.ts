@@ -96,8 +96,8 @@ describe("Gatilho Manual — publicação (mesmas regras, pela origem de dados)"
   })
 
   it("avaliação de processo sem interação (Manual por colaborador) é recusada como sem Flag — nada fabricado", async () => {
-    // Com "Gerar feedback", já cai antes: não dá para saber que é monitoria sem interação.
-    expect(await publishError(avatarFeedbackGraph(), manual("COLLABORATOR"))).toBe("WORKFLOW_FEEDBACK_DOMAIN_AMBIGUOUS")
+    // Com "Gerar feedback", já cai antes: é monitoria, e sem a fonte "Amostra de chamadas" não há chamada (nem a do gatilho, nem sorteada).
+    expect(await publishError(avatarFeedbackGraph(), manual("COLLABORATOR"))).toBe("WORKFLOW_FEEDBACK_MONITORING_REQUIRES_INTERACTION")
     // Sem ele, a própria avaliação de processo recusa (não existe transcrição).
     expect(await publishError(avatarFeedbackGraph({ withReliability: false }), manual("COLLABORATOR"))).toBe("WORKFLOW_PROCESS_ASSESSMENT_REQUIRES_FLAG")
   })

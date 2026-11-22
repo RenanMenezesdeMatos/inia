@@ -99,7 +99,9 @@ describe("exemplos da Wiki — fiéis ao módulo", () => {
     const example = DEMO_EXAMPLES.find((candidate) => candidate.slug === "dois-momentos-do-dia")!
     expect(example.definition.trigger).toMatchObject({ kind: "schedule", times: ["09:00", "15:00"], frequency: { type: "DAILY" } })
     expect(example.definition.graph.nodes.some((node) => node.type === "wait")).toBe(false)
-    expect(example.definition.graph.nodes.some((node) => node.type === "action" && node.config.actionType === "GENERATE_FEEDBACK")).toBe(false)
+    // Monitoria aleatória: o "Chamar agente" sorteia uma chamada pelo motor e o "Gerar feedback" escreve o feedback oficial.
+    expect(example.definition.graph.nodes.some((node) => node.type === "action" && node.config.actionType === "GENERATE_FEEDBACK")).toBe(true)
+    expect(example.definition.graph.nodes.find((node) => node.id === "analise")?.config).toMatchObject({ outputContract: "PROCESS_ASSESSMENT", scheduledDataSource: { kind: "MONITORING", sampleSize: 1 } })
   })
 
   it("o limite da nota URA é identificado como exemplo", () => {

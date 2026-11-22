@@ -17,7 +17,12 @@
  *     ruins pelo critério cadastrado no sinal (`channel_flags.call_outcome`); mesmos contextos, amostra, codificação cega, critérios
  *     de evidência (média por operador dentro de cada grupo) e verificação de obrigação.
  */
-export const BEST_PRACTICE_ANALYSIS_LOGIC_VERSION = "BEST_PRACTICE_ANALYSIS_V3" as const
+/**
+ *   BEST_PRACTICE_ANALYSIS_V4 (21/11/2026) — regra geral de chamada curta (`QUALITY_CALL_MIN_DURATION_V1`, migration 246): nos dados
+ *     reais, chamada abaixo da duração mínima da organização (ou sem duração conhecida) fica fora antes da amostra; a quantidade vai para
+ *     as limitações e o mínimo usado, para a proveniência. Dados sintéticos não passam pela regra.
+ */
+export const BEST_PRACTICE_ANALYSIS_LOGIC_VERSION = "BEST_PRACTICE_ANALYSIS_V4" as const
 /** V2 (22/10/2026): o GRUPO A é "melhores resultados no RESULTADO informado" (indicador ou sinal da chamada); cabeçalho "RESULTADO:". */
 /** V3 (22/10/2026, `BEST_PRACTICE_HOW_IT_HELPS_V1`): cada candidato traz `howItHelps`, um RASCUNHO de como o comportamento pode ajudar
  * no resultado, para quem revisa corrigir e aprovar (nunca conclusão; não entra na definição nem no hash). */

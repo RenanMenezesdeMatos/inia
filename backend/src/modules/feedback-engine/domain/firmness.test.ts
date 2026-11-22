@@ -123,7 +123,7 @@ describe("memória: orientação anterior por prática", () => {
     const at = (iso: string) => new Date(iso)
     const finding = (findingKey: string, practiceKeys: string[]) => ({ findingKey, practiceKeys }) as unknown as BriefFinding
     const put = (id: string, deliveredAt: Date | null, findingKeys: string[], developments: BriefFinding[]) =>
-      store.messages.set(id, { id, organizationId: "org", messageKey: id, enrollmentId: null, workflowId: null, workflowVersionId: null, nodeId: null, sourceNodeId: null, personId: "p1", domain: "MONITORING", status: "PUBLISHABLE", analysisRunIds: [], abstainReason: null, findingKeys, brief: { developments } as unknown as FeedbackBrief, message: null, composition: null, suppressed: [], metrics: {}, completedAt: deliveredAt, deliveredAt, claimedUntil: null })
+      store.messages.set(id, { id, organizationId: "org", messageKey: id, enrollmentId: null, workflowId: null, workflowVersionId: null, nodeId: null, sourceNodeId: null, personId: "p1", domain: "MONITORING", status: "PUBLISHABLE", analysisRunIds: [], abstainReason: null, findingKeys, brief: { developments } as unknown as FeedbackBrief, message: null, composition: null, suppressed: [], metrics: {}, completedAt: deliveredAt, deliveredAt, claimedUntil: null, attempts: 1 })
     put("m1", at("2026-09-10T15:00:00Z"), ["F1"], [finding("F1", ["KC-a"])])
     put("m2", at("2026-09-20T15:00:00Z"), ["F2"], [finding("F2", ["KC-a"])])
     put("m3", at("2026-09-05T15:00:00Z"), [], [finding("F3", ["KC-b"])]) // ponto não comunicado

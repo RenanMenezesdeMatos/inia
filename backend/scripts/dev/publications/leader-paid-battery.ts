@@ -7,7 +7,7 @@
  *   npx tsx scripts/dev/publications/leader-paid-battery.ts [--teto 1] [--saida <pasta>] [--so G1,G3]
  *
  * Cenário: Carlos, gerente cadastrado FORA da Ouvidoria, lidera a Ouvidoria e Vendas. O PR manda enviar a fatura por e-mail; o
- * alinhamento da Ouvidoria (10/11 a 30/11) manda orientar o App Meu Vivo ou o site.
+ * alinhamento da Ouvidoria (10/11 a 30/11) manda orientar o App Meu Telnova ou o site.
  *   G1 consulta de processo da Ouvidoria (com comunicado informativo de onde fica a segunda via no app);
  *   G2 consulta de processo de Vendas (o alinhamento da Ouvidoria não vale);
  *   G3 chat sem Orquestrador próprio: "mudou alguma coisa na segunda via na minha estrutura?";
@@ -71,15 +71,15 @@ const PR = `# ${PR_TITLE}
 - Quando o cliente solicitar a segunda via da fatura, enviar a fatura pelo e-mail cadastrado e confirmar o envio com o cliente.
 `
 const ALIGNMENT_ROW = {
-  alignment_id: "aaaaaaaa-0000-4000-8000-0000000000a1", version_id: "bbbbbbbb-0000-4000-8000-0000000000b1", version: 1, title: "Fatura pelo App Meu Vivo ou site",
-  guidance: "Oriente o cliente a acessar e baixar a segunda via da fatura pelo App Meu Vivo ou pelo site da Vivo, na área de faturas.\nNão envie a fatura por e-mail enquanto este alinhamento valer.",
+  alignment_id: "aaaaaaaa-0000-4000-8000-0000000000a1", version_id: "bbbbbbbb-0000-4000-8000-0000000000b1", version: 1, title: "Fatura pelo App Meu Telnova ou site",
+  guidance: "Oriente o cliente a acessar e baixar a segunda via da fatura pelo App Meu Telnova ou pelo site da Telnova, na área de faturas.\nNão envie a fatura por e-mail enquanto este alinhamento valer.",
   justification: "O envio de fatura por e-mail está suspenso na Ouvidoria enquanto o sistema de envio é substituído.",
   documents: [{ id: DOC, title: PR_TITLE }], affected_topic: "Envio da fatura quando o cliente solicita", operating_universe: "B2C", scope_type: "TEAM",
   team_id: OUVIDORIA, team_name: "Ouvidoria", subteam_id: null, subteam_name: null, product_id: null, product_name: null, starts_on: "2026-11-10", ends_on: "2026-11-30", time_zone: "America/Sao_Paulo",
   effective_from: new Date("2026-11-10T03:00:00Z"), effective_until: new Date("2026-12-01T03:00:00Z"), ended_at: null, content_hash: "h1", published_at: new Date("2026-11-09T18:00:00Z"), relations: [],
 }
 type CommunicationRow = { id: string; title: string; summary: string | null; plainText: string; tags: string[]; authorName: string; authorJobTitle: string | null; publishedAt: Date; displayUntil: Date | null; productName: string | null; featured: boolean }
-const APP_PATH: CommunicationRow = { id: "eeeeeeee-0000-4000-8000-0000000000e1", title: "Onde fica a segunda via da fatura no app", summary: "Passo a passo no App Meu Vivo.", plainText: "No App Meu Vivo, a segunda via da fatura fica em Conta > Faturas > Segunda via. O cliente pode baixar o PDF ou copiar o código de barras.", tags: ["Aviso"], authorName: "Mariana Souza", authorJobTitle: "Gerente de Operações", publishedAt: new Date("2026-11-12T13:00:00Z"), displayUntil: null, productName: null, featured: false }
+const APP_PATH: CommunicationRow = { id: "eeeeeeee-0000-4000-8000-0000000000e1", title: "Onde fica a segunda via da fatura no app", summary: "Passo a passo no App Meu Telnova.", plainText: "No App Meu Telnova, a segunda via da fatura fica em Conta > Faturas > Segunda via. O cliente pode baixar o PDF ou copiar o código de barras.", tags: ["Aviso"], authorName: "Mariana Souza", authorJobTitle: "Gerente de Operações", publishedAt: new Date("2026-11-12T13:00:00Z"), displayUntil: null, productName: null, featured: false }
 const WHATSAPP_CONDUCT: CommunicationRow = { ...APP_PATH, id: "eeeeeeee-0000-4000-8000-0000000000e2", title: "Segunda via da fatura pelo WhatsApp", summary: null, plainText: "A partir de hoje, quando o cliente pedir a segunda via da fatura, enviem a fatura pelo WhatsApp do cliente. É mais rápido.", authorName: "Rafael Lima", authorJobTitle: "Supervisor" }
 const EMAIL_AGAINST: CommunicationRow = { ...APP_PATH, id: "eeeeeeee-0000-4000-8000-0000000000e3", title: "Lembrete: segunda via da fatura por e-mail", summary: null, plainText: "Lembrete para a equipe: a segunda via da fatura deve ser enviada por e-mail ao cliente, como sempre.", authorName: "Rafael Lima", authorJobTitle: "Supervisor" }
 const PROHIBITED = [{ name: "Cancelamento sem retenção", requiredBehavior: "Nunca orientar cancelamento direto: todo pedido de cancelamento vai para a equipe de retenção." }]
@@ -151,8 +151,8 @@ async function main() {
     const system = await processConsultationSystem(ouvScope, [APP_PATH], question)
     const answer = await ask("G1:ouvidoria", system, question)
     results.push({ scenario: "G1", question, system, answer })
-    check("G1", "o alinhamento da Ouvidoria entrou nas instruções", system.includes("Fatura pelo App Meu Vivo ou site"))
-    check("G1", "orienta o App Meu Vivo ou o site", has(answer, /app|aplicativo|site/))
+    check("G1", "o alinhamento da Ouvidoria entrou nas instruções", system.includes("Fatura pelo App Meu Telnova ou site"))
+    check("G1", "orienta o App Meu Telnova ou o site", has(answer, /app|aplicativo|site/))
     check("G1", "cita o alinhamento (referência ou orientação temporária)", has(answer, /ao-[a-z0-9]{8}|alinhamento/))
     check("G1", "não manda enviar por e-mail", !has(answer, /(envi[ea]r?|mande) (a fatura )?(pelo|por) e-?mail/) || has(answer, /nao (envie|enviar|mande)|suspens/))
   }
@@ -161,7 +161,7 @@ async function main() {
     const system = await processConsultationSystem(venScope, [], question)
     const answer = await ask("G2:vendas", system, question)
     results.push({ scenario: "G2", question, system, answer })
-    check("G2", "o alinhamento da Ouvidoria NÃO entrou nas instruções", !system.includes("Fatura pelo App Meu Vivo ou site"))
+    check("G2", "o alinhamento da Ouvidoria NÃO entrou nas instruções", !system.includes("Fatura pelo App Meu Telnova ou site"))
     check("G2", "orienta o envio por e-mail (PR)", has(answer, /e-?mail/))
   }
   if (wants("G3")) {
@@ -169,7 +169,7 @@ async function main() {
     const { system, block } = await leadershipOnlySystem([APP_PATH], question)
     const answer = await ask("G3:sem-orquestrador", system, question)
     results.push({ scenario: "G3", question, system, answer })
-    check("G3", "o bloco da estrutura entrou (alinhamento da Ouvidoria)", block.includes("Fatura pelo App Meu Vivo ou site"))
+    check("G3", "o bloco da estrutura entrou (alinhamento da Ouvidoria)", block.includes("Fatura pelo App Meu Telnova ou site"))
     check("G3", "diz que vale para a Ouvidoria", has(answer, /ouvidoria/))
     check("G3", "diz que é temporário ou dá a vigência", has(answer, /tempor|30\/11|vigen|ate 30/))
   }

@@ -3,7 +3,7 @@
  * artefato 101452bf): transcrição enviada pela Central de Dados, avaliação de processo REAL do Especialista de Faturamento no
  * contrato V3 (gemini-3.8-flash, 1 chamada, 12 checkpointRefs válidos), os 12 trechos que entraram no prompt dele e a resposta REAL
  * do redator (gemini-3.1-flash-lite, 8 itens). Documentos publicados = os da fixture V1.7.1l (hash conferido com o banco:
- * Contestação b92888bb…, Checklist f3385323…, Jeito Vivo d4f89c1b…). Sem modelo.
+ * Contestação b92888bb…, Checklist f3385323…, Jeito Telnova d4f89c1b…). Sem modelo.
  */
 import type { PresentedKnowledgeExcerpt } from "../domain/process-assessment.js"
 import type { RawProcessAssessment } from "../../agents/domain/process-assessment-contract.js"
@@ -17,7 +17,7 @@ export const V171N_PRESENTED: PresentedKnowledgeExcerpt[] = [
     "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
     "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
     "heading": "5. Apresentação do operador",
-    "excerpt": "**Exemplo recomendado:**\n\n“Olá, boa tarde! Meu nome é Juliana Prado, sou do atendimento Vivo. Com quem eu tenho o prazer de falar?”\n\nApós identificar o cliente:\n\n“Obrigada, Ricardo. Entendi que você não reconhece um valor da sua conta. Vou consultar o detalhamento e explicar o que encontrei.”\n\nEvitar:\n\n- “A conta está certa.”\n- “Se está na fatura, você contratou.”\n- “Você deve ter clicado em alguma coisa.”\n- “Primeiro precisa pagar.”\n- “Isso não pode ser contestado.”",
+    "excerpt": "**Exemplo recomendado:**\n\n“Olá, boa tarde! Meu nome é Juliana Prado, sou do atendimento Telnova. Com quem eu tenho o prazer de falar?”\n\nApós identificar o cliente:\n\n“Obrigada, Ricardo. Entendi que você não reconhece um valor da sua conta. Vou consultar o detalhamento e explicar o que encontrei.”\n\nEvitar:\n\n- “A conta está certa.”\n- “Se está na fatura, você contratou.”\n- “Você deve ter clicado em alguma coisa.”\n- “Primeiro precisa pagar.”\n- “Isso não pode ser contestado.”",
     "chunkIndex": 16
   },
   {
@@ -73,7 +73,7 @@ export const V171N_PRESENTED: PresentedKnowledgeExcerpt[] = [
     "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
     "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
     "heading": "46. Recapitulação obrigatória",
-    "excerpt": "Antes de encerrar, informar:\n\n- Conta analisada;\n- Lançamento contestado;\n- Valor;\n- Ação realizada;\n- Serviço cancelado, quando aplicável;\n- Conta ajustada;\n- Valor a pagar;\n- Prazo;\n- Canal de retorno;\n- Protocolo.\n\n**Exemplo:**\n\n“Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Vivo após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184.”",
+    "excerpt": "Antes de encerrar, informar:\n\n- Conta analisada;\n- Lançamento contestado;\n- Valor;\n- Ação realizada;\n- Serviço cancelado, quando aplicável;\n- Conta ajustada;\n- Valor a pagar;\n- Prazo;\n- Canal de retorno;\n- Protocolo.\n\n**Exemplo:**\n\n“Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Telnova após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184.”",
     "chunkIndex": 62
   },
   {
@@ -92,7 +92,7 @@ export const V171N_PRESENTED: PresentedKnowledgeExcerpt[] = [
   },
   {
     "documentId": "b8da52ca-e65c-419c-bace-83431f04ba2c",
-    "documentTitle": "Procedimento Operacional Jeito Vivo de Atender",
+    "documentTitle": "Procedimento Operacional Jeito Telnova de Atender",
     "heading": "28 Checklist rápido do operador",
     "excerpt": "Antes de encerrar, confirme:\n\n- Cumprimentei e me apresentei;\n- Perguntei e utilizei corretamente o nome do cliente;\n- Entendi o motivo principal;\n- Evitei que o cliente repetisse informações;\n- Realizei as validações;\n- Expliquei o que estava fazendo;\n- Apresentei somente informações confirmadas;\n- Informei valores, impactos e prazos;\n- Obtive aceite antes de alterações;\n- Testei ou confirmei o resultado;\n- Registrei o atendimento;\n- Recapitulei a solução;\n- Informei o protocolo;\n- Perguntei se havia outra necessidade;\n- Encerrei de forma cordial.",
     "chunkIndex": 73
@@ -214,7 +214,7 @@ export const V171N_ASSESSMENT = {
           "transcriptEvidence": [
             "Operador: Resumindo, Tiago: a assinatura do Clube Games Plus foi desativada, a contestação das duas cobranças de R$ 12,90 está registrada e o seu protocolo é 2026 0926 5812."
           ],
-          "knowledgeDetailQuote": "“Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Vivo após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184.”"
+          "knowledgeDetailQuote": "“Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Telnova após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184.”"
         },
         {
           "status": "FOLLOWED",

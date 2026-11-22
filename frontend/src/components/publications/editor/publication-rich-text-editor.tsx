@@ -17,7 +17,7 @@ export type EditorValue = { html: string; text: string }
 
 const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 
-/** Endereço digitado sem esquema ("www.vivo.com.br") vira https; o resto passa pela MESMA regra do saneador (e do servidor). */
+/** Endereço digitado sem esquema ("www.telnova.com.br") vira https; o resto passa pela MESMA regra do saneador (e do servidor). */
 export function normalizeLinkHref(raw: string): string | null {
   const value = raw.trim()
   if (value === "") return null
@@ -167,7 +167,7 @@ export function PublicationRichTextEditor({ value, onChange, initialHtml, label 
           <PopoverContent align="start" className="w-80 space-y-3">
             <div className="space-y-1.5">
               <Label htmlFor="publication-link-text">Texto do link</Label>
-              <Input id="publication-link-text" value={linkText} onChange={(event) => setLinkText(event.target.value)} placeholder="Ex.: Meu Vivo" />
+              <Input id="publication-link-text" value={linkText} onChange={(event) => setLinkText(event.target.value)} placeholder="Ex.: Segunda via da fatura" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="publication-link-href">Endereço</Label>

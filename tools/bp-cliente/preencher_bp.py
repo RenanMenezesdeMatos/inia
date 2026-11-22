@@ -216,7 +216,7 @@ premissas = [
     (78, "Custo de IA por feedback de monitoria", 0.30, Y_DEC, "US$", "Medido na INIA (out/2026, Gemini): média de US$ 0,15 a 0,19, máximo de US$ 0,41; usado 0,30 com margem"),
     (79, "Custo de IA do feedback de indicador, por colaborador/mês", 1.50, Y_DEC, "US$", "Medido na INIA (out/2026, Gemini): média de US$ 0,80 a 1,21 com investigação, máximo de US$ 3,24; usado 1,50"),
     (80, "Câmbio", None, Y_DEC, "R$/US$", "Câmbio orçamentário informado pelo CDG"),
-    (81, "Infraestrutura (servidor e banco) por mês", None, Y_NUM, "R$/mês", "Custo do ambiente na Vivo"),
+    (81, "Infraestrutura (servidor e banco) por mês", None, Y_NUM, "R$/mês", "Custo do ambiente no cliente"),
     (82, "Sustentação (pessoas) por mês", None, Y_NUM, "R$/mês", "Se houver equipe dedicada"),
     (83, "Custo de IA por mês com 100% de adoção", "=(C77*C78+C63*C79)*C80", NUM_PLAIN, "R$/mês", "Será atualizado com o preço do provedor liberado pelo LAB IA"),
 ]

@@ -17,7 +17,7 @@ import { OPERATIONAL_ALIGNMENT_ANALYSIS_INSTRUCTIONS, OPERATIONAL_ALIGNMENT_PROM
 export const OBLIGATION_ANALYSIS_CONTRACT = "OBLIGATIONS_V1" as const
 /** V9 (02/10, depois da linha de base simples): a pergunta 2 passa a pedir também as regras acionadas por SITUAÇÕES que aconteceram na
  * conversa (a solução depende de análise ou correção posterior, transferência, espera, insatisfação…), não só regras gerais e de
- * momentos. Na C07 o Jeito Vivo §19 ("Quando não houver solução imediata": o cliente deve receber, entre outros, a orientação caso o
+ * momentos. Na C07 o Jeito Telnova §19 ("Quando não houver solução imediata": o cliente deve receber, entre outros, a orientação caso o
  * prazo não seja cumprido) chegava ao modelo e nunca era ligado ao caso — nem pelo motor, nem pela versão simples. O restante do
  * contrato e o schema são os da V8. */
 /** V10 (02/10, `SITUATION_SECTIONS_V1`): a leitura da pergunta 2 vira dado — `situations` (seção S-n, aconteceu SIM/NÃO/INCERTO e a

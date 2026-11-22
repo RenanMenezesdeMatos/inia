@@ -87,6 +87,7 @@ import { NO_SIGNAL, type IndicatorDataPort, type IndicatorMeta } from "../infras
 import type { CatalogToolRunner } from "../infrastructure/catalog-tool-runner.js"
 import { AnalysisInProgressError, analyzeCall, CallReviewPendingError, callModel, type AnalyzeCallDeps } from "./analyze-call.js"
 import { isBudgetExhausted } from "./engine-meter.js"
+import { ENGINE_LEASE_SECONDS, EngineLeaseLostError, holdEngineLease } from "./engine-lease.js"
 import type { AnalysisTrigger, FeedbackMemoryStore, ModelCallMetric } from "./ports.js"
 
 /**
@@ -112,7 +113,8 @@ export const PEER_CALLS_PER_MEMBER = 2
 /** Análises de chamadas de COLEGAS para a referência, à parte do orçamento das chamadas da pessoa (a referência nunca tira a amostra
  * dela, e a dela nunca deixa a referência vazia). */
 export const DEFAULT_MAX_PEER_CALL_ANALYSES = 6
-export const INVESTIGATION_LEASE_SECONDS = 900
+/** Posse curta, renovada enquanto a execução está viva (`ENGINE_LEASE_V1`). */
+export const INVESTIGATION_LEASE_SECONDS = ENGINE_LEASE_SECONDS
 export const DEFAULT_MAX_TOOL_CALLS = 10
 /** Rodadas de planejamento: 4 por padrão (descoberta → aprofundar → corrigir/detalhar → parar), teto 6. Cada rodada é UMA chamada de modelo
  * e passa pelo orçamento da execução, que guarda a reserva da redação. */
@@ -325,20 +327,29 @@ async function investigateOne(deps: InvestigateIndicatorDeps, request: Investiga
   if (claim.kind === "COMPLETED") return reuse(claim.run.id)
   const runId = claim.runId
   const metrics: ModelCallMetric[] = []
+  const owner = { attempt: claim.attempt }
+  const lease = holdEngineLease({ label: `indicator-investigation:${runId}`, recordId: runId, initial: claim.leaseUntil, renew: (token) => deps.memory.renewAnalysisLease(request.organizationId, runId, token, INVESTIGATION_LEASE_SECONDS) })
+  // Quem perdeu a posse para (`ENGINE_LEASE_V1`): nem o planejamento nem as análises de chamada desta investigação pagam modelo depois da perda.
+  const leased: InvestigateIndicatorDeps = { ...deps, analyze: { ...deps.analyze, model: lease.guard(deps.analyze.model) } }
   try {
-    const investigation = await runInvestigation(deps, request, { meta, official, parameters, view, capabilities, contract, analysisAgentId: domainAllowed ? request.agentId : null, domainAllowed }, runId, windows, documents, peers, metrics)
+    const investigation = await runInvestigation(leased, request, { meta, official, parameters, view, capabilities, contract, analysisAgentId: domainAllowed ? request.agentId : null, domainAllowed }, runId, windows, documents, peers, metrics)
     const after = await evidenceKeyOf(deps, request, meta, official, parameters, windows, documents, peers, capabilities.capabilities)
     const complete = investigation.completeness?.status !== "INTERRUPTED_BY_BUDGET"
+    lease.assertHeld()
     const saved = await deps.memory.completeIndicatorInvestigation(request.organizationId, runId, {
       investigation,
       reusable: complete,
       provenance: { logicVersion: INDICATOR_INVESTIGATION_LOGIC_VERSION, strategyVersionId: parameters.strategyVersionId, agentId: request.agentId, official: { sourceKind: official.sourceKind, sourceRef: official.sourceRef }, capabilities: { source: capabilities.source, effective: capabilities.capabilities, workflowAllowed: capabilities.workflowAllowed }, contract, evidence: { before: before.components, afterKey: after.key }, reuseKeys: complete ? [...new Set([before.key, after.key])] : [] },
       metrics: { durationMs: deps.now().getTime() - startedAt.getTime(), callAnalyses: investigation.budget.callAnalyses, reusedCalls: investigation.budget.reusedCalls, toolCalls: investigation.tools?.budget.toolCalls ?? 0, plannerRounds: investigation.tools?.planner.rounds ?? 0, modelCalls: metrics.length, planner: metrics.filter((metric) => metric.stage === "INVESTIGATION_PLANNING") },
-    }, deps.now())
+    }, deps.now(), owner)
     return { runId, investigationId: saved.investigationId, reused: false, indicatorCode: meta.code, periodLabel: official.periodLabel, conclusion: investigation.conclusion }
   } catch (error) {
-    await deps.memory.failAnalysis(request.organizationId, runId, error instanceof Error ? `${error.name}: ${error.message}`.slice(0, 2_000) : "erro desconhecido", deps.now()).catch(() => undefined)
+    await deps.memory.failAnalysis(request.organizationId, runId, error instanceof Error ? `${error.name}: ${error.message}`.slice(0, 2_000) : "erro desconhecido", deps.now(), owner).catch(() => undefined)
+    // Posse perdida para outra execução: esta para sem gravar (o Workflow tenta de novo e reaproveita o que a outra concluir).
+    if (lease.isLossOf(error)) throw new DomainError("A investigação deste indicador está em andamento em outra execução — será retomada.", "FEEDBACK_INVESTIGATION_IN_PROGRESS", 409, { category: "PROVIDER_ERROR" })
     throw error
+  } finally {
+    lease.stop()
   }
 }
 
@@ -549,6 +560,8 @@ async function runInvestigation(deps: InvestigateIndicatorDeps, request: Investi
       if (pool === "PERSON") analyzedNow.add(interactionId)
       return "ANALYZED"
     } catch (error) {
+      // A investigação perdeu a posse: para aqui (não é falha da chamada).
+      if (error instanceof EngineLeaseLostError) throw error
       if (isBudgetExhausted(error)) {
         stoppedBy = "MODEL_BUDGET"
         modelBudgetHit = true
@@ -810,6 +823,7 @@ async function runInvestigation(deps: InvestigateIndicatorDeps, request: Investi
         data: projectForModel(result.data, handles),
       }
     } catch (error) {
+      if (error instanceof EngineLeaseLostError) throw error
       if (isBudgetExhausted(error)) {
         modelBudgetHit = true
         return reject("BUDGET", "orçamento de modelo da execução atingido")
@@ -1089,6 +1103,8 @@ async function runInvestigation(deps: InvestigateIndicatorDeps, request: Investi
           decision = parsePlannerDecision(retry.text)
         }
       } catch (error) {
+        // Posse perdida: a investigação para (não é "planejamento indisponível").
+        if (error instanceof EngineLeaseLostError) throw error
         const budget = isBudgetExhausted(error)
         if (budget) modelBudgetHit = true
         record.stopReason = budget ? "MODEL_BUDGET" : "PLANNER_UNAVAILABLE"

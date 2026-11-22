@@ -1,4 +1,4 @@
-import { CONVERSATIONAL_OUTPUT_SURFACES, RELIABLE_FEEDBACK_SURFACES, feedbackSourceTypeOf, findAncestorNodeIds, resolveFeedbackDomain, sourceOutputContractOf, isClosingDiagnosisSource, resolveNodeContexts, type FlowGraph, type FlowNode } from "../workflow-graph.schema"
+import { CONVERSATIONAL_OUTPUT_SURFACES, RELIABLE_FEEDBACK_SURFACES, feedbackSourceTypeOf, findAncestorNodeIds, resolveFeedbackDomain, sourceOutputContractOf, isClosingDiagnosisSource, isRandomMonitoringNode, resolveNodeContexts, type FlowGraph, type FlowNode } from "../workflow-graph.schema"
 import { triggerDataOrigin, type WorkflowTrigger } from "../workflow.schema"
 import type { ValidationIssue } from "./types"
 
@@ -45,7 +45,7 @@ export function validateReliableFeedbackFlow(graph: FlowGraph, trigger: Workflow
     const origin = triggerDataOrigin(trigger)
     const domain = resolveFeedbackDomain(config.feedbackDomain, isConsolidatedMode ? "schedule" : origin, sourceType, sourceOutputContractOf(source))
     if (!domain) issues.push({ nodeId: node.id, code: "WORKFLOW_FEEDBACK_DOMAIN_AMBIGUOUS", message: `Não dá para saber se "${node.label}" é feedback de monitoria ou de indicador com este gatilho e esta origem — escolha o tipo.` })
-    else if (domain === "MONITORING" && (origin !== "channel_flag" || isConsolidatedMode)) issues.push({ nodeId: node.id, code: "WORKFLOW_FEEDBACK_MONITORING_REQUIRES_INTERACTION", message: `Feedback de monitoria precisa da interação do gatilho por Flag de canal ou Manual com interação (modo Individual).` })
+    else if (domain === "MONITORING" && ((origin !== "channel_flag" && !(origin === "schedule" && isRandomMonitoringNode(source))) || isConsolidatedMode)) issues.push({ nodeId: node.id, code: "WORKFLOW_FEEDBACK_MONITORING_REQUIRES_INTERACTION", message: `Feedback de monitoria precisa de uma chamada: a do gatilho por Flag de canal ou Manual com interação, ou a sorteada por um "Chamar agente" com "Amostra de chamadas" + "Avaliação de processo" na Agenda (modo Individual).` })
     else if (domain === "INDICATOR" && sourceType === "ORCHESTRATOR") issues.push({ nodeId: node.id, code: "WORKFLOW_FEEDBACK_INDICATOR_ORCHESTRATOR_UNSUPPORTED", message: `Feedback de indicador a partir de um Orquestrador ainda não é suportado — use "Chamar agente" como origem.` })
     else if (domain === "INDICATOR" && prvClosing && (origin !== "schedule" || isConsolidatedMode)) issues.push({ nodeId: node.id, code: "WORKFLOW_PRV_DIAGNOSIS_REQUIRES_SCHEDULE", message: `Feedback do fechamento do PRV precisa do gatilho por Agenda no modo Individual (um colaborador por execução).` })
     else if (domain === "INDICATOR" && !prvClosing && (origin !== "indicator" || isConsolidatedMode)) issues.push({ nodeId: node.id, code: "WORKFLOW_FEEDBACK_INDICATOR_REQUIRES_CANONICAL_CONTEXT", message: `Feedback de indicador precisa do dado oficial de uma medição — só existe com gatilho por Indicador ou Manual com medição (modo Individual).` })

@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
  *   INIA_DB_PROOF=1 npx vitest run agent-lifecycle-proof
  *
  * Perfil "administra agentes sem ser administrador": nenhum papel de sistema tem hoje `agents.manage` sem `agents.inactive.manage`
- * (o mapeamento dos perfis da Vivo é a PEN-032). Para provar a restrição no servidor, esta prova acrescenta SÓ AQUI um papel de
+ * (o mapeamento dos perfis da Telnova é a PEN-032). Para provar a restrição no servidor, esta prova acrescenta SÓ AQUI um papel de
  * teste com `agents.manage` + `workflows.manage` — nunca existe fora da prova.
  */
 vi.mock("../../access/domain/roles.js", async (importOriginal) => {

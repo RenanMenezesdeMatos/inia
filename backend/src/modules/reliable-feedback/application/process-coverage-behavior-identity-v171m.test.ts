@@ -17,7 +17,7 @@ import { selectPrimaryProcessDocument } from "../../knowledge/domain/primary-pro
 import { chunkKnowledgeDocument } from "../../knowledge/domain/knowledge-chunking.js"
 import { planClosingCoverage } from "../../knowledge/application/retrieve-knowledge.js"
 import {
-  V171L_ASSESSMENT, V171L_CHECKLIST_ID, V171L_CHECKLIST_TITLE, V171L_COLLABORATOR_NAME, V171L_CONTENT, V171L_DOC_ID, V171L_DOC_TITLE, V171L_JEITO_VIVO_ID, V171L_JEITO_VIVO_TITLE,
+  V171L_ASSESSMENT, V171L_CHECKLIST_ID, V171L_CHECKLIST_TITLE, V171L_COLLABORATOR_NAME, V171L_CONTENT, V171L_DOC_ID, V171L_DOC_TITLE, V171L_JEITO_TELNOVA_ID, V171L_JEITO_TELNOVA_TITLE,
   V171L_PRESENTED, V171L_PUBLISHED, V171L_RANKED_SCORES, V171L_SUBJECT, V171L_TRANSCRIPT, V171L_WRITER_RAW,
 } from "../testing/contestacao-v171l-smoke-fixture.js"
 
@@ -35,19 +35,19 @@ const byRequirement = (assessment: ReturnType<typeof verified>, pattern: RegExp)
 // ---------------------------------------------------------------------------------------------------------------------
 // A/B — documento primário × transversal (cobertura do fechamento)
 // ---------------------------------------------------------------------------------------------------------------------
-const DOCUMENTS = [V171L_DOC_ID, V171L_JEITO_VIVO_ID, V171L_CHECKLIST_ID].map((id) => V171L_PUBLISHED.get(id)!)
+const DOCUMENTS = [V171L_DOC_ID, V171L_JEITO_TELNOVA_ID, V171L_CHECKLIST_ID].map((id) => V171L_PUBLISHED.get(id)!)
 const CHUNKS = DOCUMENTS.flatMap((document) => chunkKnowledgeDocument({ id: document.documentId, title: document.title, content: document.content }))
 /** O ranking lexical REAL do smoke (score > 0; score 0 = trecho acrescentado pela cobertura). */
 const RANKED = V171L_RANKED_SCORES.filter((entry) => entry.score > 0).map((entry) => ({ ...CHUNKS.find((chunk) => chunk.documentId === entry.documentId && chunk.index === entry.chunkIndex)!, score: entry.score }))
 
 describe("V1.7.1m — A/B) documento primário do processo × transversal", () => {
   it("A) o procedimento ESPECÍFICO (título ancorado no assunto) é o primário — nunca o maior score do ranking", () => {
-    // O ranking real deu mais relevância somada ao "Jeito Vivo" (5 trechos) — era o que a cobertura escolhia.
+    // O ranking real deu mais relevância somada ao "Jeito Telnova" (5 trechos) — era o que a cobertura escolhia.
     const relevance = (id: string) => RANKED.filter((chunk) => chunk.documentId === id).reduce((sum, chunk) => sum + chunk.score, 0)
-    expect(relevance(V171L_JEITO_VIVO_ID)).toBeGreaterThan(relevance(V171L_DOC_ID))
+    expect(relevance(V171L_JEITO_TELNOVA_ID)).toBeGreaterThan(relevance(V171L_DOC_ID))
     const selection = selectPrimaryProcessDocument(DOCUMENTS.map((document) => ({ documentId: document.documentId, documentTitle: document.title })), V171L_SUBJECT)
     expect(selection).toMatchObject({ basis: "SUBJECT_TITLE_ANCHOR", primaryDocumentId: V171L_DOC_ID, candidates: [{ documentId: V171L_DOC_ID, sharedTerms: ["contes"] }] })
-    expect(selection.supplemental.map((document) => document.documentTitle).sort()).toEqual([V171L_CHECKLIST_TITLE, V171L_JEITO_VIVO_TITLE].sort())
+    expect(selection.supplemental.map((document) => document.documentTitle).sort()).toEqual([V171L_CHECKLIST_TITLE, V171L_JEITO_TELNOVA_TITLE].sort())
     const { trace } = planClosingCoverage(CHUNKS, RANKED, { phases: ["CLOSING"], subject: V171L_SUBJECT })
     expect(trace.processDocument).toEqual({ documentId: V171L_DOC_ID, documentTitle: V171L_DOC_TITLE })
     // Ordem: fechamento do processo primeiro (46, 47, 48 — a 55 já veio do ranking), depois as checklists transversais.
@@ -59,13 +59,13 @@ describe("V1.7.1m — A/B) documento primário do processo × transversal", () =
       "TRANSVERSAL_CHECKLIST:28 Checklist rápido do operador",
       "TRANSVERSAL_CHECKLIST:Checklist de Encerramento de Chamada",
     ].filter((entry) => !RANKED.some((chunk) => `PROCESS_CLOSING_SECTION:${chunk.heading}` === entry || `TRANSVERSAL_CHECKLIST:${chunk.heading || chunk.documentTitle}` === entry)))
-    // As seções de fechamento do Jeito Vivo (20 Recapitulação, 21, 22) não substituem mais as do procedimento específico.
-    expect(trace.added.some((entry) => entry.documentId === V171L_JEITO_VIVO_ID && entry.reason === "PROCESS_CLOSING_SECTION")).toBe(false)
+    // As seções de fechamento do Jeito Telnova (20 Recapitulação, 21, 22) não substituem mais as do procedimento específico.
+    expect(trace.added.some((entry) => entry.documentId === V171L_JEITO_TELNOVA_ID && entry.reason === "PROCESS_CLOSING_SECTION")).toBe(false)
   })
 
   it("B) transversal continua como SUPLEMENTO; ambíguo nunca é escolhido em silêncio; sem assunto, nenhum primário", () => {
     const { trace } = planClosingCoverage(CHUNKS, RANKED, { phases: ["CLOSING"], subject: V171L_SUBJECT })
-    expect(trace.added.filter((entry) => entry.reason === "TRANSVERSAL_CHECKLIST").map((entry) => entry.documentId).sort()).toEqual([V171L_CHECKLIST_ID, V171L_JEITO_VIVO_ID].sort())
+    expect(trace.added.filter((entry) => entry.reason === "TRANSVERSAL_CHECKLIST").map((entry) => entry.documentId).sort()).toEqual([V171L_CHECKLIST_ID, V171L_JEITO_TELNOVA_ID].sort())
     const twoProcesses = [{ documentId: "a", documentTitle: "Contestação de Contas Fixo" }, { documentId: "b", documentTitle: "Contestação de Contas Móvel" }, { documentId: "c", documentTitle: "Jeito de Atender" }]
     expect(selectPrimaryProcessDocument(twoProcesses, "Contestação de cobrança")).toMatchObject({ basis: "AMBIGUOUS_SUBJECT_ANCHOR", primaryDocumentId: null, candidates: [{ documentId: "a" }, { documentId: "b" }] })
     expect(selectPrimaryProcessDocument(twoProcesses, null)).toMatchObject({ basis: "NO_SUBJECT", primaryDocumentId: null })

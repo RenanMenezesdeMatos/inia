@@ -6,7 +6,7 @@ import { sanitizeRichText } from "./sanitize-rich-text"
 
 describe("sanitizeRichText", () => {
   it("link http(s) ou caminho interno fica, com destino e rel fixos; outros esquemas saem e o texto fica (área editorial)", () => {
-    expect(sanitizeRichText(`<p><a href="https://www.vivo.com.br" onclick="x" class="y">Meu Vivo</a></p>`)).toBe(`<p><a href="https://www.vivo.com.br" target="_blank" rel="noopener noreferrer nofollow">Meu Vivo</a></p>`)
+    expect(sanitizeRichText(`<p><a href="https://www.telnova.com.br" onclick="x" class="y">Meu Telnova</a></p>`)).toBe(`<p><a href="https://www.telnova.com.br" target="_blank" rel="noopener noreferrer nofollow">Meu Telnova</a></p>`)
     expect(sanitizeRichText(`<a href="/operator">painel</a>`)).toContain(`href="/operator"`)
     for (const href of ["javascript:alert(1)", "//evil.example", "/\\evil.example", "data:text/html,x", "mailto:a@b.c"]) {
       expect(sanitizeRichText(`<a href="${href}">texto</a>`)).toBe("texto")

@@ -38,7 +38,7 @@ export default function PracticalCasesPage() {
       <WikiSection id="guia-1" title="Guia completo 1 — da Base de Conhecimento ao Acompanhamento" eyebrow="Rechamada → feedback aprovado">
         <WikiFlow
           steps={[
-            { label: "Base de Conhecimento", detail: "Admin › Base de conhecimento › Nova base: “Jeito Vivo de Atender”, Tipo Manual, Publicar", tone: "input" },
+            { label: "Base de Conhecimento", detail: "Admin › Base de conhecimento › Nova base: “Padrão de Atendimento”, Tipo Manual, Publicar", tone: "input" },
             { label: "Agent", detail: "Admin › Agentes › Novo agente: Especialista de Experiência do Cliente, com a base em “Bases de conhecimento consultadas”", tone: "ai" },
             { label: "Workflow", detail: "Admin › Workflows › Novo workflow: Gatilho Flag de canal “rechamada” → Condição → Ação Chamar agente → Revisão humana → Output", tone: "core" },
             { label: "QA Lab", detail: "Workflow › Testar rascunho atual, uma interação real com rechamada, Parar antes da IA; depois IA real com limite 1", tone: "core" },

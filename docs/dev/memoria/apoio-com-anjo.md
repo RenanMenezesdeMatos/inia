@@ -143,7 +143,7 @@ piloto (B1 ligada num Subgrupo) falta o roteiro do IIS da especificação (chama
   pedido sem mensagem de origem (`BUTTON`; os antigos seguem no M8), mas a tela não oferece mais. Teste: "apoio ligado: nenhum
   botão fixo…" em `operator-inia-chat.test.tsx`; nota no design ("Decisão posterior: sem botão fixo").
 - **Visual do módulo (2026-11-10, pedido do responsável: "muito branco, sem separação, Falar com o Anjo parece link")**: referência
-  observada na Área do Cliente da Vivo logada (só leitura: central de faturas e início) — cartões brancos com borda clara e raio
+  observada na área logada do site do cliente (só leitura: central de faturas e início) — cartões brancos com borda clara e raio
   de 16 px, rótulo de seção curto em caixa alta cinza, selo de estado tingido com ícone, lista com ícone em círculo tingido e
   divisória, fundo cinza ao passar o mouse, botões em pílula, valor de destaque na cor primária. Adaptado aos tokens da INIA
   (primária roxa no claro, rosa no escuro) num módulo só de apresentação, hoje no kit: `components/ui/surface.tsx`

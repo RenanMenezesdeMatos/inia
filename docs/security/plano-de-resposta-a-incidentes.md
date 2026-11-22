@@ -1,11 +1,11 @@
 # Plano de resposta a incidentes — parte da INIA (20/10/2026)
 
 Este documento cobre **o que a INIA oferece e o que o time da INIA faz** num incidente de segurança ou de dados pessoais. Ele não
-substitui o processo da Vivo: quem decide se houve incidente, quem comunica a ANPD e as pessoas afetadas e quem fala com a
-imprensa é a Vivo (SOC, Segurança Digital, Privacy/DPO e Jurídico). A INIA entra como sistema afetado e como fonte de evidência.
+substitui o processo do cliente: quem decide se houve incidente, quem comunica a ANPD e as pessoas afetadas e quem fala com a
+imprensa é o cliente (SOC, Segurança Digital, Privacy/DPO e Jurídico). A INIA entra como sistema afetado e como fonte de evidência.
 
-> **Pendente de validar com a Vivo:** contatos e canal do SOC e do Privacy, quem aciona o time da INIA, e se o prazo interno de
-> comunicação deles é mais curto que o da ANPD. Os campos marcados com ⚠️ ficam para preencher quando a Vivo responder.
+> **Pendente de validar com o cliente:** contatos e canal do SOC e do Privacy, quem aciona o time da INIA, e se o prazo interno de
+> comunicação deles é mais curto que o da ANPD. Os campos marcados com ⚠️ ficam para preencher quando o cliente responder.
 
 ## 1. O que conta como incidente
 
@@ -23,12 +23,12 @@ Na dúvida, trate como incidente e avise: é mais barato descartar um alarme do 
 
 | Quando | O quê | Quem |
 |---|---|---|
-| Imediato | Avisar o ponto de contato da Vivo (⚠️ SOC/Privacy) e começar a conter | Quem percebeu + time da INIA |
-| Até **3 dias úteis** depois de a Vivo ter conhecimento de que o incidente afetou dados pessoais com risco ou dano relevante | Comunicação à ANPD e às pessoas afetadas | Vivo (controladora) |
-| Até 20 dias úteis depois da comunicação | Complementar a comunicação à ANPD, se faltou informação | Vivo, com dados da INIA |
-| Por 5 anos | Guardar o registro do incidente, mesmo sem comunicação | Vivo; a INIA entrega o relatório (seção 6) |
+| Imediato | Avisar o ponto de contato do cliente (⚠️ SOC/Privacy) e começar a conter | Quem percebeu + time da INIA |
+| Até **3 dias úteis** depois de o cliente ter conhecimento de que o incidente afetou dados pessoais com risco ou dano relevante | Comunicação à ANPD e às pessoas afetadas | cliente (controladora) |
+| Até 20 dias úteis depois da comunicação | Complementar a comunicação à ANPD, se faltou informação | cliente, com dados da INIA |
+| Por 5 anos | Guardar o registro do incidente, mesmo sem comunicação | cliente; a INIA entrega o relatório (seção 6) |
 
-O papel da INIA é fazer a Vivo chegar a esse prazo com **fatos**: o que foi exposto, de quem, desde quando e o que já foi feito.
+O papel da INIA é fazer o cliente chegar a esse prazo com **fatos**: o que foi exposto, de quem, desde quando e o que já foi feito.
 
 ## 3. Primeiros 60 minutos — conter sem destruir evidência
 
@@ -75,7 +75,7 @@ Exportar só o necessário, e tratar o próprio material de investigação como 
 
 Responder, nesta ordem, com consultas no banco e na auditoria:
 
-1. **Que dado?** Tipo (transcrição, conversa, feedback, indicador, cadastro, credencial) e se tem dado de cliente da Vivo.
+1. **Que dado?** Tipo (transcrição, conversa, feedback, indicador, cadastro, credencial) e se tem dado de consumidor final.
 2. **De quem?** Lista de pessoas (colaboradores) e, se houver, de clientes citados nas transcrições.
 3. **Desde quando e até quando?** Primeira e última ação suspeita na auditoria.
 4. **Saiu do ambiente?** Exportações (`PERSONAL_DATA_EXPORTED`), downloads, chamadas a destinos externos, uso de IA.
@@ -85,7 +85,7 @@ Para atender uma pessoa afetada que pede os próprios dados, o Administrador ger
 `privacy.subject_data.export`) usa *Usuários e acessos → pessoa → Exportar dados (LGPD)*. O arquivo vai primeiro para o
 Privacy conferir.
 
-## 6. Relatório para a Vivo
+## 6. Relatório para o cliente
 
 Entregar ao Privacy/SOC, em até 24 horas depois da contenção (ou antes, se pedirem), um relatório com:
 
@@ -102,13 +102,13 @@ O relatório não deve conter os dados pessoais em si: só contagens, identifica
 - Registrar o incidente e a correção em `docs/security/pendencias-e-riscos.md`.
 - Revisar se algum controle faltou e abrir o item no backlog.
 - Conferir se os backups continuaram rodando e se o último restaura.
-- Revisar este plano com a Vivo uma vez por ano ou depois de cada incidente.
+- Revisar este plano com o cliente uma vez por ano ou depois de cada incidente.
 
 ## 8. Contatos
 
 | Papel | Nome | Contato |
 |---|---|---|
-| Ponto de contato da Vivo (SOC) | ⚠️ | ⚠️ |
-| Privacy / DPO da Vivo | ⚠️ | ⚠️ |
+| Ponto de contato do cliente (SOC) | ⚠️ | ⚠️ |
+| Privacy / DPO do cliente | ⚠️ | ⚠️ |
 | Responsável técnico da INIA | Renan Menezes | ⚠️ |
-| Infraestrutura do servidor (Vivo) | ⚠️ | ⚠️ |
+| Infraestrutura do servidor (cliente) | ⚠️ | ⚠️ |

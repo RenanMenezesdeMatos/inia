@@ -47,7 +47,7 @@ const PR_TITLE = "PR — Atendimento da Ouvidoria: fatura"
 const PR = `# ${PR_TITLE}\n\n## Solicitação de fatura\n\n- Quando o cliente solicitar a segunda via da fatura, enviar a fatura pelo e-mail cadastrado e confirmar o envio.\n`
 const BASE: AlignmentCandidate = {
   alignmentId: "aaaaaaaa-0000-4000-8000-0000000000a1", versionId: "bbbbbbbb-0000-4000-8000-0000000000b1", version: 1,
-  title: "Fatura pelo App Meu Vivo ou site", guidance: "Oriente o cliente a acessar e baixar a segunda via da fatura pelo App Meu Vivo ou pelo site da Vivo.\nNão envie a fatura por e-mail enquanto este alinhamento valer.",
+  title: "Fatura pelo App Meu Telnova ou site", guidance: "Oriente o cliente a acessar e baixar a segunda via da fatura pelo App Meu Telnova ou pelo site da Telnova.\nNão envie a fatura por e-mail enquanto este alinhamento valer.",
   justification: "O envio por e-mail está suspenso enquanto o sistema de envio é substituído.",
   affectedDocuments: [{ id: DOC, title: PR_TITLE }], affectedTopic: "Envio da fatura quando o cliente solicita",
   operatingUniverse: "B2C", scopeType: "GROUPS", links: [{ teamId: OUVIDORIA, teamName: "Ouvidoria", subteamId: null, subteamName: null }], productId: null, productName: null,

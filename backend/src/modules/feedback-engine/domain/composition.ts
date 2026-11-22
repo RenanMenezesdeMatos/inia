@@ -452,6 +452,8 @@ export function contentLeaksOf(message: Pick<ComposedMessage, "card" | "sentence
     if (sentence.source === "SYSTEM") check(`sentence:${index}`, sentence.text, true)
   })
   message.view.developments.forEach((detail, index) => {
+    // Card de ajuste além dos 3 do texto (`NARRATIVE_TOP_FAILURES_V1`): só fatos do sistema, nada do redator nem do verificador a vazar.
+    if (detail.beyondNarrative) return
     check(`view.developments.${index}.whatHappened`, detail.whatHappened, true)
     if (detail.howToApply) check(`view.developments.${index}.howToApply`, detail.howToApply, false)
     detail.whyItMatters.forEach((text, position) => check(`view.developments.${index}.whyItMatters.${position}`, text, false))

@@ -3,7 +3,7 @@
 import { Check, XCircle } from "lucide-react"
 import { motion, useReducedMotion } from "motion/react"
 
-import { NODE_COLORS } from "@/components/admin/workflows/node-visuals"
+import { nodeColorsOf } from "@/components/admin/workflows/node-visuals"
 import { cn } from "@/lib/utils"
 import { nodeBranches, type FlowEdge, type FlowNode } from "@/schemas/admin/workflow-graph.schema"
 
@@ -110,7 +110,7 @@ export function DemoJourneyMap({ example, scenes, index }: MapProps) {
         <ul aria-label={`Mapa da jornada: ${example.title}`}>
           {graph.nodes.map((node) => {
             const { column, row } = gridOf(node)
-            const colors = NODE_COLORS[node.type]
+            const colors = nodeColorsOf(node)
             const current = node.id === currentNodeId
             const done = doneNodes.has(node.id)
             const stopped = current && currentScene?.stopsHere === "failed"

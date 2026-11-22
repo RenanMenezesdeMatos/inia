@@ -2,6 +2,7 @@
 
 import { useId } from "react"
 
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -10,6 +11,15 @@ import { useIndicatorsWithRulesQuery } from "@/queries/admin/use-indicator-rule-
 import { aggregationOptionLabel, IndicatorSelect } from "../indicator-select"
 import { CHANGE_MODE_LABELS, COMPARATOR_LABELS, HISTORICAL_AGGREGATION_LABELS, HISTORICAL_COMPARE_TO_LABELS, MEASUREMENT_AGGREGATION_OPTION_LABELS, OPERATIONAL_AGGREGATION_LABELS, defaultAggregationFor, type Comparator, type FlowNode, type HistoricalAggregation, type HistoricalCompareTo, type HistoricalPeriod, type HistoricalQuery } from "@/schemas/admin/workflow-graph.schema"
 import { HistoricalPeriodPicker, MinimumCoverageField, aggregationsFor } from "./indicator-query-fields"
+
+/**
+ * Cobertura mínima é da camada operacional (dias com medição ÷ dias elegíveis): só vale para o
+ * Valor do indicador com agregação. Fechamento oficial (Atingimento, PRV) e contagem de
+ * ocorrências não têm cobertura — mesma regra da publicação (`publish-validation/conditions.ts`).
+ */
+export function minimumCoverageApplies(source: HistoricalQuery["source"], aggregation: HistoricalAggregation): boolean {
+  return (source === undefined || source === "MEASUREMENT") && aggregation !== "COUNT"
+}
 
 export function HistoricalConditionForm({ node, onChange }: { node: Extract<FlowNode, { type: "condition" }>; onChange: (next: FlowNode) => void }) {
   const indicatorsQuery = useIndicatorsWithRulesQuery()
@@ -37,7 +47,7 @@ export function HistoricalConditionForm({ node, onChange }: { node: Extract<Flow
           ...node.config,
           comparator: "GTE",
           thresholdNumeric: 1,
-          historicalQuery: { ...query, aggregation: next, comparator: "LT", indicatorThreshold: 0, minimumSampleSize: undefined },
+          historicalQuery: { ...query, aggregation: next, comparator: "LT", indicatorThreshold: 0, minimumSampleSize: undefined, minimumCoverage: undefined },
         },
       })
     } else {
@@ -67,11 +77,19 @@ export function HistoricalConditionForm({ node, onChange }: { node: Extract<Flow
               // Trocar o indicador pode invalidar a agregação (ex.: de um snapshot pra um tempo
               // ponderado) — cai na agregação natural do novo indicador em vez de deixar uma
               // combinação sem sentido. Amostra/cobertura mínimas PADRÃO do catálogo pré-preenchem
-              // a Condition (ficam explícitas e editáveis aqui — nunca regra silenciosa).
+              // a Condition (ficam explícitas e editáveis aqui — nunca regra silenciosa). A
+              // cobertura só entra onde ela existe e o campo aparece: nunca um valor escondido
+              // que a publicação recusa (Atingimento por fechamentos, por exemplo).
               const kind = indicator?.operationalAggregation
               const allowed = aggregationsFor(query.source, kind)
               const nextAggregation = aggregation !== "COUNT" && !allowed.includes(aggregation) ? defaultAggregationFor(kind) : aggregation
-              const defaults = nextAggregation === "COUNT" ? {} : { minimumSampleSize: indicator?.minimumSampleSize ?? query.minimumSampleSize, minimumCoverage: indicator?.minimumCoverage ?? query.minimumCoverage }
+              const defaults =
+                nextAggregation === "COUNT"
+                  ? {}
+                  : {
+                      minimumSampleSize: indicator?.minimumSampleSize ?? query.minimumSampleSize,
+                      minimumCoverage: minimumCoverageApplies(query.source, nextAggregation) ? (indicator?.minimumCoverage ?? query.minimumCoverage) : undefined,
+                    }
               onChange({ ...node, config: { ...node.config, historicalQuery: { ...query, indicatorCode, aggregation: nextAggregation, ...defaults } } })
             }}
           />
@@ -168,8 +186,18 @@ export function HistoricalConditionForm({ node, onChange }: { node: Extract<Flow
             />
             <p className="text-xs text-muted-foreground">Com menos medições que isso no período, o resultado é &quot;Sem dados&quot;, nunca Sim/Não.</p>
           </div>
-          {query.source === "MEASUREMENT" || query.source === undefined ? (
+          {minimumCoverageApplies(query.source, aggregation) ? (
             <MinimumCoverageField value={query.minimumCoverage} onChange={(minimumCoverage) => updateQuery({ minimumCoverage })} />
+          ) : query.minimumCoverage !== undefined ? (
+            // Rascunho salvo antes da correção pode trazer a cobertura escondida: mostra e deixa remover.
+            <div className="flex items-start justify-between gap-2 rounded-md border border-destructive/40 p-2">
+              <p className="text-xs text-destructive">
+                Esta Condição tem Cobertura mínima de {Math.round(query.minimumCoverage * 100)}%, que só vale para o Valor do indicador com agregação — a publicação vai rejeitar.
+              </p>
+              <Button type="button" size="sm" variant="outline" onClick={() => updateQuery({ minimumCoverage: undefined })}>
+                Remover
+              </Button>
+            </div>
           ) : null}
           <div className="space-y-1.5 border-t pt-3">
             <Label htmlFor={`${fieldId}-compare-to`}>Referência da comparação</Label>

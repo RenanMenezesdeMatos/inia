@@ -165,7 +165,7 @@ export function listItemsInPlayOf(model: ModelObligationAnalysis, context: Proce
  * título/abertura de uma seção aconteceu nesta conversa; o código só confere a fala (literal, por turno). As linhas dessa seção que
  * nenhuma obrigação cobriu e que a análise não declarou como não avaliadas vão à revisão como FOCO, com a fala da situação — ela aponta
  * em `missed` o que valia e faltou (confirmação focal, como todo achado só da revisão). Nada vira desvio por estrutura. Origem: Jeito
- * Vivo §19 na C07 ("Quando não houver solução imediata") lido pela análise e nunca ligado ao caso.
+ * Telnova §19 na C07 ("Quando não houver solução imediata") lido pela análise e nunca ligado ao caso.
  */
 export const SITUATION_SECTIONS_VERSION = "SITUATION_SECTIONS_V1" as const
 /**

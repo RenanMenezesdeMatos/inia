@@ -21,10 +21,9 @@ frontend/public/models/inia-avatar-poc.glb
 # Instruções de trabalho (IT-INIA-*.docx/.pdf): documentos internos, distribuídos à parte.
 docs/manuais/**
 
-# Materiais para a Vivo (apresentações, dossiê de avaliação, especificação funcional em Word/PDF com capturas): documentos
-# internos, distribuídos à parte, como as ITs.
+# Materiais para o cliente (apresentações, dossiê de avaliação): documentos internos, distribuídos à parte, como as ITs.
+# Outras pastas e arquivos com o nome do cliente ficam na lista confidencial local (.git/publicacao-confidencial.txt).
 docs/apresentacoes/**
-docs/especificacao-funcional-ia-vivo/**
 
 # Transcrições de chamadas reais.
 docs/CHAMADAS - *.rtf
@@ -49,9 +48,8 @@ backend/scripts/poc-tools/**
 # Saídas das rodadas de avaliação do motor de feedback (respostas dos modelos, trechos de transcrição, custos)...
 backend/scripts/feedback-engine/**/results/**
 # ...exceto os manifestos de congelamento (o hash que prova que os scripts das rodadas pagas não mudaram; lidos por
-# backend/scripts/frozen-scripts.js) e a rodada que speech-execution-divergence.test.ts lê.
+# backend/scripts/frozen-scripts.js). A rodada que speech-execution-divergence.test.ts lê fica só local (o teste pula sem ela).
 !backend/scripts/feedback-engine/**/results/**/*-freeze.json
-!backend/scripts/feedback-engine/evaluation/larissa/results/round-v11-paid-2026-10-02T18-29-18-162Z.json
 
 # Saídas do cenário de desenvolvimento da Larissa.
 backend/scripts/dev/larissa-scenario/results/**

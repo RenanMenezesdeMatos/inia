@@ -7,6 +7,7 @@ import { assessCandidateInContext, EVIDENCE_METHOD, strongestOf, type CodedCall,
 import { decideObligation, OBLIGATION_SYSTEM_PROMPT, obligationSchemaFor, parseObligationReadings, renderObligationTurn, type ObligationCandidate, type ObligationCheck } from "../domain/obligation-check.js"
 import type { StoredObligationStatus } from "../domain/pattern.js"
 import { contextLabelOf, planSample, samplingSeedOf, type CallMeta, type CellPlan, type SampledCall } from "../domain/sampling.js"
+import { isQualityCallDuration } from "../../interactions/domain/quality-call-rule.js"
 import { BEST_PRACTICE_ANALYSIS_LOGIC_VERSION, BEST_PRACTICE_CODING_PROMPT_VERSION, BEST_PRACTICE_DISCOVERY_PROMPT_VERSION, BEST_PRACTICE_EVIDENCE_VERSION, BEST_PRACTICE_OBLIGATION_PROMPT_VERSION } from "../domain/versions.js"
 import { selectEvidence } from "./evidence-selection.js"
 import { AnalysisModelBudget, type ModelUsageSummary } from "./model-budget.js"
@@ -27,7 +28,16 @@ import { reuseKeyOf, type AnalysisRequest, type BestPracticeModelPort, type Best
  *     descarte (isolado, concentrado, sem diferença, obrigação, áudio…).
  */
 /** `indicator` quando o resultado é o indicador; `signal` quando é o sinal da chamada (exatamente um, como no pedido). */
-export type RunAnalysisDeps = { corpus: CallCorpus; store: BestPracticeStore; model: BestPracticeModelPort; indicator: IndicatorInfo | null; signal?: SignalInfo | null; now: () => Date }
+export type RunAnalysisDeps = {
+  corpus: CallCorpus
+  store: BestPracticeStore
+  model: BestPracticeModelPort
+  indicator: IndicatorInfo | null
+  signal?: SignalInfo | null
+  /** Regra geral de chamada curta da organização (`QUALITY_CALL_MIN_DURATION_V1`, segundos). Ausente/null = sem a regra (dados sintéticos). */
+  minimumQualityCallSeconds?: number | null
+  now: () => Date
+}
 
 export type CandidateDecision = "PATTERN_CREATED" | "PATTERN_UPDATED" | "PATTERN_WEAKENED" | "DISCARDED_OBLIGATION" | "DISCARDED_CONFLICT" | "NOT_SUPPORTED"
 export type CandidateReport = {
@@ -117,11 +127,20 @@ export async function runBestPracticeAnalysis(deps: RunAnalysisDeps, request: An
   const operatorByRef = new Map(operators.map((operator) => [operator.ref, operator]))
   const excludedCounts = new Map<string, number>()
   const exclude = (reason: string) => excludedCounts.set(reason, (excludedCounts.get(reason) ?? 0) + 1)
+  // `BEST_PRACTICE_ANALYSIS_V4`: chamada curta (regra geral da organização) não entra — nem na descoberta, nem na codificação.
+  const minimumSeconds = deps.minimumQualityCallSeconds ?? null
+  let shortCalls = 0
+  const qualityCalls = (list: CorpusCall[]) => {
+    if (minimumSeconds === null) return list
+    const kept = list.filter((call) => isQualityCallDuration(call.durationSeconds, minimumSeconds))
+    shortCalls += list.length - kept.length
+    return kept
+  }
   let calls: CorpusCall[]
   let groupOf: (call: CallMeta) => GroupKind | null
   let groupCounts: { top: number; reference: number }
   if (signal) {
-    calls = operators.length > 0 ? await deps.corpus.calls(operators.map((operator) => operator.ref), window, request.channel) : []
+    calls = operators.length > 0 ? qualityCalls(await deps.corpus.calls(operators.map((operator) => operator.ref), window, request.channel)) : []
     const values = await deps.corpus.callSignals(calls.map((call) => call.ref), signal)
     const groupByCall = new Map<string, GroupKind | null>()
     for (const call of calls) {
@@ -137,10 +156,11 @@ export async function runBestPracticeAnalysis(deps: RunAnalysisDeps, request: An
     const classified = [...classification.values()]
     for (const item of classified) if (!item.group) exclude(item.reason)
     const groupRefs = classified.filter((item) => item.group).map((item) => item.operatorRef)
-    calls = groupRefs.length > 0 ? await deps.corpus.calls(groupRefs, window, request.channel) : []
+    calls = groupRefs.length > 0 ? qualityCalls(await deps.corpus.calls(groupRefs, window, request.channel)) : []
     groupOf = (call) => classification.get(call.operatorRef)?.group ?? null
     groupCounts = { top: classified.filter((item) => item.group === "TOP").length, reference: classified.filter((item) => item.group === "REFERENCE").length }
   }
+  if (shortCalls > 0 && minimumSeconds !== null) limitations.push(`${shortCalls} chamada(s) com menos de ${minimumSeconds} s (ou sem duração conhecida) ficaram fora: chamada curta não entra no levantamento de boas práticas (regra geral da organização).`)
   const callByRef = new Map<string, CorpusCall>(calls.map((call) => [call.ref, call]))
   // O Subgrupo e o sinal só entram na semente quando existem: a análise do Grupo pelo indicador pedida de novo escolhe as mesmas chamadas.
   const seed = samplingSeedOf([request.organizationId, request.origin, request.syntheticDatasetId, request.indicatorDefinitionId, request.teamId, [...request.referencePeriods].sort().join(","), request.contextLevel, request.channel, request.comparison, ...(request.subteamId ? [request.subteamId] : []), ...(request.channelFlagId ? [request.channelFlagId] : [])])
@@ -173,7 +193,7 @@ export async function runBestPracticeAnalysis(deps: RunAnalysisDeps, request: An
     cells: cellsReport,
     method: signalLabels ? [comparison.method, ...EVIDENCE_METHOD] : EVIDENCE_METHOD,
   }
-  const provenance = { logicVersion: BEST_PRACTICE_ANALYSIS_LOGIC_VERSION, discoveryPromptVersion: BEST_PRACTICE_DISCOVERY_PROMPT_VERSION, codingPromptVersion: BEST_PRACTICE_CODING_PROMPT_VERSION, obligationPromptVersion: BEST_PRACTICE_OBLIGATION_PROMPT_VERSION, evidenceVersion: BEST_PRACTICE_EVIDENCE_VERSION, modelMode: request.modelMode, seed }
+  const provenance = { logicVersion: BEST_PRACTICE_ANALYSIS_LOGIC_VERSION, minimumQualityCallSeconds: minimumSeconds, discoveryPromptVersion: BEST_PRACTICE_DISCOVERY_PROMPT_VERSION, codingPromptVersion: BEST_PRACTICE_CODING_PROMPT_VERSION, obligationPromptVersion: BEST_PRACTICE_OBLIGATION_PROMPT_VERSION, evidenceVersion: BEST_PRACTICE_EVIDENCE_VERSION, modelMode: request.modelMode, seed }
 
   if (eligible.length === 0 || sample.length === 0) {
     const reason = baseReport.groups.top === 0

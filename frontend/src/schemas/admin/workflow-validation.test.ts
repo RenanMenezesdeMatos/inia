@@ -1162,7 +1162,7 @@ describe("validateWorkflowGraph — Avaliação de processo (V1.6.0) exige trans
   const indicatorTrigger = { kind: "indicator", indicatorCode: "TMA", indicatorName: "TMA", unit: "", valueType: "NUMERIC" } as unknown as WorkflowTrigger
   const callAgent: FlowNode = { id: "agent-1", type: "action", label: "Chamar agente", position, config: { actionType: "CALL_AGENT", agentId: "agent-1", outputContract: "PROCESS_ASSESSMENT" } }
   const orchestrator: FlowNode = { id: "orch", type: "orchestrator", label: "Orquestrador", position, config: { orchestratorId: "orch-def", instruction: "Analise.", specialistOutputContract: "PROCESS_ASSESSMENT" } }
-  const message = "\"Avaliação de processo\" exige uma transcrição de chamada — só disponível com gatilho por Flag de canal ou Manual com interação."
+  const message = "\"Avaliação de processo\" exige uma transcrição de chamada — só disponível com gatilho por Flag de canal, Manual com interação ou, no \"Chamar agente\", com a fonte \"Amostra de chamadas\" no gatilho por Agenda ou Manual por colaborador (monitoria aleatória)."
 
   it("Chamar agente e Orquestrador com Avaliação de processo fora de Flag → issue no nó", () => {
     const issues = validateWorkflowGraph(graphWith(callAgent, orchestrator), indicatorTrigger)
@@ -1190,7 +1190,7 @@ describe("validateWorkflowGraph — gatilho Manual (espelha o publish pela orige
   const manualInteraction = { kind: "manual", context: "INTERACTION" } as WorkflowTrigger
   const manualCollaborator = { kind: "manual", context: "COLLABORATOR" } as WorkflowTrigger
   const callAgent: FlowNode = { id: "agent-1", type: "action", label: "Chamar agente", position, config: { actionType: "CALL_AGENT", agentId: "agent-1", outputContract: "PROCESS_ASSESSMENT" } }
-  const assessment = "\"Avaliação de processo\" exige uma transcrição de chamada — só disponível com gatilho por Flag de canal ou Manual com interação."
+  const assessment = "\"Avaliação de processo\" exige uma transcrição de chamada — só disponível com gatilho por Flag de canal, Manual com interação ou, no \"Chamar agente\", com a fonte \"Amostra de chamadas\" no gatilho por Agenda ou Manual por colaborador (monitoria aleatória)."
 
   it("Manual com interação aceita a Avaliação de processo (a execução carrega a interação escolhida)", () => {
     expect(validateWorkflowGraph(graphWith(callAgent), manualInteraction).filter((issue) => issue.message === assessment)).toEqual([])

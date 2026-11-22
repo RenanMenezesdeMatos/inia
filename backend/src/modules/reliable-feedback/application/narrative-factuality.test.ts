@@ -139,17 +139,17 @@ describe("o que o verificador recebe e devolve", () => {
 
 describe("reconhecimento factual dentro de uma frase de contexto (vínculo, não palavra)", () => {
   const negotiation = () => [
-    item("STRENGTH", "Negociação", "Orientar o Vivo em Dia para consultar débitos e opções de parcelamento.", ["Pra isso existe o Vivo em Dia. Por lá você consegue consultar os valores em aberto e ver as opções de parcelamento."], { observed: "Você indicou o Vivo em Dia para consultar os valores em aberto e as opções de parcelamento." }),
+    item("STRENGTH", "Negociação", "Orientar o Telnova em Dia para consultar débitos e opções de parcelamento.", ["Pra isso existe o Telnova em Dia. Por lá você consegue consultar os valores em aberto e ver as opções de parcelamento."], { observed: "Você indicou o Telnova em Dia para consultar os valores em aberto e as opções de parcelamento." }),
     item("OPPORTUNITY", "Promessas", "Não garantir aprovação antes da consulta.", ["Ele vai ser aprovado na hora, isso eu te garanto."]),
   ]
   const check = (items: EmittedItem[], value: NarrativeDraft) => compositionViolations(value, narrativeBriefOf(items, LABEL), items, CONTEXT)
   it("ligado a S1 pela ref ou pelo próprio conteúdo → aceito", () => {
-    expect(check(negotiation(), draft([[1, "A cliente queria regularizar os débitos e você indicou corretamente o Vivo em Dia para consultar os valores e as opções de parcelamento.", "CONTEXT", ["S1"]], [1, "Você garantiu a aprovação do parcelamento antes da consulta.", "ADJUSTMENT", ["A1"]]]))).toEqual({ narrative: [], card: [] })
-    expect(check(negotiation(), draft([[1, "A cliente queria regularizar os débitos e você indicou corretamente o Vivo em Dia para consultar os valores e as opções de parcelamento.", "CONTEXT", []], [1, "Você garantiu a aprovação do parcelamento antes da consulta.", "ADJUSTMENT", ["A1"]]]))).toEqual({ narrative: [], card: [] })
+    expect(check(negotiation(), draft([[1, "A cliente queria regularizar os débitos e você indicou corretamente o Telnova em Dia para consultar os valores e as opções de parcelamento.", "CONTEXT", ["S1"]], [1, "Você garantiu a aprovação do parcelamento antes da consulta.", "ADJUSTMENT", ["A1"]]]))).toEqual({ narrative: [], card: [] })
+    expect(check(negotiation(), draft([[1, "A cliente queria regularizar os débitos e você indicou corretamente o Telnova em Dia para consultar os valores e as opções de parcelamento.", "CONTEXT", []], [1, "Você garantiu a aprovação do parcelamento antes da consulta.", "ADJUSTMENT", ["A1"]]]))).toEqual({ narrative: [], card: [] })
   })
   it("elogio em contexto SEM força correspondente continua recusado; elogio junto do ajuste também", () => {
     const onlyGap = [negotiation()[1]!]
     expect(check(onlyGap, draft([[1, "A cliente queria parcelar e você conduziu bem a negociação.", "CONTEXT", []], [1, "Você garantiu a aprovação antes da consulta.", "ADJUSTMENT", ["A1"]]])).narrative).toContain("NARRATIVE_UNSUPPORTED_STRENGTH")
-    expect(check(negotiation(), draft([[1, "Você indicou corretamente o Vivo em Dia, mas garantiu a aprovação.", "CONTEXT", ["A1"]], [1, "Você garantiu a aprovação antes da consulta.", "ADJUSTMENT", ["A1"]]])).narrative).toContain("NARRATIVE_UNSUPPORTED_STRENGTH")
+    expect(check(negotiation(), draft([[1, "Você indicou corretamente o Telnova em Dia, mas garantiu a aprovação.", "CONTEXT", ["A1"]], [1, "Você garantiu a aprovação antes da consulta.", "ADJUSTMENT", ["A1"]]])).narrative).toContain("NARRATIVE_UNSUPPORTED_STRENGTH")
   })
 })

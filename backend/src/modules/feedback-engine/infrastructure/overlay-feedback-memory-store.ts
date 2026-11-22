@@ -26,6 +26,7 @@ export function createOverlayFeedbackMemoryStore(base: FeedbackMemoryStore & Pic
       if (reused) return { kind: "COMPLETED", run: reused }
       return overlay.claimAnalysis(identity, now, leaseSeconds)
     },
+    renewAnalysisLease: (...args) => overlay.renewAnalysisLease(...args),
     completeCallAnalysis: (...args) => overlay.completeCallAnalysis(...args),
     completeIndicatorInvestigation: (...args) => overlay.completeIndicatorInvestigation(...args),
     completeInsufficient: (...args) => overlay.completeInsufficient(...args),
@@ -121,6 +122,7 @@ export function createOverlayFeedbackMemoryStore(base: FeedbackMemoryStore & Pic
       return (await overlay.findCompletedByReuseKey(organizationId, kind, key)) ?? base.findCompletedByReuseKey(organizationId, kind, key)
     },
     claimMessage: (...args) => overlay.claimMessage(...args),
+    renewMessageLease: (...args) => overlay.renewMessageLease(...args),
     completeMessage: (...args) => overlay.completeMessage(...args),
     failMessage: (...args) => overlay.failMessage(...args),
     getMessage: (...args) => overlay.getMessage(...args),

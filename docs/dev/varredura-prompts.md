@@ -34,7 +34,7 @@ Medido sem custo: banco de dev em modo leitura, rede bloqueada, prompts montados
   "CONDIÇÃO / GATILHO (situação a reconhecer na conversa inteira — não é busca de palavras):", "— todos exigidos quando a condição
   se aplica", "ARGUMENTÁRIO SUGERIDO (EXEMPLO de abordagem — não é texto obrigatório, nunca compare literalmente com a fala, não cria
   exigência):" e "REFERÊNCIA PARA A MONITORIA (...)", 37 vezes cada. O resto é conteúdo parecido entre argumentários do próprio cadastro
-  (no dev, convertidos do cadastro antigo; não dá para generalizar para a Vivo).
+  (no dev, convertidos do cadastro antigo; não dá para generalizar para o cliente).
 - **Marcadores de linha** (`[L12]`): 6,5% do pedido. Necessários para a citação; já são curtos.
 - **Espaços sobrando:** desprezível.
 
@@ -54,7 +54,7 @@ O agrupamento pode juntar perguntas seguidas, então tratar como ordem de grande
 acrescenta ao FIM DO SISTEMA "restam N rodadas…" ([`run-orchestrated-reply.ts`](../../backend/src/modules/assistant/application/run-orchestrated-reply.ts:442)).
 Como o sistema vem antes da conversa, a rodada 2 já difere da rodada 1 logo depois do sistema, e o cache não aproveita a conversa nem os
 resultados. Com o lembrete depois dos resultados, cada rodada reaproveitaria a anterior inteira (~6 mil tokens). Não reduz o que é
-enviado; reduz o que é cobrado, se a Vivo descontar o cache.
+enviado; reduz o que é cobrado, se o cliente descontar o cache.
 
 ## 3. Oportunidades, do maior ganho para o menor
 
@@ -94,7 +94,7 @@ bases e abre só as seções que escolhe.
 
 ## 5. Limites
 
-- Dev: argumentários convertidos do cadastro antigo, bases de teste, transcrições curtas, poucas pessoas. Na Vivo, o número de
+- Dev: argumentários convertidos do cadastro antigo, bases de teste, transcrições curtas, poucas pessoas. No cliente, o número de
   argumentários por equipe e o tamanho das transcrições podem ser bem diferentes.
 - "Usado" = argumentário com avaliação registrada na análise. Um argumentário lido e considerado sem registro não aparece aqui.
 - Revisão montada sem o JSON da análise (que muda por chamada).
@@ -140,7 +140,7 @@ julgou "aplica" (472 pares análise × argumentário, em 94 análises; nas outra
 - **A escolha pela IA** lê nome, "quando se aplica" e "quando não se aplica" de cada um mais a conversa, e responde com os códigos
   ("na dúvida, inclua"). Pedido de ~3,4 mil tokens, ~0,8 mil de saída e raciocínio, US$ 0,0055 por chamada. Os 2 perdidos são
   argumentários que valem em 15% das chamadas; somar os frequentes cobre os dois.
-- **"Frequente" sem olhar a própria análise:** a taxa de cada argumentário foi calculada sem a análise testada. Na Vivo, essa taxa só
+- **"Frequente" sem olhar a própria análise:** a taxa de cada argumentário foi calculada sem a análise testada. No cliente, essa taxa só
   existe depois de um histórico; até lá, mandar todos (como hoje) ou só a escolha da IA.
 
 **Economia estimada por chamada analisada** (IA ∪ frequentes, mesma escolha na análise e na revisão): argumentários de 25,3 mil para

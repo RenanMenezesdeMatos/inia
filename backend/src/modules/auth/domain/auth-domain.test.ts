@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { LOGIN_MAX_FAILURES, loginThrottle } from "./login-throttle.js"
-import { passwordPolicyViolations } from "./password-policy.js"
+import { PREDICTABLE_PASSWORD_WORDS, passwordPolicyViolations } from "./password-policy.js"
 import { decideSession, type SessionAccountState } from "./session-state.js"
 import { generateTemporaryPassword, temporaryPasswordExpiry } from "./temporary-password.js"
 
@@ -9,20 +9,27 @@ const minutesAgo = (minutes: number) => new Date(NOW.getTime() - minutes * 60_00
 
 describe("política de senha", () => {
   it("aceita senha com 8+ caracteres, letra e número, sem o login", () => {
-    expect(passwordPolicyViolations("Cajueiro2026", { login: "larissa.monteiro@vivo.com" })).toEqual([])
+    expect(passwordPolicyViolations("Cajueiro2026", { login: "larissa.monteiro@telnova.com" })).toEqual([])
     expect(passwordPolicyViolations("çãoÉ1234", { login: "x@y.com" })).toEqual([])
   })
   it("aponta cada regra que falta", () => {
     expect(passwordPolicyViolations("xyz1", { login: "x@y.com" })).toEqual(["TOO_SHORT"])
     expect(passwordPolicyViolations("somenteletras", { login: "x@y.com" })).toEqual(["MISSING_DIGIT"])
     expect(passwordPolicyViolations("1234567890", { login: "x@y.com" })).toEqual(["MISSING_LETTER"])
-    expect(passwordPolicyViolations("larissa.monteiro99", { login: "Larissa.Monteiro@vivo.com" })).toEqual(["CONTAINS_LOGIN"])
+    expect(passwordPolicyViolations("larissa.monteiro99", { login: "Larissa.Monteiro@telnova.com" })).toEqual(["CONTAINS_LOGIN"])
   })
   it("recusa senha previsível: palavra comum, empresa, mês ou estação + números/símbolos (auditoria 17/10/2026, AUTH-12)", () => {
-    for (const common of ["Senha123", "senha@2026", "Senh@1234", "Vivo2026", "Mudar@123", "Inia2026!", "Primavera2026", "Outubro2026", "Qwerty123", "abc12345", "Aaaa1111", "VivoVivo2026", "Telefônica1"]) {
+    for (const common of ["Senha123", "senha@2026", "Senh@1234", "Claro2026", "Mudar@123", "Inia2026!", "Primavera2026", "Outubro2026", "Qwerty123", "abc12345", "Aaaa1111", "ClaroClaro2026", "Operadora1"]) {
       expect(passwordPolicyViolations(common, { login: "x@y.com" }), common).toContain("COMMON_PASSWORD")
     }
-    for (const strong of ["Cajueiro2026", "Pato-Azul-77", "Vivo-Cajueiro-2026", "3Tigres7Pratos"]) expect(passwordPolicyViolations(strong, { login: "x@y.com" }), strong).toEqual([])
+    for (const strong of ["Cajueiro2026", "Pato-Azul-77", "Claro-Cajueiro-2026", "3Tigres7Pratos"]) expect(passwordPolicyViolations(strong, { login: "x@y.com" }), strong).toEqual([])
+  })
+  it("toda palavra da lista de previsíveis é recusada com números em volta (a lista nunca perde efeito em silêncio)", () => {
+    // Cobre também o nome da empresa e os termos da operação, sem escrevê-los aqui.
+    for (const word of PREDICTABLE_PASSWORD_WORDS) {
+      const password = `${word[0]!.toUpperCase()}${word.slice(1)}20262026`
+      expect(passwordPolicyViolations(password, { login: "x@y.com" }), password).toContain("COMMON_PASSWORD")
+    }
   })
   it("limita em 72 BYTES (bcrypt ignora o resto), não em caracteres", () => {
     expect(passwordPolicyViolations(`a1${"xyz".repeat(23)}`, { login: "x@y.com" })).toEqual([])

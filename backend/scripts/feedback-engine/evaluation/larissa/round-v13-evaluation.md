@@ -22,7 +22,7 @@ Análise (prompt V9) → revisão → redação → verificação → reescrita 
 
 | Critério | Resultado |
 |---|---|
-| §19 ligado ao caso | **Não atende (utilidade)** — a análise declarou o Jeito Vivo como fonte relacionada, mas não formou obrigação dele e deixou `notAssessed` vazio. O ajuste de texto do prompt não bastou (decisão 2). Não é erro: nenhum ponto falso. |
+| §19 ligado ao caso | **Não atende (utilidade)** — a análise declarou o Jeito Telnova como fonte relacionada, mas não formou obrigação dele e deixou `notAssessed` vazio. O ajuste de texto do prompt não bastou (decisão 2). Não é erro: nenhum ponto falso. |
 | Reconhecimento só do que a fala mostra | Atende (fatura/valor, se estava paga, crédito condicional, prazo e SMS — todos com fala) |
 | Execução em sistema | Atende (a abertura de análise ficou como não observável; nenhuma frase a dá como feita) |
 | Alternativas (§34) | Atende (crédito tratado como a opção comunicada; nada de "estorno em vez de crédito") |
@@ -74,7 +74,7 @@ verificação foram ao modelo. Mensagem **publicável**, sem reescrita.
   resultado oficial, a conduta concreta da pessoa com denominador e uma boa prática dos colegas com melhor resultado, sem causa
   inventada. O primeiro texto saiu pobre por defeitos meus no brief e no prompt (não do modelo), corrigidos e provados com a mesma
   investigação.
-- **Monitoria (C07):** correta e publicável; a regra transversal acionada por situação (Jeito Vivo §19) continua fora — o próximo passo
+- **Monitoria (C07):** correta e publicável; a regra transversal acionada por situação (Jeito Telnova §19) continua fora — o próximo passo
   é estrutural (decisão 2), não mais texto de prompt.
 - **Configuração de produção (decisão do usuário):** a estratégia publicada do TMA está com "Comparação com pares" DESLIGADA e o Agent
   sem a capacidade `OPERATIONAL_COMPARISON`. Nesta rodada as duas foram ligadas só na memória do processo. Sem ligá-las, o feedback de

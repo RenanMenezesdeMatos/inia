@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { AlertTriangle, ArrowRight, ListChecks } from "lucide-react"
 
-import { NODE_COLORS } from "@/components/admin/workflows/node-visuals"
+import { nodeColorsOf } from "@/components/admin/workflows/node-visuals"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { FlowNode } from "@/schemas/admin/workflow-graph.schema"
@@ -58,7 +58,7 @@ function ConfigPanel({ panel }: { panel: DemoPanel }) {
 }
 
 export function DemoSceneView({ scene, node, onDecision }: { scene: DemoScene; node: FlowNode; onDecision?: (decision: string) => void }) {
-  const colors = NODE_COLORS[node.type]
+  const colors = nodeColorsOf(node)
   const shots = (scene.shots ?? []).map((id) => DEMO_SHOTS[id]).filter((shot) => shot !== undefined)
   return (
     <div key={scene.id} className="min-w-0 space-y-4 animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none" data-scene={scene.id}>

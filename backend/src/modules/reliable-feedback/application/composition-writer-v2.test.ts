@@ -28,7 +28,7 @@ const development = () => [
   item("OPPORTUNITY", "Não prometer desbloqueio imediato", "Você disse que o desbloqueio seria imediato.", "Não prometer desbloqueio imediato.", "Assim que você informar, o desbloqueio é imediato."),
 ]
 const mixed = () => [
-  item("STRENGTH", "Negociação", "Você orientou a consulta dos débitos pelo Vivo em Dia.", "Orientar o Vivo em Dia para consultar débitos.", "Pelo Vivo em Dia você consulta os débitos e as opções de parcelamento."),
+  item("STRENGTH", "Negociação", "Você orientou a consulta dos débitos pelo Telnova em Dia.", "Orientar o Telnova em Dia para consultar débitos.", "Pelo Telnova em Dia você consulta os débitos e as opções de parcelamento."),
   item("OPPORTUNITY", "Promessas", "Você garantiu a aprovação do parcelamento antes da consulta.", "Não garantir aprovação antes da consulta.", "Ele vai ser aprovado na hora, isso eu te garanto."),
 ]
 type Sentence = NonNullable<NarrativeDraft["sentences"]>[number]
@@ -58,7 +58,7 @@ describe("o redator não cria fato", () => {
     expect(mainAsContext.narrative).toContain("NARRATIVE_GAP_OMITTED")
   })
   it("força citada fora de uma frase STRENGTH, ou num ajuste, não passa (nada de força disfarçada)", () => {
-    const result = check(mixed(), draft([[1, "Você orientou o Vivo em Dia, e garantiu a aprovação.", "ADJUSTMENT", ["S1", "A1"]]], "Evite garantir a aprovação.", ["A1"]))
+    const result = check(mixed(), draft([[1, "Você orientou o Telnova em Dia, e garantiu a aprovação.", "ADJUSTMENT", ["S1", "A1"]]], "Evite garantir a aprovação.", ["A1"]))
     expect(result.narrative).toContain("NARRATIVE_UNSUPPORTED_STRENGTH")
   })
   it("o card cita o principal ajuste; elogio no card só com ponto forte", () => {
@@ -85,7 +85,7 @@ describe("o redator tem liberdade de composição", () => {
     expect(result).toEqual({ narrative: [], card: [] })
   })
   it("MIXED legítimo: força independente reconhecida + ajuste, em qualquer ordem", () => {
-    const result = check(mixed(), draft([[1, "Você garantiu a aprovação do parcelamento antes da consulta; isso precisa mudar.", "ADJUSTMENT", ["A1"]], [2, "A orientação pelo Vivo em Dia para consultar os débitos foi correta e vale manter.", "STRENGTH", ["S1"]]], "Evite garantir a aprovação do parcelamento antes da consulta.", ["A1"]))
+    const result = check(mixed(), draft([[1, "Você garantiu a aprovação do parcelamento antes da consulta; isso precisa mudar.", "ADJUSTMENT", ["A1"]], [2, "A orientação pelo Telnova em Dia para consultar os débitos foi correta e vale manter.", "STRENGTH", ["S1"]]], "Evite garantir a aprovação do parcelamento antes da consulta.", ["A1"]))
     expect(result).toEqual({ narrative: [], card: [] })
   })
   it("falsos positivos léxicos herdados não recusam mais: 'falha na internet', 'status do reparo'; culpa dirigida ao colaborador continua recusada", () => {
@@ -95,7 +95,7 @@ describe("o redator tem liberdade de composição", () => {
     expect(blame.narrative).toContain("PRESENTATION_BLAME")
   })
   it("frase que só se refere a forças é reconhecimento, qualquer que seja o rótulo; força + ajuste na mesma frase continua recusada", () => {
-    const relabeled = check(mixed(), draft([[1, "Você indicou corretamente o Vivo em Dia para consultar os débitos.", "CONTEXT", ["S1"]], [2, "Mas garantiu a aprovação do parcelamento antes da consulta.", "ADJUSTMENT", ["A1"]]], "Evite garantir a aprovação antes da consulta.", ["A1"]))
+    const relabeled = check(mixed(), draft([[1, "Você indicou corretamente o Telnova em Dia para consultar os débitos.", "CONTEXT", ["S1"]], [2, "Mas garantiu a aprovação do parcelamento antes da consulta.", "ADJUSTMENT", ["A1"]]], "Evite garantir a aprovação antes da consulta.", ["A1"]))
     expect(relabeled).toEqual({ narrative: [], card: [] })
   })
   it("payload da composição leva o contexto da chamada e o que aconteceu em cada ponto (especialista), com refs S-n/A-n", () => {

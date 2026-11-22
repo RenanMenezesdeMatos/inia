@@ -1,5 +1,6 @@
 "use client"
 
+import { createElement } from "react"
 import { AlertTriangle, Sparkles, Target } from "lucide-react"
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react"
 
@@ -8,7 +9,7 @@ import { cn } from "@/lib/utils"
 import { nodeBranches, type FlowNodeType } from "@/schemas/admin/workflow-graph.schema"
 
 import type { RFNodeData } from "./graph-mappers"
-import { describeNodeConfig, describeSetVariableBadge, NODE_COLORS, NODE_ICONS, nodeDisplayName, nodeKindLabel } from "./node-visuals"
+import { describeNodeConfig, describeSetVariableBadge, nodeColorsOf, nodeDisplayName, nodeIconOf, nodeKindLabel } from "./node-visuals"
 import { useWorkflowEditorContext } from "./workflow-editor-context"
 
 /**
@@ -30,8 +31,7 @@ const SIDE_SOURCE_STYLE = { top: "65%" } as const
 export function WorkflowNode({ data, selected }: NodeProps<Node<RFNodeData>>) {
   const node = data.flowNode
   const context = useWorkflowEditorContext()
-  const Icon = NODE_ICONS[node.type]
-  const colors = NODE_COLORS[node.type]
+  const colors = nodeColorsOf(node)
   const branches = nodeBranches(node)
   const subtitle = describeNodeConfig(node, context)
   const hasTarget = node.type !== "trigger"
@@ -62,7 +62,7 @@ export function WorkflowNode({ data, selected }: NodeProps<Node<RFNodeData>>) {
 
       <div className="flex items-center gap-2">
         <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", colors.iconBg)}>
-          <Icon className={cn("h-4 w-4", colors.icon)} aria-hidden />
+          {createElement(nodeIconOf(node), { className: cn("h-4 w-4", colors.icon), "aria-hidden": true })}
         </div>
         {/* O nome dado à etapa em destaque e o tipo como apoio. O id técnico nunca aparece: não ajuda a decidir nada. */}
         <div className="min-w-0 flex-1">

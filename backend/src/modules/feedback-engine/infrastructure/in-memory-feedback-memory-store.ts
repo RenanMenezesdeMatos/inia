@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto"
 import { indicatorPeriodKey } from "../domain/delivery-guards.js"
 import { criterionKeyOf, obligationCriterionKeyOf, reconcileCriteria, type CriterionIdentity, type PersistedCriterion } from "../domain/criteria-identity.js"
-import type { AnalysisRunRecord, CallSnapshot, FeedbackMemoryStore, FeedbackMessageStore, MessageRecord, StoredCallAssessment } from "../application/ports.js"
+import type { AnalysisRunRecord, CallSnapshot, FeedbackMemoryStore, FeedbackMessageStore, LeaseOwner, MessageRecord, StoredCallAssessment } from "../application/ports.js"
+import { leaseLostOnComplete } from "../application/engine-lease.js"
 import type { VerifiedCallAnalysis } from "../domain/call-analysis.js"
 import type { IndicatorInvestigation } from "../domain/indicator-investigation.js"
 import type { MemoryCriterionRow, MemorySnapshot } from "../domain/memory-queries.js"
@@ -18,12 +19,19 @@ type InMemoryPractice = { title: string; createdAt: Date; shortTitle?: string; t
  */
 type StoredAssessment = StoredCallAssessment & { procedureId: string | null; asOf: Date; logicVersion: string | null; titles: Record<string, string>; criteria: { key: string; anchorKey?: string; lineKey: string; status: string; current: boolean; asOf: Date; personId: string; occurredAt: Date; ruleConflict: boolean; interactionId: string }[] }
 
-export function createInMemoryFeedbackMemoryStore(): FeedbackMemoryStore & FeedbackMessageStore & { markDelivered(organizationId: string, messageId: string, at: Date): Promise<void>; runs: Map<string, AnalysisRunRecord & { claimedUntil: Date | null }>; assessments: StoredAssessment[]; messages: Map<string, MessageRecord & { deliveredAt: Date | null; claimedUntil: Date | null }>; investigations: { id: string; runId: string; investigation: IndicatorInvestigation; current: boolean; asOf: Date; personId: string }[]; practices: Map<string, InMemoryPractice>; memberships: Map<string, PracticeAssignment & { at: Date }>; themes: Map<string, { title: string; createdAt: Date }> } {
-  const runs = new Map<string, AnalysisRunRecord & { claimedUntil: Date | null }>()
+/** Relógio da posse: o injetado (testes); senão o do processo. O Postgres usa o do banco (`ENGINE_LEASE_V1`). */
+export type InMemoryFeedbackMemoryOptions = { now?: () => Date }
+
+/** Mesma regra do `ownerSql` do Postgres: com dona, a linha precisa estar RUNNING e na mesma tentativa. */
+const ownedBy = (row: { status: string; attempts: number } | undefined, owner: LeaseOwner | undefined) => !owner || (row?.status === "RUNNING" && row.attempts === owner.attempt)
+
+export function createInMemoryFeedbackMemoryStore(options: InMemoryFeedbackMemoryOptions = {}): FeedbackMemoryStore & FeedbackMessageStore & { markDelivered(organizationId: string, messageId: string, at: Date): Promise<void>; runs: Map<string, AnalysisRunRecord & { claimedUntil: Date | null; attempts: number }>; assessments: StoredAssessment[]; messages: Map<string, MessageRecord & { deliveredAt: Date | null; claimedUntil: Date | null; attempts: number }>; investigations: { id: string; runId: string; investigation: IndicatorInvestigation; current: boolean; asOf: Date; personId: string }[]; practices: Map<string, InMemoryPractice>; memberships: Map<string, PracticeAssignment & { at: Date }>; themes: Map<string, { title: string; createdAt: Date }> } {
+  const clock = options.now ?? (() => new Date())
+  const runs = new Map<string, AnalysisRunRecord & { claimedUntil: Date | null; attempts: number }>()
   const assessments: StoredAssessment[] = []
   const investigations: { id: string; runId: string; investigation: IndicatorInvestigation; current: boolean; asOf: Date; personId: string }[] = []
   const criteria = new Map<string, PersistedCriterion[]>()
-  const messages = new Map<string, MessageRecord & { deliveredAt: Date | null; claimedUntil: Date | null }>()
+  const messages = new Map<string, MessageRecord & { deliveredAt: Date | null; claimedUntil: Date | null; attempts: number }>()
   // `PRACTICE_IDENTITY_V1`: práticas (ordem de criação) e a decisão de cada linha (practiceKey null = a linha não pede conduta).
   const practices = new Map<string, InMemoryPractice>()
   const memberships = new Map<string, PracticeAssignment & { at: Date }>()
@@ -51,16 +59,25 @@ export function createInMemoryFeedbackMemoryStore(): FeedbackMemoryStore & Feedb
         if (existing.status === "RUNNING" && existing.claimedUntil && existing.claimedUntil > now) return { kind: "IN_PROGRESS" }
         existing.status = "RUNNING"
         existing.claimedUntil = new Date(now.getTime() + leaseSeconds * 1000)
+        existing.attempts += 1
         existing.asOf = identity.asOf
         existing.trigger = identity.trigger
-        return { kind: "CLAIMED", runId: existing.id }
+        return { kind: "CLAIMED", runId: existing.id, leaseUntil: existing.claimedUntil, attempt: existing.attempts }
       }
       const id = randomUUID()
-      runs.set(id, { ...identity, id, status: "RUNNING", outcome: null, outcomeReasons: [], provenance: {}, result: null, metrics: {}, completedAt: null, claimedUntil: new Date(now.getTime() + leaseSeconds * 1000) })
-      return { kind: "CLAIMED", runId: id }
+      const leaseUntil = new Date(now.getTime() + leaseSeconds * 1000)
+      runs.set(id, { ...identity, id, status: "RUNNING", outcome: null, outcomeReasons: [], provenance: {}, result: null, metrics: {}, completedAt: null, claimedUntil: leaseUntil, attempts: 1 })
+      return { kind: "CLAIMED", runId: id, leaseUntil, attempt: 1 }
     },
-    async completeCallAnalysis(_organizationId, runId, data, now) {
+    async renewAnalysisLease(_organizationId, runId, token, leaseSeconds) {
+      const run = runs.get(runId)
+      if (!run || run.status !== "RUNNING" || run.claimedUntil?.getTime() !== token.getTime()) return null
+      run.claimedUntil = new Date(clock().getTime() + leaseSeconds * 1000)
+      return run.claimedUntil
+    },
+    async completeCallAnalysis(_organizationId, runId, data, now, owner) {
       const run = runs.get(runId)!
+      if (!ownedBy(run, owner)) throw leaseLostOnComplete("feedback_analysis_runs", runId, owner!.attempt)
       Object.assign(run, { status: "COMPLETED", outcome: data.analysis.outcome, outcomeReasons: data.analysis.outcomeReasons, result: data.analysis, provenance: data.provenance, metrics: data.metrics, completedAt: now, claimedUntil: null })
       const procedureId = data.analysis.scenario.procedureDocumentId
       const newer = assessments.some((entry) => entry.snapshot.interactionId === data.snapshot.interactionId && entry.procedureId === procedureId && entry.isCurrent && entry.asOf > run.asOf)
@@ -90,8 +107,9 @@ export function createInMemoryFeedbackMemoryStore(): FeedbackMemoryStore & Feedb
       assessments.push({ id, analysisRunId: runId, isCurrent: current, snapshot: data.snapshot as CallSnapshot, analysis: data.analysis as VerifiedCallAnalysis, criterionKeys, procedureId, asOf: run.asOf, logicVersion: run.logicVersion, titles, criteria: rows })
       return { callAssessmentId: id, current }
     },
-    async completeIndicatorInvestigation(_organizationId, runId, data, now) {
+    async completeIndicatorInvestigation(_organizationId, runId, data, now, owner) {
       const run = runs.get(runId)!
+      if (!ownedBy(run, owner)) throw leaseLostOnComplete("feedback_analysis_runs", runId, owner!.attempt)
       Object.assign(run, { status: "COMPLETED", outcome: "USABLE", outcomeReasons: [data.investigation.conclusion], result: data.investigation, provenance: data.provenance, metrics: data.metrics, completedAt: now, claimedUntil: null })
       // Interrompida pelo orçamento: fica no histórico, mas a chave é liberada (a próxima execução investiga de novo).
       if (data.reusable === false) run.analysisKey = `${run.analysisKey}:INCOMPLETE:${run.id}`
@@ -104,16 +122,17 @@ export function createInMemoryFeedbackMemoryStore(): FeedbackMemoryStore & Feedb
       investigations.push({ id, runId, investigation: data.investigation, current, asOf: run.asOf, personId: run.personId })
       return { investigationId: id, current }
     },
-    async completeInsufficient(_organizationId, runId, outcome, now) {
+    async completeInsufficient(_organizationId, runId, outcome, now, owner) {
+      if (!ownedBy(runs.get(runId), owner)) throw leaseLostOnComplete("feedback_analysis_runs", runId, owner!.attempt)
       Object.assign(runs.get(runId)!, { status: "COMPLETED", outcome: "INSUFFICIENT_EVIDENCE", outcomeReasons: outcome.outcomeReasons, result: outcome.result, completedAt: now, claimedUntil: null })
     },
-    async failAnalysis(_organizationId, runId, _error, now) {
+    async failAnalysis(_organizationId, runId, _error, now, owner) {
       const run = runs.get(runId)
-      if (run && run.status === "RUNNING") Object.assign(run, { status: "FAILED", completedAt: now, claimedUntil: null })
+      if (run && run.status === "RUNNING" && ownedBy(run, owner)) Object.assign(run, { status: "FAILED", completedAt: now, claimedUntil: null })
     },
-    async suspendCallAnalysis(_organizationId, runId, data, now) {
+    async suspendCallAnalysis(_organizationId, runId, data, now, owner) {
       const run = runs.get(runId)
-      if (run && run.status === "RUNNING") Object.assign(run, { status: "FAILED", result: { checkpoint: data.checkpoint }, provenance: data.provenance, metrics: data.metrics, completedAt: now, claimedUntil: null })
+      if (run && run.status === "RUNNING" && ownedBy(run, owner)) Object.assign(run, { status: "FAILED", result: { checkpoint: data.checkpoint }, provenance: data.provenance, metrics: data.metrics, completedAt: now, claimedUntil: null })
     },
     async findStageResponses(organizationId, query) {
       return [...runs.values()]
@@ -293,20 +312,29 @@ export function createInMemoryFeedbackMemoryStore(): FeedbackMemoryStore & Feedb
         if (existing.status === "RUNNING" && existing.claimedUntil && existing.claimedUntil > now) return { kind: "IN_PROGRESS" }
         existing.status = "RUNNING"
         existing.claimedUntil = new Date(now.getTime() + leaseSeconds * 1000)
-        return { kind: "CLAIMED", messageId: existing.id }
+        existing.attempts += 1
+        return { kind: "CLAIMED", messageId: existing.id, leaseUntil: existing.claimedUntil, attempt: existing.attempts }
       }
       const id = randomUUID()
-      messages.set(id, { ...identity, id, status: "RUNNING", analysisRunIds: [], abstainReason: null, findingKeys: [], brief: null, message: null, composition: null, suppressed: [], metrics: {}, completedAt: null, deliveredAt: null, claimedUntil: new Date(now.getTime() + leaseSeconds * 1000) })
-      return { kind: "CLAIMED", messageId: id }
+      const leaseUntil = new Date(now.getTime() + leaseSeconds * 1000)
+      messages.set(id, { ...identity, id, status: "RUNNING", analysisRunIds: [], abstainReason: null, findingKeys: [], brief: null, message: null, composition: null, suppressed: [], metrics: {}, completedAt: null, deliveredAt: null, claimedUntil: leaseUntil, attempts: 1 })
+      return { kind: "CLAIMED", messageId: id, leaseUntil, attempt: 1 }
     },
-    async completeMessage(_organizationId, messageId, data, now) {
+    async renewMessageLease(_organizationId, messageId, token, leaseSeconds) {
+      const message = messages.get(messageId)
+      if (!message || message.status !== "RUNNING" || message.claimedUntil?.getTime() !== token.getTime()) return null
+      message.claimedUntil = new Date(clock().getTime() + leaseSeconds * 1000)
+      return message.claimedUntil
+    },
+    async completeMessage(_organizationId, messageId, data, now, owner) {
       const message = messages.get(messageId)!
+      if (!ownedBy(message, owner)) throw leaseLostOnComplete("feedback_engine_messages", messageId, owner!.attempt)
       Object.assign(message, { status: data.status, analysisRunIds: data.analysisRunIds, abstainReason: data.abstainReason, findingKeys: data.findingKeys, brief: data.brief, message: data.message, composition: data.composition, suppressed: data.suppressed, metrics: data.metrics, completedAt: now, claimedUntil: null })
       return message
     },
-    async failMessage(_organizationId, messageId, _error, now) {
+    async failMessage(_organizationId, messageId, _error, now, owner) {
       const message = messages.get(messageId)
-      if (message && message.status === "RUNNING") Object.assign(message, { status: "FAILED", completedAt: now, claimedUntil: null })
+      if (message && message.status === "RUNNING" && ownedBy(message, owner)) Object.assign(message, { status: "FAILED", completedAt: now, claimedUntil: null })
     },
     async getMessage(organizationId, messageId) {
       const message = messages.get(messageId)
