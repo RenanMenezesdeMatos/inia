@@ -1,6 +1,8 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { canManageScope, getManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { resourceScopeOf } from "../../../shared/domain/scope-links/resource-scope.js"
+import { scopedTargetOf } from "../../org-structure/application/resource-scope-links.js"
 import { loadWorkflowsCitingNode, type WorkflowCitationStatus } from "../../workflows/application/workflow-node-references.js"
 
 const CODE = "ORCHESTRATOR_DELETE_BLOCKED"
@@ -20,7 +22,9 @@ async function assessOrchestratorDeletion(db: Database, viewer: { organizationId
   const references: OrchestratorWorkflowReference[] = []
   let hasRestrictedReferences = false
   for (const workflow of citations) {
-    if (!scopes || !canManageScope(scopes, { scopeType: workflow.scope_type, teamId: workflow.team_id, subteamId: workflow.subteam_id })) {
+    // Abrangência publicada do Workflow (249): ALL_TEAMS ou os vínculos (`scope_links`); legado TEAM/SUBTEAM lido com o mesmo alcance.
+    const workflowScope = resourceScopeOf({ scopeType: workflow.scope_type, teamId: workflow.team_id, subteamId: workflow.subteam_id, scopeLinks: workflow.scope_links ?? [] })
+    if (!scopes || !canManageScope(scopes, scopedTargetOf(workflowScope))) {
       hasRestrictedReferences = true
       continue
     }

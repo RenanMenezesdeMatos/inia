@@ -2,10 +2,10 @@
 
 import { useState } from "react"
 
-import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { KnownKnowledgeOptions } from "@/queries/admin/use-agent-knowledge-options-queries"
+import type { ScopeLinksValue } from "@/lib/scope-links/scope-links"
 import type { Team } from "@/schemas/admin/org-structure.schema"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
@@ -23,7 +23,7 @@ export function KnowledgeBasePicker({
   selectedIds,
   onChange,
   universe,
-  orgScope,
+  scope,
   teams,
   known,
   fallbackTitles,
@@ -32,14 +32,15 @@ export function KnowledgeBasePicker({
   onChange: (ids: string[]) => void
   /** Universo do agente (nulo = pendente: qualquer universo cabe). */
   universe: OperatingUniverse | null
-  orgScope: OrgScopeValue
+  /** Alcance do agente no formulário (todos, ou os Grupos/Subgrupos escolhidos). */
+  scope: ScopeLinksValue
   teams: readonly Team[] | undefined
   known: KnownKnowledgeOptions
   /** Títulos que o agente já traz, para as escolhidas que ainda carregam ou que quem edita não enxerga. */
   fallbackTitles: ReadonlyMap<string, string>
 }) {
   const [tab, setTab] = useState<"selected" | "available">(selectedIds.length ? "selected" : "available")
-  const agentScope = agentKnowledgeScopeOf(orgScope)
+  const agentScope = agentKnowledgeScopeOf(scope)
   const blocking = selectedIds.filter((id) => {
     const option = known.byId.get(id)
     return option ? optionProblems(option, universe, agentScope, teams).length > 0 : false

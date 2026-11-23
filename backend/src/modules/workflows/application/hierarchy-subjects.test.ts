@@ -116,12 +116,37 @@ describe("resolvePopulationFilterOperatorIds — Filtro Populacional (modo Indiv
     expect(await resolvePopulationFilterOperatorIds(db, "org-1", { kind: "SUPERVISOR_TEAM", supervisorId: "sup-1" }, scope)).toEqual(["op-1", "op-2"])
   })
 
-  it("SUBTEAM casa por subteam_id (nunca pelo Grupo inteiro)", async () => {
+  it("SUBTEAM (legado) casa por subteam_id (nunca pelo Grupo inteiro)", async () => {
     const db = fakeDb((sql, params) => {
-      expect(sql).toContain("$2 = 'SUBTEAM' and subteam_id = $4")
-      expect(params).toEqual(["org-1", "SUBTEAM", null, "sub-1", null, false])
+      expect(sql).toContain("people.subteam_id = any($4::uuid[])")
+      expect(params).toEqual(["org-1", false, [], ["sub-1"], null, false])
       return { rows: [{ id: "op-1" }] }
     })
     expect(await resolveScopeOperatorIds(db, "org-1", { scopeType: "SUBTEAM", teamId: null, subteamId: "sub-1", operatingUniverse: null, requireActiveAccess: false })).toEqual(["op-1"])
+  })
+
+  it("GROUPS (249): Grupo inteiro por team_id, Subgrupo só por subteam_id — uma condição sobre a linha da pessoa (cada uma uma vez)", async () => {
+    const db = fakeDb((sql, params) => {
+      expect(sql).toContain("people.team_id = any($3::uuid[])")
+      expect(sql).not.toContain("join")
+      expect(params).toEqual(["org-1", false, ["team-a"], ["sub-b1"], null, false])
+      return { rows: [{ id: "op-1" }] }
+    })
+    const scope = { scopeType: "GROUPS", scopeLinks: [{ teamId: "team-a", subteamId: null }, { teamId: "team-b", subteamId: "sub-b1" }], operatingUniverse: null, requireActiveAccess: false }
+    expect(await resolveScopeOperatorIds(db, "org-1", scope)).toEqual(["op-1"])
+  })
+
+  it("ALL_TEAMS não carrega Grupo nenhum (todos, inclusive os criados depois); GROUPS sem vínculo não alcança ninguém", async () => {
+    const seen: unknown[][] = []
+    const db = fakeDb((_sql, params) => {
+      seen.push(params ?? [])
+      return { rows: [] }
+    })
+    await resolveScopeOperatorIds(db, "org-1", { scopeType: "ALL_TEAMS", operatingUniverse: null, requireActiveAccess: false })
+    await resolveScopeOperatorIds(db, "org-1", { scopeType: "GROUPS", scopeLinks: [], operatingUniverse: null, requireActiveAccess: false })
+    expect(seen).toEqual([
+      ["org-1", true, [], [], null, false],
+      ["org-1", false, [], [], null, false],
+    ])
   })
 })

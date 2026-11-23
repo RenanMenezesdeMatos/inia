@@ -95,12 +95,13 @@
   "spawn-shell-true|scripts/install/run.mjs|296ed741a5657a04",
   "spawn-shell-true|scripts/security/verificar.mjs|1b114e110820f9ae",
   "tainted-sql-string|backend/src/modules/agents/presentation/agent-router.ts|7fac7c93bf072cf0",
+  "tainted-sql-string|backend/src/modules/agents/presentation/agent-router.ts|e4da83dc1e87ec1c",
+  "tainted-sql-string|backend/src/modules/agents/presentation/agent-router.ts|fc9375279e9fd681",
   "tainted-sql-string|backend/src/modules/assistant/presentation/assistant-router.ts|c96999b69492ac2f",
   "tainted-sql-string|backend/src/modules/data-lifecycle/application/run-data-retention.ts|e80e0411fdcca118",
-  "tainted-sql-string|backend/src/modules/indicator-rules/presentation/indicator-rule-router.ts|5bb8e3e3e1def447",
-  "tainted-sql-string|backend/src/modules/indicator-rules/presentation/indicator-rule-router.ts|c37595b62647a266",
+  "tainted-sql-string|backend/src/modules/indicator-rules/presentation/indicator-rule-router.ts|25fd5c35a22c56c8",
+  "tainted-sql-string|backend/src/modules/indicator-rules/presentation/indicator-rule-router.ts|66ce21d3e4f3d29e",
   "tainted-sql-string|backend/src/modules/indicator-rules/presentation/indicator-rule-router.ts|fb056253c5096631",
-  "tainted-sql-string|backend/src/modules/knowledge/presentation/knowledge-router.ts|4dd472948786e768",
   "tainted-sql-string|backend/src/modules/knowledge/presentation/knowledge-router.ts|8a5d834f45100a2c",
   "tainted-sql-string|backend/src/modules/knowledge/presentation/knowledge-router.ts|9d240468b9c73537",
   "tainted-sql-string|backend/src/modules/knowledge/presentation/knowledge-router.ts|e3e93cff8b4de08a",
@@ -123,5 +124,5 @@
   "frontend|picomatch@4.0.4|GHSA-fc5q-39xc-vjpf",
   "frontend|picomatch@4.0.7|GHSA-fc5q-39xc-vjpf"
  ],
- "geradoEm": "2026-11-17"
+ "geradoEm": "2026-11-23"
 }

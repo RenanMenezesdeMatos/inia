@@ -1,4 +1,5 @@
 import { scopeLinkProblems } from "../../../shared/domain/scope-links/scope-links.js"
+import { assertNewScopeLinksAdmissible } from "../../org-structure/application/scope-unit-admission.js"
 import { DOCUMENT_BUDGET_CHARS } from "../../feedback-engine/domain/document-selection.js"
 import { Router } from "express"
 import multer from "multer"
@@ -290,6 +291,18 @@ async function normalizeOrgScopes(db: Pick<Database, "query">, organizationId: s
   return normalized
 }
 
+/** Alcances de Grupo/Subgrupo como vínculos ("todos" não tem vínculo). */
+const linksOfTargets = (targets: readonly ScopedTarget[]) =>
+  targets.flatMap((target) => (target.scopeType === "ALL_TEAMS" || !target.teamId ? [] : [{ teamId: target.teamId, subteamId: target.scopeType === "SUBTEAM" ? target.subteamId : null }]))
+
+/**
+ * Vínculos NOVOS da base obedecem à regra do seletor (run-10 QA-04): do universo da base e com operador em produção. Os que a base já tem
+ * (em uso ou no rascunho) continuam aceitos — a edição preserva o que existe.
+ */
+async function admitOrgScopes(db: Pick<Database, "query">, organizationId: string, orgScopes: z.infer<typeof orgScopeSchema>[], previous: readonly ScopedTarget[], universe: string | null): Promise<void> {
+  await assertNewScopeLinksAdmissible(db, organizationId, linksOfTargets(toTargets(orgScopes)), { previous: linksOfTargets(previous), universe })
+}
+
 /** `inlineProcessing: false` deixa o processamento só para a varredura (as provas controlam quando cada versão fica pronta). */
 export function createKnowledgeRouter(db: Database, options: { inlineProcessing?: boolean } = {}) {
   const router = Router()
@@ -444,6 +457,7 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
     }
     input.orgScopes = await normalizeOrgScopes(db, organizationId, input.orgScopes)
     if (!canWriteDocument(await scopesOf(request), toTargets(input.orgScopes))) throw SCOPE_FORBIDDEN()
+    await admitOrgScopes(db, organizationId, input.orgScopes, [], input.operatingUniverse ?? null)
     input.subjectScopes = await normalizeKnowledgeSubjectScopes(db, organizationId, input.subjectScopes)
 
     const sourceType = file ? resolveSourceType(file.mimetype, file.originalname) : "TEXT"
@@ -522,6 +536,10 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
     }
     if (input.orgScopes) input.orgScopes = await normalizeOrgScopes(db, organizationId, input.orgScopes)
     if (input.orgScopes && !canWriteDocument(scopes, toTargets(input.orgScopes))) throw SCOPE_FORBIDDEN()
+    if (input.orgScopes) {
+      const universe = (await db.query<{ operating_universe: string | null }>(`select operating_universe from knowledge_documents where id = $1 and organization_id = $2`, [documentId, organizationId])).rows[0]?.operating_universe ?? null
+      await admitOrgScopes(db, organizationId, input.orgScopes, [...toTargets(currentScopes), ...(await draftTargets(documentId))], universe)
+    }
     // Assunto desativado só continua se a base (em uso ou no rascunho) já o tinha.
     if (input.subjectScopes) input.subjectScopes = await normalizeKnowledgeSubjectScopes(db, organizationId, input.subjectScopes, await knowledgeSubjectScopesOf(documentId))
 

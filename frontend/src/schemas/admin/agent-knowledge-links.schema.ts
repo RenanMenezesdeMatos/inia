@@ -16,11 +16,9 @@ export const knowledgeLinkCandidateSchema = z.object({
   agentType: agentTypeSchema.catch("CUSTOM"),
   active: z.boolean(),
   operatingUniverse: z.string().nullable(),
+  /** Alcance em edição (249): ALL_TEAMS ou GROUPS + os vínculos (Grupo inteiro ou um Subgrupo), com os nomes. */
   scopeType: z.string(),
-  teamId: z.string().nullable(),
-  subteamId: z.string().nullable(),
-  teamName: z.string().nullable(),
-  subteamName: z.string().nullable(),
+  scopeLinks: z.array(z.object({ teamId: z.string(), teamName: z.string().nullable(), subteamId: z.string().nullable(), subteamName: z.string().nullable() })).catch([]),
   linkedInUse: z.boolean(),
   linkedInDraft: z.boolean(),
   published: z.boolean(),

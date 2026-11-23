@@ -33,8 +33,12 @@ describe.skipIf(!ENABLED)("Alcance da base conferido a cada busca do Agent — p
     const team = async (name: string) => (await client.query<{ id: string }>("insert into teams (organization_id, operation_id, name) values ($1, $2, $3) returning id", [org, operation, name])).rows[0]!.id
     const teamA = await team("Proof AI05 Grupo A")
     const teamB = await team("Proof AI05 Grupo B")
-    const agent = async (name: string, scopeType: "TEAM" | "ALL_TEAMS", teamId: string | null) =>
-      (await client.query<{ id: string }>("insert into agents (organization_id, name, agent_type, objective, description, context_prompt, scope_type, team_id) values ($1, $2, 'CALL_FEEDBACK', 'o', 'd', 'c', $3, $4) returning id", [org, name, scopeType, teamId])).rows[0]!.id
+    // Agente de Grupo (249): GROUPS + um vínculo com o Grupo inteiro em `agent_scope_links`.
+    const agent = async (name: string, scopeType: "TEAM" | "ALL_TEAMS", teamId: string | null) => {
+      const id = (await client.query<{ id: string }>("insert into agents (organization_id, name, agent_type, objective, description, context_prompt, scope_type) values ($1, $2, 'CALL_FEEDBACK', 'o', 'd', 'c', $3) returning id", [org, name, scopeType === "TEAM" ? "GROUPS" : "ALL_TEAMS"])).rows[0]!.id
+      if (teamId) await client.query("insert into agent_scope_links (agent_id, organization_id, team_id) values ($1, $2, $3)", [id, org, teamId])
+      return id
+    }
     const agentA = await agent("Proof AI05 Agent A", "TEAM", teamA)
     const agentAll = await agent("Proof AI05 Agent Todos", "ALL_TEAMS", null)
     const document = (await client.query<{ id: string }>("insert into knowledge_documents (organization_id, title, document_type) values ($1, 'Proof AI05 Procedimento comercial', 'PROCEDURE') returning id", [org])).rows[0]!.id

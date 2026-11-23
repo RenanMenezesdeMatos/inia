@@ -127,3 +127,33 @@ export function scopeValueAfterUniverseChange(value: ScopeLinksValue, teams: rea
   })
   return { ...value, groups }
 }
+
+/**
+ * Alcance de Agente/Orquestrador/Workflow/Indicador/Produto (249/250): `ALL_TEAMS` ("Todos os Grupos e Subgrupos" do universo do
+ * registro, inclusive os criados depois) ou `GROUPS` com `scopeLinks`. Formato antigo (TEAM/SUBTEAM + ids) ainda chega de rascunhos e
+ * snapshots: vira um vínculo com o mesmo alcance.
+ */
+export type ResourceScopePayload = { scopeType: "ALL_TEAMS" | "GROUPS"; scopeLinks: ScopeLink[] }
+export type ResourceScopeLike = { scopeType?: string | null; teamId?: string | null; subteamId?: string | null; scopeLinks?: readonly { teamId: string; subteamId: string | null }[] | null }
+
+export function scopeValueFromResource(resource: ResourceScopeLike | null | undefined, parentOf?: (subteamId: string) => string | null | undefined): ScopeLinksValue {
+  if (!resource || resource.scopeType === "ALL_TEAMS") return { global: true, groups: [] }
+  if (resource.scopeType === "TEAM") return scopeValueFromLinks(resource.teamId ? [{ teamId: resource.teamId, subteamId: null }] : [])
+  if (resource.scopeType === "SUBTEAM") {
+    const teamId = resource.teamId ?? (resource.subteamId ? parentOf?.(resource.subteamId) : null) ?? null
+    return scopeValueFromLinks(teamId && resource.subteamId ? [{ teamId, subteamId: resource.subteamId }] : [])
+  }
+  return scopeValueFromLinks(resource.scopeLinks ?? [])
+}
+
+export function resourceScopePayloadOf(value: ScopeLinksValue): ResourceScopePayload {
+  return value.global ? { scopeType: "ALL_TEAMS", scopeLinks: [] } : { scopeType: "GROUPS", scopeLinks: linksFromScopeValue(value) }
+}
+
+/** Texto curto do alcance de um recurso (listas e cartões). */
+export function resourceScopeLabel(resource: { scopeType: string; scopeLinks?: readonly { teamId: string; teamName?: string | null; subteamId: string | null; subteamName?: string | null }[] | null; teamName?: string | null; subteamName?: string | null }, allLabel = "Todos os Grupos"): string {
+  if (resource.scopeType === "ALL_TEAMS") return allLabel
+  if (resource.scopeType === "TEAM") return resource.teamName ?? "Grupo"
+  if (resource.scopeType === "SUBTEAM") return resource.subteamName ?? "Subgrupo"
+  return linksLabel(resource.scopeLinks ?? [])
+}

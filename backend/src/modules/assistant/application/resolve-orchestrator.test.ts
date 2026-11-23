@@ -18,7 +18,7 @@ const TEAM_A = "00000000-0000-4000-8000-0000000000b1"
 const TEAM_B = "00000000-0000-4000-8000-0000000000b2"
 const SUBTEAM_OF_B = "00000000-0000-4000-8000-0000000000b3"
 
-type VersionScope = { scopeType: string; teamId: string | null; subteamId: string | null }
+type VersionScope = { scopeType: string; teamId?: string | null; subteamId?: string | null; scopeLinks?: { teamId: string; subteamId: string | null }[] }
 
 /** O Orquestrador hoje é do Grupo B (passa na publicação); a versão consultada guarda o alcance de quando ela foi publicada. */
 function fakeDb(versionScope: VersionScope, origin: "PINNED" | "LEGACY" = "PINNED") {
@@ -29,10 +29,11 @@ function fakeDb(versionScope: VersionScope, origin: "PINNED" | "LEGACY" = "PINNE
     seen.push(text)
     const rows = (list: unknown[]) => ({ rows: list, rowCount: list.length })
     if (text.includes("from assistant_orchestrators o join agents a")) {
-      return rows([{ organization_id: ORG, id: ORCHESTRATOR_ID, name: "Monitoria", scope_type: "TEAM", team_id: TEAM_B, subteam_id: null, orchestrator_agent_id: COORDINATOR_ID, objective: "Coordenar", description: "", context_prompt: "", output_instructions: null, output_schema: null, structured_output: null, recommend_support_materials: false }])
+      return rows([{ organization_id: ORG, id: ORCHESTRATOR_ID, name: "Monitoria", scope_type: "GROUPS", orchestrator_agent_id: COORDINATOR_ID, objective: "Coordenar", description: "", context_prompt: "", output_instructions: null, output_schema: null, structured_output: null, recommend_support_materials: false }])
     }
     if (text.includes("from assistant_orchestrator_versions where id = $1 and orchestrator_id = $2")) return rows(origin === "PINNED" && params[0] === VERSION_ID ? [version] : [])
     if (text.includes("from assistant_orchestrator_versions where orchestrator_id = $1")) return rows(origin === "LEGACY" ? [version] : [])
+    if (text.includes("from assistant_orchestrator_scope_links where orchestrator_id = any")) return rows([{ owner_id: ORCHESTRATOR_ID, team_id: TEAM_B, subteam_id: null }])
     if (text.includes("select team_id from subteams where id = $1")) return rows(params[0] === SUBTEAM_OF_B ? [{ team_id: TEAM_B }] : [])
     const versioned = answerAgentVersionQuery(text, params, (agentId) => (agentId === COORDINATOR_ID || agentId === SPECIALIST_ID ? { id: agentId, name: agentId === COORDINATOR_ID ? "Coordenador" : "Especialista A", active: true } : undefined))
     if (versioned) return versioned
@@ -68,12 +69,36 @@ describe("resolveOrchestratorById — versão fixada × alcance do Workflow", ()
     })
   })
 
-  it("versão de um Subgrupo do Grupo do Workflow: compatível pela mesma regra da publicação, executa com o alcance e os especialistas dela", async () => {
+  it("versão de um Subgrupo do Grupo do Workflow (formato legado SUBTEAM): compatível pela mesma regra da publicação, executa com o alcance e os especialistas dela", async () => {
     const { db } = fakeDb({ scopeType: "SUBTEAM", teamId: TEAM_B, subteamId: SUBTEAM_OF_B })
     const resolved = await resolveOrchestratorById(db, ORG, ORCHESTRATOR_ID, "WORKFLOW", "Analise", { versionId: VERSION_ID, legacyPin: false, workflowScope: WORKFLOW_OF_B })
 
-    expect(resolved).toMatchObject({ orchestratorVersionId: VERSION_ID, consumerScope: { scopeType: "SUBTEAM", teamId: TEAM_B, subteamId: SUBTEAM_OF_B } })
+    // O legado vira um vínculo com o mesmo alcance (249).
+    expect(resolved).toMatchObject({ orchestratorVersionId: VERSION_ID, consumerScope: { scopeType: "GROUPS", links: [{ teamId: TEAM_B, subteamId: SUBTEAM_OF_B }] } })
     expect(resolved!.specialists.map((specialist) => specialist.agentId)).toEqual([SPECIALIST_ID])
+  })
+
+  it("SUBTEAM legado gravado sem o Grupo-pai: o pai real vem do cadastro", async () => {
+    const { db } = fakeDb({ scopeType: "SUBTEAM", teamId: null, subteamId: SUBTEAM_OF_B })
+    const resolved = await resolveOrchestratorById(db, ORG, ORCHESTRATOR_ID, "WORKFLOW", "Analise", { versionId: VERSION_ID, legacyPin: false, workflowScope: WORKFLOW_OF_B })
+    expect(resolved!.consumerScope).toMatchObject({ scopeType: "GROUPS", links: [{ teamId: TEAM_B, subteamId: SUBTEAM_OF_B }] })
+  })
+
+  it("versão no formato novo (GROUPS + scopeLinks): o Workflow de vários Grupos só usa a versão que cobre todos eles", async () => {
+    const twoGroups = { scopeType: "GROUPS", teamId: null, subteamId: null, links: [{ teamId: TEAM_A, subteamId: null }, { teamId: TEAM_B, subteamId: null }] }
+    const covering = fakeDb({ scopeType: "GROUPS", scopeLinks: [{ teamId: TEAM_A, subteamId: null }, { teamId: TEAM_B, subteamId: SUBTEAM_OF_B }] })
+    const resolved = await resolveOrchestratorById(covering.db, ORG, ORCHESTRATOR_ID, "WORKFLOW", "Analise", { versionId: VERSION_ID, legacyPin: false, workflowScope: twoGroups })
+    expect(resolved!.consumerScope).toMatchObject({ scopeType: "GROUPS", links: [{ teamId: TEAM_A, subteamId: null }, { teamId: TEAM_B, subteamId: SUBTEAM_OF_B }] })
+    const partial = fakeDb({ scopeType: "GROUPS", scopeLinks: [{ teamId: TEAM_B, subteamId: null }] })
+    await expect(resolveOrchestratorById(partial.db, ORG, ORCHESTRATOR_ID, "WORKFLOW", "Analise", { versionId: VERSION_ID, legacyPin: false, workflowScope: twoGroups })).rejects.toMatchObject({
+      code: "WORKFLOW_ORCHESTRATOR_VERSION_SCOPE_FORBIDDEN",
+    })
+  })
+
+  it("chat/voz (sem versão fixada): o alcance em execução é o vigente, pelos vínculos gravados", async () => {
+    const { db } = fakeDb({ scopeType: "ALL_TEAMS" })
+    const resolved = await resolveOrchestratorById(db, ORG, ORCHESTRATOR_ID, "INTERACTIVE", "Analise")
+    expect(resolved!.consumerScope).toEqual({ scopeType: "GROUPS", teamId: null, subteamId: null, links: [{ teamId: TEAM_B, subteamId: null }] })
   })
 
   it("versão de Todos os grupos serve a qualquer Workflow", async () => {

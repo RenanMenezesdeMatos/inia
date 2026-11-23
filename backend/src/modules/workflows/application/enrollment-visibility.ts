@@ -11,7 +11,7 @@ import type { ManageableScopes } from "../../auth/application/manageable-scopes.
  *
  * Pessoa da execução = agenda individual, operador da interação ou sujeito PERSON da medição (a mesma ordem da aba
  * Resultados). Execução sem pessoa (raiz de um Consolidado ou de um fan-out) vale pela Abrangência gravada na VERSÃO que
- * a executou; versão sem Abrangência gravada (anterior à migration 144) ou de toda a organização só para quem alcança a
+ * a executou (com vários Grupos — 249 —, todos os vínculos dela no escopo de quem pergunta); versão sem Abrangência gravada (anterior à migration 144) ou de toda a organização só para quem alcança a
  * organização — falha fechada.
  */
 export type EnrollmentSubjectScope = { allTeams: boolean; teamIds: string[]; subteamIds: string[] }
@@ -45,6 +45,11 @@ export function visibleEnrollmentSql(we: string, p: Placeholders): string {
   return `(${p.allTeams}::boolean or coalesce(
     (select ${personInScopeSql("vp", p)} from people vp where vp.id = ${enrollmentSubjectSql(we)} and vp.organization_id = ${we}.organization_id),
     (select (vv.scope_type = 'TEAM' and vv.team_id = any(${p.teamIds}::uuid[])) or (vv.scope_type = 'SUBTEAM' and vv.subteam_id = any(${p.subteamIds}::uuid[]))
+            -- Vários Grupos (249): TODOS os vínculos gravados na versão no escopo de quem pergunta (versão sem vínculo = ninguém).
+            or (vv.scope_type = 'GROUPS' and jsonb_array_length(coalesce(vv.scope_links, '[]'::jsonb)) > 0
+                and not exists (select 1 from jsonb_array_elements(vv.scope_links) vl
+                                 where not coalesce(case when vl ->> 'subteamId' is null then (vl ->> 'teamId')::uuid = any(${p.teamIds}::uuid[])
+                                                         else (vl ->> 'subteamId')::uuid = any(${p.subteamIds}::uuid[]) end, false)))
        from workflow_versions vv where vv.id = ${we}.version_id and ${enrollmentSubjectSql(we)} is null),
     false))`
 }

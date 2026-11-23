@@ -38,7 +38,7 @@ import {
   type AgentVersion,
   type AgentVersionDetail,
 } from "@/schemas/admin/agent.schema"
-import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { resourceScopePayloadOf, type ScopeLinksValue } from "@/lib/scope-links/scope-links"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 export async function fetchAgents(): Promise<Agent[]> {
@@ -128,7 +128,8 @@ export type CreateAgentInput = {
   objective: string
   description: string
   contextPrompt: string
-  orgScope: OrgScopeValue
+  /** Alcance (249): "Todos os Grupos e Subgrupos" do universo do agente, ou os Grupos/Subgrupos escolhidos. */
+  scope: ScopeLinksValue
   knowledgeDocumentIds: string[]
   /** Limites de atuação: ligado exige texto (o backend recusa sem). */
   actionLimitsEnabled: boolean
@@ -162,9 +163,7 @@ function agentPayload(input: CreateAgentInput) {
     objective: input.objective,
     description: input.description,
     contextPrompt: input.contextPrompt,
-    scopeType: input.orgScope.scopeType,
-    teamId: input.orgScope.teamId,
-    subteamId: input.orgScope.subteamId,
+    ...resourceScopePayloadOf(input.scope),
     knowledgeDocumentIds: input.knowledgeDocumentIds,
     actionLimitsEnabled: input.actionLimitsEnabled,
     actionLimits: input.actionLimits,

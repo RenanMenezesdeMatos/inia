@@ -97,3 +97,56 @@ duplicata, remoção de vínculo (acesso perdido só ali, história preservada),
 `/wiki/administracao/alcance-por-grupos` (17/11/2026) explica a regra em linguagem de usuário, com o exemplo Grupo A inteiro +
 Subgrupo B1; Bases de Conhecimento, Acompanhamento (público do comunicado) e Administração (Argumentários, Alinhamentos operacionais,
 Publicações) apontam para ela. Mudou a regra? Atualize a página junto.
+
+## Seletor pesquisável, elegibilidade e alcance N em todos os cadastros (23/11/2026, migrations 249 e 250)
+
+Pedido: busca de Grupo/Subgrupo para listas grandes, só opções com operador "Em produção", e vários Grupos/Subgrupos ou "Todos" em
+Publicações, Alinhamentos, Indicadores, Produtos, Agentes, Orquestradores, Argumentários e Workflows.
+
+**Decisões do usuário (23/11):** (1) universos continuam SEPARADOS — "Todos" de um cadastro = todos os Grupos/Subgrupos do universo DELE;
+vínculo de outro universo é recusado; só a Publicação (sem universo próprio) alcança todos os universos ("Toda a empresa"). (2) Indicador e
+Produto: alcance gravado e usado só na Administração; motor de feedback e cálculos não leem. (3) Orquestradores: vínculo idêntico com outro
+ativo do chat do mesmo universo = recusado. (4) Migrations só em clones de teste (o `inia` de dev NÃO tem 249/250).
+
+**Cardinalidade final:** Publicação N vínculos (+ "Todo o universo X" explícito; "Toda a empresa" = todos os universos); Alinhamento N por
+versão (+ todo o universo); Argumentário N por versão (+ todos); Base N (inalterada); Agente, Orquestrador, Workflow: 1 → N (249,
+`agent_scope_links`, `assistant_orchestrator_scope_links`, `workflow_scope_links`; `scope_type` ALL_TEAMS|GROUPS e `team_id`/`subteam_id`
+sempre nulos; rascunho do Workflow em `draft_scope_links` jsonb, snapshot em `workflow_versions.scope_links`; configs de versão de
+agente/Orquestrador com `scopeLinks`, legado TEAM/SUBTEAM lido por `resourceScopeOf`); Indicador (definição) e Produto: alcance novo (250,
+`indicator_scope_links`, `product_operational_scope_links`, padrão ALL_TEAMS = comportamento anterior; pertencimento continua em
+`operating_universe`). Regras de cálculo do indicador continuam com 1 escopo (nenhum fluxo em execução as lê).
+
+**Opções** — `GET /api/v1/admin/scope-units` (`org-structure/presentation/scope-unit-options-router.ts`, regra em
+`application/scope-unit-options.ts`): `kind` TEAM|SUBTEAM, `permission` da tela (lista fechada), `search` palavra a palavra sem
+maiúsculas/acentos (Subgrupo também pelo Grupo-pai), `universes`, `teamId`, cursor keyset; universo, escopo e elegibilidade no SQL ANTES do
+`limit`. Elegível = ≥1 `people` ativo, `role='OPERATOR'`, `current_employment_status` em produção (`EM_PRODUCAO` e legado `ACTIVE`); Grupo
+conta os dele e os dos Subgrupos; com universo, só operadores daquele universo. `ids=` resolve escolhas salvas com `eligible:false`.
+`eligibility=all` existe para filtros/relatórios (ninguém usa ainda).
+
+**Escrita** — `assertNewScopeLinksAdmissible` (`scope-unit-admission.ts`): vínculos NOVOS (fora de `previous`) precisam caber no universo do
+cadastro (`SCOPE_UNIT_OUTSIDE_UNIVERSE`) e ter operador em produção (`SCOPE_UNIT_WITHOUT_PRODUCTION_OPERATORS`); o salvo continua aceito.
+`resolveResourceScopeForWrite` (`resource-scope-links.ts`) junta isso a `resolveScopeLinksForWrite`; "Todos" exige escopo de organização
+(mantê-lo num registro que já era "Todos" não). Códigos por prefixo listados por extenso em `RESOURCE_SCOPE_ERROR_CODES` para o catálogo.
+`ScopedTarget` ganhou `GROUPS` + `links` (`canManageScope` exige todos; `scopesAreCompatible`: Grupos efetivos de quem referencia ⊆ os do
+referenciado). Consumo: `resourceScopeReachSql`/`resourceScopeSpecificitySql` (`shared/domain/scope-links/resource-scope.ts`), sempre `exists`.
+
+**Frontend** — `MultiOrgScopeField` (mesmo nome, nova implementação, prop `permission` obrigatória) + `ScopeUnitPicker`: modo explícito
+"Grupos e Subgrupos específicos" × "Todos…" (rótulo diz o alcance e que inclui os criados depois), abas Grupos/Subgrupos, combobox com ↑/↓/Enter,
+"Carregar mais" + sentinela de rolagem, selos removíveis, "Sem operadores em produção" e "Fora do universo" (com "Remover os que não cabem"),
+Subgrupo de Grupo inteiro = "Já incluído". Sem virtualização (páginas de 30). Testes de tela usam `components/admin/shared/testing/scope-units-fake.ts`.
+
+**Por fatia** — Agentes: público dos argumentários no prompt sem pessoa = interseção dos públicos dos vínculos; base × agente cabe se for global ou valer para
+CADA Grupo efetivo (run-10 QA-01: "algum" levava a base de A a quem é de B por um agente de A + B; a busca não sabe quem pergunta). Orquestradores: resolução pelo vínculo mais específico que alcança a pessoa, empate = mais recente; `ORCHESTRATOR_SCOPE_OVERLAP`
+409 com advisory lock (universo pendente conflita com qualquer um); índice único novo só para ALL_TEAMS por universo. Workflows: população = `all OR team_id ∈ inteiros OR subteam_id ∈
+Subgrupos`; Publicar grava links + snapshot + rascunho na mesma transação; SET_CONFIG_VALUE com GROUPS grava uma linha por vínculo.
+Reclassificação de universo (`universe-administration.ts`) e transferência de configuração (`alcances[]`, inclusive Orquestrador e Indicador) entendem vínculos; trocar o universo confere TODOS os vínculos salvos (`assertScopeLinksInUniverse`) e, no Orquestrador, a sobreposição. Bases também passam pela admissão (universo + produção) nos vínculos novos. Auditoria run-10: `docs/security/relatorio-de-achados.md` § "Décima terceira rodada" (R13-01..11, R-51).
+
+**Provas (`INIA_DB_PROOF=1`)**: `scope-units-proof` (lista grande além da 1ª página, acento, Grupo com produção só num Subgrupo, rota, admissão,
+indicador), `agent-scope-links-proof`, `interactive-orchestrator-subteam-proof`, `workflow-scope-links-proof` (inclui Grupo criado depois de
+publicar entrando no "Todos"), `network-temporary-password-proof`; as provas multi-grupo antigas ganharam operador em produção nos fixtures.
+Equivalência da 249 numa cópia do `inia` (pg_dump): 58 agentes, 18 Orquestradores, 73 Workflows — 0 diferenças de alcance.
+
+**Limitações:** Produto/Indicador não filtram ainda nenhum seletor de outro cadastro (só lista e detalhe); `applyManageableScopeFilter` e
+`SqlFilter.orgScope` compartilhados não conhecem GROUPS (cada módulo usa filtro próprio); a Publicação tem um universo só por recorte;
+"Habilitar acesso" de conta que entra pela rede ainda mostra senha temporária.
+

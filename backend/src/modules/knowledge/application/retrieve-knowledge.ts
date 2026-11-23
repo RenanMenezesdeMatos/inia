@@ -13,7 +13,8 @@ import { loadCheckpointGovernance } from "../../checkpoint-registry/application/
 import { DEFAULT_RETRIEVAL_BUDGET, acronymsKeyOf, buildKnowledgeIndex, documentAnchors, estimateTokens, queryStandsAlone, complementSelection, rankChunks, selectWithinBudget, tokenize, wordsSharedWith, type KnowledgeIndex, type RankedChunk, type RetrievalBudget, type TokenizeOptions } from "../domain/lexical-retrieval.js"
 import { expandAcronyms, type AcronymExpansion, type GlossaryAcronym } from "../domain/query-acronyms.js"
 import { liveKnowledgeVersion } from "./live-knowledge-version.js"
-import { knowledgeFitsAgentSql } from "./knowledge-agent-fit.js"
+import { agentTeamIdsOf, knowledgeFitsAgentSql, liveAgentTeamIdsSql } from "./knowledge-agent-fit.js"
+import { resourceScopeOf } from "../../../shared/domain/scope-links/resource-scope.js"
 import { currentKnowledgeConsultation, markKnowledgeVersionsUsed } from "./knowledge-consultation-context.js"
 import { agentCacheKey, agentSnapshotFor } from "../../agents/application/agent-runtime-context.js"
 
@@ -179,19 +180,20 @@ async function loadAuthorizedDocumentHeaders(db: Database, agentId: string): Pro
   // Versão em execução (PEN-002): as bases e o alcance são os da versão, com a mesma regra de compatibilidade conferida a cada busca.
   const snapshot = agentSnapshotFor(agentId)
   if (snapshot) {
-    const { knowledgeDocumentIds, scopeType, teamId, subteamId } = snapshot.config
+    const { knowledgeDocumentIds } = snapshot.config
     if (knowledgeDocumentIds.length === 0) return []
+    const scope = resourceScopeOf(snapshot.config)
     const versioned = await db.query<PublishedDocumentHeader>(
       `select kd.id, coalesce(kv.config->>'title', kd.title) title, kd.document_type "documentType", kv.id "versionId", kv.version, kd.organization_id "organizationId"
        from knowledge_documents kd
        join lateral (${liveKnowledgeVersion("kd.id", "id, version, config")}) kv on true
        where kd.id = any($1::uuid[]) and kd.organization_id = $2 and kd.deleted_at is null and kv.status = 'PUBLISHED'
-         and ${knowledgeFitsAgentSql("kd.id", { scopeType: "$3::text", teamId: "$4::uuid", subteamId: "$5::uuid" })}
+         and ${knowledgeFitsAgentSql("kd.id", { scopeType: "$3::text", teamIds: "$4::uuid[]" })}
          -- Universos não se misturam: com a exigência ativa, só bases do MESMO universo do agente (pendente de qualquer lado = fora).
          and (not exists (select 1 from organizations org where org.id = kd.organization_id and org.operating_universe_enforced_at is not null)
-              or kd.operating_universe = (select ag.operating_universe from agents ag where ag.id = $6::uuid))
+              or kd.operating_universe = (select ag.operating_universe from agents ag where ag.id = $5::uuid))
        order by kd.title`,
-      [knowledgeDocumentIds, snapshot.organizationId, scopeType, teamId, subteamId, agentId],
+      [knowledgeDocumentIds, snapshot.organizationId, scope.scopeType, agentTeamIdsOf(scope), agentId],
     )
     return versioned.rows
   }
@@ -204,7 +206,7 @@ async function loadAuthorizedDocumentHeaders(db: Database, agentId: string): Pro
      where akd.agent_id = $1 and kd.organization_id = a.organization_id and kd.deleted_at is null and kv.status = 'PUBLISHED'
        -- Mesma regra do cadastro do Agent (knowledge-agent-fit.ts), conferida a CADA busca: base que passou a valer só para outro
        -- Grupo sai da recuperação na hora, sem esperar alguém salvar o Agent (achado AI-05 da auditoria de 17/10/2026).
-       and ${knowledgeFitsAgentSql("kd.id", { scopeType: "a.scope_type", teamId: "a.team_id", subteamId: "a.subteam_id" })}
+       and ${knowledgeFitsAgentSql("kd.id", { scopeType: "a.scope_type", teamIds: liveAgentTeamIdsSql("a.id") })}
          -- Universos não se misturam: com a exigência ativa, só bases do MESMO universo do agente (pendente de qualquer lado = fora).
          and (not exists (select 1 from organizations org where org.id = kd.organization_id and org.operating_universe_enforced_at is not null)
               or kd.operating_universe = (select ag.operating_universe from agents ag where ag.id = a.id))

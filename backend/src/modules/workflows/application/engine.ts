@@ -14,6 +14,7 @@ import { decideNodeRetry } from "../domain/node-retry-policy.js"
 import { AgentInactiveError } from "../../agents/domain/agent-inactive-error.js"
 import { AgentAccessBlockedError } from "../../agents/application/agent-execution-authorization.js"
 import { loadLatestTranscriptForModel } from "./transcript.js"
+import { workflowLiveScopeLinksSql } from "../domain/workflow-scope.js"
 import { processNode, type EnrollmentRow, type NodeOutcome } from "./node-handlers.js"
 
 /** Teto de matrículas por passada de `runWorkflowTick` (uma passada = provas/scripts; o servidor usa o worker). */
@@ -43,6 +44,8 @@ const LEASE_TOKEN_SQL = `to_char(claimed_until at time zone 'UTC', 'YYYY-MM-DD"T
 
 export type ClaimedRow = EnrollmentRow & {
   scope_type: string
+  /** Vínculos PUBLICADOS da Abrangência (249). */
+  scope_links?: { teamId: string; subteamId: string | null }[] | null
   workflow_team_id: string | null
   workflow_subteam_id: string | null
   workflow_operating_universe?: string | null
@@ -109,7 +112,7 @@ export async function claimDueEnrollments(db: Database, request: ClaimRequest): 
               we.scheduled_subject_id, we.scheduled_for, we.current_node_id,
               we.matched_flag_name, we.matched_value_boolean, we.matched_value_numeric, we.status, we.attempts, we.revision,
               we.node_outputs, we.variables, we.parent_enrollment_id, we.retry_of_enrollment_id,
-              w.scope_type, w.team_id workflow_team_id, w.subteam_id workflow_subteam_id, w.consolidated_structure, w.population_filter, w.operating_universe workflow_operating_universe
+              w.scope_type, ${workflowLiveScopeLinksSql("w.id")} scope_links, w.team_id workflow_team_id, w.subteam_id workflow_subteam_id, w.consolidated_structure, w.population_filter, w.operating_universe workflow_operating_universe
        from workflow_enrollments we
        join workflows w on w.id = we.workflow_id
        where we.id in (select id from picked) and w.active
@@ -298,6 +301,7 @@ async function processEnrollmentInOrganization(db: Database, row: ClaimedRow): P
         enrollment: row,
         workflow: {
           scopeType: row.scope_type,
+          scopeLinks: row.scope_links ?? [],
           teamId: row.workflow_team_id,
           subteamId: row.workflow_subteam_id,
           consolidatedStructure: row.consolidated_structure,

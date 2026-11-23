@@ -57,3 +57,28 @@ describe("scopesAreCompatible", () => {
     expect(scopesAreCompatible(TEAMS, { scopeType: "TEAM", teamId: "team-b" }, workflowTeamA)).toBe(false)
   })
 })
+
+// Abrangência com vários Grupos (249): cada Grupo efetivo de quem referencia (Subgrupo → Grupo-pai) precisa estar entre os do
+// referenciado — a mesma regra de `scopesAreCompatible` do backend.
+describe("scopesAreCompatible — vários Grupos (GROUPS + scopeLinks)", () => {
+  const workflowAB1 = { scopeType: "GROUPS", scopeLinks: [{ teamId: "team-a", subteamId: null }, { teamId: "team-b", subteamId: "sub-b1" }] }
+
+  it("Orquestrador dos Grupos A e B atende um Workflow de A inteiro + Subgrupo de B", () => {
+    expect(scopesAreCompatible(TEAMS, workflowAB1, { scopeType: "GROUPS", scopeLinks: [{ teamId: "team-a", subteamId: null }, { teamId: "team-b", subteamId: null }] })).toBe(true)
+  })
+
+  it("Orquestrador só do Grupo A não atende quem também alcança o B", () => {
+    expect(scopesAreCompatible(TEAMS, workflowAB1, { scopeType: "TEAM", teamId: "team-a" })).toBe(false)
+    expect(scopesAreCompatible(TEAMS, workflowAB1, { scopeType: "GROUPS", scopeLinks: [{ teamId: "team-a", subteamId: null }] })).toBe(false)
+  })
+
+  it("GROUPS sem vínculo não é compatível com nada restrito (não alcança ninguém)", () => {
+    expect(scopesAreCompatible(TEAMS, { scopeType: "GROUPS", scopeLinks: [] }, { scopeType: "TEAM", teamId: "team-a" })).toBe(false)
+  })
+
+  it("rótulo lista os vínculos com os nomes", () => {
+    expect(
+      formatScopeLabel({ scopeType: "GROUPS", scopeLinks: [{ teamId: "team-a", teamName: "FATURAS", subteamId: null }, { teamId: "team-b", teamName: "RETENÇÃO", subteamId: "sub-b1", subteamName: "Retenção Digital" }] }),
+    ).toBe("FATURAS · RETENÇÃO › Retenção Digital")
+  })
+})

@@ -385,7 +385,9 @@ export function WorkflowLab() {
                 <div className="space-y-3">
                   <PersonPicker
                     value={subject?.kind === "operator" ? subject.operatorId : null}
-                    scope={{ scopeType: workflow.scopeType, teamId: workflow.teamId, subteamId: workflow.subteamId }}
+                    // Abrangência com vários Grupos (249) + Filtro Populacional: o servidor resolve os elegíveis da configuração testada.
+                    workflowId={workflow.id}
+                    graphSource={graphSource}
                     onChange={(person) => {
                       setSubject(person ? { kind: "operator", operatorId: person.id } : null)
                       setSubjectLabel(person?.name ?? "")

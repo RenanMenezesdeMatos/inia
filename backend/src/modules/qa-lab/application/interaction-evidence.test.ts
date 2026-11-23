@@ -60,7 +60,8 @@ function fakeDatabase(data: { interactions: Interaction[]; flags: Flag[]; transc
     // Elegibilidade compartilhada (workflow-eligibility.ts) — conjunto da Abrangência e decisão pontual.
     if (text.includes("select id from people where organization_id = $1 and role = 'OPERATOR' and active")) {
       const rows = people
-        .filter((person) => params[1] === "ALL_TEAMS" || (params[1] === "TEAM" && person.team_id === params[2]) || (params[1] === "SUBTEAM" && person.subteam_id === params[3]))
+        // Abrangência ($2 todos, $3 Grupos inteiros, $4 Subgrupos — workflowReachSql).
+        .filter((person) => params[1] === true || (params[2] as string[]).includes(person.team_id ?? "") || (params[3] as string[]).includes(person.subteam_id ?? ""))
         .map((person) => ({ id: person.id }))
       return { rows, rowCount: rows.length }
     }

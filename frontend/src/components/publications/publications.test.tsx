@@ -6,6 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { pickScopeUnit } from "@/components/admin/shared/testing/scope-units-fake"
 import type { EditorialCommunication, EditorialCommunicationSummary } from "@/schemas/communications/communication.schema"
 
 import { formOf, payloadOf, scheduleDescription, wentOut } from "./publication-form"
@@ -13,6 +14,8 @@ import { PublicationEditorPage } from "./publication-editor-page"
 import { PublicationsListPage } from "./publications-list-page"
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }))
+const SCOPE_TEAMS = vi.hoisted(() => [{ id: "t-ouv", name: "Ouvidoria", universe: "B2C", subteams: [{ id: "s-1", name: "Ouvidoria Manhã" }] }, { id: "t-ret", name: "Retenção", universe: "B2C", subteams: [{ id: "s-r1", name: "Retenção Tarde" }, { id: "s-r2", name: "Retenção Noite" }] }])
+vi.mock("@/services/scope-units/scope-units-service", async () => (await import("@/components/admin/shared/testing/scope-units-fake")).scopeUnitsServiceFrom(SCOPE_TEAMS))
 vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => "/admin/publicacoes", useSearchParams: () => new URLSearchParams() }))
 
 const service = vi.hoisted(() => ({
@@ -196,19 +199,31 @@ describe("Publicações — editor", () => {
     renderWithQuery(<PublicationEditorPage id={null} />)
     typeTitle("Ouvidoria")
     fireEvent.click(await screen.findByRole("radio", { name: /Público específico/ }))
-    const addGroup = async (name: string) => {
-      fireEvent.click(await screen.findByRole("combobox", { name: "Adicionar Grupo" }))
-      fireEvent.click(await screen.findByRole("option", { name }))
-    }
-    await addGroup("Ouvidoria")
+    // Sem universo escolhido não existe "todo o universo": a escolha é sempre de Grupos/Subgrupos (seleção vazia nunca vira "todos").
+    expect(screen.queryByRole("radio", { name: /Todo o universo/ })).toBeNull()
+    await pickScopeUnit("Ouvidoria")
     await waitFor(() => expect(service.previewAudience).toHaveBeenCalledWith({ audience: "SEGMENT", segment: { universe: null, links: [{ teamId: "t-ouv", subteamId: null }] } }))
-    await addGroup("Retenção")
-    fireEvent.click(within(screen.getByTestId("scope-group-t-ret")).getByRole("radio", { name: "Só alguns Subgrupos" }))
-    fireEvent.click(screen.getByRole("checkbox", { name: "Retenção Noite" }))
-    expect(screen.getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Ouvidoria (Grupo inteiro) · Retenção: só Retenção Noite")
+    // Só um Subgrupo de Retenção: os irmãos não entram.
+    await pickScopeUnit("Retenção › Retenção Noite", "SUBTEAM")
+    await waitFor(() => expect(screen.getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Ouvidoria (Grupo inteiro) · Retenção › Retenção Noite"))
     fireEvent.click(screen.getByRole("button", { name: /Salvar rascunho/ }))
     await waitFor(() => expect(service.createCommunication).toHaveBeenCalled())
     expect(service.createCommunication.mock.calls[0]![0]).toMatchObject({ audience: "SEGMENT", segment: { universe: null, links: [{ teamId: "t-ouv", subteamId: null }, { teamId: "t-ret", subteamId: "s-r2" }] } })
+  })
+
+  it("público específico: “Todo o universo B2C” é uma escolha explícita e envia o universo sem vínculos", async () => {
+    service.createCommunication.mockResolvedValue({ id: "c-10", status: "DRAFT", recipientCount: 0, publishedAt: null })
+    renderWithQuery(<PublicationEditorPage id={null} />)
+    typeTitle("Ouvidoria")
+    fireEvent.click(await screen.findByRole("radio", { name: /Público específico/ }))
+    fireEvent.click(screen.getByRole("combobox", { name: /Universo de atuação/ }))
+    fireEvent.click(await screen.findByRole("option", { name: "B2C" }))
+    fireEvent.click(await screen.findByRole("radio", { name: /Todo o universo B2C/ }))
+    expect(screen.getByText(/inclusive os que forem criados depois/)).toBeInTheDocument()
+    await waitFor(() => expect(service.previewAudience).toHaveBeenCalledWith({ audience: "SEGMENT", segment: { universe: "B2C", links: [] } }))
+    fireEvent.click(screen.getByRole("button", { name: /Salvar rascunho/ }))
+    await waitFor(() => expect(service.createCommunication).toHaveBeenCalled())
+    expect(service.createCommunication.mock.calls[0]![0]).toMatchObject({ audience: "SEGMENT", segment: { universe: "B2C", links: [] } })
   })
 
   it("não encontrada (outra pessoa ou retirada): mensagem de erro com voltar", async () => {

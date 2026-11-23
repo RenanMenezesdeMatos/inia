@@ -53,14 +53,17 @@ export async function syncSpecialists(client: Queryable, organizationId: string,
   }
 }
 
-/** Publica a configuração gravada como versão nova, imutável e vigente do Orquestrador. */
+/** Publica a configuração gravada (com os vínculos de alcance já gravados na mesma transação) como versão nova, imutável e vigente do Orquestrador. */
 export async function publishOrchestratorVersion(client: Queryable, organizationId: string, orchestratorId: string, actor: OrchestratorActor): Promise<{ id: string; number: number }> {
   const created = await client.query<{ id: string; number: number }>(
     `insert into assistant_orchestrator_versions (organization_id, orchestrator_id, version_number, config, origin, published_by_person_id, published_by_name)
      select o.organization_id, o.id,
             coalesce((select max(v.version_number) from assistant_orchestrator_versions v where v.orchestrator_id = o.id), 0) + 1,
             jsonb_build_object(
-              'name', o.name, 'scopeType', o.scope_type, 'teamId', o.team_id, 'subteamId', o.subteam_id,
+              -- Alcance (249): ALL_TEAMS ou GROUPS + scopeLinks (o formato de resourceScopeJson); versões antigas trazem TEAM/SUBTEAM + ids.
+              'name', o.name, 'scopeType', o.scope_type, 'teamId', null, 'subteamId', null,
+              'scopeLinks', coalesce((select jsonb_agg(jsonb_build_object('teamId', l.team_id, 'subteamId', l.subteam_id) order by l.team_id, l.subteam_id nulls first)
+                                        from assistant_orchestrator_scope_links l where l.orchestrator_id = o.id), '[]'::jsonb),
               'invocationMode', o.invocation_mode, 'outputInstructions', o.output_instructions, 'outputSchema', o.output_schema,
               'policyKind', o.policy_kind, 'policyDomains', to_jsonb(o.policy_domains), 'routingPolicy', o.routing_policy,
               'routingDomains', to_jsonb(o.routing_domains), 'structuredOutput', o.structured_output,

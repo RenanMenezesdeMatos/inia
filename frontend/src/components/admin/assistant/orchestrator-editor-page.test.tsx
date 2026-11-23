@@ -1,13 +1,14 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
 import type { ReactNode } from "react"
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
-import { TooltipProvider } from "@/components/ui/tooltip"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import type { Agent } from "@/schemas/admin/agent.schema"
 import type { Orchestrator } from "@/schemas/admin/assistant.schema"
+
+import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
 
 import { NewOrchestratorPage, OrchestratorEditorPage } from "./orchestrator-editor-page"
 
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn<(input: unknown) => Promise<unknown>>(async () => ({})),
   refetch: vi.fn<() => Promise<{ isError: boolean }>>(async () => ({ isError: false })),
   orchestrator: null as Orchestrator | null,
+  updateError: null as Error | null,
 }))
 
 // As abas do kit medem o indicador com ResizeObserver, que o jsdom não tem.
@@ -81,12 +83,18 @@ const DRAFT_ONLY: Agent = { ...COORDINATOR, id: "agent-draft", name: "Especialis
 const AGENTS = [COORDINATOR, SPECIALIST, DRAFT_ONLY]
 const MANAGEABLE_TEAMS = { teams: [], unrestricted: true }
 const DOMAINS: never[] = []
+// Opções do campo de alcance (249): Grupos A e B, com o Subgrupo A1.
+const SCOPE_TEAMS = vi.hoisted(() => [
+  { id: "team-a", name: "Grupo A", subteams: [{ id: "sub-a1", name: "A1" }] },
+  { id: "team-b", name: "Grupo B", subteams: [] },
+])
+vi.mock("@/services/scope-units/scope-units-service", async () => (await import("@/components/admin/shared/testing/scope-units-fake")).scopeUnitsServiceFrom(SCOPE_TEAMS))
 vi.mock("@/queries/admin/use-agent-queries", () => ({ useAgentsQuery: () => ({ data: AGENTS }) }))
 vi.mock("@/queries/admin/use-org-structure-queries", () => ({ useManageableTeamsQuery: () => ({ data: MANAGEABLE_TEAMS }) }))
 vi.mock("@/queries/admin/use-business-domain-queries", () => ({ useBusinessDomainsQuery: () => ({ data: DOMAINS, isPending: false }) }))
 vi.mock("@/queries/admin/use-assistant-queries", () => ({
   useCreateOrchestratorMutation: () => ({ mutateAsync: mocks.create, isPending: false, isError: false, error: null }),
-  useUpdateOrchestratorMutation: () => ({ mutateAsync: mocks.update, isPending: false, isError: false, error: null }),
+  useUpdateOrchestratorMutation: () => ({ mutateAsync: mocks.update, isPending: false, isError: mocks.updateError !== null, error: mocks.updateError }),
   useToggleOrchestratorActiveMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteOrchestratorMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useOrchestratorQuery: () => ({ data: mocks.orchestrator, isLoading: false, isError: mocks.orchestrator === null, refetch: mocks.refetch }),
@@ -100,6 +108,7 @@ const ORCHESTRATOR: Orchestrator = {
   active: true,
   createdAt: "2026-10-01T00:00:00.000Z",
   scopeType: "ALL_TEAMS",
+  scopeLinks: [],
   teamId: null,
   teamName: null,
   subteamId: null,
@@ -148,10 +157,11 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   mocks.orchestrator = null
+  mocks.updateError = null
 })
 
 function renderPage(node: ReactNode) {
-  return render(<TooltipProvider>{node}</TooltipProvider>)
+  return renderWithQuery(node)
 }
 
 /** Radix Tabs troca de aba no mousedown do botão esquerdo. */
@@ -295,11 +305,7 @@ describe("Orquestrador — versões (PEN-076 com a revisão de 03/11/2026, PEN-0
       fireEvent.click(screen.getByRole("button", { name: "Atualizar e reaplicar minhas alterações" }))
     })
     expect(mocks.refetch).toHaveBeenCalledTimes(1)
-    view.rerender(
-      <TooltipProvider>
-        <OrchestratorEditorPage orchestratorId="orch-1" />
-      </TooltipProvider>,
-    )
+    view.rerender(<OrchestratorEditorPage orchestratorId="orch-1" />)
 
     expect(screen.getByText("Versão 2 em uso")).toBeInTheDocument()
     expect(screen.getByLabelText("Nome")).toHaveValue("INIA — Contas (revisado)")
@@ -326,5 +332,28 @@ describe("Orquestrador — versões (PEN-076 com a revisão de 03/11/2026, PEN-0
     fireEvent.click(screen.getByRole("button", { name: "Salvar alterações" }))
     openTab(/Especialistas/)
     await waitFor(() => expect(within(screen.getByTestId(`agent-version-${SPECIALIST.id}`)).getByText("Não publicado")).toBeInTheDocument())
+  })
+})
+
+describe("Orquestrador — alcance por vários Grupos/Subgrupos (249)", () => {
+  const GROUPS_ORCHESTRATOR: Orchestrator = { ...ORCHESTRATOR, scopeType: "GROUPS", scopeLinks: [{ teamId: "team-a", teamName: "Grupo A", subteamId: null, subteamName: null }, { teamId: "team-b", teamName: "Grupo B", subteamId: null, subteamName: null }] }
+
+  it("abre com os vínculos salvos e grava GROUPS + scopeLinks", async () => {
+    mocks.orchestrator = GROUPS_ORCHESTRATOR
+    renderPage(<OrchestratorEditorPage orchestratorId="orch-1" />)
+    expect((await screen.findAllByText(/Grupo A/)).length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole("button", { name: "Salvar alterações" }))
+    await waitFor(() =>
+      expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ scope: { scopeType: "GROUPS", scopeLinks: [{ teamId: "team-a", subteamId: null }, { teamId: "team-b", subteamId: null }] } })),
+    )
+  })
+
+  it("409 de sobreposição no chat/voz: aviso junto do alcance com o orquestrador e os Grupos/Subgrupos em conflito", () => {
+    mocks.orchestrator = GROUPS_ORCHESTRATOR
+    mocks.updateError = new AdminApiError("Outro orquestrador ativo já atende o chat/voz nos mesmos Grupos/Subgrupos.", "ORCHESTRATOR_SCOPE_OVERLAP", { conflicts: [{ orchestratorId: "orch-2", name: "Chat antigo", units: ["Grupo A"] }] })
+    renderPage(<OrchestratorEditorPage orchestratorId="orch-1" />)
+    const notice = screen.getByText(/Nada foi gravado: outro orquestrador ativo/).closest("[role=alert]") as HTMLElement
+    expect(within(notice).getByText("Chat antigo")).toBeInTheDocument()
+    expect(within(notice).getByText(/Grupo A/)).toBeInTheDocument()
   })
 })

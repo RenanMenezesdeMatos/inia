@@ -137,6 +137,8 @@ describe.skipIf(!ENABLED)("Argumentários — prova Postgres (conversão, escopo
     const subB1 = (await client.query<{ id: string }>("insert into subteams (organization_id, team_id, name) values ($1, $2, 'Proof AG Sub B1') returning id", [ORG, teamB])).rows[0]!.id
     const subB2 = (await client.query<{ id: string }>("insert into subteams (organization_id, team_id, name) values ($1, $2, 'Proof AG Sub B2') returning id", [ORG, teamB])).rows[0]!.id
     const teamC = (await client.query<{ id: string }>("insert into teams (organization_id, operation_id, name) values ($1, $2, 'Proof AG Grupo C') returning id", [ORG, operation])).rows[0]!.id
+    // Vínculo novo exige ao menos um operador "Em produção" no Grupo/Subgrupo escolhido (seletor de alcance, 23/11/2026).
+    await client.query("insert into people (organization_id, name, role, team_id, subteam_id, active, current_employment_status) values ($1, 'Proof AG Operador B1', 'OPERATOR', $2, $3, true, 'EM_PRODUCAO')", [ORG, teamB, subB1])
     expect((await org.post(base).send({ name: "Multi (prova)", businessDomainId: domain, scope: { scopeType: "GROUPS", links: [{ teamId: teamA }, { teamId: teamA, subteamId: subA }] }, content })).body.error.code).toBe("ARGUMENT_SCRIPT_SCOPE_INVALID")
     expect((await org.post(base).send({ name: "Multi (prova)", businessDomainId: domain, scope: { scopeType: "GROUPS", links: [{ teamId: teamA, subteamId: subB1 }] }, content })).body.error.code).toBe("ARGUMENT_SCRIPT_SCOPE_INVALID")
     const multi = await org.post(base).send({ name: "Multi (prova)", businessDomainId: domain, scope: { scopeType: "GROUPS", links: [{ teamId: teamA }, { subteamId: subB1 }] }, content })

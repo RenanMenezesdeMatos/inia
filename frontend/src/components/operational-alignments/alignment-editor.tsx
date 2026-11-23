@@ -2,7 +2,7 @@
 
 import { ResponsiblePicker } from "./responsible-picker"
 import { useMemo, useState } from "react"
-import { ArrowLeft, History } from "lucide-react"
+import { ArrowLeft, History, Loader2, PenLine, Save, SlidersHorizontal, Tags, UserRound, Users } from "lucide-react"
 
 import { UniverseSelect } from "@/components/operating-universe/universe-select"
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
@@ -14,7 +14,10 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ErrorState, LoadingState } from "@/components/ui/states"
-import { SectionLabel, StatusChip, type Tone } from "@/components/ui/surface"
+import { SectionLabel, SettingsSection, StatusChip, SURFACE_CARD, toneSurface, type Tone } from "@/components/ui/surface"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { BackLink } from "@/components/ui/back-link"
+import { cn } from "@/lib/utils"
 import { Textarea } from "@/components/ui/textarea"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import { formatCivilDate, formatDateTime } from "@/lib/format/date"
@@ -66,10 +69,12 @@ function FieldError({ message }: { message: string | undefined }) {
 }
 
 /**
- * Formulário do alinhamento, NA PÁGINA (como os demais cadastros da Administração). Editar um publicado abre a próxima versão em
+ * Formulário do alinhamento, NA PÁGINA e no MESMO formato do editor de comunicado (voltar, barra de estado e ação, título e texto
+ * em destaque à esquerda, configurações na lateral direita). Editar um publicado abre a próxima versão em
  * rascunho (motivo obrigatório); a publicada continua valendo até a nova ser publicada. O backend confere escopo, universo e processos.
  */
-export function AlignmentForm({ editing, onSaved, onCancel }: { editing: AlignmentDetail | null; onSaved: (detail: AlignmentDetail) => void; onCancel: () => void }) {
+export function AlignmentForm({ editing, onSaved, onCancel, backLabel = "Voltar" }: { editing: AlignmentDetail | null; onSaved: (detail: AlignmentDetail) => void; onCancel: () => void; backLabel?: string }) {
+  const [mobilePanel, setMobilePanel] = useState<"write" | "settings">("write")
   const source = editing ? (editing.draft ?? editing.current ?? editing.shown) : null
   const [values, setValues] = useState<AlignmentFormValues>(source ? valuesOf(source) : EMPTY)
   const [processes, setProcesses] = useState<PickedProcess[]>(source ? source.processes : [])
@@ -125,28 +130,55 @@ export function AlignmentForm({ editing, onSaved, onCancel }: { editing: Alignme
     }
   }
 
-  return (
-    <div className="grid gap-6">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-lg font-semibold">{editing ? (needsChangeReason ? `Nova versão de "${editing.shown.title}"` : "Editar rascunho") : "Novo alinhamento operacional"}</h2>
-          <p className="text-sm text-muted-foreground">Orientação temporária de um ou mais processos, para o público e o período escolhidos: pode ser informação nova ou mudar um trecho da base. Se conflitar com a base, vale só no trecho conflitante; a base oficial não muda.</p>
-        </div>
-      </div>
+  const stateChip = editing
+    ? <StatusChip tone={STATE_TONE[editing.state]}>{ALIGNMENT_STATE_LABELS[editing.state]}</StatusChip>
+    : <StatusChip tone="neutral">Rascunho</StatusChip>
+  const stateNote = !editing ? "Ainda não salvo" : needsChangeReason ? `Nova versão de "${editing.shown.title}": a publicada continua valendo até você publicar esta` : "Editando o rascunho"
 
-      {/* Duas colunas em tela larga: o texto da orientação à esquerda; classificação, público e vigência à direita (campos na largura
-          de um campo, nunca esticados); processos na largura toda. Em tela estreita, uma coluna na mesma ordem. */}
-      <div className="grid gap-8 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <section className="grid content-start gap-4">
-          <SectionLabel>Orientação</SectionLabel>
-          <div className="grid gap-1.5">
-            <Label htmlFor="alignment-title">Título</Label>
-            <Input id="alignment-title" value={values.title} onChange={(event) => set("title", event.target.value)} placeholder="Ex.: Fatura pelo aplicativo ou pelo site" />
+  return (
+    <div className="space-y-4">
+      <BackLink label={backLabel} onClick={onCancel} />
+
+      {/* Barra do editor (como a do comunicado): estado e ação. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          {stateChip}
+          <span className="text-sm text-muted-foreground">{stateNote}</span>
+        </div>
+        <Button onClick={submit} disabled={create.isPending || save.isPending}>
+          {create.isPending || save.isPending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Save data-icon="inline-start" />}Salvar rascunho
+        </Button>
+      </div>
+      {serverError ? <p role="alert" className={cn(toneSurface("danger"), "px-4 py-3 text-sm")}>{serverError}</p> : null}
+
+      {/* Celular: escrever e configurar em abas; desktop: as duas colunas. */}
+      <Tabs value={mobilePanel} onValueChange={(value) => setMobilePanel(value as "write" | "settings")} className="lg:hidden">
+        <TabsList className="w-full">
+          <TabsTrigger value="write" className="flex-1"><PenLine />Escrever</TabsTrigger>
+          <TabsTrigger value="settings" className="flex-1"><SlidersHorizontal />Configurações</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {/* Mesmo formato do editor de comunicado: título e orientação em destaque à esquerda; autoria, classificação, público e
+          vigência na lateral direita (abaixo, no celular, em "Configurações"). */}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <section aria-label="Orientação" className={cn(SURFACE_CARD, "grid min-w-0 content-start gap-5 p-4 sm:px-8 sm:py-6", mobilePanel !== "write" && "hidden lg:grid")}>
+          <div className="grid gap-1">
+            <textarea
+              id="alignment-title"
+              aria-label="Título"
+              value={values.title}
+              rows={1}
+              placeholder="Título do alinhamento"
+              onChange={(event) => set("title", event.target.value.replace(/\n/g, " "))}
+              className="field-sizing-content w-full resize-none bg-transparent font-heading text-2xl leading-tight font-semibold tracking-tight outline-none placeholder:text-muted-foreground/60 sm:text-3xl"
+            />
             <FieldError message={errors.title} />
+            <p className="text-sm text-muted-foreground">Orientação temporária de um ou mais processos, para o público e o período escolhidos: pode ser informação nova ou mudar um trecho da base. Se conflitar com a base, vale só no trecho conflitante; a base oficial não muda.</p>
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="alignment-guidance">Orientação que passa a valer</Label>
-            <Textarea id="alignment-guidance" rows={6} value={values.guidance} onChange={(event) => set("guidance", event.target.value)} placeholder="Ex.: Oriente o cliente a acessar a fatura pelo aplicativo ou pelo site." />
+            <Textarea id="alignment-guidance" rows={8} value={values.guidance} onChange={(event) => set("guidance", event.target.value)} placeholder="Ex.: Oriente o cliente a acessar a fatura pelo aplicativo ou pelo site." />
             <FieldError message={errors.guidance} />
           </div>
           <div className="grid gap-1.5">
@@ -159,20 +191,65 @@ export function AlignmentForm({ editing, onSaved, onCancel }: { editing: Alignme
             <Textarea id="alignment-justification" rows={4} value={values.justification} onChange={(event) => set("justification", event.target.value)} placeholder="Por que a operação mudou antes da base oficial?" />
             <FieldError message={errors.justification} />
           </div>
+          {needsChangeReason ? (
+            <div className="grid gap-1.5">
+              <Label htmlFor="alignment-change">Motivo da alteração</Label>
+              <Input id="alignment-change" value={values.changeReason ?? ""} onChange={(event) => set("changeReason", event.target.value)} />
+              <FieldError message={errors.changeReason} />
+            </div>
+          ) : null}
+          <div className="grid gap-3">
+            <SectionLabel>Processos</SectionLabel>
+            <ProcessPicker value={processes} onChange={setProcesses} universe={values.operatingUniverse} error={errors.affectedDocumentIds} />
+          </div>
         </section>
 
-        <div className="grid content-start gap-8">
-          <section className="grid content-start gap-4">
-            <SectionLabel>Autoria</SectionLabel>
+        <aside aria-label="Configurações do alinhamento" className={cn(SURFACE_CARD, "h-fit p-4 lg:sticky lg:top-4", mobilePanel !== "settings" && "hidden lg:block")}>
+          <SettingsSection title="Autoria" icon={UserRound}>
             <div className="grid gap-1.5">
               <Label htmlFor="alignment-responsible">Responsável pela decisão</Label>
               <ResponsiblePicker id="alignment-responsible" value={values.responsiblePersonId} current={responsible} onChange={(option) => { setResponsible(option); set("responsiblePersonId", option?.id ?? null) }} />
               <p className="text-xs text-muted-foreground">Quem definiu a orientação (a INIA atribui a decisão a essa pessoa, com o cargo do cadastro). Se for você, deixe como está; quem publica fica registrado à parte.</p>
               <FieldError message={errors.responsiblePersonId} />
             </div>
-          </section>
-          <section className="grid content-start gap-4">
-            <SectionLabel>Classificação</SectionLabel>
+          </SettingsSection>
+          <SettingsSection title="Público e vigência" icon={Users}>
+            <div className="grid content-start gap-1.5">
+              <Label htmlFor="alignment-universe">Universo de atuação</Label>
+              <UniverseSelect id="alignment-universe" value={values.operatingUniverse} onChange={changeUniverse} />
+              <FieldError message={errors.operatingUniverse} />
+            </div>
+            <div className="grid content-start gap-1.5" data-testid="alignment-scope">
+              <MultiOrgScopeField
+                permission="operational_alignments.manage"
+                value={values.scope}
+                onChange={changeScope}
+                allowGlobal={Boolean(scopeOptions.data?.universe) || values.scope.global}
+                globalLabel={values.operatingUniverse ? `Todo o universo ${values.operatingUniverse}` : "Todo o universo"}
+                universe={values.operatingUniverse}
+                label="Público"
+                hint="O mesmo alinhamento pode valer para vários Grupos — inteiros ou só alguns Subgrupos de cada um. Onde dois alinhamentos do mesmo ponto se cruzam, prevalece o recorte mais específico para cada pessoa."
+              />
+              <FieldError message={errors.scope} />
+            </div>
+            <div className="grid content-start gap-1.5">
+              <Label htmlFor="alignment-period">Vigência</Label>
+              <DateRangePicker id="alignment-period" className="w-full" value={{ from: values.startsOn || undefined, to: values.endsOn || undefined }} onChange={(range) => setValues((previous) => ({ ...previous, startsOn: range.from ?? "", endsOn: range.to ?? "" }))} presets={false} placeholder="Início e término" />
+              <FieldError message={errors.startsOn ?? errors.endsOn} />
+              <p className="text-xs text-muted-foreground">Início e término inclusivos, no fuso da organização: começa às 00:00 do início e vai até o fim do dia do término. Assuntos proibidos e limites de atuação continuam valendo acima de qualquer alinhamento.</p>
+            </div>
+            <div className="grid content-start gap-1.5">
+              <Label htmlFor="alignment-product">Produto (opcional)</Label>
+              <Select value={values.productId ?? NONE} onValueChange={(id) => set("productId", id === NONE ? null : id)}>
+                <SelectTrigger id="alignment-product" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Qualquer produto</SelectItem>
+                  {allowedProducts.map((product) => <SelectItem key={product.id} value={product.id}>{product.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </SettingsSection>
+          <SettingsSection title="Classificação" icon={Tags}>
             <div className="grid gap-1.5">
               <Label htmlFor="alignment-reason">Motivo do alinhamento</Label>
               <Select value={values.reasonId} onValueChange={(reasonId) => set("reasonId", reasonId)}>
@@ -195,67 +272,8 @@ export function AlignmentForm({ editing, onSaved, onCancel }: { editing: Alignme
                 })}
               </div>
             </div>
-          </section>
-
-          <section className="grid content-start gap-4">
-            <SectionLabel>Público e vigência</SectionLabel>
-            {/* Na coluna direita (xl) os campos ficam um por linha; duas colunas só quando há largura (sm na tela estreita, 2xl na larga). */}
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-              <div className="grid content-start gap-1.5">
-                <Label htmlFor="alignment-universe">Universo de atuação</Label>
-                <UniverseSelect id="alignment-universe" value={values.operatingUniverse} onChange={changeUniverse} />
-                <FieldError message={errors.operatingUniverse} />
-              </div>
-              <div className="grid content-start gap-1.5 sm:col-span-2 xl:col-span-1 2xl:col-span-2" data-testid="alignment-scope">
-                <MultiOrgScopeField
-                  teams={teamOptions}
-                  value={values.scope}
-                  onChange={changeScope}
-                  allowGlobal={Boolean(scopeOptions.data?.universe) || values.scope.global}
-                  globalLabel={values.operatingUniverse ? `Todo o universo ${values.operatingUniverse}` : "Todo o universo"}
-                  universe={values.operatingUniverse}
-                  label="Público"
-                  hint="O mesmo alinhamento pode valer para vários Grupos — inteiros ou só alguns Subgrupos de cada um. Onde dois alinhamentos do mesmo ponto se cruzam, prevalece o recorte mais específico para cada pessoa."
-                />
-                <FieldError message={errors.scope} />
-              </div>
-              <div className="grid content-start gap-1.5">
-                <Label htmlFor="alignment-period">Vigência</Label>
-                <DateRangePicker id="alignment-period" className="w-full" value={{ from: values.startsOn || undefined, to: values.endsOn || undefined }} onChange={(range) => setValues((previous) => ({ ...previous, startsOn: range.from ?? "", endsOn: range.to ?? "" }))} presets={false} placeholder="Início e término" />
-                <FieldError message={errors.startsOn ?? errors.endsOn} />
-              </div>
-              <div className="grid content-start gap-1.5">
-                <Label htmlFor="alignment-product">Produto (opcional)</Label>
-                <Select value={values.productId ?? NONE} onValueChange={(id) => set("productId", id === NONE ? null : id)}>
-                  <SelectTrigger id="alignment-product" className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>Qualquer produto</SelectItem>
-                    {allowedProducts.map((product) => <SelectItem key={product.id} value={product.id}>{product.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">Início e término inclusivos, no fuso da organização: começa às 00:00 do início e vai até o fim do dia do término. Assuntos proibidos e limites de atuação continuam valendo acima de qualquer alinhamento.</p>
-          </section>
-        </div>
-      </div>
-
-      <section className="grid gap-3">
-        <SectionLabel>Processos</SectionLabel>
-        <ProcessPicker value={processes} onChange={setProcesses} universe={values.operatingUniverse} error={errors.affectedDocumentIds} />
-      </section>
-
-      {needsChangeReason ? (
-        <div className="grid gap-1.5">
-          <Label htmlFor="alignment-change">Motivo da alteração</Label>
-          <Input id="alignment-change" value={values.changeReason ?? ""} onChange={(event) => set("changeReason", event.target.value)} />
-          <FieldError message={errors.changeReason} />
-        </div>
-      ) : null}
-      {serverError ? <p role="alert" className="text-sm text-destructive">{serverError}</p> : null}
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button variant="outline" onClick={onCancel}>Cancelar</Button>
-        <Button onClick={submit} disabled={create.isPending || save.isPending}>Salvar rascunho</Button>
+          </SettingsSection>
+        </aside>
       </div>
     </div>
   )
@@ -294,11 +312,11 @@ export function AlignmentDetailPanel({ id, onBack, onDiscarded, startEditing = f
   if (detail.isLoading) return <LoadingState />
   if (detail.isError || !detail.data) return <ErrorState message="Não foi possível carregar o alinhamento." onRetry={() => detail.refetch()} />
   const data = detail.data
-  if (editing) return <AlignmentForm editing={data} onSaved={() => setEditing(false)} onCancel={() => setEditing(false)} />
+  if (editing) return <AlignmentForm editing={data} backLabel="Alinhamento" onSaved={() => setEditing(false)} onCancel={() => setEditing(false)} />
   const main = data.current ?? data.draft ?? data.shown
 
   return (
-    <div className="grid gap-6">
+    <div className={cn(SURFACE_CARD, "grid gap-6 p-4 sm:p-6")}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1">
           <Button variant="ghost" size="sm" className="w-fit" onClick={onBack}><ArrowLeft className="size-4" />Voltar à lista</Button>

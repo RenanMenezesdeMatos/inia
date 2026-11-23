@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { UniverseSelect } from "@/components/operating-universe/universe-select"
+import { MultiOrgScopeField } from "@/components/admin/shared/multi-org-scope-field"
+import { resourceScopePayloadOf, scopeValueFromResource, scopeValueIssue, type ScopeLinksValue } from "@/lib/scope-links/scope-links"
 import type { IndicatorDefinitionInput } from "@/services/admin/indicator-rule-service"
 import {
   INDICATOR_CODE_PATTERN,
@@ -100,6 +102,9 @@ export function IndicatorDefinitionForm({ catalog, initial, dependencies, pendin
   const [iconKey, setIconKey] = useState<DisplayIconKey | null>(isDisplayIconKey(initial?.iconKey) ? initial.iconKey : null)
   // Universo de atuação: escolhido só na criação (o registro existente muda pela classificação do universo).
   const [operatingUniverse, setOperatingUniverse] = useState<OperatingUniverse | null>(null)
+  // Alcance operacional (250): por padrão "Todos" do universo; editar mostra o que está salvo (inclusive vínculo sem operador em produção).
+  const [scope, setScope] = useState<ScopeLinksValue>(() => scopeValueFromResource({ scopeType: initial?.scopeType ?? "ALL_TEAMS", scopeLinks: initial?.scopeLinks ?? [] }))
+  const scopeUniverse = initial?.operatingUniverse ?? operatingUniverse
 
   const hasHistory = Boolean(dependencies?.hasHistory)
   const semanticLocked = Boolean(initial) && hasHistory
@@ -133,7 +138,7 @@ export function IndicatorDefinitionForm({ catalog, initial, dependencies, pendin
   }, [code, unit, strategy, catalog.units, dailySupported, officialClosureSupported, minimumSampleSize, minimumCoveragePercent, unjustifiedAbsencePolicy, operationalAggregation, availabilityOverride, availabilityLagDays, availabilityTime])
 
   const selectedUnit: IndicatorUnit | null = unit === "" ? null : unit
-  const canSubmit = code.trim().length > 1 && name.trim().length > 1 && selectedUnit !== null && (Boolean(initial) || operatingUniverse !== null) && problems.length === 0 && !pending
+  const canSubmit = code.trim().length > 1 && name.trim().length > 1 && selectedUnit !== null && (Boolean(initial) || operatingUniverse !== null) && problems.length === 0 && (scope.global || !scopeValueIssue(scope)) && !pending
 
   async function handleSubmit() {
     if (!canSubmit || selectedUnit === null) return
@@ -152,6 +157,7 @@ export function IndicatorDefinitionForm({ catalog, initial, dependencies, pendin
       availabilityPolicy: dailySupported && availabilityOverride ? { lagDays: Number(availabilityLagDays), availableByLocalTime: availabilityTime } : null,
       iconKey,
       ...(!initial && operatingUniverse ? { operatingUniverse } : {}),
+      ...resourceScopePayloadOf(scope),
     })
   }
 
@@ -224,6 +230,16 @@ export function IndicatorDefinitionForm({ catalog, initial, dependencies, pendin
             <p id="indicator-universe-help" className="text-xs text-muted-foreground">Universos são separados: este recurso só será usado no universo escolhido.</p>
           </div>
         ) : null}
+        <MultiOrgScopeField
+          permission="configuration.manage"
+          value={scope}
+          onChange={setScope}
+          universe={scopeUniverse}
+          allowGlobal
+          globalLabel={scopeUniverse ? `Todos os Grupos e Subgrupos do universo ${scopeUniverse}` : "Todos os Grupos e Subgrupos"}
+          label="Alcance"
+          hint="Para quais Grupos e Subgrupos este indicador vale na Administração (listas, filtros e seleção). Não muda cálculos, metas nem feedbacks."
+        />
       </Section>
 
       <Section title="Comportamento" description="A direção desejada decide o que é 'melhor' em rankings, quartis e comparações com a meta — nunca inferida do nome.">

@@ -24,7 +24,8 @@ const FEEDBACK_STATUS = options([["DRAFT", "Rascunho"], ["IN_REVIEW", "Em revis�
 const FEEDBACK_KIND = options([["INDICATOR", "Indicador"], ["MONITORING", "Monitoria"]])
 const ENROLLMENT_STATUS = options([["active", "Em execução"], ["waiting", "Aguardando"], ["completed", "Concluída"], ["failed", "Falhou"], ["dead", "Esgotada"], ["blocked", "Bloqueada"]])
 const WORKFLOW_SITUATION = options([["ACTIVE", "Ativo"], ["PAUSED", "Pausado"], ["DRAFT", "Rascunho"], ["DELETED", "Excluído"]])
-const WORKFLOW_SCOPE = options([["ALL_TEAMS", "Todos os Grupos"], ["TEAM", "Grupo"], ["SUBTEAM", "Subgrupo"]])
+// Abrangência do Workflow (249): ALL_TEAMS ou GROUPS (vínculos em `workflow_scope_links`); TEAM/SUBTEAM ficam para leitura de dado antigo.
+const WORKFLOW_SCOPE = options([["ALL_TEAMS", "Todos os Grupos"], ["GROUPS", "Grupos e Subgrupos escolhidos"], ["TEAM", "Grupo"], ["SUBTEAM", "Subgrupo"]])
 const AGENT_RUN_STATUS = options([["PENDING", "Pendente"], ["COMPLETED", "Concluída"], ["FAILED", "Falhou"]])
 const AGENT_RUN_SOURCE = options([["MANUAL_TEST", "Teste manual"], ["WORKFLOW", "Workflow"]])
 const RUN_STATUS = options([["QUEUED", "Na fila"], ["CONNECTING", "Conectando"], ["FETCHING", "Lendo"], ["PARSING", "Interpretando"], ["MAPPING", "Mapeando"], ["VALIDATING", "Validando"], ["APPLYING", "Aplicando"], ["COMPLETED", "Concluída"], ["PARTIAL", "Parcial"], ["FAILED", "Falhou"], ["CANCELLED", "Cancelada"]])
@@ -84,7 +85,7 @@ export const GENERATED_DATASETS: readonly ExplorerDataset[] = [
     description: "Todos os Workflows, inclusive os excluídos, com a situação e quantas execuções tiveram. O desenho do fluxo e a descrição não aparecem.",
     origin: "GENERATED",
     volume: "SMALL",
-    from: `workflows_all t left join teams tm on tm.id = t.team_id and tm.organization_id = t.organization_id left join subteams st on st.id = t.subteam_id and st.organization_id = t.organization_id ${person("del", "deleted_by_person_id")}`,
+    from: `workflows_all t ${person("del", "deleted_by_person_id")}`,
     key: { sql: "t.id", cast: "uuid" },
     defaultSort: { column: "created_at", direction: "DESC" },
     columns: [
@@ -92,8 +93,9 @@ export const GENERATED_DATASETS: readonly ExplorerDataset[] = [
       { key: "name", label: "Nome", type: "TEXT", sql: "t.name", nullable: false, filterable: true, sortable: true, search: "CONTAINS" },
       { key: "situation", label: "Situação", description: "Excluído continua guardado, mas não roda nem aparece nas telas de Workflow.", type: "ENUM", sql: "(case when t.deleted_at is not null then 'DELETED' when t.active then 'ACTIVE' when t.active_version_id is null then 'DRAFT' else 'PAUSED' end)", nullable: false, filterable: true, options: WORKFLOW_SITUATION },
       { key: "scope", label: "Abrangência", type: "ENUM", sql: "t.scope_type", nullable: false, filterable: true, options: WORKFLOW_SCOPE },
-      { key: "group", label: "Grupo", type: "TEXT", sql: "tm.name", nullable: true, filterable: true },
-      { key: "subgroup", label: "Subgrupo", type: "TEXT", sql: "st.name", nullable: true, filterable: true },
+      // Abrangência publicada com vários Grupos/Subgrupos (249): os nomes dos vínculos, separados por vírgula.
+      { key: "group", label: "Grupos", type: "TEXT", sql: "(select string_agg(distinct tm.name, ', ') from workflow_scope_links wl join teams tm on tm.id = wl.team_id where wl.workflow_id = t.id)", nullable: true, filterable: true },
+      { key: "subgroup", label: "Subgrupos", type: "TEXT", sql: "(select string_agg(st.name, ', ' order by st.name) from workflow_scope_links wl join subteams st on st.id = wl.subteam_id where wl.workflow_id = t.id)", nullable: true, filterable: true },
       count("executions", "Execuções", "(select count(e.id) from workflow_enrollments e where e.workflow_id = t.id)"),
       created(),
       updated,

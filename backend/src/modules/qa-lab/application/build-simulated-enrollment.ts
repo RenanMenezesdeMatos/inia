@@ -12,13 +12,16 @@ import { parseCompleteGraph } from "../../workflows/domain/draft-graph.js"
 import { triggerConfigSchema, triggerIndicatorCodeOf, type TriggerConfig } from "../../workflows/domain/trigger-config-schema.js"
 import type { WorkflowSnapshot, WorkflowState, WorkflowSubject } from "../domain/qa-run-schema.js"
 import { assertOperatorEligible, resolveInteractionEvidence, type InteractionEvidence } from "./interaction-evidence.js"
+import { workflowLiveScopeLinksSql } from "../../workflows/domain/workflow-scope.js"
 import { lastClosedReferencePeriod } from "../../indicators/domain/official-closure-policy.js"
 
 
 export type QaWorkflowRow = {
   id: string
   name: string
+  /** Abrangência (249): ALL_TEAMS ou GROUPS + `scope_links` (rascunho: `draft_scope_links`; publicada: `workflow_scope_links`). */
   scope_type: string
+  scope_links?: { teamId: string; subteamId: string | null }[] | null
   team_id: string | null
   subteam_id: string | null
   trigger_config: unknown
@@ -34,7 +37,7 @@ export type QaWorkflowRow = {
   published_configuration?: PublishedConfiguration | null
 }
 
-type PublishedConfiguration = Pick<QaWorkflowRow, "scope_type" | "team_id" | "subteam_id" | "trigger_config" | "consolidated_structure" | "population_filter" | "require_active_access">
+type PublishedConfiguration = Pick<QaWorkflowRow, "scope_type" | "scope_links" | "team_id" | "subteam_id" | "trigger_config" | "consolidated_structure" | "population_filter" | "require_active_access">
 
 /**
  * Carrega o Workflow com a configuração do RASCUNHO nos campos de cima (Gatilho, Abrangência, Modo de
@@ -44,10 +47,10 @@ type PublishedConfiguration = Pick<QaWorkflowRow, "scope_type" | "team_id" | "su
  */
 export async function loadWorkflowForSimulation(db: Database, organizationId: string, workflowId: string): Promise<QaWorkflowRow | null> {
   const result = await db.query<QaWorkflowRow>(
-    `select w.id, w.name, w.draft_scope_type scope_type, w.draft_team_id team_id, w.draft_subteam_id subteam_id, w.draft_trigger_config trigger_config,
+    `select w.id, w.name, w.draft_scope_type scope_type, w.draft_scope_links scope_links, w.draft_team_id team_id, w.draft_subteam_id subteam_id, w.draft_trigger_config trigger_config,
             w.draft_consolidated_structure consolidated_structure, w.draft_population_filter population_filter, w.draft_require_active_access require_active_access, w.active_version_id, w.draft_graph,
             (select graph from workflow_versions where id = w.active_version_id) published_graph,
-            jsonb_build_object('scope_type', w.scope_type, 'team_id', w.team_id, 'subteam_id', w.subteam_id, 'trigger_config', w.trigger_config,
+            jsonb_build_object('scope_type', w.scope_type, 'scope_links', ${workflowLiveScopeLinksSql("w.id")}, 'team_id', w.team_id, 'subteam_id', w.subteam_id, 'trigger_config', w.trigger_config,
                                'consolidated_structure', w.consolidated_structure, 'population_filter', w.population_filter,
                                'require_active_access', w.require_active_access) published_configuration
      from workflows w where w.id = $1 and w.organization_id = $2`,
@@ -92,6 +95,7 @@ export function captureWorkflowSnapshot(row: QaWorkflowRow, graph: FlowGraph, st
     graph,
     triggerConfig: row.trigger_config,
     scopeType: row.scope_type,
+    scopeLinks: row.scope_links ?? [],
     teamId: row.team_id,
     subteamId: row.subteam_id,
     consolidatedStructure: row.consolidated_structure ?? null,
@@ -108,6 +112,7 @@ export function rowFromSnapshot(snapshot: WorkflowSnapshot): QaWorkflowRow {
     id: snapshot.workflowId,
     name: snapshot.name,
     scope_type: snapshot.scopeType,
+    scope_links: snapshot.scopeLinks ?? [],
     team_id: snapshot.teamId,
     subteam_id: snapshot.subteamId,
     trigger_config: snapshot.triggerConfig,
@@ -274,7 +279,7 @@ export async function buildSimulatedEnrollment(
   const configuredStructure: ConsolidatedStructure | null = row.consolidated_structure ? consolidatedStructureSchema.parse(row.consolidated_structure) : null
   const versionId = row.active_version_id ?? randomUUID()
   const enrollment = baseEnrollment(organizationId, row.id, versionId, triggerNode.id)
-  const workflow: WorkflowScope = { scopeType: row.scope_type, teamId: row.team_id, subteamId: row.subteam_id, consolidatedStructure: configuredStructure }
+  const workflow: WorkflowScope = { scopeType: row.scope_type, scopeLinks: row.scope_links ?? [], teamId: row.team_id, subteamId: row.subteam_id, consolidatedStructure: configuredStructure }
 
   const manual = trigger.kind === "manual" ? trigger : null
   if (trigger.kind === "channel_flag" || manual?.context === "INTERACTION") {

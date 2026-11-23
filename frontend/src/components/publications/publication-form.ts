@@ -34,7 +34,8 @@ export function formOf(saved: EditorialCommunication, now: Date = new Date()): E
     summary: saved.summary ?? "",
     featured: saved.featured,
     audience: saved.audience,
-    segment: { universe: saved.segment.universe, scope: scopeValueFromLinks(saved.segment.links) },
+    // Sem vínculo e com universo = "Todo o universo X" (escolha explícita no seletor, nunca uma seleção vazia).
+    segment: { universe: saved.segment.universe, scope: scopeValueFromLinks(saved.segment.links, saved.segment.links.length === 0 && Boolean(saved.segment.universe)) },
     productNodeId: saved.productNodeId,
     publishAt: saved.publishedAt && new Date(saved.publishedAt).getTime() > now.getTime() ? saved.publishedAt : null,
     displayUntil: saved.displayUntil,
@@ -73,6 +74,7 @@ export function audienceDescription(form: Pick<EditorialForm, "audience" | "segm
   if (form.audience === "TEAM") return "Sua equipe (todos abaixo de você na estrutura)"
   if (form.audience === "ORGANIZATION") return "Toda a empresa"
   const parts: string[] = []
+  if (form.segment.scope.global) return form.segment.universe ? `Público específico: todo o universo ${form.segment.universe}` : "Público específico (escolha o universo)"
   if (form.segment.universe) parts.push(`universo ${form.segment.universe}`)
   // Mesmo resumo do seletor: "Grupo A (Grupo inteiro) · Grupo B: só B1".
   if (form.segment.scope.groups.length) parts.push(scopeReachSummary(form.segment.scope, segmentTeamOptions(options), "Todos os Grupos"))

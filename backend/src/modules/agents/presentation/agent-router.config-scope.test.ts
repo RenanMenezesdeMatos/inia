@@ -33,16 +33,16 @@ const DOC_TEAM: Record<string, string> = { [DOC_A]: TEAM_A, [DOC_B]: TEAM_B }
 
 const configOf = (overrides: Partial<AgentConfig> = {}): AgentConfig => ({
   name: "Agente de Retenção", agentType: "CUSTOM", objective: "objetivo", description: "descrição", contextPrompt: "contexto do agente",
-  scopeType: "TEAM", teamId: TEAM_B, subteamId: null, specialty: null, specialtyKind: null, domain: null, capability: null, consolidatedInput: false,
+  scopeType: "GROUPS", teamId: null, subteamId: null, scopeLinks: [{ teamId: TEAM_B, subteamId: null }], specialty: null, specialtyKind: null, domain: null, capability: null, consolidatedInput: false,
   businessDomainId: null, recommendSupportMaterials: false, investigationCapabilities: [], actionLimitsEnabled: false, actionLimits: null,
   knowledgeDocumentIds: [DOC_B], ...overrides,
 })
 const LIVE = configOf()
-const WIDE = configOf({ scopeType: "ALL_TEAMS", teamId: null, knowledgeDocumentIds: [DOC_A, DOC_B], contextPrompt: "Responda com os procedimentos de todos os Grupos." })
+const WIDE = configOf({ scopeType: "ALL_TEAMS", scopeLinks: [], knowledgeDocumentIds: [DOC_A, DOC_B], contextPrompt: "Responda com os procedimentos de todos os Grupos." })
 const VERSIONS: Record<string, { number: number; config: AgentConfig }> = { [V1]: { number: 1, config: WIDE }, [V2]: { number: 2, config: LIVE } }
 
 /** Leituras: versões, execuções e histórico. A execução e a alteração de uma configuração de todos os Grupos têm conteúdo do Grupo A. */
-const scopeOf = (config: AgentConfig) => ({ scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId })
+const scopeOf = (config: AgentConfig) => ({ scopeType: config.scopeType, teamId: null, subteamId: null, scopeLinks: config.scopeLinks })
 const AT = "2026-11-01T00:00:00.000Z"
 const versionSummary = (id: string) => ({ id, number: VERSIONS[id]!.number, origin: "PUBLISH", revertedFromNumber: null, publishedAt: AT, publishedByName: "Administração geral", current: id === V2 })
 const RUN_V1 = "f0000000-0000-4000-8000-000000000001"
@@ -94,11 +94,14 @@ function appFor(admin: "GROUP_B" | "ORGANIZATION", draft: AgentConfig | null | (
     if (sql.includes("from user_accounts ua join people p")) return { rows: [{ id: "acc-1", person_id: "person-1" }] }
     if (sql.includes("select id from subteams where team_id")) return { rows: [] }
     if (sql.includes('a.draft_config "draftConfig"')) {
-      return { rows: [{ id: AGENT, organizationId: ORG, active: true, currentVersionId: V2, currentVersionNumber: 2, draftConfig: typeof draft === "function" ? draft() : draft, draftRevision: 4, draftUpdatedAt: null, draftUpdatedByName: null, scopeType: "TEAM", teamId: TEAM_B, subteamId: null }] }
+      return { rows: [{ id: AGENT, organizationId: ORG, active: true, currentVersionId: V2, currentVersionNumber: 2, draftConfig: typeof draft === "function" ? draft() : draft, draftRevision: 4, draftUpdatedAt: null, draftUpdatedByName: null, scopeType: "GROUPS" }] }
     }
-    if (sql.includes('select scope_type "scopeType"')) return { rows: [{ scopeType: "TEAM", teamId: TEAM_B, subteamId: null, active: true }] }
+    if (sql.includes('select scope_type "scopeType"')) return { rows: [{ scopeType: "GROUPS", active: true, operatingUniverse: null }] }
+    // Vínculos da linha viva (249): o agente é do Grupo B inteiro.
+    if (sql.includes("from agent_scope_links where agent_id = any")) return { rows: [{ owner_id: AGENT, team_id: TEAM_B, subteam_id: null }] }
+    if (sql.includes("select id from teams where id = any")) return { rows: (params[0] as string[]).map((id) => ({ id })) }
     if (sql.includes(AGENT_LIVE_COLUMNS)) {
-      return { rows: [{ name: LIVE.name, agent_type: LIVE.agentType, objective: LIVE.objective, description: LIVE.description, context_prompt: LIVE.contextPrompt, scope_type: "TEAM", team_id: TEAM_B, subteam_id: null, specialty: null, specialty_kind: null, domain: null, capability: null, consolidated_input: false, business_domain_id: null, recommend_support_materials: false, investigation_capabilities: [], action_limits_enabled: false, action_limits: null }] }
+      return { rows: [{ name: LIVE.name, agent_type: LIVE.agentType, objective: LIVE.objective, description: LIVE.description, context_prompt: LIVE.contextPrompt, scope_type: "GROUPS", specialty: null, specialty_kind: null, domain: null, capability: null, consolidated_input: false, business_domain_id: null, recommend_support_materials: false, investigation_capabilities: [], action_limits_enabled: false, action_limits: null }] }
     }
     if (sql.includes("from agent_knowledge_documents where agent_id")) return { rows: [{ knowledge_document_id: DOC_B }] }
     if (sql.includes("v.config") && sql.includes("where v.id = $1")) {
@@ -108,13 +111,13 @@ function appFor(admin: "GROUP_B" | "ORGANIZATION", draft: AgentConfig | null | (
     const read = readAnswer(sql, params, versionConfigs)
     if (read) return read
     const ids = Array.isArray(params[0]) ? (params[0] as string[]) : []
-    // `assertKnowledge`: bases existentes e se cabem no Grupo do agente ($3 alcance, $4 Grupo) — knowledge-agent-fit.ts.
-    if (sql.includes("from knowledge_documents d where d.id = any")) return { rows: ids.filter((id) => DOC_TEAM[id]).map((id) => ({ id, fits: params[2] === "ALL_TEAMS" || DOC_TEAM[id] === params[3] })) }
+    // `assertKnowledge`: bases existentes e se cabem num Grupo do agente ($3 alcance, $4 Grupos efetivos) — knowledge-agent-fit.ts.
+    if (sql.includes("from knowledge_documents d where d.id = any")) return { rows: ids.filter((id) => DOC_TEAM[id]).map((id) => ({ id, fits: params[2] === "ALL_TEAMS" || (params[3] as string[]).includes(DOC_TEAM[id]!) })) }
     if (sql.includes("select id, title from knowledge_documents")) return { rows: ids.map((id) => ({ id, title: id === DOC_A ? "Procedimentos do Grupo A" : "Procedimentos do Grupo B" })) }
     if (sql.includes('"next" from agent_versions')) return { rows: [{ next: 3 }] }
     if (sql.includes("insert into agent_versions")) return { rows: [{ id: "e0000000-0000-4000-8000-000000000003", number: 3 }] }
     if (sql.includes('returning draft_revision "revision"')) return { rows: [{ revision: 5 }] }
-    if (sql.includes('"hasDraft"')) return { rows: [{ id: AGENT, name: LIVE.name, scopeType: "TEAM", teamId: TEAM_B }] }
+    if (sql.includes('"hasDraft"')) return { rows: [{ id: AGENT, name: LIVE.name, scopeType: "GROUPS", scopeLinks: [{ teamId: TEAM_B, subteamId: null }] }] }
     return { rows: [] }
   })
   const db = { query, connect: async () => ({ query, release: () => undefined }) }
@@ -157,7 +160,7 @@ describe("Agentes — agir sobre um rascunho ou uma versão exige alcançar o al
     // A versão do próprio Grupo continua abrindo.
     const own = await request(app).get(`/${AGENT}/preview-prompt?versionId=${V2}`)
     expect(own.status).toBe(200)
-    expect(own.body.data.prompt).toBe("prompt montado com a configuração de alcance TEAM")
+    expect(own.body.data.prompt).toBe("prompt montado com a configuração de alcance GROUPS")
   })
 
   it("teste de uma versão (ou do rascunho) de alcance maior: 403, sem executar o agente", async () => {
@@ -319,7 +322,7 @@ describe("Agentes — ler um rascunho, uma versão ou uma execução de outro al
   it("salvar o rascunho grava no histórico o alcance da configuração anterior e da nova", async () => {
     const { app, history } = appFor("ORGANIZATION")
     expect((await request(app).patch(`/${AGENT}`).send({ scopeType: "ALL_TEAMS", contextPrompt: WIDE.contextPrompt })).status).toBe(200)
-    expect(history).toEqual([expect.arrayContaining([expect.objectContaining({ field: "contextPrompt", configScopes: [scopeOf(LIVE), { scopeType: "ALL_TEAMS", teamId: null, subteamId: null }] })])])
+    expect(history).toEqual([expect.arrayContaining([expect.objectContaining({ field: "contextPrompt", configScopes: [scopeOf(LIVE), { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, scopeLinks: [] }] })])])
   })
 })
 

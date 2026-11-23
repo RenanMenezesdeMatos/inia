@@ -44,6 +44,8 @@ export const identifiedUserSchema = z.object({
   self: z.boolean(),
   accessStatus: accessStatusSchema,
   temporaryPasswordExpired: z.boolean(),
+  /** "Nova senha temporária" só para conta habilitada com senha da INIA; com o login pela rede, a senha é do AD. */
+  canIssueTemporaryPassword: z.boolean(),
   account: z.object({
     accountId: z.string(),
     email: z.string(),
@@ -54,6 +56,8 @@ export const identifiedUserSchema = z.object({
     temporaryPasswordExpiresAt: z.string().nullable(),
     accessDisabledAt: z.string().nullable(),
     roles: z.array(z.object({ code: z.string(), name: z.string() })),
+    /** Quem gerencia a senha: LOCAL = senha da INIA; NETWORK = Active Directory (login pela rede, conta que não é de emergência). */
+    credentialProvider: z.enum(["LOCAL", "NETWORK"]),
   }).nullable(),
 })
 export type IdentifiedUser = z.infer<typeof identifiedUserSchema>

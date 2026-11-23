@@ -346,6 +346,28 @@ describe("Liberação de acesso — habilitar, senha temporária e desabilitar (
     await expect(enableAccess(s.accountDeps, s.actor("geral"), { personId: PEOPLE.novo.id, email: "maria@inia.local" })).rejects.toMatchObject({ code: "EMAIL_ALREADY_IN_USE" })
   })
 
+  it("conta que entra pela rede (AD): a senha é do Active Directory — sem senha temporária na lista nem na API; conta local segue", async () => {
+    const s = setup()
+    // Login pela rede ligado: Maria autentica pelo AD; João é conta de emergência (senha da INIA).
+    accountFor(s, "maria").credentialProvider = "NETWORK"
+    const list = await listIdentifiedUsers(s.accountDeps, s.actor("geral"), { page: 1, pageSize: 50 })
+    expect(list.items.find((item) => item.personId === PEOPLE.maria.id)).toMatchObject({ canIssueTemporaryPassword: false, account: { credentialProvider: "NETWORK" } })
+    expect(list.items.find((item) => item.personId === PEOPLE.joao.id)).toMatchObject({ canIssueTemporaryPassword: true, account: { credentialProvider: "LOCAL" } })
+    const before = { ...accountFor(s, "maria") }
+    await expect(issueTemporaryPassword(s.accountDeps, s.actor("geral"), { accountId: accountOf("maria").id })).rejects.toMatchObject({ code: "ACCESS_PASSWORD_MANAGED_BY_NETWORK", statusCode: 409 })
+    expect(accountFor(s, "maria")).toEqual(before)
+    expect(s.memory.audit.some((item) => item.action === "ACCESS_TEMPORARY_PASSWORD_ISSUED")).toBe(false)
+    // A conta local continua com o fluxo de senha temporária.
+    expect(await issueTemporaryPassword(s.accountDeps, s.actor("geral"), { accountId: accountOf("joao").id })).toMatchObject({ accountId: accountOf("joao").id })
+  })
+
+  it("login pela rede ligado entre a leitura e a escrita: a escrita recusa e a resposta diz que a senha é do AD (não um conflito genérico)", async () => {
+    const s = setup()
+    const deps: AccountAccessDeps = { ...s.accountDeps, accounts: { ...s.accountDeps.accounts, issueTemporaryPassword: async (input) => { accountFor(s, "maria").credentialProvider = "NETWORK"; return s.accountDeps.accounts.issueTemporaryPassword(input) } } }
+    await expect(issueTemporaryPassword(deps, s.actor("geral"), { accountId: accountOf("maria").id })).rejects.toMatchObject({ code: "ACCESS_PASSWORD_MANAGED_BY_NETWORK" })
+    expect(accountFor(s, "maria").passwordChangeRequired).toBeFalsy()
+  })
+
   it("conflito: escrita otimista pela versão de sessão — outra alteração no meio do caminho não é sobrescrita", async () => {
     const s = setup()
     const deps: AccountAccessDeps = { ...s.accountDeps, accounts: { ...s.accountDeps.accounts, targetByAccount: async (organizationId, accountId) => { const found = await s.accountDeps.accounts.targetByAccount(organizationId, accountId); return found && found.account ? { ...found, account: { ...found.account, sessionVersion: 99 } } : found } } }

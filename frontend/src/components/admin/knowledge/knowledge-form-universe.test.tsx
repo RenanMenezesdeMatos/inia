@@ -1,10 +1,11 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react"
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { offeredScopeUnits, pickScopeUnit } from "@/components/admin/shared/testing/scope-units-fake"
 
 import { CreateKnowledgePage } from "./knowledge-form-page"
 
@@ -20,12 +21,15 @@ const knowledgeService = vi.hoisted(() => ({
   fetchRecentKnowledgeUploads: vi.fn(async () => []),
 }))
 vi.mock("@/services/admin/knowledge-service", () => knowledgeService)
+const TEAMS = vi.hoisted(() => [
+  { id: "t1", name: "Atendimento", operationId: "op-1", operatingUniverse: "B2C", subteams: [{ id: "st1", teamId: "t1", name: "Contas", operatingUniverse: "B2C" }] },
+  { id: "t2", name: "Grandes Contas", operationId: "op-1", operatingUniverse: "B2B", subteams: [{ id: "st2", teamId: "t2", name: "Corporativo", operatingUniverse: "B2B" }] },
+  { id: "t3", name: "Sem classificação", operationId: "op-1", operatingUniverse: null, subteams: [] },
+])
+// Opções do seletor de alcance vêm do servidor (busca, universo, elegibilidade): o falso aplica as mesmas regras sobre a estrutura acima.
+vi.mock("@/services/scope-units/scope-units-service", async () => (await import("@/components/admin/shared/testing/scope-units-fake")).scopeUnitsServiceFrom(TEAMS))
 vi.mock("@/services/admin/org-structure-service", () => ({
-  fetchTeams: vi.fn(async () => [
-    { id: "t1", name: "Atendimento", operationId: "op-1", operatingUniverse: "B2C", subteams: [{ id: "st1", teamId: "t1", name: "Contas", operatingUniverse: "B2C" }] },
-    { id: "t2", name: "Grandes Contas", operationId: "op-1", operatingUniverse: "B2B", subteams: [{ id: "st2", teamId: "t2", name: "Corporativo", operatingUniverse: "B2B" }] },
-    { id: "t3", name: "Sem classificação", operationId: "op-1", operatingUniverse: null, subteams: [] },
-  ]),
+  fetchTeams: vi.fn(async () => TEAMS),
   fetchManageableTeams: vi.fn(async () => ({ teams: [], unrestricted: true })),
   fetchSubjects: vi.fn(async () => []),
 }))
@@ -44,20 +48,13 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-const optionTexts = () => screen.getAllByRole("option").map((option) => option.textContent)
-
 async function chooseUniverse(label: RegExp) {
   fireEvent.click(await screen.findByRole("combobox", { name: /Universo de atuação/ }))
   fireEvent.click(screen.getByRole("option", { name: label }))
 }
 
 async function chooseSpecificGroups() {
-  fireEvent.click(await screen.findByRole("radio", { name: "Grupos específicos" }))
-}
-
-async function addGroup(name: string) {
-  fireEvent.click(await screen.findByRole("combobox", { name: "Adicionar Grupo" }))
-  fireEvent.click(screen.getByRole("option", { name }))
+  fireEvent.click(await screen.findByRole("radio", { name: /Grupos e Subgrupos específicos/ }))
 }
 
 describe("Nova base — universo encadeia o alcance", () => {
@@ -66,27 +63,21 @@ describe("Nova base — universo encadeia o alcance", () => {
     await chooseUniverse(/^B2B/)
 
     await chooseSpecificGroups()
-    fireEvent.click(screen.getByRole("combobox", { name: "Adicionar Grupo" }))
-    expect(optionTexts()).toEqual(["Grandes Contas"])
-    fireEvent.click(screen.getByRole("option", { name: "Grandes Contas" }))
-    expect(screen.getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Grandes Contas (Grupo inteiro)")
+    expect(await offeredScopeUnits()).toEqual(["Grandes Contas"])
+    await pickScopeUnit("Grandes Contas")
+    expect(await screen.findByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Grandes Contas (Grupo inteiro)")
 
     await chooseUniverse(/^B2C/)
-    expect(screen.queryByTestId("scope-group-t2")).toBeNull()
-    expect(screen.getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Nenhum Grupo escolhido")
-    fireEvent.click(screen.getByRole("combobox", { name: "Adicionar Grupo" }))
-    expect(optionTexts()).toEqual(["Atendimento"])
+    await waitFor(() => expect(screen.getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Nenhum Grupo ou Subgrupo escolhido"))
+    expect(await offeredScopeUnits()).toEqual(["Atendimento"])
   })
 
   it("o Subgrupo também segue o universo", async () => {
     renderWithQuery(<CreateKnowledgePage />)
     await chooseUniverse(/^B2C/)
     await chooseSpecificGroups()
-    fireEvent.click(screen.getByRole("combobox", { name: "Adicionar Grupo" }))
-    expect(optionTexts()).not.toContain("Grandes Contas")
-    fireEvent.click(screen.getByRole("option", { name: "Atendimento" }))
-    fireEvent.click(within(screen.getByTestId("scope-group-t1")).getByRole("radio", { name: "Só alguns Subgrupos" }))
-    expect(within(screen.getByTestId("scope-group-t1")).getAllByRole("checkbox").map((box) => box.closest("label")?.textContent)).toEqual(["Contas"])
+    expect(await offeredScopeUnits()).not.toContain("Grandes Contas")
+    expect(await offeredScopeUnits("SUBTEAM")).toEqual(["Atendimento › Contas"])
   })
 
   it("vários Grupos: um inteiro e outro só com um Subgrupo viram um alcance por vínculo no envio", async () => {
@@ -95,15 +86,13 @@ describe("Nova base — universo encadeia o alcance", () => {
     fireEvent.change(await screen.findByLabelText("Título da base"), { target: { value: "Segunda via" } })
     fireEvent.change(screen.getByLabelText("Conteúdo"), { target: { value: "Procedimento completo de segunda via." } })
     await chooseSpecificGroups()
-    await addGroup("Atendimento")
-    await addGroup("Grandes Contas")
-    fireEvent.click(within(screen.getByTestId("scope-group-t2")).getByRole("radio", { name: "Só alguns Subgrupos" }))
-    // Recorte por Subgrupo sem nenhum marcado: salvar mostra o que falta e não envia nada.
+    // Nada escolhido: salvar mostra o que falta e não envia nada (seleção vazia nunca vira "todos").
     fireEvent.click(screen.getByRole("button", { name: "Salvar rascunho" }))
-    expect(await screen.findByRole("alert")).toHaveTextContent(/Marque ao menos um Subgrupo/)
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Escolha ao menos um Grupo/)
     expect(knowledgeService.createKnowledgeDocument).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Corporativo" }))
-    expect(screen.getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Atendimento (Grupo inteiro) · Grandes Contas: só Corporativo")
+    await pickScopeUnit("Atendimento")
+    await pickScopeUnit("Grandes Contas › Corporativo", "SUBTEAM")
+    expect(await screen.findByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Atendimento (Grupo inteiro) · Grandes Contas › Corporativo")
     fireEvent.click(screen.getByRole("button", { name: "Salvar rascunho" }))
     await waitFor(() => expect(knowledgeService.createKnowledgeDocument).toHaveBeenCalledTimes(1))
     expect(knowledgeService.createKnowledgeDocument.mock.calls[0]![0].orgScopes).toEqual([

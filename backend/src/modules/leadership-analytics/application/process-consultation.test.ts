@@ -13,8 +13,8 @@ import { resolveStructureReference } from "./references.js"
  */
 const FATURAMENTO = { teamId: "team-fat", name: "B2C · Faturamento" }
 const ATENDIMENTO = { teamId: "team-atd", name: "B2C · Atendimento Geral" }
-const ORCH_FAT: InteractiveOrchestratorScope = { id: "orch-fat", name: "INIA Faturamento", scopeType: "TEAM", teamId: "team-fat" }
-const ORCH_ALL: InteractiveOrchestratorScope = { id: "orch-all", name: "INIA Geral", scopeType: "ALL_TEAMS", teamId: null }
+const ORCH_FAT: InteractiveOrchestratorScope = { id: "orch-fat", name: "INIA Faturamento", scopeType: "GROUPS", teamIds: ["team-fat"] }
+const ORCH_ALL: InteractiveOrchestratorScope = { id: "orch-all", name: "INIA Geral", scopeType: "ALL_TEAMS", teamIds: [] }
 
 function toolsetFor(groups: ProcessScope["groups"], orchestrators: InteractiveOrchestratorScope[], groupsOfStructure: ProcessScope["groupsOfStructure"] = () => ({ kind: "NOT_FOUND", message: "Não encontrei." })) {
   const consulted: ProcessConsultation[] = []
@@ -161,7 +161,7 @@ describe("universo de atuação na consulta de processo (U4-01)", () => {
     expect(structureGroupsOf(scope, null).map((group) => [group.name, group.universes])).toEqual([["Atendimento", ["B2B"]], ["B2C · Cobrança", ["B2C"]]])
     expect(processScopeOf(scope, null).orchestratorUniverses).toEqual(["B2B", "B2C"])
     // B2X não é liderado nem é do cadastro: o Orquestrador B2X não é alcançável.
-    const orchestrators: InteractiveOrchestratorScope[] = [{ id: "orch-b2x", name: "INIA B2X", scopeType: "ALL_TEAMS", teamId: null, operatingUniverse: "B2X" }]
+    const orchestrators: InteractiveOrchestratorScope[] = [{ id: "orch-b2x", name: "INIA B2X", scopeType: "ALL_TEAMS", teamIds: [], operatingUniverse: "B2X" }]
     expect(reachableProcessOrchestrators(processScopeOf(scope, null), orchestrators)).toEqual([])
   })
 
@@ -171,8 +171,8 @@ describe("universo de atuação na consulta de processo (U4-01)", () => {
     expect(processScope.groups.map((group) => [group.name, group.universes])).toEqual([["Atendimento", ["B2B"]], ["B2C · Cobrança", ["B2C"]]])
     expect(processScope.orchestratorUniverses).toEqual(["B2B", "B2C", "B2X"])
     const orchestrators: InteractiveOrchestratorScope[] = [
-      { id: "orch-b2c", name: "INIA B2C", scopeType: "ALL_TEAMS", teamId: null, operatingUniverse: "B2C" },
-      { id: "orch-b2b", name: "INIA B2B", scopeType: "ALL_TEAMS", teamId: null, operatingUniverse: "B2B" },
+      { id: "orch-b2c", name: "INIA B2C", scopeType: "ALL_TEAMS", teamIds: [], operatingUniverse: "B2C" },
+      { id: "orch-b2b", name: "INIA B2B", scopeType: "ALL_TEAMS", teamIds: [], operatingUniverse: "B2B" },
     ]
     expect(reachableProcessOrchestrators(processScope, orchestrators).map((item) => item.id).sort()).toEqual(["orch-b2b", "orch-b2c"])
     const consulted: ProcessConsultation[] = []

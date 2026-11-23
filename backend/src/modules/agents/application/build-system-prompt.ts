@@ -4,6 +4,7 @@ import { renderAcronymContext } from "../../knowledge/domain/query-acronyms.js"
 import { loadArgumentScriptPromptLines, type ArgumentScriptAudience } from "../../argument-scripts/infrastructure/argument-script-loaders.js"
 import { retrieveKnowledgeForAgent, type KnowledgeCoverageRequest, type KnowledgeTrace } from "../../knowledge/application/retrieve-knowledge.js"
 import { agentSnapshotFor } from "./agent-runtime-context.js"
+import { resourceScopeOf } from "../../../shared/domain/scope-links/resource-scope.js"
 import { hadRecentAlignments, resolveOperationalAlignmentsFor } from "../../operational-alignments/infrastructure/operational-alignment-loaders.js"
 import { alignmentSnapshotOf, noAlignmentInForceNotice, renderAlignmentsForConversation, type AlignmentResolution } from "../../operational-alignments/domain/operational-alignment.js"
 import { loadAgentGuardrails, renderAgentGuardrails } from "./agent-guardrails.js"
@@ -117,26 +118,39 @@ function describeKnowledgeBlock(trace: KnowledgeTrace, promptBlock: string): str
 
 /**
  * Público dos argumentários do prompt: o colaborador da execução (Grupo/Subgrupo dele) ou, sem colaborador (teste do Agent,
- * coordenador do Orquestrador, síntese, prévia do prompt), o alcance do próprio Agent — só as regras que valem para todos que ele
- * atende (Agent de "Todos os grupos" → só argumentários de todos os grupos).
+ * coordenador do Orquestrador, síntese, prévia do prompt), o alcance do próprio Agent — só as regras que valem para TODOS que ele
+ * atende. Com vários vínculos (249) cada vínculo é um público (Grupo inteiro = só o Grupo; Subgrupo = o Subgrupo com o Grupo-pai) e
+ * entram só os argumentários que valem para todos eles (`argumentScriptLinesFor` faz a interseção). Agent de "Todos os grupos" (ou sem
+ * vínculo) → só argumentários de todos os grupos (Grupo e Subgrupo nulos).
  */
-async function argumentAudienceOf(db: Database, organizationId: string, agentId: string, subjectPersonId: string | null): Promise<ArgumentScriptAudience> {
+async function argumentAudiencesOf(db: Database, organizationId: string, agentId: string, subjectPersonId: string | null): Promise<ArgumentScriptAudience[]> {
   if (subjectPersonId) {
     const person = (await db.query<{ team_id: string | null; subteam_id: string | null }>(`select team_id, subteam_id from people where id = $1 and organization_id = $2`, [subjectPersonId, organizationId])).rows[0]
-    if (person) return { teamId: person.team_id, subteamId: person.subteam_id }
+    if (person) return [{ teamId: person.team_id, subteamId: person.subteam_id }]
   }
   const snapshot = agentSnapshotFor(agentId)
-  if (snapshot) {
-    const { scopeType, teamId, subteamId } = snapshot.config
-    if (scopeType !== "SUBTEAM") return { teamId: scopeType === "TEAM" ? teamId : null, subteamId: null }
-    const subteam = (await db.query<{ team_id: string }>(`select team_id from subteams where id = $1`, [subteamId])).rows[0]
-    return { teamId: subteam?.team_id ?? null, subteamId }
-  }
-  const agent = (await db.query<{ team_id: string | null; subteam_id: string | null }>(
-    `select case when a.scope_type = 'SUBTEAM' then st.team_id else a.team_id end team_id, a.subteam_id from agents a left join subteams st on st.id = a.subteam_id where a.id = $1 and a.organization_id = $2`,
-    [agentId, organizationId],
-  )).rows[0]
-  return { teamId: agent?.team_id ?? null, subteamId: agent?.subteam_id ?? null }
+  const scope = snapshot
+    ? resourceScopeOf(snapshot.config)
+    : await (async () => {
+        const agent = (await db.query<{ scope_type: string; links: { teamId: string; subteamId: string | null }[] }>(
+          `select a.scope_type, coalesce((select json_agg(json_build_object('teamId', l.team_id, 'subteamId', l.subteam_id)) from agent_scope_links l where l.agent_id = a.id), '[]'::json) links
+             from agents a where a.id = $1 and a.organization_id = $2`,
+          [agentId, organizationId],
+        )).rows[0]
+        return resourceScopeOf(agent ? { scopeType: agent.scope_type === "ALL_TEAMS" ? "ALL_TEAMS" : "GROUPS", scopeLinks: agent.links } : null)
+      })()
+  if (scope.scopeType === "ALL_TEAMS" || scope.links.length === 0) return [{ teamId: null, subteamId: null }]
+  return scope.links.map((link) => ({ teamId: link.teamId, subteamId: link.subteamId }))
+}
+
+/** Linhas que valem para TODOS os públicos (interseção, na ordem do primeiro). Um público só = a leitura de sempre. */
+async function argumentScriptLinesFor(db: Database, organizationId: string, audiences: ArgumentScriptAudience[]) {
+  const at = new Date()
+  const [first, ...others] = await Promise.all(audiences.map((audience) => loadArgumentScriptPromptLines(db, organizationId, at, audience)))
+  if (!first) return []
+  const keyOf = (row: (typeof first)[number]) => JSON.stringify([row.expectation, row.team_name, row.subject_name])
+  const inEvery = others.map((rows) => new Set(rows.map(keyOf)))
+  return first.filter((row) => inEvery.every((keys) => keys.has(keyOf(row))))
 }
 
 export async function buildSystemPromptWithTrace(db: Database, agentId: string, agent: AgentConfig, options: BuildSystemPromptOptions = {}): Promise<BuiltSystemPrompt> {
@@ -171,7 +185,7 @@ export async function buildSystemPromptWithTrace(db: Database, agentId: string, 
   const guardrails = await loadAgentGuardrails(db, agent.organization_id, agentId)
 
   // Argumentários vigentes (evolução das Regras de chamada; o cadastro antigo foi convertido sem perder o texto — migration 105).
-  const expectations = { rows: options.collaboratorConversation || options.processAssessment ? [] : await loadArgumentScriptPromptLines(db, agent.organization_id, new Date(), await argumentAudienceOf(db, agent.organization_id, agentId, options.governanceSubjectPersonId ?? null)) }
+  const expectations = { rows: options.collaboratorConversation || options.processAssessment ? [] : await argumentScriptLinesFor(db, agent.organization_id, await argumentAudiencesOf(db, agent.organization_id, agentId, options.governanceSubjectPersonId ?? null)) }
 
   const expectationsBlock = expectations.rows.length
     ? expectations.rows

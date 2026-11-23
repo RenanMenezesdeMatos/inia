@@ -6,7 +6,10 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
-import { applyManageableScopeFilter, canManageScope, getManageableScopes, normalizeScopedTarget, scopesAreCompatible, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
+import { canManageScope, getManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
+import { loadResourceScope, replaceResourceScopeLinks, resolveResourceScopeForWrite, scopedTargetOf } from "../../org-structure/application/resource-scope-links.js"
+import { resourceScopeLinksJsonSql, type ResourceScope } from "../../../shared/domain/scope-links/resource-scope.js"
+import { applyOrchestratorManageableFilter, applyOrchestratorScopeListFilter, assertNoInteractiveScopeOverlap, assertAgentsCompatibleWithOrchestratorScope } from "../application/orchestrator-scope.js"
 import { createOrchestratorSchema, updateOrchestratorSchema } from "../domain/orchestrator-schema.js"
 import { assertAgentsPublished, assertOrchestratorVersion, listOrchestratorVersions, publishOrchestratorVersion, syncSpecialists } from "../application/orchestrator-versions.js"
 import { checkSpecialistAgainstRouting, describeRoutingProblem, legacyPolicyFor, POLICY_REQUIRED_MESSAGE, resolveRoutingPolicy, type OrchestratorPolicy, type RoutingPolicy } from "../domain/orchestrator-policy.js"
@@ -42,8 +45,10 @@ const listOrchestratorsSchema = orgScopeFilterSchema.extend({
 
 const ORCHESTRATOR_SELECT = `
   select
-    o.id, o.name, o.scope_type "scopeType", o.team_id "teamId", t.name "teamName",
-    o.subteam_id "subteamId", st.name "subteamName", o.active, o.created_at "createdAt", o.operating_universe "operatingUniverse",
+    o.id, o.name, o.scope_type "scopeType",
+    -- Alcance (249): GROUPS = os vínculos (Grupo inteiro ou um Subgrupo cada); as colunas antigas ficam nulas, devolvidas por compatibilidade.
+    ${resourceScopeLinksJsonSql("ORCHESTRATOR", "o.id")} "scopeLinks",
+    null::uuid "teamId", null::text "teamName", null::uuid "subteamId", null::text "subteamName", o.active, o.created_at "createdAt", o.operating_universe "operatingUniverse",
     o.invocation_mode "invocationMode", o.output_instructions "outputInstructions", o.output_schema "outputSchema",
     o.structured_output "structuredOutputRaw", o.recommend_support_materials "recommendSupportMaterials",
     o.orchestrator_agent_id "orchestratorAgentId", oa.name "orchestratorAgentName", oa.active "orchestratorAgentActive",
@@ -65,8 +70,6 @@ const ORCHESTRATOR_SELECT = `
   join agents oa on oa.id = o.orchestrator_agent_id
   left join agent_versions oacv on oacv.id = oa.current_version_id
   left join assistant_orchestrator_versions ocv on ocv.id = o.current_version_id
-  left join teams t on t.id = o.team_id
-  left join subteams st on st.id = o.subteam_id
   where o.organization_id = $1
 `
 
@@ -113,17 +116,17 @@ function structuredOutputColumns(input: { structuredOutput?: unknown; outputInst
   }
 }
 
-async function fetchScopedRow(
-  db: Database,
-  organizationId: string,
-  id: string,
-): Promise<{ scopeType: string; teamId: string | null; subteamId: string | null } | null> {
-  const result = await db.query<{ scopeType: string; teamId: string | null; subteamId: string | null }>(
-    `select scope_type "scopeType", team_id "teamId", subteam_id "subteamId" from assistant_orchestrators where id = $1 and organization_id = $2`,
-    [id, organizationId],
-  )
-  return result.rows[0] ?? null
+/** Alcance gravado (`scope_type` + vínculos) e universo do Orquestrador — base da gestão (`canManageScope`) e da edição do alcance. */
+async function fetchScopedRow(db: Database, organizationId: string, id: string): Promise<{ target: ScopedTarget; scope: ResourceScope; operatingUniverse: string | null } | null> {
+  const row = (await db.query<{ scope_type: string; operating_universe: string | null }>(`select scope_type, operating_universe from assistant_orchestrators where id = $1 and organization_id = $2`, [id, organizationId])).rows[0]
+  if (!row) return null
+  const scope = await loadResourceScope(db, "ORCHESTRATOR", id, row.scope_type)
+  return { target: scopedTargetOf(scope), scope, operatingUniverse: row.operating_universe }
 }
+
+/** Linha do SELECT → alcance para `canManageScope` (os vínculos vêm agregados em `scopeLinks`). */
+const scopedTargetOfRow = (row: { scopeType: string; scopeLinks?: { teamId: string; subteamId: string | null }[] }): ScopedTarget =>
+  row.scopeType === "ALL_TEAMS" ? { scopeType: "ALL_TEAMS", teamId: null, subteamId: null } : { scopeType: "GROUPS", teamId: null, subteamId: null, links: (row.scopeLinks ?? []).map((link) => ({ teamId: link.teamId, subteamId: link.subteamId })) }
 
 async function validateOrchestratorAgent(db: Database, organizationId: string, agentId: string): Promise<void> {
   const result = await db.query<{ agent_type: string }>(`select agent_type from agents where id = $1 and organization_id = $2`, [
@@ -138,29 +141,6 @@ async function validateOrchestratorAgent(db: Database, organizationId: string, a
       "ORCHESTRATOR_AGENT_WRONG_TYPE",
       422,
     )
-  }
-}
-
-/**
- * Nunca vazamento cross-group (Parte 6/24 do pedido): o agente orquestrador e cada especialista
- * de um Orchestrator precisam estar disponíveis pro escopo DELE — um Orchestrator FATURAS não
- * pode silenciosamente usar um Agent exclusivo de RETENÇÃO. Reaproveita scopesAreCompatible,
- * mesma função usada pra validar Orchestrator dentro de um Workflow.
- */
-async function validateAgentsCompatibleWithScope(db: Database, orchestratorScope: ScopedTarget, agentIds: string[]): Promise<void> {
-  if (agentIds.length === 0) return
-  const uniqueIds = [...new Set(agentIds)]
-  const agentRows = await db.query<{ id: string; name: string; scopeType: string; teamId: string | null; subteamId: string | null }>(
-    `select id, name, scope_type "scopeType", team_id "teamId", subteam_id "subteamId" from agents where id = any($1::uuid[])`,
-    [uniqueIds],
-  )
-  const foundIds = new Set(agentRows.rows.map((row) => row.id))
-  const missingId = uniqueIds.find((id) => !foundIds.has(id))
-  if (missingId) throw new DomainError("Um dos agentes selecionados não existe mais.", "ORCHESTRATOR_AGENT_NOT_FOUND", 404)
-  for (const agent of agentRows.rows) {
-    if (!(await scopesAreCompatible(db, orchestratorScope, agent))) {
-      throw new DomainError(`O agente "${agent.name}" não está disponível para o grupo deste orquestrador.`, "ORCHESTRATOR_AGENT_SCOPE_FORBIDDEN", 422)
-    }
   }
 }
 
@@ -236,10 +216,14 @@ function persistedPolicyColumns(routing: RoutingPolicy, invocationMode: string):
   }
 }
 
+/**
+ * Rede de segurança: a sobreposição é conferida por `assertNoInteractiveScopeOverlap` (com trava por organização); o índice único só
+ * cobre "Todos os Grupos" (um ativo interativo por organização e universo, migration 249).
+ */
 function rethrowFriendly(error: unknown): never {
-  if ((error as { code?: string; constraint?: string }).code === "23505" && (error as { constraint?: string }).constraint === "uq_assistant_orchestrator_active_scope") {
+  if ((error as { code?: string; constraint?: string }).code === "23505" && (error as { constraint?: string }).constraint === "uq_assistant_orchestrator_active_all_teams") {
     throw new DomainError(
-      "Já existe um orquestrador ativo atendendo o chat/voz nesse escopo — desative-o, ou restrinja um dos dois a \"Somente Workflow\", pra evitar que os dois disputem quem responde o operador.",
+      "Já existe um orquestrador ativo atendendo o chat/voz em \"Todos os Grupos e Subgrupos\" neste universo — desative-o, ou restrinja um dos dois a \"Só workflows\", pra evitar que os dois disputem quem responde o operador.",
       "ORCHESTRATOR_SCOPE_TAKEN",
       409,
     )
@@ -259,13 +243,13 @@ export function createAssistantRouter(db: Database) {
       .equals("q.active", input.active)
       .in('q."invocationMode"', input.invocationMode)
       .equals('q."orchestratorAgentId"', input.orchestratorAgentId)
-      .orgScope("q", input)
       .dateRange('q."createdAt"', input.createdFrom, input.createdTo)
     applyUniverseListFilter(filter, 'q."operatingUniverse"', input.operatingUniverse)
     if (input.specialistAgentId) {
       filter.add(`exists (select 1 from assistant_orchestrator_specialists s where s.orchestrator_id = q.id and s.agent_id = ${filter.param(input.specialistAgentId)}::uuid)`)
     }
-    applyManageableScopeFilter(scopes, filter)
+    applyOrchestratorScopeListFilter(filter, input)
+    applyOrchestratorManageableFilter(scopes, filter)
     const data = await respondList<{ structuredOutputRaw?: unknown; outputSchema?: unknown; outputInstructions?: string | null }>(db, request.query, { select: ORCHESTRATOR_SELECT, filter, orderBy: 'q."createdAt" desc, q.id' })
     response.json({ data: Array.isArray(data) ? data.map(decorateOrchestratorRow) : { ...data, items: data.items.map(decorateOrchestratorRow) } })
   })
@@ -275,7 +259,7 @@ export function createAssistantRouter(db: Database) {
     const result = await db.query(`${ORCHESTRATOR_SELECT} and o.id = $2`, [organizationId, request.params.id])
     if (!result.rows[0]) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
-    if (!canManageScope(scopes, result.rows[0])) return response.status(404).json(NOT_FOUND)
+    if (!canManageScope(scopes, scopedTargetOfRow(result.rows[0]))) return response.status(404).json(NOT_FOUND)
     response.json({ data: decorateOrchestratorRow(result.rows[0]) })
   })
 
@@ -286,7 +270,7 @@ export function createAssistantRouter(db: Database) {
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
-    if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
+    if (!canManageScope(scopes, current.target)) return response.status(404).json(NOT_FOUND)
     response.json({ data: await loadStructuredOutputUsage(db, organizationId, request.params.id!) })
   })
 
@@ -296,7 +280,7 @@ export function createAssistantRouter(db: Database) {
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
-    if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
+    if (!canManageScope(scopes, current.target)) return response.status(404).json(NOT_FOUND)
     response.json({ data: await listOrchestratorVersions(db, organizationId, request.params.id!) })
   })
 
@@ -305,12 +289,11 @@ export function createAssistantRouter(db: Database) {
     const input = createOrchestratorSchema.parse(request.body)
 
     const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
-    const newScope = await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })
-    if (!newScope || !canManageScope(scopes, newScope)) {
-      throw new DomainError("Você não tem permissão para criar um orquestrador nesse escopo.", "ORCHESTRATOR_SCOPE_FORBIDDEN", 403)
-    }
+    // Alcance (249): ALL_TEAMS só com a organização; vínculos no escopo de quem cria, do universo do Orquestrador e com operador em produção.
+    const resourceScope = await resolveResourceScopeForWrite(db, organizationId, scopes, input, { codePrefix: "ORCHESTRATOR", universe: input.operatingUniverse ?? null })
+    const newScope = scopedTargetOf(resourceScope)
     await validateOrchestratorAgent(db, organizationId, input.orchestratorAgentId)
-    await validateAgentsCompatibleWithScope(db, newScope, [input.orchestratorAgentId, ...input.specialistAgentIds])
+    await assertAgentsCompatibleWithOrchestratorScope(db, newScope, [input.orchestratorAgentId, ...input.specialistAgentIds])
     const routing = await routingFromInput(db, organizationId, input)
     // Criação sempre nasce ativa (a coluna `active` tem default true) — logo sempre exige política.
     await validateSpecialistsAgainstRouting(db, routing, input.specialistAgentIds, { active: true, invocationMode: input.invocationMode })
@@ -322,13 +305,11 @@ export function createAssistantRouter(db: Database) {
       const orchestratorId = await inTransaction(db, async (client) => {
         const created = await client.query<{ id: string }>(
           `insert into assistant_orchestrators(organization_id, name, scope_type, team_id, subteam_id, orchestrator_agent_id, invocation_mode, output_instructions, output_schema, created_by, policy_kind, policy_domains, routing_policy, routing_domains, structured_output, recommend_support_materials)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning id`,
+           values ($1,$2,$3,null,null,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning id`,
           [
             organizationId,
             input.name,
-            newScope.scopeType,
-            newScope.teamId,
-            newScope.subteamId,
+            resourceScope.scopeType,
             input.orchestratorAgentId,
             input.invocationMode,
             structured.outputInstructions ?? null,
@@ -343,12 +324,15 @@ export function createAssistantRouter(db: Database) {
           ],
         )
         const orchestratorId = created.rows[0]!.id
+        await replaceResourceScopeLinks(client, "ORCHESTRATOR", organizationId, orchestratorId, resourceScope)
         await syncOrchestratorBusinessDomains(client, orchestratorId, persisted.domainRefs)
         await syncSpecialists(client, organizationId, orchestratorId, input.specialistAgentIds)
         await assertAgentsPublished(client, organizationId, [input.orchestratorAgentId])
         await client.query(`update assistant_orchestrators set operating_universe = $2 where id = $1`, [orchestratorId, input.operatingUniverse ?? null])
         // Universos não se misturam: coordenador, especialistas e domínios precisam ser do universo do Orquestrador (a transação desfaz).
         await assertResourceLinksCompatible(client, organizationId, "ORCHESTRATOR", orchestratorId)
+        // Chat/voz: nenhum outro ativo com um vínculo idêntico no mesmo universo (estado final, com trava da organização).
+        await assertNoInteractiveScopeOverlap(client, organizationId, orchestratorId)
         await publishOrchestratorVersion(client, organizationId, orchestratorId, { personId: request.user?.personId ?? null, name: request.user?.name ?? "Sistema" })
         return orchestratorId
       })
@@ -366,23 +350,24 @@ export function createAssistantRouter(db: Database) {
     if (!current) return response.status(404).json(NOT_FOUND)
 
     const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
-    if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
+    if (!canManageScope(scopes, current.target)) return response.status(404).json(NOT_FOUND)
 
-    const movedScope = input.scopeType !== undefined ? await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null }) : null
-    if (input.scopeType !== undefined && (!movedScope || !canManageScope(scopes, movedScope))) {
-      throw new DomainError("Você não tem permissão para mover o orquestrador para esse escopo.", "ORCHESTRATOR_SCOPE_FORBIDDEN", 403)
-    }
+    // Alcance novo (249): os vínculos que o registro já tinha continuam aceitos (mesmo sem operador em produção ou após reclassificação);
+    // só os NOVOS precisam ser do universo do Orquestrador e ter operador em produção.
+    const movedResource = input.scopeType !== undefined
+      ? await resolveResourceScopeForWrite(db, organizationId, scopes, input, { codePrefix: "ORCHESTRATOR", previous: current.scope, universe: current.operatingUniverse })
+      : null
     if (input.orchestratorAgentId) await validateOrchestratorAgent(db, organizationId, input.orchestratorAgentId)
-    const nextScope: ScopedTarget = movedScope ?? { scopeType: current.scopeType, teamId: current.teamId, subteamId: current.subteamId }
+    const nextScope: ScopedTarget = movedResource ? scopedTargetOf(movedResource) : current.target
     const agentIdsToValidate = [...(input.orchestratorAgentId ? [input.orchestratorAgentId] : []), ...(input.specialistAgentIds ?? [])]
-    await validateAgentsCompatibleWithScope(db, nextScope, agentIdsToValidate)
+    await assertAgentsCompatibleWithOrchestratorScope(db, nextScope, agentIdsToValidate)
     // Se só o escopo mudou (sem mexer nos especialistas), os já vinculados também precisam
     // continuar compatíveis com o escopo NOVO — mesma regra do Workflow ao trocar Abrangência.
     const currentSpecialists = await db.query<{ agent_id: string }>(`select agent_id from assistant_orchestrator_specialists where orchestrator_id = $1`, [
       request.params.id,
     ])
     if (input.scopeType !== undefined && !input.specialistAgentIds) {
-      await validateAgentsCompatibleWithScope(db, nextScope, currentSpecialists.rows.map((row) => row.agent_id))
+      await assertAgentsCompatibleWithOrchestratorScope(db, nextScope, currentSpecialists.rows.map((row) => row.agent_id))
     }
     // Política: a lista FINAL de especialistas (nova ou a atual) contra a política FINAL (nova ou a
     // atual) — trocar só a política também reavalia quem já está vinculado.
@@ -419,9 +404,9 @@ export function createAssistantRouter(db: Database) {
         const updated = await client.query<{ id: string }>(
           `update assistant_orchestrators set
              name = coalesce($1, name),
-             scope_type = $2,
-             team_id = $3,
-             subteam_id = $4,
+             scope_type = coalesce($2, scope_type),
+             team_id = $3::uuid,
+             subteam_id = $4::uuid,
              orchestrator_agent_id = coalesce($5, orchestrator_agent_id),
              active = coalesce($6, active),
              invocation_mode = coalesce($7, invocation_mode),
@@ -438,9 +423,9 @@ export function createAssistantRouter(db: Database) {
            returning id`,
           [
             input.name ?? null,
-            nextScope.scopeType,
-            nextScope.teamId,
-            nextScope.subteamId,
+            movedResource?.scopeType ?? null,
+            null,
+            null,
             input.orchestratorAgentId ?? null,
             input.active ?? null,
             input.invocationMode ?? null,
@@ -462,12 +447,14 @@ export function createAssistantRouter(db: Database) {
         if (!updated.rows[0]) {
           return "NOT_FOUND" as const
         }
+        if (movedResource) await replaceResourceScopeLinks(client, "ORCHESTRATOR", organizationId, request.params.id!, movedResource)
         await syncOrchestratorBusinessDomains(client, request.params.id!, persisted.domainRefs)
         // Nenhuma versão de agente é fixada (revisão de 03/11/2026): os agentes rodam sempre na versão vigente deles.
         if (input.specialistAgentIds) await syncSpecialists(client, organizationId, request.params.id!, input.specialistAgentIds)
         if (input.orchestratorAgentId) await assertAgentsPublished(client, organizationId, [input.orchestratorAgentId])
         // Toda gravação publica uma versão nova da configuração (as anteriores continuam valendo para os Workflows que as fixaram).
         await assertResourceLinksCompatible(client, organizationId, "ORCHESTRATOR", request.params.id!)
+        await assertNoInteractiveScopeOverlap(client, organizationId, request.params.id!)
         await publishOrchestratorVersion(client, organizationId, request.params.id!, { personId: request.user?.personId ?? null, name: request.user?.name ?? "Sistema" })
         return "UPDATED" as const
       })
@@ -484,7 +471,7 @@ export function createAssistantRouter(db: Database) {
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
-    if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
+    if (!canManageScope(scopes, current.target)) return response.status(404).json(NOT_FOUND)
 
     await deleteOrchestratorIfUnreferenced(db, sessionUser(request), request.params.id!)
     response.status(204).send()

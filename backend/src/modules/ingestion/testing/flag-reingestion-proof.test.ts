@@ -12,6 +12,7 @@ import request from "supertest"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { env } from "../../../config/env.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { linkWorkflowScope } from "../../workflows/testing/workflow-scope-fixtures.js"
 import { createIngestionRouter } from "../presentation/ingestion-router.js"
 
 const ENABLED = process.env.INIA_DB_PROOF === "1"
@@ -28,7 +29,8 @@ describe.skipIf(!ENABLED)("Ingestão: reenvio da mesma interação não rematric
     created.person = (await pool.query<{ id: string }>("insert into people (organization_id, name, role, team_id) values ($1, 'Proof Reingest Operadora', 'OPERATOR', $2) returning id", [ORG, created.team])).rows[0]!.id
     created.flag = (await pool.query<{ id: string }>("insert into channel_flags (organization_id, channel, flag_name, value_type) values ($1, 'VOICE', $2, 'BOOLEAN') returning id", [ORG, `proof_reingest_${Date.now()}`])).rows[0]!.id
     for (const name of ["Proof Reingest A", "Proof Reingest B"]) {
-      const id = (await pool.query<{ id: string }>("insert into workflows (organization_id, name, scope_type, team_id, trigger_config) values ($1, $2, 'TEAM', $3, $4) returning id", [ORG, name, created.team, JSON.stringify({ kind: "channel_flag", channelFlagId: created.flag })])).rows[0]!.id
+      const id = (await pool.query<{ id: string }>("insert into workflows (organization_id, name, scope_type, trigger_config) values ($1, $2, 'ALL_TEAMS', $3) returning id", [ORG, name, JSON.stringify({ kind: "channel_flag", channelFlagId: created.flag })])).rows[0]!.id
+      await linkWorkflowScope(pool, id, [{ teamId: created.team }])
       const version = (await pool.query<{ id: string }>("insert into workflow_versions (workflow_id, graph) values ($1, $2) returning id", [id, JSON.stringify(GRAPH)])).rows[0]!.id
       await pool.query("update workflows set active_version_id = $2 where id = $1", [id, version])
       created.workflows.push(id)

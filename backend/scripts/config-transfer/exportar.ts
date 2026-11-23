@@ -86,8 +86,17 @@ try {
   const indicadores = await q<{
     id: string; code: string; name: string; unit: string; desired_direction: string; operational_aggregation: string; daily_supported: boolean; minimum_sample_size: number | null
     minimum_coverage: string | null; official_closure_supported: boolean; proves_work_activity: boolean; availability_policy: unknown; unjustified_absence_policy: string; icon_key: string | null; active: boolean
+    scope_type: string | null
   }>(`select * from indicator_definitions where organization_id = $1 order by code`)
+  // Alcance do indicador (250): "Todos" ou vínculos em `indicator_scope_links` (Grupo inteiro ou Subgrupo, vários).
+  const vinculosDoIndicador = new Map<string, { team_id: string; subteam_id: string | null }[]>()
+  for (const vinculo of (await q<{ indicator_id: string; team_id: string; subteam_id: string | null }>(`select indicator_id, team_id, subteam_id from indicator_scope_links where organization_id = $1 order by indicator_id, team_id, subteam_id nulls first`))) {
+    vinculosDoIndicador.set(vinculo.indicator_id, [...(vinculosDoIndicador.get(vinculo.indicator_id) ?? []), vinculo])
+  }
   for (const row of indicadores) {
+    const alcancesDoIndicador: Alcance[] = row.scope_type === "GROUPS"
+      ? (vinculosDoIndicador.get(row.id) ?? []).map((vinculo) => alcanceDe({ scope_type: vinculo.subteam_id ? "SUBTEAM" : "TEAM", team_id: vinculo.team_id, subteam_id: vinculo.subteam_id }))
+      : [{ tipo: "TODOS" }]
     const glossario = (await client.query<{ description: string; interpretation: string; good_practices: string; feedback_guidance: string }>(
       `select description, interpretation, good_practices, feedback_guidance from indicator_glossary where indicator_definition_id = $1 and active order by version desc limit 1`,
       [row.id],
@@ -104,8 +113,9 @@ try {
       idOrigem: row.id,
       dependencias: [...dominiosPermitidos.map((codigo) => chaveDe("DOMINIO", codigo)), ...flagsDoSinal(estrategia?.config)],
       opcionais: [],
-      sugestao: sugerirInclusao(row.name),
+      sugestao: sugerirInclusao(row.name, { alcances: alcancesDoIndicador }),
       dados: {
+        alcances: alcancesDoIndicador,
         definicao: {
           code: row.code, name: row.name, unit: row.unit, desiredDirection: row.desired_direction, operationalAggregation: row.operational_aggregation, dailySupported: row.daily_supported,
           minimumSampleSize: row.minimum_sample_size, minimumCoverage: row.minimum_coverage === null ? null : Number(row.minimum_coverage), officialClosureSupported: row.official_closure_supported,
@@ -215,17 +225,26 @@ try {
     recommend_support_materials: boolean; investigation_capabilities: string[]; action_limits_enabled: boolean; action_limits: string | null
   }>(`select * from agents where organization_id = $1 order by created_at`)
   const nomeDoAgente = new Map(agentes.map((row) => [row.id, row.name]))
+  // Vínculos de alcance dos agentes (249): Grupo inteiro ou Subgrupo, vários por agente.
+  const vinculosDoAgente = new Map<string, { team_id: string; subteam_id: string | null }[]>()
+  for (const vinculo of (await q<{ agent_id: string; team_id: string; subteam_id: string | null }>(`select agent_id, team_id, subteam_id from agent_scope_links where organization_id = $1 order by agent_id, team_id, subteam_id nulls first`))) {
+    vinculosDoAgente.set(vinculo.agent_id, [...(vinculosDoAgente.get(vinculo.agent_id) ?? []), vinculo])
+  }
   for (const row of agentes) {
     const ligadas = (await client.query<{ knowledge_document_id: string }>(`select knowledge_document_id from agent_knowledge_documents where agent_id = $1`, [row.id])).rows
     const basesDoAgente = ligadas.map((ligada) => tituloDaBase.get(ligada.knowledge_document_id)).filter((titulo): titulo is string => Boolean(titulo))
     const dominio = row.business_domain_id ? (codigoDoDominio.get(row.business_domain_id) ?? row.domain) : row.domain
-    const alcance = alcanceDe(row)
+    const alcances: Alcance[] = row.scope_type === "ALL_TEAMS"
+      ? [{ tipo: "TODOS" }]
+      : (vinculosDoAgente.get(row.id) ?? []).map((vinculo) => alcanceDe({ scope_type: vinculo.subteam_id ? "SUBTEAM" : "TEAM", team_id: vinculo.team_id, subteam_id: vinculo.subteam_id }))
+    // Legado para leitores antigos: o primeiro vínculo (restringe, nunca amplia). Sem vínculo nenhum, o plano recusa o item.
+    const alcance: Alcance = alcances[0] ?? { tipo: "TODOS" }
     itens.push({
       tipo: "AGENTE", chave: row.name, nome: row.name, idOrigem: row.id,
       dependencias: dominio ? [chaveDe("DOMINIO", dominio)] : [], opcionais: basesDoAgente.map((titulo) => chaveDe("BASE", titulo)),
-      sugestao: sugerirInclusao(row.name, { alcances: [alcance] }),
+      sugestao: sugerirInclusao(row.name, { alcances }),
       dados: {
-        name: row.name, agentType: row.agent_type, objective: row.objective, description: row.description, contextPrompt: row.context_prompt, alcance, bases: basesDoAgente,
+        name: row.name, agentType: row.agent_type, objective: row.objective, description: row.description, contextPrompt: row.context_prompt, alcances, alcance, bases: basesDoAgente,
         specialtyKind: row.specialty_kind, dominio: dominio ?? null, capability: row.capability, consolidatedInput: row.consolidated_input, specialty: row.specialty,
         recommendSupportMaterials: row.recommend_support_materials, investigationCapabilities: row.investigation_capabilities ?? [], actionLimitsEnabled: row.action_limits_enabled,
         actionLimits: row.action_limits, active: row.active,
@@ -239,18 +258,29 @@ try {
     output_instructions: string | null; output_schema: unknown; policy_kind: string | null; policy_domains: string[]; routing_policy: string | null; routing_domains: string[]
     structured_output: unknown; recommend_support_materials: boolean
   }>(`select * from assistant_orchestrators where organization_id = $1 order by created_at`)
+  // Vínculos do Orquestrador (249): `team_id`/`subteam_id` ficam nulos; o alcance restrito está em `assistant_orchestrator_scope_links`.
+  const vinculosDoOrquestrador = new Map<string, { team_id: string; subteam_id: string | null }[]>()
+  for (const vinculo of (await q<{ orchestrator_id: string; team_id: string; subteam_id: string | null }>(`select orchestrator_id, team_id, subteam_id from assistant_orchestrator_scope_links where organization_id = $1 order by orchestrator_id, team_id, subteam_id nulls first`))) {
+    vinculosDoOrquestrador.set(vinculo.orchestrator_id, [...(vinculosDoOrquestrador.get(vinculo.orchestrator_id) ?? []), vinculo])
+  }
   for (const row of orquestradores) {
     const especialistas = (await client.query<{ agent_id: string }>(`select agent_id from assistant_orchestrator_specialists where orchestrator_id = $1 order by created_at, agent_id`, [row.id])).rows.map((especialista) => nomeDoAgente.get(especialista.agent_id)!)
     const agenteOrquestrador = nomeDoAgente.get(row.orchestrator_agent_id)!
     const dominios = [...new Set([...(row.routing_domains ?? []), ...(row.policy_domains ?? [])])]
-    const alcance = alcanceDe(row)
+    const alcances: Alcance[] = row.scope_type === "ALL_TEAMS"
+      ? [{ tipo: "TODOS" }]
+      : row.scope_type === "GROUPS"
+        ? (vinculosDoOrquestrador.get(row.id) ?? []).map((vinculo) => alcanceDe({ scope_type: vinculo.subteam_id ? "SUBTEAM" : "TEAM", team_id: vinculo.team_id, subteam_id: vinculo.subteam_id }))
+        : [alcanceDe(row)]
+    // Legado para leitores antigos: o primeiro vínculo (restringe, nunca amplia).
+    const alcance: Alcance = alcances[0] ?? { tipo: "TODOS" }
     itens.push({
       tipo: "ORQUESTRADOR", chave: row.name, nome: row.name, idOrigem: row.id,
       dependencias: [chaveDe("AGENTE", agenteOrquestrador), ...especialistas.map((nome) => chaveDe("AGENTE", nome)), ...dominios.map((codigo) => chaveDe("DOMINIO", codigo))],
       opcionais: [],
-      sugestao: sugerirInclusao(row.name, { alcances: [alcance] }),
+      sugestao: sugerirInclusao(row.name, { alcances }),
       dados: {
-        name: row.name, alcance, agenteOrquestrador, especialistas, invocationMode: row.invocation_mode, structuredOutput: row.structured_output, outputInstructions: row.output_instructions,
+        name: row.name, alcances, alcance, agenteOrquestrador, especialistas, invocationMode: row.invocation_mode, structuredOutput: row.structured_output, outputInstructions: row.output_instructions,
         outputSchema: row.output_schema, routingPolicy: row.routing_policy, routingDomains: row.routing_domains ?? [], policyKind: row.policy_kind, policyDomains: row.policy_domains ?? [],
         recommendSupportMaterials: row.recommend_support_materials, active: row.active,
       },
@@ -263,6 +293,11 @@ try {
     draft_graph: { nodes?: { id: string }[]; edges?: { id: string }[] }; active_version_id: string | null; population_filter: unknown; consolidated_structure: unknown; require_active_access: boolean | null
   }>(`select * from workflows where organization_id = $1 order by created_at`)
   const itemPorId = new Map(itens.map((item) => [item.idOrigem, item]))
+  // Abrangência publicada dos Workflows (249): Grupo inteiro ou Subgrupo, vários por Workflow.
+  const vinculosDoWorkflow = new Map<string, { team_id: string; subteam_id: string | null }[]>()
+  for (const vinculo of (await q<{ workflow_id: string; team_id: string; subteam_id: string | null }>(`select workflow_id, team_id, subteam_id from workflow_scope_links where organization_id = $1 order by workflow_id, team_id, subteam_id nulls first`))) {
+    vinculosDoWorkflow.set(vinculo.workflow_id, [...(vinculosDoWorkflow.get(vinculo.workflow_id) ?? []), vinculo])
+  }
   for (const row of workflows) {
     const internos = new Set<string>([...(row.draft_graph.nodes ?? []).map((node) => node.id), ...(row.draft_graph.edges ?? []).map((edge) => edge.id)])
     for (const variavel of (await client.query<{ id: string }>(`select id from workflow_variables where workflow_id = $1`, [row.id])).rows) internos.add(variavel.id)
@@ -272,14 +307,20 @@ try {
     for (const id of ids) referencias.push(await classificarReferencia(id, itemPorId))
     const codigos = [...new Set([...texto.matchAll(/"indicatorCode":\s*"([A-Z0-9_]+)"/g)].map((match) => match[1]!))]
     const flagGatilho = row.trigger_config?.kind === "channel_flag" ? (itemPorId.get(String(row.trigger_config.channelFlagId))?.chave ?? null) : null
-    const alcance = alcanceDe(row)
+    const alcances: Alcance[] = row.scope_type === "ALL_TEAMS"
+      ? [{ tipo: "TODOS" }]
+      : row.scope_type === "GROUPS"
+        ? (vinculosDoWorkflow.get(row.id) ?? []).map((vinculo) => alcanceDe({ scope_type: vinculo.subteam_id ? "SUBTEAM" : "TEAM", team_id: vinculo.team_id, subteam_id: vinculo.subteam_id }))
+        : [alcanceDe(row)]
+    // Legado para leitores antigos: o primeiro vínculo (restringe, nunca amplia). Sem vínculo nenhum, o plano recusa o item.
+    const alcance: Alcance = alcances[0] ?? { tipo: "TODOS" }
     itens.push({
       tipo: "WORKFLOW", chave: row.name, nome: row.name, idOrigem: row.id,
       dependencias: [...referencias.flatMap((ref) => (ref.tipo === "ITEM" ? [ref.item] : [])), ...codigos.map((codigo) => chaveDe("INDICADOR", codigo))],
       opcionais: [],
-      sugestao: sugerirInclusao(row.name, { alcances: [alcance], motivoFixo: referencias.find((ref) => ref.tipo === "NAO_TRANSFERIVEL") ? "usa algo que o pacote não leva" : null }),
+      sugestao: sugerirInclusao(row.name, { alcances, motivoFixo: referencias.find((ref) => ref.tipo === "NAO_TRANSFERIVEL") ? "usa algo que o pacote não leva" : null }),
       dados: {
-        name: row.name, description: row.description, alcance, gatilho: row.trigger_config ?? {}, flagGatilho, grafo: row.draft_graph, populationFilter: row.population_filter, requireActiveAccess: row.require_active_access === true,
+        name: row.name, description: row.description, alcances, alcance, gatilho: row.trigger_config ?? {}, flagGatilho, grafo: row.draft_graph, populationFilter: row.population_filter, requireActiveAccess: row.require_active_access === true,
         consolidatedStructure: row.consolidated_structure, referencias, active: row.active, publicadoNaOrigem: row.active_version_id !== null,
       },
     })

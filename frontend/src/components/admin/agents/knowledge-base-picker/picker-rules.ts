@@ -1,5 +1,5 @@
-import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import { fitsUniverse } from "@/lib/operating-universe/hierarchy"
+import { linksFromScopeValue, type ScopeLinksValue } from "@/lib/scope-links/scope-links"
 import type { AgentKnowledgeScope, KnowledgeOption, KnowledgeOptionState } from "@/schemas/admin/agent-knowledge-options.schema"
 import type { Team } from "@/schemas/admin/org-structure.schema"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
@@ -9,29 +9,34 @@ import type { OperatingUniverse } from "@/schemas/operating-universe/operating-u
  * (`OPERATING_UNIVERSE_LINK_CONFLICT`) e de outro Grupo (`AGENT_KNOWLEDGE_SCOPE_FORBIDDEN`).
  */
 
-/** Alcance do formulário → alcance que o servidor usa para oferecer bases. Grupo/Subgrupo ainda não escolhido = sem restrição. */
-export function agentKnowledgeScopeOf(scope: OrgScopeValue): AgentKnowledgeScope | undefined {
-  if (scope.scopeType === "ALL_TEAMS") return { scopeType: "ALL_TEAMS" }
-  if (scope.scopeType === "TEAM") return scope.teamId ? { scopeType: "TEAM", teamId: scope.teamId } : undefined
-  return scope.subteamId ? { scopeType: "SUBTEAM", subteamId: scope.subteamId, ...(scope.teamId ? { teamId: scope.teamId } : {}) } : undefined
+/** Alcance do formulário → alcance que o servidor usa para oferecer bases. Nenhum Grupo/Subgrupo escolhido ainda = sem restrição. */
+export function agentKnowledgeScopeOf(scope: ScopeLinksValue): AgentKnowledgeScope | undefined {
+  if (scope.global) return { scopeType: "ALL_TEAMS" }
+  const links = linksFromScopeValue(scope)
+  return links.length ? { scopeType: "GROUPS", links } : undefined
 }
 
-/** Grupo do agente (o próprio ou o pai do Subgrupo). */
-function agentTeamId(scope: AgentKnowledgeScope | undefined, teams: readonly Team[] | undefined): string | null {
+/** Grupos efetivos do agente (o de cada vínculo; Subgrupo → Grupo-pai). null = "todos os Grupos" (ou alcance ainda não escolhido). */
+export function agentTeamIds(scope: AgentKnowledgeScope | undefined, teams: readonly Team[] | undefined): Set<string> | null {
   if (!scope || scope.scopeType === "ALL_TEAMS") return null
-  if (scope.scopeType === "TEAM") return scope.teamId
-  return scope.teamId ?? teams?.find((team) => (team.subteams ?? []).some((subteam) => subteam.id === scope.subteamId))?.id ?? null
+  const parentOf = (subteamId: string) => teams?.find((team) => (team.subteams ?? []).some((subteam) => subteam.id === subteamId))?.id ?? null
+  if (scope.scopeType === "TEAM") return new Set([scope.teamId])
+  if (scope.scopeType === "SUBTEAM") return new Set([scope.teamId ?? parentOf(scope.subteamId)].filter((id): id is string => Boolean(id)))
+  return new Set(scope.links.flatMap((link) => [link.teamId ?? (link.subteamId ? parentOf(link.subteamId) : null)]).filter((id): id is string => Boolean(id)))
 }
 
 /**
- * A base cabe no Grupo do agente? Agente de todos os Grupos (ou sem Grupo ainda) aceita qualquer uma; o de Grupo, global ou do mesmo Grupo.
- * Cópia da regra do servidor (`backend/src/modules/knowledge/application/knowledge-agent-fit.ts`) só para avisar antes de salvar; as duas
- * respondem o caderno `backend/src/modules/knowledge/testing/knowledge-agent-fit-cases.ts` (run-8, ARQ-03).
+ * A base cabe no agente? Agente de todos os Grupos (ou sem Grupo ainda) aceita qualquer uma; com vínculos, global ou valendo para CADA
+ * Grupo dele (Subgrupo leva o Grupo-pai). Cópia da regra do servidor (`backend/src/modules/knowledge/application/knowledge-agent-fit.ts`) só para
+ * avisar antes de salvar; as duas respondem o caderno `backend/src/modules/knowledge/testing/knowledge-agent-fit-cases.ts` (run-8, ARQ-03).
  */
 export function fitsAgentScope(option: Pick<KnowledgeOption, "orgScopes">, scope: AgentKnowledgeScope | undefined, teams: readonly Team[] | undefined): boolean {
-  const teamId = agentTeamId(scope, teams)
-  if (!teamId) return true
-  return option.orgScopes.some((entry) => entry.scopeType === "ALL_TEAMS" || entry.teamId === teamId)
+  const teamIds = agentTeamIds(scope, teams)
+  if (!teamIds) return true
+  if (option.orgScopes.some((entry) => entry.scopeType === "ALL_TEAMS")) return true
+  // Vale para CADA Grupo do agente (run-10 QA-01): a busca não sabe quem pergunta, então base de um Grupo só não entra num agente de vários.
+  const covered = new Set(option.orgScopes.flatMap((entry) => (entry.teamId !== null ? [entry.teamId] : [])))
+  return teamIds.size > 0 && [...teamIds].every((teamId) => covered.has(teamId))
 }
 
 export type OptionProblem = "OTHER_UNIVERSE" | "OTHER_GROUP"

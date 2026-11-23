@@ -17,3 +17,17 @@ export function temporaryPasswordExpired(account: { active: boolean; passwordCha
   if (accountAccessStatusOf(account) !== "PENDING_PASSWORD_CHANGE") return false
   return !account!.temporaryPasswordExpiresAt || account!.temporaryPasswordExpiresAt.getTime() <= now.getTime()
 }
+
+/**
+ * QUEM GERENCIA A SENHA da conta — a mesma regra do login (`credentialModeOf` em auth/infrastructure/postgres-network-login-
+ * repository.ts): com o login pela rede ligado na organização, a conta entra pela matrícula e pela senha de REDE, conferidas
+ * no Active Directory (NETWORK), salvo a conta de emergência (`emergency_local_access`), que continua com senha da INIA
+ * (LOCAL). Depende da CONTA, nunca de como a tela de login é mostrada: uma senha temporária para uma conta NETWORK não serve
+ * para entrar (o login por e-mail recusa com `NETWORK_LOGIN_REQUIRED`) e daria a impressão de que a INIA trocou a senha de rede.
+ */
+export const CREDENTIAL_PROVIDERS = ["LOCAL", "NETWORK"] as const
+export type CredentialProvider = (typeof CREDENTIAL_PROVIDERS)[number]
+
+export function credentialProviderOf(input: { networkLoginEnabled: boolean; emergencyLocalAccess: boolean }): CredentialProvider {
+  return input.networkLoginEnabled && !input.emergencyLocalAccess ? "NETWORK" : "LOCAL"
+}

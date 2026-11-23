@@ -1,5 +1,5 @@
 import type { AccessScope } from "../domain/access-scope.js"
-import type { AccountAccessStatus } from "../domain/account-access-status.js"
+import type { AccountAccessStatus, CredentialProvider } from "../domain/account-access-status.js"
 import type { VisibilityFilter } from "./access-repository.js"
 
 /**
@@ -17,6 +17,8 @@ export type IdentifiedUserAccount = {
   temporaryPasswordExpiresAt: Date | null
   accessDisabledAt: Date | null
   roleCodes: string[]
+  /** Quem gerencia a senha (`credentialProviderOf`): NETWORK = Active Directory, nunca senha temporária da INIA. */
+  credentialProvider: CredentialProvider
 }
 export type IdentifiedUser = {
   personId: string
@@ -41,7 +43,7 @@ export type CredentialTargetRecord = {
    * credencial de um líder herda a visão operacional da estrutura dele — por isso a custódia exige alcançar todas elas.
    */
   ledPlacements: { teamId: string | null; subteamId: string | null }[]
-  account: { accountId: string; email: string; active: boolean; sessionVersion: number; passwordChangeRequired: boolean; assignments: { roleCode: string; scope: AccessScope }[] } | null
+  account: { accountId: string; email: string; active: boolean; sessionVersion: number; passwordChangeRequired: boolean; credentialProvider: CredentialProvider; assignments: { roleCode: string; scope: AccessScope }[] } | null
 }
 
 /** Quem fez a ação (auditoria). null = o próprio sistema (ex.: instalação criando o primeiro administrador). */

@@ -22,8 +22,9 @@ const ACCOUNT = {
 }
 
 const WORKFLOW_ALL_TEAMS = { id: "wf-1", scopeType: "ALL_TEAMS", teamId: null, subteamId: null, name: "Geral" }
-const WORKFLOW_TEAM_A = { id: "wf-2", scopeType: "TEAM", teamId: TEAM_A, subteamId: null, name: "Time A" }
-const WORKFLOW_TEAM_B = { id: "wf-3", scopeType: "TEAM", teamId: TEAM_B, subteamId: null, name: "Time B" }
+// Abrangência com vínculos (249): GROUPS + `scopeLinks` (o Grupo inteiro).
+const WORKFLOW_TEAM_A = { id: "wf-2", scopeType: "GROUPS", scopeLinks: [{ teamId: TEAM_A, subteamId: null }], name: "Time A" }
+const WORKFLOW_TEAM_B = { id: "wf-3", scopeType: "GROUPS", scopeLinks: [{ teamId: TEAM_B, subteamId: null }], name: "Time B" }
 
 function fakeDatabase(
   roleAssignmentRows: unknown[],
@@ -44,6 +45,12 @@ function fakeDatabase(
     if (sql.includes("from subteams where team_id")) {
       return { rows: [], rowCount: 0 }
     }
+    // Grupo-pai real dos vínculos (normalizeScopeLinks): os Grupos A e B existem; nenhum Subgrupo.
+    if (sql.includes("select id from teams where id = any($1::uuid[]) and organization_id = $2")) {
+      const rows = [TEAM_A, TEAM_B].filter((id) => ((params?.[0] as string[] | undefined) ?? []).includes(id)).map((id) => ({ id }))
+      return { rows, rowCount: rows.length }
+    }
+    if (sql.includes("select st.id, st.team_id from subteams st")) return { rows: [], rowCount: 0 }
     // Capacidades do catálogo (validate-indicator-capabilities.ts): todo código referenciado
     // existe, está ativo e tem medição operacional + fechamento oficial — os testes deste arquivo
     // exercitam as demais regras do publish, não o catálogo.
@@ -55,12 +62,14 @@ function fakeDatabase(
     if (sql.includes("from workflows w")) {
       // A listagem filtra o escopo gerenciável no próprio SQL (applyManageableScopeFilter) —
       // aqui a condição é reproduzida sobre os arrays de uuid que chegam nos params.
+      // Com vínculos (249): todos os vínculos do Workflow no escopo (applyWorkflowManageableFilter) — Grupo inteiro pelo Grupo.
       const rows = [WORKFLOW_ALL_TEAMS, WORKFLOW_TEAM_A, WORKFLOW_TEAM_B].filter((row) => {
-        if (!sql.includes(`q."scopeType" = 'TEAM'`)) return true
+        if (!sql.includes(`q."scopeType" = 'GROUPS' and exists`)) return true
         const paramAt = (pattern: RegExp) => (params?.[Number(pattern.exec(sql)?.[1]) - 1] as string[] | undefined) ?? []
-        const teamIds = paramAt(/"teamId" = any\(\$(\d+)::uuid\[\]\)/)
-        const subteamIds = paramAt(/"subteamId" = any\(\$(\d+)::uuid\[\]\)/)
-        return (row.scopeType === "TEAM" && teamIds.includes(row.teamId!)) || (row.scopeType === "SUBTEAM" && subteamIds.includes(row.subteamId!))
+        const teamIds = paramAt(/m\.team_id = any\(\$(\d+)::uuid\[\]\)/)
+        const subteamIds = paramAt(/m\.subteam_id = any\(\$(\d+)::uuid\[\]\)/)
+        const links = "scopeLinks" in row ? row.scopeLinks : []
+        return row.scopeType === "GROUPS" && links.length > 0 && links.every((link) => (link.subteamId ? subteamIds.includes(link.subteamId) : teamIds.includes(link.teamId)))
       })
       if (sql.startsWith("select count(*)")) return { rows: [{ total: rows.length }], rowCount: 1 }
       return { rows, rowCount: rows.length }
@@ -1701,7 +1710,7 @@ describe("workflow-router", () => {
     it("aceita um Trigger relativo bem formado (passa da validação, chega até o insert)", async () => {
       const passwordHash = await hashPassword("Inia@123")
       const database = fakeDatabase([], passwordHash, (sql) => {
-        if (sql.trim().startsWith("insert into workflows")) return { rows: [{ id: "new-wf-id" }], rowCount: 1 }
+        if (sql.includes("insert into workflows(")) return { rows: [{ id: "new-wf-id" }], rowCount: 1 }
         return undefined
       })
       const agent = request.agent(createApp(database))
@@ -1728,7 +1737,7 @@ describe("workflow-router", () => {
         if (sql.includes("select scope_type") && sql.includes("from workflows where id = $1")) {
           const id = params?.[0] as string
           const row = [WORKFLOW_ALL_TEAMS, WORKFLOW_TEAM_A, WORKFLOW_TEAM_B].find((w) => w.id === id)
-          return row ? { rows: [{ scopeType: row.scopeType, teamId: row.teamId, subteamId: row.subteamId, triggerConfig: { kind: "channel_flag", channelFlagId: "flag-1" } }], rowCount: 1 } : { rows: [], rowCount: 0 }
+          return row ? { rows: [{ scopeType: row.scopeType, scopeLinks: "scopeLinks" in row ? row.scopeLinks : [], triggerConfig: { kind: "channel_flag", channelFlagId: "flag-1" } }], rowCount: 1 } : { rows: [], rowCount: 0 }
         }
         return undefined
       })
@@ -2031,7 +2040,7 @@ describe("workflow-router", () => {
     })
 
     describe('"Somente quem tem acesso ativo à INIA" — opção do modo Individual, em qualquer gatilho', () => {
-      /** Captura o que a rota grava no rascunho: $9 = Filtro Populacional, $14 = a opção de acesso (null = não toca). */
+      /** Captura o que a rota grava no rascunho: $8 = Filtro Populacional, $13 = a opção de acesso (null = não toca). */
       const capture = (row: Parameters<typeof fakeDatabaseForAnalysisConfig>[0]) => {
         const writes: unknown[][] = []
         const factory = fakeDatabaseForAnalysisConfig(row, (sql, params) => {
@@ -2054,8 +2063,8 @@ describe("workflow-router", () => {
         const response = await agent.put("/api/v1/admin/workflows/wf-2/analysis-config").send({ mode: "INDIVIDUAL", populationFilter: null, requireActiveAccess: true })
         expect(response.status).toBe(200)
         expect(writes).toHaveLength(1)
-        expect(writes[0]![8]).toBeNull()
-        expect(writes[0]![13]).toBe(true)
+        expect(writes[0]![7]).toBeNull()
+        expect(writes[0]![12]).toBe(true)
       })
 
       it("omitida, a opção fica como está; no Consolidado é sempre desligada", async () => {
@@ -2064,14 +2073,14 @@ describe("workflow-router", () => {
         const agent = request.agent(createApp(individual.factory(passwordHash)))
         await agent.post("/api/v1/auth/login").send({ email: ACCOUNT.email, password: "Inia@123" })
         expect((await agent.put("/api/v1/admin/workflows/wf-2/analysis-config").send({ mode: "INDIVIDUAL", populationFilter: null })).status).toBe(200)
-        expect(individual.writes[0]![13]).toBeNull()
+        expect(individual.writes[0]![12]).toBeNull()
 
         const consolidated = capture(calendarWorkflow)
         const other = request.agent(createApp(consolidated.factory(passwordHash)))
         await other.post("/api/v1/auth/login").send({ email: ACCOUNT.email, password: "Inia@123" })
         const response = await other.put("/api/v1/admin/workflows/wf-2/analysis-config").send({ mode: "CONSOLIDATED", consolidatedStructure: { kind: "SUPERVISOR_TEAM", supervisorId: supervisorInScope } })
         expect(response.status).toBe(200)
-        expect(consolidated.writes[0]![13]).toBe(false)
+        expect(consolidated.writes[0]![12]).toBe(false)
       })
 
       it("a opção não é aceita no corpo do modo Consolidado", async () => {
@@ -2084,7 +2093,7 @@ describe("workflow-router", () => {
           .send({ mode: "CONSOLIDATED", consolidatedStructure: { kind: "SUPERVISOR_TEAM", supervisorId: supervisorInScope }, requireActiveAccess: true })
         // O esquema ignora o campo desconhecido do Consolidado e a rota grava a opção desligada — nunca ligada.
         expect(response.status).toBe(200)
-        expect(writes[0]![13]).toBe(false)
+        expect(writes[0]![12]).toBe(false)
       })
     })
 

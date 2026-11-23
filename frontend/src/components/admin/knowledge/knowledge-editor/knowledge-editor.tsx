@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { EllipsisVertical, ExternalLink, FileUp, Loader2, PanelRightClose, PanelRightOpen, Paperclip, PenLine, Save, Send, SlidersHorizontal, Trash2, Upload } from "lucide-react"
 
@@ -15,7 +15,10 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SectionLabel, StatusChip, SURFACE_CARD, toneSurface, type Tone } from "@/components/ui/surface"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { KnowledgeReadingView } from "@/components/knowledge-reading/knowledge-reading-view"
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard"
+import { canReadAsContent } from "@/lib/knowledge/document-inserts"
+import { knowledgeVersionImageSrc } from "@/lib/knowledge/knowledge-image-src"
 import { unitFitsUniverse } from "@/lib/operating-universe/hierarchy"
 import { orgScopesFromValue, scopeReachSummary, scopeValueAfterUniverseChange, scopeValueFromOrgScopes, scopeValueIssue, scopeValueKey, type ScopeLinksValue } from "@/lib/scope-links/scope-links"
 import { cn } from "@/lib/utils"
@@ -124,6 +127,27 @@ export function KnowledgeEditor({ document }: { document: KnowledgeDocumentDetai
   const guard = useUnsavedChangesGuard(dirty)
   const state = knowledgeEditorStateOf(document)
   const ocrReading = isOcrReading(document?.draft?.ocr ?? null)
+  // O OCR termina com a tela aberta: o rascunho ganhou o texto lido (e o arquivo passou a ter texto), mas o formulário foi montado antes.
+  // Durante a leitura o texto é só leitura, então trazer o novo não apaga nada digitado; se mesmo assim o texto mudou, fica o da pessoa.
+  const wasOcrReading = useRef(ocrReading)
+  useEffect(() => {
+    const finished = wasOcrReading.current && !ocrReading
+    wasOcrReading.current = ocrReading
+    if (!finished || !document) return
+    const text = document.editable?.content ?? ""
+    setForm((current) => (current.content === baseline.content ? { ...current, content: text } : current))
+    setBaseline((current) => ({ ...current, content: text }))
+    setDraftFile(draftFileOf(document))
+  }, [ocrReading, document, baseline.content])
+  // "Visualizar" do rascunho de PDF convertido: o texto com os prints no lugar, como fica depois de publicar (sem isso, só se conferiam
+  // os prints na base publicada). Texto editado continua valendo: a imagem entra no fim da linha onde estava (`imageInsertAt`).
+  const draftExtraction = document?.editable && !document.editable.restricted && draftFile?.sourceType === "PDF" ? (document.editable.extraction ?? null) : null
+  const draftVersionId = document?.editable?.versionId ?? null
+  const draftImageSrc = useCallback((imageId: string) => (document && draftVersionId ? knowledgeVersionImageSrc(document.id, draftVersionId, imageId) : ""), [document, draftVersionId])
+  const noPageJump = useCallback(() => undefined, [])
+  const draftPreview = draftExtraction && canReadAsContent(form.content, draftExtraction)
+    ? <KnowledgeReadingView content={form.content} extraction={draftExtraction} title={form.title} imageSrc={draftImageSrc} onOpenPage={noPageJump} />
+    : undefined
   const pending = create.isPending || update.isPending || universeMutation.isPending || replaceFile.isPending || productScope.saving
   const fromFile = draftFile ? isFileDraft(draftFile) : false
   const issue = knowledgeFormIssue({ ...form, scope }, {
@@ -168,7 +192,7 @@ export function KnowledgeEditor({ document }: { document: KnowledgeDocumentDetai
         if (sending) tracked.settle()
         await productScope.save(created.id).catch(() => undefined)
         guard.release() // a navegação abaixo não pode disparar o aviso de "não salvo"
-        // Quem saiu da tela durante o envio não é puxado de volta: a base aparece em "Envios recentes".
+        // Quem saiu da tela durante o envio não é puxado de volta: a base aparece na lista, com o "Último envio de arquivo" dentro dela.
         if (mounted.current) router.replace(knowledgeEditHref(created.id, { publish: intent === "PUBLISH" }))
         return true
       } catch (failure) {
@@ -409,7 +433,7 @@ export function KnowledgeEditor({ document }: { document: KnowledgeDocumentDetai
               {tracked.upload ? (
                 <KnowledgeUploadProgress filename={tracked.upload.filename} sizeBytes={tracked.upload.sizeBytes} transfer={tracked.upload.transfer} waiting={tracked.upload.waiting} run={tracked.run} requestError={tracked.upload.requestError} />
               ) : (
-                <KnowledgeRecentUploads documentId={document.id} latestOnly />
+                <KnowledgeRecentUploads documentId={document.id} />
               )}
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted/40 px-3 py-2.5">
                 <div className="flex min-w-0 items-center gap-2">
@@ -427,7 +451,7 @@ export function KnowledgeEditor({ document }: { document: KnowledgeDocumentDetai
               {draftFile && !draftFile.textAvailable ? (
                 <p role="status" className={cn(toneSurface("warning"), "p-3 text-sm")}>Não foi possível extrair texto deste arquivo. Escreva o texto abaixo ou troque o arquivo: publicar sem texto falha no processamento, e a versão em uso não muda.</p>
               ) : null}
-              <KnowledgeMarkdownField id="knowledge-content" label={fromFile ? "Texto extraído do arquivo" : "Conteúdo"} title={form.title} value={form.content} readOnly={ocrReading} onChange={(content) => patch({ content })} />
+              <KnowledgeMarkdownField id="knowledge-content" label={fromFile ? "Texto extraído do arquivo" : "Conteúdo"} title={form.title} value={form.content} readOnly={ocrReading} onChange={(content) => patch({ content })} preview={draftPreview} />
               {fromFile ? <p className="text-xs text-muted-foreground">É este texto que a IA consulta quando a versão estiver em uso; alterá-lo não mexe no arquivo original.</p> : null}
               {form.content.trim().length > 0 && form.content.trim().length < MIN_CONTENT_LENGTH ? <p className="text-xs text-destructive">O conteúdo precisa ter pelo menos {MIN_CONTENT_LENGTH} caracteres.</p> : null}
             </div>

@@ -38,14 +38,15 @@ import type { OrgScopeFilter } from "@/lib/admin/list-query"
 import { filterByUniverse, orgScopeAfterUniverseChange, orgScopePatch, scopesFitOrgScope } from "@/lib/operating-universe/hierarchy"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import type { AgentListParams } from "@/services/admin/agent-service"
+import { resourceScopeLabel } from "@/lib/scope-links/scope-links"
 import { AGENT_TYPE_COLORS, AGENT_TYPE_LABELS, agentPublicationLabel, type Agent } from "@/schemas/admin/agent.schema"
 
 import { AGENT_TYPE_ICONS } from "./agent-visuals"
 import { DeleteAgentDialog } from "./agent-lifecycle/delete-agent-dialog"
 
-function groupLabel(agent: Pick<Agent, "scopeType" | "teamName" | "subteamName">) {
-  if (agent.scopeType === "ALL_TEAMS") return "Todos os grupos"
-  return agent.subteamName ?? agent.teamName ?? "—"
+/** Alcance na lista (249): "Todos os grupos" ou os vínculos por nome ("Grupo A · Grupo B › B1"). */
+function groupLabel(agent: Pick<Agent, "scopeType" | "scopeLinks" | "teamName" | "subteamName">) {
+  return resourceScopeLabel({ scopeType: agent.scopeType, scopeLinks: agent.scopeLinks, teamName: agent.teamName ?? null, subteamName: agent.subteamName ?? null }, "Todos os grupos")
 }
 
 function ActiveSwitch({ agent }: { agent: Agent }) {

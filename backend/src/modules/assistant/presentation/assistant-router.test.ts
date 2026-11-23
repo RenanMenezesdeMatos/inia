@@ -42,15 +42,15 @@ const ACCOUNT = {
 }
 
 const AGENTS_BY_ID: Record<string, { agent_type: string; scopeType: string; teamId: string | null; subteamId: string | null; name: string; specialty: string | null; current_version_id?: string | null }> = {
-  [ORCH_AGENT_A]: { agent_type: "ORCHESTRATOR", scopeType: "TEAM", teamId: TEAM_A, subteamId: null, name: "Agente Orquestrador A", specialty: null },
-  [SPECIALIST_AGENT_B]: { agent_type: "DIAGNOSTICS", scopeType: "TEAM", teamId: TEAM_B, subteamId: null, name: "Especialista B", specialty: null },
-  [ORCH_AGENT_B]: { agent_type: "ORCHESTRATOR", scopeType: "TEAM", teamId: TEAM_B, subteamId: null, name: "Agente Orquestrador B", specialty: null },
-  [SPECIALIST_FATURAMENTO_A]: { agent_type: "CUSTOM", scopeType: "TEAM", teamId: TEAM_A, subteamId: null, name: "Especialista de Faturamento", specialty: "FATURAMENTO" },
-  [SPECIALIST_RETENCAO_A]: { agent_type: "CUSTOM", scopeType: "TEAM", teamId: TEAM_A, subteamId: null, name: "Especialista de Retenção", specialty: "RETENCAO" },
-  [SPECIALIST_EXPERIENCIA_A]: { agent_type: "CUSTOM", scopeType: "TEAM", teamId: TEAM_A, subteamId: null, name: "Especialista de Experiência", specialty: "CROSS_CUTTING" },
-  [SYNTHESIS_AGENT_A]: { agent_type: "CUSTOM", scopeType: "TEAM", teamId: TEAM_A, subteamId: null, name: "Síntese Gerencial", specialty: "SYNTHESIS" },
-  [SPECIALIST_LOGISTICA_A]: { agent_type: "CUSTOM", scopeType: "TEAM", teamId: TEAM_A, subteamId: null, name: "Agent · Entregas QA", specialty: "LOGISTICA" },
-  [SPECIALIST_UNPUBLISHED_A]: { agent_type: "CUSTOM", scopeType: "TEAM", teamId: TEAM_A, subteamId: null, name: "Especialista em rascunho", specialty: "FATURAMENTO", current_version_id: null },
+  [ORCH_AGENT_A]: { agent_type: "ORCHESTRATOR", scopeType: "GROUPS", teamId: TEAM_A, subteamId: null, name: "Agente Orquestrador A", specialty: null },
+  [SPECIALIST_AGENT_B]: { agent_type: "DIAGNOSTICS", scopeType: "GROUPS", teamId: TEAM_B, subteamId: null, name: "Especialista B", specialty: null },
+  [ORCH_AGENT_B]: { agent_type: "ORCHESTRATOR", scopeType: "GROUPS", teamId: TEAM_B, subteamId: null, name: "Agente Orquestrador B", specialty: null },
+  [SPECIALIST_FATURAMENTO_A]: { agent_type: "CUSTOM", scopeType: "GROUPS", teamId: TEAM_A, subteamId: null, name: "Especialista de Faturamento", specialty: "FATURAMENTO" },
+  [SPECIALIST_RETENCAO_A]: { agent_type: "CUSTOM", scopeType: "GROUPS", teamId: TEAM_A, subteamId: null, name: "Especialista de Retenção", specialty: "RETENCAO" },
+  [SPECIALIST_EXPERIENCIA_A]: { agent_type: "CUSTOM", scopeType: "GROUPS", teamId: TEAM_A, subteamId: null, name: "Especialista de Experiência", specialty: "CROSS_CUTTING" },
+  [SYNTHESIS_AGENT_A]: { agent_type: "CUSTOM", scopeType: "GROUPS", teamId: TEAM_A, subteamId: null, name: "Síntese Gerencial", specialty: "SYNTHESIS" },
+  [SPECIALIST_LOGISTICA_A]: { agent_type: "CUSTOM", scopeType: "GROUPS", teamId: TEAM_A, subteamId: null, name: "Agent · Entregas QA", specialty: "LOGISTICA" },
+  [SPECIALIST_UNPUBLISHED_A]: { agent_type: "CUSTOM", scopeType: "GROUPS", teamId: TEAM_A, subteamId: null, name: "Especialista em rascunho", specialty: "FATURAMENTO", current_version_id: null },
 }
 
 /** Catálogo de domínios de negócio (migration 060) — DADOS: a regra do router não conhece código nenhum. */
@@ -65,9 +65,10 @@ const DOMAINS = [
 const domainByCode = (code: string | null) => DOMAINS.find((domain) => domain.code === code) ?? null
 
 const ORCHESTRATORS_BY_ID: Record<string, { scopeType: string; teamId: string | null; subteamId: string | null }> = {
-  [ORCHESTRATOR_A]: { scopeType: "TEAM", teamId: TEAM_A, subteamId: null },
-  [ORCHESTRATOR_B]: { scopeType: "TEAM", teamId: TEAM_B, subteamId: null },
-  [ORCHESTRATOR_LEGACY]: { scopeType: "TEAM", teamId: TEAM_A, subteamId: null },
+  // Depois da 249: GROUPS com um vínculo (o Grupo inteiro) — `teamId` aqui só alimenta o vínculo no dublê.
+  [ORCHESTRATOR_A]: { scopeType: "GROUPS", teamId: TEAM_A, subteamId: null },
+  [ORCHESTRATOR_B]: { scopeType: "GROUPS", teamId: TEAM_B, subteamId: null },
+  [ORCHESTRATOR_LEGACY]: { scopeType: "GROUPS", teamId: TEAM_A, subteamId: null },
 }
 /** Agente orquestrador gravado em cada Orquestrador — lido ao fixar a versão dele (PEN-076). */
 const ORCHESTRATOR_AGENT_BY_ID: Record<string, string> = { [ORCHESTRATOR_A]: ORCH_AGENT_A, [ORCHESTRATOR_B]: ORCH_AGENT_B, [ORCHESTRATOR_LEGACY]: ORCH_AGENT_A }
@@ -100,9 +101,25 @@ function fakeDatabase(
       return row ? { rows: [{ agent_type: row.agent_type }], rowCount: 1 } : { rows: [], rowCount: 0 }
     }
     if (sql.includes("select id, name, scope_type") && sql.includes("from agents where id = any")) {
+      // Alcance de cada Agent (249): GROUPS + vínculos em agent_scope_links (abaixo).
       const ids = (params?.[0] as string[]) ?? []
-      const rows = ids.filter((id) => AGENTS_BY_ID[id]).map((id) => ({ id, ...AGENTS_BY_ID[id]! }))
+      const rows = ids.filter((id) => AGENTS_BY_ID[id]).map((id) => ({ id, name: AGENTS_BY_ID[id]!.name, scope_type: AGENTS_BY_ID[id]!.scopeType, team_id: null, subteam_id: null }))
       return { rows, rowCount: rows.length }
+    }
+    if (sql.includes("from agent_scope_links where agent_id = any")) {
+      const ids = (params?.[0] as string[]) ?? []
+      const rows = ids.flatMap((id) => (AGENTS_BY_ID[id]?.teamId ? [{ owner_id: id, team_id: AGENTS_BY_ID[id]!.teamId, subteam_id: null }] : []))
+      return { rows, rowCount: rows.length }
+    }
+    if (sql.includes("from assistant_orchestrator_scope_links where orchestrator_id = any")) {
+      const ids = (params?.[0] as string[]) ?? []
+      const rows = ids.flatMap((id) => (ORCHESTRATORS_BY_ID[id]?.teamId ? [{ owner_id: id, team_id: ORCHESTRATORS_BY_ID[id]!.teamId, subteam_id: null }] : []))
+      return { rows, rowCount: rows.length }
+    }
+    // Grupos existentes na organização (normalizeScopeLinks): os dois do teste.
+    if (sql.includes("select id from teams where id = any")) {
+      const ids = ((params?.[0] as string[]) ?? []).filter((id) => id === TEAM_A || id === TEAM_B)
+      return { rows: ids.map((id) => ({ id })), rowCount: ids.length }
     }
     if (sql.includes("from business_domains where organization_id = $1 and (id = any($2::uuid[]) or code = any($3::text[]))")) {
       const ids = (params?.[1] as string[]) ?? []
@@ -127,17 +144,17 @@ function fakeDatabase(
       // Registro legado ainda sem `routing_policy` (só policy_kind) e sem relação nova: o dual-read precisa traduzir DOMAIN → DOMAINS a partir dos códigos.
       return ORCHESTRATORS_BY_ID[id] ? { rows: [{ policy_kind: "DOMAIN", policy_domains: ["FATURAMENTO"], routing_policy: null, routing_domains: [], business_domains: [], active: true, invocation_mode: "WORKFLOW" }], rowCount: 1 } : { rows: [], rowCount: 0 }
     }
-    if (sql.includes("from assistant_orchestrators where id = $1")) {
+    if (sql.includes("select scope_type, operating_universe from assistant_orchestrators where id = $1")) {
       const id = params?.[0] as string
       const row = ORCHESTRATORS_BY_ID[id]
-      return row ? { rows: [row], rowCount: 1 } : { rows: [], rowCount: 0 }
+      return row ? { rows: [{ scope_type: row.scopeType, operating_universe: null }], rowCount: 1 } : { rows: [], rowCount: 0 }
     }
     // GET /:id consulta o ORCHESTRATOR_SELECT completo direto (não passa por fetchScopedRow) —
     // mesma tabela, join com `agents oa`, filtrando por `o.id = $2`.
     if (sql.includes("from assistant_orchestrators o") && sql.includes("o.id = $2")) {
       const id = params?.[1] as string
       const row = ORCHESTRATORS_BY_ID[id]
-      return row ? { rows: [{ id, ...row }], rowCount: 1 } : { rows: [], rowCount: 0 }
+      return row ? { rows: [{ id, scopeType: row.scopeType, scopeLinks: row.teamId ? [{ teamId: row.teamId, subteamId: null }] : [] }], rowCount: 1 } : { rows: [], rowCount: 0 }
     }
     return { rows: [], rowCount: 0 }
   }
@@ -334,7 +351,7 @@ describe("assistant-router — Orquestrador ativo nunca fica sem política (migr
     const both = await agent.post("/api/v1/admin/assistant-orchestrators").send({ name: "Aberto em workflow", scopeType: "TEAM", teamId: TEAM_A, orchestratorAgentId: ORCH_AGENT_A, routingPolicy: "OPEN", invocationMode: "BOTH" })
     expect(both.status).toBe(201)
     // dual-write: policy_kind legado = OPEN (não INTERACTIVE — a constraint da 054 exige chat/voz para INTERACTIVE), routing_policy = OPEN
-    expect(inserts[0]!.slice(10, 14)).toEqual(["OPEN", [], "OPEN", []])
+    expect(inserts[0]!.slice(8, 12)).toEqual(["OPEN", [], "OPEN", []])
     const ok = await agent.post("/api/v1/admin/assistant-orchestrators").send({
       name: "Assistente",
       scopeType: "TEAM",
@@ -346,7 +363,7 @@ describe("assistant-router — Orquestrador ativo nunca fica sem política (migr
     })
     expect(ok.status).toBe(201)
     // forma legada INTERACTIVE no chat → routing OPEN + policy_kind INTERACTIVE preservado
-    expect(inserts[1]!.slice(10, 14)).toEqual(["INTERACTIVE", [], "OPEN", []])
+    expect(inserts[1]!.slice(8, 12)).toEqual(["INTERACTIVE", [], "OPEN", []])
   })
 
   it("forma nova: DOMAINS com 1 domínio grava DOMAIN; com vários grava MULTIDOMAIN; DOMAINS sem domínio é recusado; síntese nunca é tool", async () => {
@@ -360,10 +377,10 @@ describe("assistant-router — Orquestrador ativo nunca fica sem política (migr
     )
     const one = await agent.post("/api/v1/admin/assistant-orchestrators").send({ name: "Faturamento", scopeType: "TEAM", teamId: TEAM_A, orchestratorAgentId: ORCH_AGENT_A, routingPolicy: "DOMAINS", routingDomains: ["FATURAMENTO"], invocationMode: "WORKFLOW", specialistAgentIds: [SPECIALIST_FATURAMENTO_A, SPECIALIST_EXPERIENCIA_A] })
     expect(one.status).toBe(201)
-    expect(inserts[0]!.slice(10, 14)).toEqual(["DOMAIN", ["FATURAMENTO"], "DOMAINS", ["FATURAMENTO"]])
+    expect(inserts[0]!.slice(8, 12)).toEqual(["DOMAIN", ["FATURAMENTO"], "DOMAINS", ["FATURAMENTO"]])
     const many = await agent.post("/api/v1/admin/assistant-orchestrators").send({ name: "Reincidência", scopeType: "TEAM", teamId: TEAM_A, orchestratorAgentId: ORCH_AGENT_A, routingPolicy: "DOMAINS", routingDomains: ["FATURAMENTO", "RETENCAO"], invocationMode: "WORKFLOW", specialistAgentIds: [SPECIALIST_FATURAMENTO_A, SPECIALIST_RETENCAO_A, SPECIALIST_EXPERIENCIA_A] })
     expect(many.status).toBe(201)
-    expect(inserts[1]!.slice(10, 14)).toEqual(["MULTIDOMAIN", ["FATURAMENTO", "RETENCAO"], "DOMAINS", ["FATURAMENTO", "RETENCAO"]])
+    expect(inserts[1]!.slice(8, 12)).toEqual(["MULTIDOMAIN", ["FATURAMENTO", "RETENCAO"], "DOMAINS", ["FATURAMENTO", "RETENCAO"]])
     const empty = await agent.post("/api/v1/admin/assistant-orchestrators").send({ name: "Vazio", scopeType: "TEAM", teamId: TEAM_A, orchestratorAgentId: ORCH_AGENT_A, routingPolicy: "DOMAINS", routingDomains: [], invocationMode: "WORKFLOW" })
     expect(empty.status).toBe(422)
     expect(empty.body.error.code).toBe("ORCHESTRATOR_POLICY_INVALID")
@@ -399,7 +416,7 @@ describe("assistant-router — domínio de negócio como DADO do catálogo (migr
     const ok = await agent.post("/api/v1/admin/assistant-orchestrators").send({ name: "Orchestrator · Logística QA", scopeType: "TEAM", teamId: TEAM_A, orchestratorAgentId: ORCH_AGENT_A, invocationMode: "WORKFLOW", routingPolicy: "DOMAINS", routingDomainIds: [logisticaId], specialistAgentIds: [SPECIALIST_LOGISTICA_A, SPECIALIST_EXPERIENCIA_A] })
     expect(ok.status).toBe(201)
     // dual-write: policy_kind DOMAIN + policy_domains [LOGISTICA]; routing_policy DOMAINS + routing_domains [LOGISTICA]; relação N:N por id.
-    expect(inserts[0]!.slice(10, 14)).toEqual(["DOMAIN", ["LOGISTICA"], "DOMAINS", ["LOGISTICA"]])
+    expect(inserts[0]!.slice(8, 12)).toEqual(["DOMAIN", ["LOGISTICA"], "DOMAINS", ["LOGISTICA"]])
     expect(relations[0]).toEqual([ORCHESTRATOR_A, [logisticaId]])
 
     const blocked = await agent.post("/api/v1/admin/assistant-orchestrators").send({ name: "Orchestrator · Logística QA", scopeType: "TEAM", teamId: TEAM_A, orchestratorAgentId: ORCH_AGENT_A, invocationMode: "WORKFLOW", routingPolicy: "DOMAINS", routingDomainIds: [logisticaId], specialistAgentIds: [SPECIALIST_LOGISTICA_A, SPECIALIST_FATURAMENTO_A] })
@@ -410,7 +427,7 @@ describe("assistant-router — domínio de negócio como DADO do catálogo (migr
 
     const widened = await agent.post("/api/v1/admin/assistant-orchestrators").send({ name: "Orchestrator · Logística QA", scopeType: "TEAM", teamId: TEAM_A, orchestratorAgentId: ORCH_AGENT_A, invocationMode: "WORKFLOW", routingPolicy: "DOMAINS", routingDomainIds: [logisticaId, "d0000000-0000-4000-8000-000000000001"], specialistAgentIds: [SPECIALIST_LOGISTICA_A, SPECIALIST_FATURAMENTO_A] })
     expect(widened.status).toBe(201)
-    expect(inserts[1]!.slice(10, 14)).toEqual(["MULTIDOMAIN", ["LOGISTICA", "FATURAMENTO"], "DOMAINS", ["LOGISTICA", "FATURAMENTO"]])
+    expect(inserts[1]!.slice(8, 12)).toEqual(["MULTIDOMAIN", ["LOGISTICA", "FATURAMENTO"], "DOMAINS", ["LOGISTICA", "FATURAMENTO"]])
   })
 
   it("DOMAINS exige 1..N domínios do catálogo: id inexistente → 422 BUSINESS_DOMAIN_NOT_FOUND; domínio desativado → 422 BUSINESS_DOMAIN_INACTIVE; OPEN não exige domínio", async () => {
@@ -461,5 +478,64 @@ describe("assistant-router — toda gravação publica uma versão da configura�
     expect(unpublished.body.error.code).toBe("ORCHESTRATOR_AGENT_NOT_PUBLISHED")
     expect(unpublished.body.error.details).toEqual({ agentId: SPECIALIST_UNPUBLISHED_A })
     expect(writes).toEqual([])
+  })
+})
+
+describe("assistant-router — alcance por vínculos (migration 249)", () => {
+  const body = { name: "Chat A", scopeType: "GROUPS", scopeLinks: [{ teamId: TEAM_A }], orchestratorAgentId: ORCH_AGENT_A, routingPolicy: "OPEN", invocationMode: "INTERACTIVE" }
+  const created = (sql: string) => {
+    if (sql.trim().startsWith("insert into assistant_orchestrators")) return { rows: [{ id: ORCHESTRATOR_A }], rowCount: 1 }
+    if (sql.includes("from assistant_orchestrators o") && sql.includes("join agents oa")) return { rows: [{ id: ORCHESTRATOR_A, scopeType: "GROUPS", scopeLinks: [{ teamId: TEAM_A, subteamId: null }], specialists: [] }], rowCount: 1 }
+    if (sql.includes("select scope_type, active, invocation_mode, operating_universe from assistant_orchestrators")) return { rows: [{ scope_type: "GROUPS", active: true, invocation_mode: "INTERACTIVE", operating_universe: null }], rowCount: 1 }
+    return undefined
+  }
+
+  it("grava os vínculos pedidos (GROUPS) na mesma transação, sem team_id/subteam_id no registro", async () => {
+    const passwordHash = await hashPassword("Inia@123")
+    const linkWrites: unknown[][] = []
+    const agent = await loginAgent(fakeDatabase([], passwordHash, (sql, params) => {
+      if (sql.includes("insert into assistant_orchestrator_scope_links")) linkWrites.push(params ?? [])
+      return created(sql)
+    }))
+    const response = await agent.post("/api/v1/admin/assistant-orchestrators").send(body)
+    expect(response.status).toBe(201)
+    expect(linkWrites).toEqual([[ORCHESTRATOR_A, ACCOUNT.organization_id, [TEAM_A], [null]]])
+  })
+
+  it("vínculo idêntico ao de outro Orquestrador ativo do chat/voz → 409 ORCHESTRATOR_SCOPE_OVERLAP com o nome e o Grupo", async () => {
+    const passwordHash = await hashPassword("Inia@123")
+    const agent = await loginAgent(fakeDatabase([], passwordHash, (sql) => {
+      if (sql.includes("from assistant_orchestrator_scope_links mine")) return { rows: [{ orchestrator_id: ORCHESTRATOR_B, name: "Chat antigo", team_id: TEAM_A, subteam_id: null, unit_name: "Grupo A" }], rowCount: 1 }
+      return created(sql)
+    }))
+    const response = await agent.post("/api/v1/admin/assistant-orchestrators").send(body)
+    expect(response.status).toBe(409)
+    expect(response.body.error.code).toBe("ORCHESTRATOR_SCOPE_OVERLAP")
+    expect(response.body.error.message).toContain('"Chat antigo" (Grupo A)')
+  })
+
+  it("vínculo NOVO sem operador em produção → 422 e nada gravado", async () => {
+    const passwordHash = await hashPassword("Inia@123")
+    const inserts: string[] = []
+    const agent = await loginAgent(fakeDatabase([], passwordHash, (sql) => {
+      if (sql.includes("select 'TEAM' kind")) return { rows: [{ kind: "TEAM", id: TEAM_A, name: "Grupo A", team_id: TEAM_A, n: 0 }], rowCount: 1 }
+      if (sql.trim().startsWith("insert into assistant_orchestrators")) inserts.push(sql)
+      return created(sql)
+    }))
+    const response = await agent.post("/api/v1/admin/assistant-orchestrators").send(body)
+    expect(response.status).toBe(422)
+    expect(response.body.error.code).toBe("SCOPE_UNIT_WITHOUT_PRODUCTION_OPERATORS")
+    expect(inserts).toEqual([])
+  })
+
+  it("editar mantendo o vínculo já salvo (mesmo sem operador em produção) é aceito", async () => {
+    const passwordHash = await hashPassword("Inia@123")
+    const agent = await loginAgent(fakeDatabase([], passwordHash, (sql) => {
+      if (sql.includes("select 'TEAM' kind")) return { rows: [{ kind: "TEAM", id: TEAM_A, name: "Grupo A", team_id: TEAM_A, n: 0 }], rowCount: 1 }
+      if (sql.trim().startsWith("update assistant_orchestrators")) return { rows: [{ id: ORCHESTRATOR_A }], rowCount: 1 }
+      return created(sql)
+    }))
+    const response = await agent.patch(`/api/v1/admin/assistant-orchestrators/${ORCHESTRATOR_A}`).send({ scopeType: "GROUPS", scopeLinks: [{ teamId: TEAM_A }] })
+    expect(response.status).toBe(200)
   })
 })

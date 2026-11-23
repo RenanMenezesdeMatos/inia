@@ -1,7 +1,9 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { assertResourceLinksCompatible } from "../../operating-universe/application/resource-universe.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
-import { AGENT_LIVE_COLUMNS, configFromLiveRow, parseAgentConfig, sameAgentConfig, type AgentConfig, type AgentLiveRow, type AgentRuntimeSnapshot } from "../domain/agent-config.js"
+import { loadResourceScope, loadResourceScopeLinks, replaceResourceScopeLinks } from "../../org-structure/application/resource-scope-links.js"
+import type { ResourceScope } from "../../../shared/domain/scope-links/resource-scope.js"
+import { AGENT_LIVE_COLUMNS, agentScopeOf, configFromLiveRow, parseAgentConfig, sameAgentConfig, type AgentConfig, type AgentLiveRow, type AgentRuntimeSnapshot } from "../domain/agent-config.js"
 
 /**
  * Rascunho, publicação e versões do agente (PEN-002, decidida em 03/11/2026; migration 164).
@@ -42,24 +44,24 @@ export type AgentLifecycleRow = {
   draftRevision: number
   draftUpdatedAt: string | null
   draftUpdatedByName: string | null
-  scopeType: string
-  teamId: string | null
-  subteamId: string | null
+  /** Alcance da linha viva (versão vigente): `scope_type` + `agent_scope_links` (249). */
+  scope: ResourceScope
 }
 
 /** Estado de ciclo de vida do agente. `forUpdate` trava a linha (publicar, reverter, salvar rascunho, excluir). */
 export async function loadAgentLifecycle(db: Queryable, organizationId: string, agentId: string, options: { forUpdate?: boolean } = {}): Promise<AgentLifecycleRow | null> {
-  const result = await db.query<Omit<AgentLifecycleRow, "draftConfig"> & { draftConfig: unknown }>(
+  const result = await db.query<Omit<AgentLifecycleRow, "draftConfig" | "scope"> & { draftConfig: unknown; scopeType: string }>(
     `select a.id, a.organization_id "organizationId", a.active, a.current_version_id "currentVersionId",
             (select v.version_number from agent_versions v where v.id = a.current_version_id) "currentVersionNumber",
             a.draft_config "draftConfig", a.draft_revision "draftRevision", a.draft_updated_at "draftUpdatedAt", a.draft_updated_by_name "draftUpdatedByName",
-            a.scope_type "scopeType", a.team_id "teamId", a.subteam_id "subteamId"
+            a.scope_type "scopeType"
        from agents a where a.id = $1 and a.organization_id = $2 ${options.forUpdate ? "for update of a" : ""}`,
     [agentId, organizationId],
   )
   const row = result.rows[0]
   if (!row) return null
-  return { ...row, draftConfig: row.draftConfig ? parseAgentConfig(row.draftConfig) : null }
+  const { scopeType, ...rest } = row
+  return { ...rest, scope: await loadResourceScope(db, "AGENT", row.id, scopeType), draftConfig: row.draftConfig ? parseAgentConfig(row.draftConfig) : null }
 }
 
 /** Configuração viva (= versão vigente; num agente nunca publicado, a configuração inicial gravada na criação). */
@@ -67,7 +69,8 @@ export async function loadLiveAgentConfig(db: Queryable, organizationId: string,
   const row = (await db.query<AgentLiveRow>(`select ${AGENT_LIVE_COLUMNS} from agents where id = $1 and organization_id = $2`, [agentId, organizationId])).rows[0]
   if (!row) return null
   const knowledge = await db.query<{ knowledge_document_id: string }>(`select knowledge_document_id from agent_knowledge_documents where agent_id = $1`, [agentId])
-  return configFromLiveRow(row, knowledge.rows.map((item) => item.knowledge_document_id))
+  const links = row.scope_type === "ALL_TEAMS" ? [] : ((await loadResourceScopeLinks(db, "AGENT", [agentId])).get(agentId) ?? [])
+  return configFromLiveRow(row, knowledge.rows.map((item) => item.knowledge_document_id), links)
 }
 
 /** O que o formulário edita: o rascunho, se houver; senão a configuração viva. */
@@ -78,14 +81,14 @@ export async function loadEditableAgentConfig(db: Queryable, organizationId: str
   return config ? { config, lifecycle } : null
 }
 
-/** Alcance da configuração de uma versão (sem o resto dela): a lista diz a quem lê se pode abri-la, testá-la ou revertê-la. */
-export type AgentVersionScope = Pick<AgentConfig, "scopeType" | "teamId" | "subteamId">
+/** Alcance da configuração de uma versão (sem o resto dela, em qualquer formato — legado ou 249): a lista diz a quem lê se pode abri-la, testá-la ou revertê-la. */
+export type AgentVersionScope = { scopeType: string; teamId: string | null; subteamId: string | null; scopeLinks?: { teamId: string; subteamId: string | null }[] }
 
 export async function listAgentVersions(db: Queryable, organizationId: string, agentId: string): Promise<(AgentVersionSummary & { scope: AgentVersionScope })[]> {
   const result = await db.query<AgentVersionSummary & { scope: AgentVersionScope }>(
     `select v.id, v.version_number "number", v.origin, rv.version_number "revertedFromNumber", v.published_at "publishedAt", v.published_by_name "publishedByName",
             (a.current_version_id = v.id) "current",
-            jsonb_build_object('scopeType', v.config->>'scopeType', 'teamId', v.config->>'teamId', 'subteamId', v.config->>'subteamId') "scope"
+            jsonb_build_object('scopeType', v.config->>'scopeType', 'teamId', v.config->>'teamId', 'subteamId', v.config->>'subteamId', 'scopeLinks', coalesce(v.config->'scopeLinks', '[]'::jsonb)) "scope"
        from agent_versions v join agents a on a.id = v.agent_id
        left join agent_versions rv on rv.id = v.reverted_from_version_id
       where v.agent_id = $1 and v.organization_id = $2
@@ -110,17 +113,22 @@ export async function loadAgentVersion(db: Queryable, organizationId: string, ag
   return { summary, config: parseAgentConfig(config) }
 }
 
-/** Grava a configuração nas colunas vivas e nos vínculos com as bases (publicar/reverter; criação). */
+/**
+ * Grava a configuração nas colunas vivas, nos vínculos de alcance (`agent_scope_links`, 249 — `team_id`/`subteam_id` ficam nulos) e nos
+ * vínculos com as bases (publicar/reverter; criação). Roda na transação de quem chama: alcance e vínculos mudam juntos.
+ */
 export async function writeLiveAgentConfig(client: Queryable, organizationId: string, agentId: string, config: AgentConfig): Promise<void> {
+  const scope = agentScopeOf(config)
   await client.query(
-    `update agents set name = $3, agent_type = $4, objective = $5, description = $6, context_prompt = $7, scope_type = $8, team_id = $9, subteam_id = $10,
-            specialty = $11, specialty_kind = $12, domain = $13, capability = $14, consolidated_input = $15, business_domain_id = $16,
-            recommend_support_materials = $17, investigation_capabilities = $18::text[], action_limits_enabled = $19, action_limits = $20, updated_at = now()
+    `update agents set name = $3, agent_type = $4, objective = $5, description = $6, context_prompt = $7, scope_type = $8, team_id = null, subteam_id = null,
+            specialty = $9, specialty_kind = $10, domain = $11, capability = $12, consolidated_input = $13, business_domain_id = $14,
+            recommend_support_materials = $15, investigation_capabilities = $16::text[], action_limits_enabled = $17, action_limits = $18, updated_at = now()
       where id = $1 and organization_id = $2`,
-    [agentId, organizationId, config.name, config.agentType, config.objective, config.description, config.contextPrompt, config.scopeType, config.teamId, config.subteamId,
+    [agentId, organizationId, config.name, config.agentType, config.objective, config.description, config.contextPrompt, scope.scopeType,
       config.specialty, config.specialtyKind, config.domain, config.capability, config.consolidatedInput, config.businessDomainId,
       config.recommendSupportMaterials, config.investigationCapabilities, config.actionLimitsEnabled, config.actionLimits],
   )
+  await replaceResourceScopeLinks(client, "AGENT", organizationId, agentId, scope)
   await client.query(`delete from agent_knowledge_documents where agent_id = $1`, [agentId])
   for (const knowledgeDocumentId of [...new Set(config.knowledgeDocumentIds)]) {
     await client.query(`insert into agent_knowledge_documents(agent_id, knowledge_document_id) values ($1, $2)`, [agentId, knowledgeDocumentId])

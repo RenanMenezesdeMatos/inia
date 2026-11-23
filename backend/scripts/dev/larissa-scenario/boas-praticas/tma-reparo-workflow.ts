@@ -48,8 +48,12 @@ try {
     if (apply) {
       if (trigger.kind === "manual") validateManualTrigger(trigger)
       const id = existing?.id ?? (await pool.query<{ id: string }>(
-        `insert into workflows(organization_id, name, description, scope_type, team_id, subteam_id, trigger_config, draft_graph, created_by, draft_scope_type, draft_team_id, draft_subteam_id, draft_trigger_config)
-         values ($1, $2, $3, 'SUBTEAM', $4, $5, $6, $7, $8, 'SUBTEAM', $4, $5, $6) returning id`,
+        // Abrangência (249): o Subgrupo da Larissa como vínculo (GROUPS) — rascunho em `draft_scope_links`, publicada em `workflow_scope_links`.
+        `with created as (
+           insert into workflows(organization_id, name, description, scope_type, trigger_config, draft_graph, created_by, draft_scope_type, draft_scope_links, draft_trigger_config)
+           values ($1, $2, $3, 'GROUPS', $6, $7, $8, 'GROUPS', jsonb_build_array(jsonb_build_object('teamId', $4::uuid, 'subteamId', $5::uuid)), $6) returning id, organization_id
+         ), links as (insert into workflow_scope_links (workflow_id, organization_id, team_id, subteam_id) select id, organization_id, $4, $5 from created)
+         select id from created`,
         [ORG, NAME, "Teste da base de boas práticas: Executar agora numa medição diária de TMA da Larissa.", TEAM, SUBTEAM, JSON.stringify(trigger), JSON.stringify(graph), ACTOR],
       )).rows[0]!.id
       await pool.query(`update workflows set draft_graph = $1, updated_at = now() where id = $2 and organization_id = $3`, [JSON.stringify(graph), id, ORG])

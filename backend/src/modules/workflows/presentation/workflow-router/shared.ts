@@ -3,6 +3,9 @@ import { DomainError } from "../../../../shared/domain/domain-error.js"
 import { canManageScope, scopesAreCompatible, type ManageableScopes } from "../../../auth/application/manageable-scopes.js"
 import type { PopulationFilter } from "../../domain/population-filter-schema.js"
 import { loadWorkflowConfigurationRow, type WorkflowConfigurationRow } from "../../application/workflow-configuration-store.js"
+import { workflowJsonScopeLinksWithNamesSql, workflowScopedTarget, type WorkflowScopeInput } from "../../domain/workflow-scope.js"
+import { resourceScopeLinksJsonSql } from "../../../../shared/domain/scope-links/resource-scope.js"
+import type { SqlFilter } from "../../../../shared/presentation/list-query.js"
 
 
 export const NOT_FOUND = { error: { code: "WORKFLOW_NOT_FOUND", message: "Workflow não encontrado." } }
@@ -36,11 +39,17 @@ function triggerJsonSql(column: string, flag: string, indicator: string): string
     end`
 }
 
-/** Topo = configuração PUBLICADA (a que o runtime lê); `draftConfiguration` = a do rascunho que o editor edita. */
+/** Vínculos da Abrangência numa forma comparável (rascunho jsonb × tabela publicada): "grupo:subgrupo" ordenados. */
+const LIVE_LINK_KEYS_SQL = `(select coalesce(array_agg(wsl.team_id::text || ':' || coalesce(wsl.subteam_id::text, '*') order by 1), '{}') from workflow_scope_links wsl where wsl.workflow_id = w.id)`
+const DRAFT_LINK_KEYS_SQL = `(select coalesce(array_agg((l ->> 'teamId') || ':' || coalesce(l ->> 'subteamId', '*') order by 1), '{}') from jsonb_array_elements(coalesce(w.draft_scope_links, '[]'::jsonb)) l)`
+
+/**
+ * Topo = configuração PUBLICADA (a que o runtime lê); `draftConfiguration` = a do rascunho que o editor edita. Abrangência (249):
+ * `scopeType` ALL_TEAMS | GROUPS + `scopeLinks` `[{teamId, teamName, subteamId, subteamName}]` (vazio em ALL_TEAMS).
+ */
 export const WORKFLOW_LIST_SELECT = `
   select
-    w.id, w.name, w.description, w.scope_type "scopeType", w.team_id "teamId", t.name "teamName",
-    w.subteam_id "subteamId", st.name "subteamName", w.active, w.created_at "createdAt", w.operating_universe "operatingUniverse",
+    w.id, w.name, w.description, w.scope_type "scopeType", ${resourceScopeLinksJsonSql("WORKFLOW", "w.id")} "scopeLinks", w.active, w.created_at "createdAt", w.operating_universe "operatingUniverse",
     (w.active_version_id is not null) "published",
     w.consolidated_structure "consolidatedStructure", w.population_filter "populationFilter", w.require_active_access "requireActiveAccess",
     ${triggerJsonSql("w.trigger_config", "cf", "idef")} "trigger",
@@ -50,25 +59,20 @@ export const WORKFLOW_LIST_SELECT = `
     -- difere da publicada. Sem versão publicada as duas são a mesma (lista vazia).
     jsonb_build_object(
       'trigger', ${triggerJsonSql("w.draft_trigger_config", "dcf", "didef")},
-      'scopeType', w.draft_scope_type, 'teamId', w.draft_team_id, 'teamName', dt.name,
-      'subteamId', w.draft_subteam_id, 'subteamName', dst.name,
+      'scopeType', w.draft_scope_type, 'scopeLinks', ${workflowJsonScopeLinksWithNamesSql("w.draft_scope_links")},
       'consolidatedStructure', w.draft_consolidated_structure, 'populationFilter', w.draft_population_filter,
       'operatingUniverse', w.draft_operating_universe, 'requireActiveAccess', w.draft_require_active_access
     ) "draftConfiguration",
     (select coalesce(jsonb_agg(c.change order by c.ord), '[]'::jsonb)
        from (values
          (1, 'TRIGGER', w.draft_trigger_config is distinct from w.trigger_config),
-         (2, 'SCOPE', (w.draft_scope_type, w.draft_team_id, w.draft_subteam_id, w.draft_operating_universe) is distinct from (w.scope_type, w.team_id, w.subteam_id, w.operating_universe)),
+         (2, 'SCOPE', (w.draft_scope_type, w.draft_operating_universe) is distinct from (w.scope_type, w.operating_universe) or ${DRAFT_LINK_KEYS_SQL} is distinct from ${LIVE_LINK_KEYS_SQL}),
          (3, 'ANALYSIS', (w.draft_consolidated_structure, w.draft_population_filter, w.draft_require_active_access) is distinct from (w.consolidated_structure, w.population_filter, w.require_active_access))
        ) as c(ord, change, differs)
       where c.differs and w.active_version_id is not null) "configurationChanges"
   from workflows w
-  left join teams t on t.id = w.team_id
-  left join subteams st on st.id = w.subteam_id
   left join channel_flags cf on cf.id = (w.trigger_config ->> 'channelFlagId')::uuid
   left join indicator_definitions idef on idef.code = (w.trigger_config ->> 'indicatorCode') and idef.organization_id = w.organization_id
-  left join teams dt on dt.id = w.draft_team_id
-  left join subteams dst on dst.id = w.draft_subteam_id
   left join channel_flags dcf on dcf.id = (w.draft_trigger_config ->> 'channelFlagId')::uuid
   left join indicator_definitions didef on didef.code = (w.draft_trigger_config ->> 'indicatorCode') and didef.organization_id = w.organization_id
   where w.organization_id = $1
@@ -85,7 +89,7 @@ export async function assertAnchorInScope(
   organizationId: string,
   anchorId: string | null,
   groupRef: { teamId?: string; subteamId?: string } | null,
-  targetScope: { scopeType: string; teamId: string | null; subteamId: string | null },
+  targetScope: WorkflowScopeInput,
   message: string,
   code: string,
   status: number,
@@ -97,14 +101,14 @@ export async function assertAnchorInScope(
     )
     const anchorPerson = anchorResult.rows[0]
     const anchorScope = { scopeType: "TEAM", teamId: anchorPerson?.teamId ?? null, subteamId: anchorPerson?.subteamId ?? null }
-    if (!anchorPerson || !(await scopesAreCompatible(db, anchorScope, targetScope))) throw new DomainError(message, code, status)
+    if (!anchorPerson || !(await scopesAreCompatible(db, anchorScope, workflowScopedTarget(targetScope)))) throw new DomainError(message, code, status)
     return
   }
   if (groupRef) {
     const groupScope = groupRef.subteamId
       ? { scopeType: "SUBTEAM", teamId: null, subteamId: groupRef.subteamId }
       : { scopeType: "TEAM", teamId: groupRef.teamId ?? null, subteamId: null }
-    if (!(await scopesAreCompatible(db, groupScope, targetScope))) throw new DomainError(message, code, status)
+    if (!(await scopesAreCompatible(db, groupScope, workflowScopedTarget(targetScope)))) throw new DomainError(message, code, status)
   }
 }
 
@@ -120,7 +124,37 @@ export function fetchScopedRow(db: Database, organizationId: string, id: string)
 /** Quem enxerga/edita um Workflow: quem gerencia a Abrangência PUBLICADA (a que o runtime usa; sem versão publicada é a
  * do rascunho). A publicação exige também a do rascunho (publish-workflow.ts). */
 export function canManageWorkflow(scopes: ManageableScopes, row: WorkflowConfigurationRow): boolean {
-  return canManageScope(scopes, row.live)
+  return canManageScope(scopes, workflowScopedTarget(row.live))
+}
+
+/**
+ * Listagem: só os Workflows cuja Abrangência PUBLICADA quem pergunta gerencia (`canManageWorkflow`, no WHERE para o total e as páginas
+ * baterem). Com vínculos: TODOS no escopo (Grupo inteiro exige o Grupo; Subgrupo exige o Subgrupo ou o Grupo dele) — GROUPS sem vínculo
+ * e ALL_TEAMS só para quem administra a organização.
+ */
+export function applyWorkflowManageableFilter(scopes: ManageableScopes, filter: SqlFilter): void {
+  if (scopes.unrestricted || scopes.allTeams) return
+  const teamIds = filter.param([...scopes.teamIds])
+  const subteamIds = filter.param([...scopes.subteamIds])
+  filter.add(`(q."scopeType" = 'GROUPS' and exists (select 1 from workflow_scope_links m where m.workflow_id = q.id)
+    and not exists (select 1 from workflow_scope_links m where m.workflow_id = q.id
+      and not (case when m.subteam_id is null then m.team_id = any(${teamIds}::uuid[]) else m.subteam_id = any(${subteamIds}::uuid[]) end)))`)
+}
+
+/**
+ * Filtro de Grupo/Subgrupo da listagem: algum vínculo PUBLICADO naquele Grupo (inteiro ou um Subgrupo dele) / que alcança aquele
+ * Subgrupo (ele mesmo ou o Grupo-pai inteiro). "Todos os Grupos" = só os ALL_TEAMS. Uma linha por Workflow (`exists`).
+ */
+export function applyWorkflowScopeListFilter(filter: SqlFilter, input: { scopeType?: string | undefined; teamId?: string | undefined; subteamId?: string | undefined }): void {
+  if (input.subteamId) {
+    const subteamId = filter.param(input.subteamId)
+    filter.add(`exists (select 1 from workflow_scope_links f where f.workflow_id = q.id
+      and (f.subteam_id = ${subteamId}::uuid or (f.subteam_id is null and f.team_id = (select st.team_id from subteams st where st.id = ${subteamId}::uuid))))`)
+  } else if (input.teamId) {
+    filter.add(`exists (select 1 from workflow_scope_links f where f.workflow_id = q.id and f.team_id = ${filter.param(input.teamId)}::uuid)`)
+  } else if (input.scopeType === "ALL_TEAMS") {
+    filter.add(`q."scopeType" = 'ALL_TEAMS'`)
+  }
 }
 
 /** Filtro "Todos os colaboradores elegíveis" e ausência de filtro são a mesma população — gravados como null. */

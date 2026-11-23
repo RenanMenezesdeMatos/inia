@@ -83,12 +83,12 @@ describe.skipIf(!ENABLED)("Rascunho × publicada — gatilho/Abrangência/popula
     const created = await admin.post(base).send({ name: "Proof Draft Manual", scopeType: "TEAM", teamId: teamA, trigger: { kind: "manual", context: "COLLABORATOR" } })
     expect(created.status).toBe(201)
     const workflowId = created.body.data.id as string
-    expect(created.body.data).toMatchObject({ active: true, published: false, configurationChanges: [], draftConfiguration: { trigger: { kind: "manual" }, scopeType: "TEAM" } })
+    expect(created.body.data).toMatchObject({ active: true, published: false, configurationChanges: [], draftConfiguration: { trigger: { kind: "manual" }, scopeType: "GROUPS", scopeLinks: [{ teamId: teamA, subteamId: null }] } })
     expect((await admin.put(`${base}/${workflowId}/draft`).send({ graph })).status).toBe(200)
     const firstPublish = await admin.post(`${base}/${workflowId}/publish`).send({})
     expect(firstPublish.status).toBe(200) // Manual nunca dispara ao publicar: sem confirmação
     const firstVersion = (await live(workflowId)).active_version_id!
-    expect((await client.query("select trigger_config, scope_type, team_id from workflow_versions where id = $1", [firstVersion])).rows[0]).toEqual({ trigger_config: { kind: "manual", context: "COLLABORATOR" }, scope_type: "TEAM", team_id: teamA })
+    expect((await client.query("select trigger_config, scope_type, team_id, scope_links from workflow_versions where id = $1", [firstVersion])).rows[0]).toEqual({ trigger_config: { kind: "manual", context: "COLLABORATOR" }, scope_type: "GROUPS", team_id: null, scope_links: [{ teamId: teamA, subteamId: null }] })
 
     // 2) O incidente: trocar o gatilho para Agenda num Workflow ativo e publicado — vai para o RASCUNHO.
     const switched = await admin.patch(`${base}/${workflowId}`).send({ trigger: dailyMidnight })
@@ -106,8 +106,8 @@ describe.skipIf(!ENABLED)("Rascunho × publicada — gatilho/Abrangência/popula
     expect(filtered.body.data.configurationChanges).toEqual(["TRIGGER", "ANALYSIS"])
     const widened = await admin.patch(`${base}/${workflowId}`).send({ scopeType: "ALL_TEAMS" })
     expect(widened.status).toBe(200)
-    expect(widened.body.data).toMatchObject({ scopeType: "TEAM", teamId: teamA, configurationChanges: ["TRIGGER", "SCOPE", "ANALYSIS"] })
-    expect(await live(workflowId)).toMatchObject({ trigger_config: { kind: "manual" }, scope_type: "TEAM", population_filter: null, draft_scope_type: "ALL_TEAMS", draft_population_filter: { kind: "EMPLOYEE", employeeId: op1.id } })
+    expect(widened.body.data).toMatchObject({ scopeType: "GROUPS", scopeLinks: [{ teamId: teamA, subteamId: null }], configurationChanges: ["TRIGGER", "SCOPE", "ANALYSIS"] })
+    expect(await live(workflowId)).toMatchObject({ trigger_config: { kind: "manual" }, scope_type: "GROUPS", population_filter: null, draft_scope_type: "ALL_TEAMS", draft_population_filter: { kind: "EMPLOYEE", employeeId: op1.id } })
     expect(await runScheduleCheck(client as never, now())).toEqual({ enrolled: 0 })
     expect(await scheduleEnrollments(workflowId)).toBe(0)
 

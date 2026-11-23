@@ -174,7 +174,7 @@ async function accessRequirementImpact(db: Database, organizationId: string, inp
   const required = config.requireActiveAccess === true
   const removed = input.reason === "PUBLISH" && !required && input.published?.requireActiveAccess === true
   if (!required && !removed) return null
-  const population = { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse ?? null }
+  const population = { scopeType: config.scopeType, scopeLinks: config.scopeLinks, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse ?? null }
   const [everyone, withAccess] = await Promise.all([
     resolveEligibleOperatorIds(db, organizationId, { ...population, requireActiveAccess: false }),
     resolveEligibleOperatorIds(db, organizationId, { ...population, requireActiveAccess: true }),
@@ -187,6 +187,7 @@ function scheduleConfigurationFrom(configuration: WorkflowConfiguration): Schedu
   if (trigger.kind !== "schedule") throw new Error("scheduleConfigurationFrom: gatilho não é Agenda")
   return {
     scopeType: configuration.scopeType,
+    scopeLinks: configuration.scopeLinks,
     teamId: configuration.teamId,
     subteamId: configuration.subteamId,
     mode: trigger.mode,
@@ -210,7 +211,7 @@ async function scheduleImpact(db: Database, organizationId: string, input: GoLiv
 
   const population = structure
     ? (await resolveStructureAnchorOperatorIds(db, structure, consolidatedStructureAnchorId(structure))).length
-    : (await resolveEligibleOperatorIds(db, organizationId, { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse ?? null, requireActiveAccess: config.requireActiveAccess })).length
+    : (await resolveEligibleOperatorIds(db, organizationId, { scopeType: config.scopeType, scopeLinks: config.scopeLinks, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse ?? null, requireActiveAccess: config.requireActiveAccess })).length
 
   const due = await planDueScheduleEnrollments(db, organizationId, config, { now: input.now, timezone })
   const pending = await withoutExistingEnrollments(db, input.workflowId, due)
@@ -260,7 +261,7 @@ async function withoutExistingEnrollments(db: Database, workflowId: string, slot
 /** Próximo disparo da Agenda relativa: o primeiro instante FUTURO, entre os colaboradores com jornada, no próximo dia útil assumido. */
 async function nextRelativeFire(db: Database, organizationId: string, config: ScheduleConfiguration, now: Date, timezone: string): Promise<{ at: string | null; withShift: number }> {
   if (!config.relative) return { at: null, withShift: 0 }
-  const operatorIds = await resolveEligibleOperatorIds(db, organizationId, { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse ?? null, requireActiveAccess: config.requireActiveAccess })
+  const operatorIds = await resolveEligibleOperatorIds(db, organizationId, { scopeType: config.scopeType, scopeLinks: config.scopeLinks, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse ?? null, requireActiveAccess: config.requireActiveAccess })
   if (operatorIds.length === 0) return { at: null, withShift: 0 }
   let date = localDateParts(now, timezone).date
   for (let guard = 0; guard < 8; guard++, date = addDays(date, 1)) {

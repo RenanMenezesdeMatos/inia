@@ -96,7 +96,7 @@ export function KnowledgeScopeSection({ teams, value, onChange, universe, editin
     <SettingsSection title="Alcance" icon={Users}>
       {teams ? (
         <MultiOrgScopeField
-          teams={teams}
+          permission="knowledge.manage"
           value={value}
           onChange={onChange}
           universe={universe}

@@ -28,10 +28,24 @@ const DOWNSTREAM_REFERENCES: { table: string; column: string; target: "people" |
   // Abrangência "B2C · Retenção") — sem isto o delete de `teams` estourava a FK no meio da transação.
   { table: "workflows_all", column: "team_id", target: "teams" },
   { table: "workflows_all", column: "subteam_id", target: "subteams" },
+  // Abrangência por vínculos (249): o Grupo/Subgrupo de um Workflow publicado vive aqui (o do rascunho, em `draft_scope_links`, sem FK).
+  { table: "workflow_scope_links", column: "team_id", target: "teams" },
+  { table: "workflow_scope_links", column: "subteam_id", target: "subteams" },
   { table: "agents_all", column: "team_id", target: "teams" },
   { table: "agents_all", column: "subteam_id", target: "subteams" },
+  // Vínculos de alcance dos agentes (249): o Grupo/Subgrupo de um agente vive aqui (`agents_all.team_id`/`subteam_id` ficam nulos).
+  { table: "agent_scope_links", column: "team_id", target: "teams" },
+  { table: "agent_scope_links", column: "subteam_id", target: "subteams" },
   { table: "assistant_orchestrators_all", column: "team_id", target: "teams" },
   { table: "assistant_orchestrators_all", column: "subteam_id", target: "subteams" },
+  // Alcance por vínculos (249): Orquestrador com vínculo num Grupo/Subgrupo demo também bloqueia o reset.
+  { table: "assistant_orchestrator_scope_links", column: "team_id", target: "teams" },
+  { table: "assistant_orchestrator_scope_links", column: "subteam_id", target: "subteams" },
+  // Alcance de Indicador e alcance operacional de Produto (250): vínculo num Grupo/Subgrupo demo também bloqueia o reset.
+  { table: "indicator_scope_links", column: "team_id", target: "teams" },
+  { table: "indicator_scope_links", column: "subteam_id", target: "subteams" },
+  { table: "product_operational_scope_links", column: "team_id", target: "teams" },
+  { table: "product_operational_scope_links", column: "subteam_id", target: "subteams" },
   { table: "data_record_cancellations", column: "cancelled_by_person_id", target: "people" },
   { table: "workflows_all", column: "deleted_by_person_id", target: "people" },
   { table: "agents_all", column: "deleted_by_person_id", target: "people" },
@@ -93,6 +107,9 @@ const DOWNSTREAM_REFERENCES: { table: string; column: string; target: "people" |
   { table: "intervention_reports", column: "person_id", target: "people" },
 ]
 
+/** Tabelas de vínculo de alcance (249/250): chave composta, sem coluna `id`. */
+const SCOPE_LINK_TABLES = new Set(["workflow_scope_links", "agent_scope_links", "assistant_orchestrator_scope_links", "indicator_scope_links", "product_operational_scope_links"])
+
 /** Alertas gerados pelos jobs do calendário operacional (people/application/*-service.ts). */
 const CALENDAR_ALERT_CLAUSE = `alert_type in ('WORKDAY_MISSING_PRODUCTION', 'WORKDAY_PRODUCTION_DIVERGENCE', 'WORKDAY_STATUS_INCONSISTENCY', 'WORKDAY_CLASSIFICATION_SUPERSEDED', 'WORK_SCHEDULE_HORIZON', 'DATA_SOURCE_AVAILABILITY_DELAYED')`
 const CALENDAR_AUDIT_CLAUSE = `entity_type in ('employee_schedule_exception', 'workday_reconciliation', 'workday_classification')`
@@ -141,7 +158,8 @@ export async function findResetBlockers(client: Client, mass: DemoMass, interact
     // workflow_outputs não tem id na lista: é "da massa" quando pertence a uma matrícula da massa.
     // Alertas/auditoria do CALENDÁRIO OPERACIONAL (reconciliação de dias, horizonte da escala, exceções)
     // são derivados dos fatos da massa pelos jobs determinísticos — saem com ela, nunca bloqueiam.
-    const ownershipClause = reference.table === "workflow_outputs" ? `not (enrollment_id = any($2::uuid[]))` : reference.table === "alerts" ? `not (id = any($2::uuid[])) and not (${CALENDAR_ALERT_CLAUSE})` : reference.table === "audit_logs" ? `not (id = any($2::uuid[])) and not (${CALENDAR_AUDIT_CLAUSE})` : `not (id = any($2::uuid[]))`
+    // As tabelas de vínculo de alcance (249/250) não têm coluna `id` nem linha "da massa": toda linha que aponte para Grupo/Subgrupo demo bloqueia.
+    const ownershipClause = SCOPE_LINK_TABLES.has(reference.table) ? "true" : reference.table === "workflow_outputs" ? `not (enrollment_id = any($2::uuid[]))` : reference.table === "alerts" ? `not (id = any($2::uuid[])) and not (${CALENDAR_ALERT_CLAUSE})` : reference.table === "audit_logs" ? `not (id = any($2::uuid[])) and not (${CALENDAR_AUDIT_CLAUSE})` : `not (id = any($2::uuid[]))`
     const ownedForClause = reference.table === "workflow_outputs" ? owned.workflow_enrollments! : ownedIds
     const result = await client.query<{ count: string }>(
       `select count(*)::text from ${reference.table} where ${reference.column} = any($1::uuid[]) and ${ownershipClause}`,

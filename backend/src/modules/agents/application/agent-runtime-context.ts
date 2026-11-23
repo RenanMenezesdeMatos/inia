@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks"
-import type { AgentConfig, AgentRuntimeSnapshot } from "../domain/agent-config.js"
+import { agentScopeOf, type AgentConfig, type AgentRuntimeSnapshot } from "../domain/agent-config.js"
 
 /**
  * Versão do agente em execução (PEN-002). Quem inicia a execução resolve a versão (fixada pelo Workflow ou pelo orquestrador,
@@ -24,8 +24,8 @@ export function agentSnapshotFor(agentId: string | null | undefined): AgentRunti
 export function agentCacheKey(agentId: string): string {
   const snapshot = agentSnapshotFor(agentId)
   if (!snapshot) return agentId
-  return snapshot.versionId ? `${agentId}@${snapshot.versionId}` : `${agentId}@draft:${JSON.stringify(snapshot.config.knowledgeDocumentIds)}|${snapshot.config.scopeType}|${snapshot.config.teamId}|${snapshot.config.subteamId}`
+  return snapshot.versionId ? `${agentId}@${snapshot.versionId}` : `${agentId}@draft:${JSON.stringify(snapshot.config.knowledgeDocumentIds)}|${snapshot.config.scopeType}|${JSON.stringify(agentScopeOf(snapshot.config).links)}`
 }
 
-/** Grupo efetivo do alcance de uma configuração (Subgrupo → o Grupo dele), para as regras de base e de público. */
-export type AgentScopeOfConfig = Pick<AgentConfig, "scopeType" | "teamId" | "subteamId">
+/** Alcance de uma configuração (ALL_TEAMS ou os vínculos), para as regras de base e de público. */
+export type AgentScopeOfConfig = Pick<AgentConfig, "scopeType" | "teamId" | "subteamId" | "scopeLinks">

@@ -45,7 +45,8 @@ import {
 } from "@/components/admin/shared/list/list-filters"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
-import { OrgScopeSelect, orgScopeValueAfterUniverseChange, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { MultiOrgScopeField } from "@/components/admin/shared/multi-org-scope-field"
+import { EMPTY_SCOPE_VALUE, resourceScopePayloadOf, scopeValueIssue, type ScopeLinksValue } from "@/lib/scope-links/scope-links"
 import { fitsUniverse, orgScopeAfterUniverseChange, orgScopePatch } from "@/lib/operating-universe/hierarchy"
 import { useIndicatorsWithRulesQuery } from "@/queries/admin/use-indicator-rule-queries"
 import { formatScopeLabel } from "@/lib/admin/scope-compatibility"
@@ -73,7 +74,8 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
 
   const [name, setName] = useState("")
   const [trigger, setTrigger] = useState<WorkflowTriggerInput>(EMPTY_TRIGGER)
-  const [orgScope, setOrgScope] = useState<OrgScopeValue>({ scopeType: "ALL_TEAMS" })
+  // Abrangência (249): "Todos os Grupos e Subgrupos" do universo ou Grupos inteiros/Subgrupos escolhidos.
+  const [scope, setScope] = useState<ScopeLinksValue>({ global: true, groups: [] })
   const [universe, setUniverse] = useState<OperatingUniverse | null>(null)
   const universeEnforced = useCurrentUserQuery().data?.operatingUniverseEnforced ?? false
 
@@ -83,15 +85,15 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
   const [scopeCheckedFor, setScopeCheckedFor] = useState<typeof manageableTeamsQuery.data>(undefined)
   if (scopeCheckedFor !== manageableTeamsQuery.data) {
     setScopeCheckedFor(manageableTeamsQuery.data)
-    if (manageableTeamsQuery.data && !manageableTeamsQuery.data.unrestricted && orgScope.scopeType === "ALL_TEAMS") {
-      setOrgScope({ scopeType: "TEAM" })
+    if (manageableTeamsQuery.data && !manageableTeamsQuery.data.unrestricted && scope.global) {
+      setScope(EMPTY_SCOPE_VALUE)
     }
   }
 
-  // Trocar o universo limpa o que deixou de caber: Grupo/Subgrupo e o indicador do gatilho de outro universo.
+  // Trocar o universo limpa o indicador do gatilho de outro universo; os Grupos/Subgrupos que deixaram de caber ficam marcados no
+  // seletor da Abrangência ("Remover os que não cabem") — nada some em silêncio.
   function handleUniverseChange(next: OperatingUniverse | null) {
     setUniverse(next)
-    setOrgScope((current) => orgScopeValueAfterUniverseChange(current, manageableTeamsQuery.data?.teams, next))
     setTrigger((current) => {
       if ((current.kind !== "indicator" && current.kind !== "manual") || !current.indicatorCode) return current
       const indicator = indicatorsQuery.data?.find((candidate) => candidate.code === current.indicatorCode)
@@ -101,10 +103,10 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
 
   async function handleCreate() {
     try {
-      const workflow = await createMutation.mutateAsync({ name, trigger, orgScope, operatingUniverse: universe })
+      const workflow = await createMutation.mutateAsync({ name, trigger, scope: resourceScopePayloadOf(scope), operatingUniverse: universe })
       setName("")
       setTrigger(EMPTY_TRIGGER)
-      setOrgScope({ scopeType: "ALL_TEAMS" })
+      setScope({ global: true, groups: [] })
       setUniverse(null)
       onOpenChange(false)
       onCreated(workflow.id)
@@ -116,9 +118,10 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
   const nameOk = name.trim().length > 1
   const triggerOk = isTriggerComplete(trigger)
   const universeOk = !universeEnforced || universe !== null
-  const canCreate = nameOk && triggerOk && universeOk
-  // O botão desabilitado nunca fica mudo: o rodapé diz o que falta (nome, universo, gatilho).
-  const missing = [!nameOk ? "o nome" : null, !universeOk ? "o universo" : null, !triggerOk ? "o gatilho" : null].filter((item): item is string => item !== null)
+  const scopeOk = scopeValueIssue(scope) === null
+  const canCreate = nameOk && triggerOk && universeOk && scopeOk
+  // O botão desabilitado nunca fica mudo: o rodapé diz o que falta (nome, universo, gatilho, abrangência).
+  const missing = [!nameOk ? "o nome" : null, !universeOk ? "o universo" : null, !triggerOk ? "o gatilho" : null, !scopeOk ? "a abrangência" : null].filter((item): item is string => item !== null)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -146,17 +149,21 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
             </div>
           </CreateStep>
           <CreateStep number={2} icon={Zap} title="Quando começa" hint="O que dispara uma execução deste fluxo.">
-            <TriggerFields value={trigger} onChange={setTrigger} scope={orgScope} universe={universe} />
+            <TriggerFields value={trigger} onChange={setTrigger} scope={resourceScopePayloadOf(scope)} universe={universe} />
           </CreateStep>
           <CreateStep number={3} icon={UsersRound} title="Onde vale" hint="Abrangência: em quais grupos este workflow pode atuar.">
             <div className="space-y-1.5">
               {manageableTeamsQuery.data ? (
-                <OrgScopeSelect
-                  teams={manageableTeamsQuery.data.teams}
-                  value={orgScope}
-                  onChange={setOrgScope}
-                  allowAllTeams={manageableTeamsQuery.data.unrestricted}
-                  universe={universe}
+                <MultiOrgScopeField
+                  permission="workflows.manage"
+                  value={scope}
+                  onChange={setScope}
+                  allowGlobal={manageableTeamsQuery.data.unrestricted}
+                  globalLabel={universe ? `Todos os Grupos e Subgrupos do universo ${universe}` : "Todos os Grupos e Subgrupos"}
+                  globalDescription="Vale também para os Grupos e Subgrupos criados depois: quem participa é decidido a cada execução."
+                  universe={universe ?? undefined}
+                  label="Grupos e Subgrupos"
+                  hint="Grupo inteiro inclui todos os Subgrupos dele; um Subgrupo escolhido não leva os irmãos."
                 />
               ) : (
                 <Skeleton className="h-10 w-full" />

@@ -36,7 +36,7 @@ import { sectionOf, type CatalogSource } from "../../../src/modules/knowledge/do
 import { planSectionPrefill } from "../../../src/modules/knowledge/domain/section-prefill.js"
 import { normalized } from "../../../src/modules/knowledge/domain/vector-math.js"
 import { loadRealCorpus, readVectorCache, withDistractors } from "./corpus.js"
-import { expandAcronyms } from "../../../src/modules/knowledge/domain/query-acronyms.js"
+import { definitionForSearch, expandAcronyms } from "../../../src/modules/knowledge/domain/query-acronyms.js"
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const distractorCount = Number(process.argv[2] ?? 1000)
@@ -57,7 +57,28 @@ const TOP = 40
 type Section = { doc: string; chunk: number; literal: string }
 type Question = { id: string; category: string; text: string; sections: Section[] }
 const goldFiles = (process.env.KB_EVAL_GOLD ?? "gold.json,gold-v2.json,gold-v3.json").split(",")
-const gold = { questions: goldFiles.flatMap((file) => (JSON.parse(readFileSync(path.join(here, file), "utf8")) as { questions: Question[] }).questions) }
+const goldData = goldFiles.map((file) => JSON.parse(readFileSync(path.join(here, file), "utf8")) as { questions: Question[]; glossary?: { term: string; definition: string }[] })
+const gold = { questions: goldData.flatMap((data) => data.questions) }
+
+// ---------- opção 4 (23/11/2026): a seção que contém o termo oficial ganha a gíria do Glossário ----------
+/** Glossário de jargão do gabarito v4: termo = gíria; 1ª oração da definição = termo oficial escrito nas bases. */
+const jargonGlossary = goldData.flatMap((data) => data.glossary ?? [])
+const foldText = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()
+const jargonRules = jargonGlossary.map((entry) => ({ slang: entry.term.trim(), official: foldText(definitionForSearch(entry.definition)) })).filter((rule) => rule.official.length >= 3)
+let enrichedSections = 0
+/** Mesmas bases, mesmos ids e índices; só o texto da seção ganha "Também chamado: …" quando cita o termo oficial. */
+function withJargon(sources: readonly CatalogSource[]): CatalogSource[] {
+  return sources.map((source) => ({
+    ...source,
+    chunks: source.chunks.map((chunk) => {
+      const folded = foldText(`${chunk.heading}\n${chunk.text}`)
+      const slangs = [...new Set(jargonRules.filter((rule) => folded.includes(rule.official)).map((rule) => rule.slang))]
+      if (slangs.length === 0) return chunk
+      enrichedSections += 1
+      return { ...chunk, text: `${chunk.text.trimEnd()}\nTambém chamado: ${slangs.join("; ")}.` }
+    }),
+  }))
+}
 
 // ---------- corpus ----------
 const corpus = await loadRealCorpus(databaseUrl)
@@ -123,14 +144,27 @@ async function embedAll(sources: readonly CatalogSource[]) {
 
 // ---------- medição ----------
 /** Variantes da junção (a 1ª é o padrão atual). Vetor puro e BM25 puro entram como referência. */
-const VARIANTS: { name: string; fusion: FusionOptions; only?: "LEXICAL" | "VECTOR"; products?: boolean; acronyms?: boolean }[] = [
+type Variant = { name: string; fusion: FusionOptions; only?: "LEXICAL" | "VECTOR"; products?: boolean; acronyms?: boolean; jargon?: "BOTH" | "TEXT" | "VECTOR" }
+const V2: FusionOptions = { unit: "SECTION", method: "INTERLEAVE", limit: 60 }
+const ALL_VARIANTS: Variant[] = [
   { name: "V1 (trecho, RRF, 40)", fusion: { unit: "CHUNK" } },
-  { name: "V2 (seção, intercalado, 60)", fusion: { unit: "SECTION", method: "INTERLEAVE", limit: 60 } },
-  { name: "V2 + produto cadastrado", fusion: { unit: "SECTION", method: "INTERLEAVE", limit: 60 }, products: true },
-  { name: "V2 + siglas do glossário", fusion: { unit: "SECTION", method: "INTERLEAVE", limit: 60 }, acronyms: true },
-  { name: "V2 + produto + siglas", fusion: { unit: "SECTION", method: "INTERLEAVE", limit: 60 }, products: true, acronyms: true },
+  { name: "V2 (seção, intercalado, 60)", fusion: V2 },
+  { name: "V2 + produto cadastrado", fusion: V2, products: true },
+  { name: "V2 + siglas do glossário", fusion: V2, acronyms: true },
+  { name: "V2 + produto + siglas", fusion: V2, products: true, acronyms: true },
   { name: "só BM25 (referência)", fusion: { unit: "SECTION" }, only: "LEXICAL" },
+  ...(jargonRules.length > 0
+    ? ([
+        { name: "V2 + gíria na seção (texto e vetor)", fusion: V2, jargon: "BOTH" },
+        { name: "V2 + gíria na seção (só texto)", fusion: V2, jargon: "TEXT" },
+        { name: "V2 + gíria na seção (só vetor)", fusion: V2, jargon: "VECTOR" },
+        { name: "só BM25 + gíria na seção", fusion: { unit: "SECTION" }, only: "LEXICAL", jargon: "TEXT" },
+      ] satisfies Variant[])
+    : []),
 ]
+/** KB_EVAL_VARIANTS: nomes separados por "|" (padrão: todas). */
+const variantFilter = process.env.KB_EVAL_VARIANTS?.split("|").map((name) => name.trim())
+const VARIANTS = variantFilter ? ALL_VARIANTS.filter((variant) => variantFilter.includes(variant.name)) : ALL_VARIANTS
 const DISCOVERY_TOP = 10
 type Row = { variant: string; question: string; required: string; currentListed: boolean; top: boolean; rank: number | null; discovered: boolean; newListed: boolean; prefilled: boolean }
 const queryVectors = new Map<string, Float32Array>()
@@ -142,7 +176,24 @@ async function queryVector(text: string): Promise<Float32Array> {
   return vector
 }
 async function measure(label: string, sources: CatalogSource[]) {
+  enrichedSections = 0
+  const enriched = jargonRules.length > 0 ? withJargon(sources) : sources
+  const enrichedCount = enrichedSections
   const indexing = await embedAll(sources)
+  const enrichedIndexing = enriched !== sources ? await embedAll(enriched) : null
+  // Pares de hash original ↔ enriquecido (mesma ordem: trechos e cartão), para separar o efeito no texto do efeito no vetor.
+  const toEnriched = new Map<string, string>()
+  const toOriginal = new Map<string, string>()
+  if (enriched !== sources) {
+    sources.forEach((source, index) => {
+      const before = embeddingTextsOf(source)
+      const after = embeddingTextsOf(enriched[index]!)
+      before.forEach((text, position) => {
+        toEnriched.set(text.hash, after[position]!.hash)
+        toOriginal.set(after[position]!.hash, text.hash)
+      })
+    })
+  }
   const byId = new Map(sources.map((source) => [source.documentId, source]))
   const titleOrdered = [...sources].sort((left, right) => left.documentTitle.localeCompare(right.documentTitle, "pt-BR"))
   const currentlyListed = new Set(titleOrdered.slice(0, LIST_LIMIT).map((source) => source.documentId))
@@ -154,17 +205,26 @@ async function measure(label: string, sources: CatalogSource[]) {
     if (expanded !== question.text) await queryVector(expanded)
   }
   for (const variant of VARIANTS) {
+    // BOTH: bases enriquecidas e vetores delas. TEXT: bases enriquecidas (índice de texto) com os vetores originais. VECTOR: bases
+    // originais (índice de texto) com os vetores das enriquecidas.
+    const variantSources = variant.jargon === "BOTH" || variant.jargon === "TEXT" ? enriched : sources
+    const remap = variant.jargon === "TEXT" ? toOriginal : variant.jargon === "VECTOR" ? toEnriched : null
+    const titleOrderedVariant = [...variantSources].sort((left, right) => left.documentTitle.localeCompare(right.documentTitle, "pt-BR"))
     const recall = createKnowledgeRecall({
       embeddingModel: async () => (variant.only === "LEXICAL" ? null : embeddingModel),
       embedQuery: async ({ text }) => queryVector(text),
-      loadVectors: async (_organizationId, _modelKey, hashes) => new Map(hashes.flatMap((hash) => (vectors.has(hash) ? [[hash, vectors.get(hash)!] as const] : []))),
+      loadVectors: async (_organizationId, _modelKey, hashes) =>
+        new Map(hashes.flatMap((hash) => {
+          const stored = remap?.get(hash) ?? hash
+          return vectors.has(stored) ? [[hash, vectors.get(stored)!] as const] : []
+        })),
       timeoutMs: 120_000,
       fusion: variant.fusion,
       ...(variant.products ? { products: async (_organizationId: string, ids: readonly string[]) => new Map(ids.flatMap((id) => (corpus.products.has(id) ? [[id, corpus.products.get(id)!] as const] : []))) } : {}),
       ...(variant.acronyms ? { acronyms: async () => corpus.acronyms } : {}),
     })
     for (const question of questions) {
-      const result = await recall.recall({ organizationId: "eval", question: variant.only === "VECTOR" ? "\u0000" : question.text, sources: titleOrdered, query: recall.startQuery("eval", question.text) })
+      const result = await recall.recall({ organizationId: "eval", question: variant.only === "VECTOR" ? "\u0000" : question.text, sources: titleOrderedVariant, query: recall.startQuery("eval", question.text) })
       if (variant === VARIANTS[0]) searchMs.push(result.trace.searchMs)
       const fused = result.recalled.map((chunk) => sectionKey(byId, chunk.documentId, chunk.chunkIndex))
       const discovered = new Set(result.documentOrder.slice(0, DISCOVERY_TOP))
@@ -180,9 +240,9 @@ async function measure(label: string, sources: CatalogSource[]) {
   const variants = VARIANTS.map((variant) => {
     const rows = rowsOut.filter((row) => row.variant === variant.name)
     const count = (key: keyof Row, set?: string) => rows.filter((row) => row[key] === true && (!set || row.question.startsWith(set))).length
-    return { variant: variant.name, top: count("top"), topV1: count("top", "G"), topV2: count("top", "H"), topTaxonomy: count("top", "T"), topAcronyms: count("top", "A"), discoveredTop10: count("discovered"), listed: count("newListed"), prefilled: count("prefilled"), prefilledV2: count("prefilled", "H"), prefilledTaxonomy: count("prefilled", "T"), prefilledAcronyms: count("prefilled", "A") }
+    return { variant: variant.name, top: count("top"), topV1: count("top", "G"), topV2: count("top", "H"), topTaxonomy: count("top", "T"), topAcronyms: count("top", "A"), topJargon: count("top", "J"), prefilledJargon: count("prefilled", "J"), discoveredTop10: count("discovered"), listed: count("newListed"), prefilled: count("prefilled"), prefilledV2: count("prefilled", "H"), prefilledTaxonomy: count("prefilled", "T"), prefilledAcronyms: count("prefilled", "A") }
   })
-  const summary = { scale: label, bases: sources.length, chunks: sources.reduce((sum, source) => sum + source.chunks.length, 0), requiredSections: total, v1: questions.filter((question) => question.id.startsWith("G")).reduce((sum, question) => sum + question.required.length, 0), currentListed: rowsOut.filter((row) => row.variant === VARIANTS[0]!.name && row.currentListed).length, variants, indexing, searchMsMedian: median(searchMs), searchMsMax: Math.max(...searchMs) }
+  const summary = { scale: label, bases: sources.length, chunks: sources.reduce((sum, source) => sum + source.chunks.length, 0), requiredSections: total, v1: questions.filter((question) => question.id.startsWith("G")).reduce((sum, question) => sum + question.required.length, 0), currentListed: rowsOut.filter((row) => row.variant === VARIANTS[0]!.name && row.currentListed).length, variants, indexing, enrichedIndexing, enrichedSections: enrichedCount, searchMsMedian: median(searchMs), searchMsMax: Math.max(...searchMs) }
   console.log(JSON.stringify(summary, null, 1))
   return { summary, rows: rowsOut }
 }

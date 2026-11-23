@@ -79,6 +79,8 @@ export async function assertAccountRelinkAllowed(deps: AccountAccessDeps, actor:
 }
 
 const conflict = () => new DomainError("Outra pessoa alterou este acesso agora há pouco. Atualize a lista e tente de novo.", "ACCESS_CONCURRENT_CHANGE", 409)
+/** Conta que entra pela rede: a senha é a do Active Directory; a INIA não gera nem troca (a API recusa, a tela não oferece). */
+const passwordManagedByNetwork = () => new DomainError("A senha desta conta é gerenciada pelo Active Directory: a pessoa entra com a matrícula e a senha de rede. Para trocar ou desbloquear, procure o suporte da rede.", "ACCESS_PASSWORD_MANAGED_BY_NETWORK", 409)
 const emailInUse = () => new DomainError("Já existe uma conta com este e-mail.", "EMAIL_ALREADY_IN_USE", 409)
 
 async function newTemporaryCredential(deps: AccountAccessDeps) {
@@ -100,6 +102,8 @@ export async function listIdentifiedUsers(deps: AccountAccessDeps, actor: Sessio
       self: user.personId === actor.personId,
       accessStatus: accountAccessStatusOf(user.account),
       temporaryPasswordExpired: temporaryPasswordExpired(user.account, now),
+      // Ação "Nova senha temporária" só para conta com senha da INIA; a tela explica quando a senha é do AD.
+      canIssueTemporaryPassword: user.account?.active === true && user.account.credentialProvider === "LOCAL",
       account: user.account ? { ...user.account, roles: user.account.roleCodes.map((code) => ({ code, name: catalog.find(code)?.name ?? code })) } : null,
     })),
   }
@@ -134,9 +138,14 @@ export async function issueTemporaryPassword(deps: AccountAccessDeps, actor: Ses
   const account = target.account!
   if (!account.active) throw new DomainError("O acesso desta pessoa está desabilitado — use “Habilitar acesso”.", "ACCESS_NOT_ENABLED", 409)
   if (!target.personActive) throw new DomainError("Esta pessoa está inativa no cadastro — reative-a antes de gerar uma senha.", "ACCESS_PERSON_INACTIVE", 409)
+  if (account.credentialProvider === "NETWORK") throw passwordManagedByNetwork()
   const credential = await newTemporaryCredential(deps)
   const issued = await deps.accounts.issueTemporaryPassword({ actorPersonId: actor.personId, actorAccountId: actor.accountId, organizationId: actor.organizationId, accountId: account.accountId, personId: target.personId, expectedSessionVersion: account.sessionVersion, passwordHash: credential.passwordHash, issuedAt: credential.issuedAt, expiresAt: credential.expiresAt })
-  if (!issued.ok) throw conflict()
+  if (!issued.ok) {
+    // O login pela rede pode ter sido ligado entre a leitura e a escrita (a escrita confere de novo): responde a causa real.
+    const current = await deps.accounts.targetByAccount(actor.organizationId, account.accountId)
+    throw current?.account?.credentialProvider === "NETWORK" ? passwordManagedByNetwork() : conflict()
+  }
   return { personId: target.personId, accountId: account.accountId, name: target.name, email: account.email, temporaryPassword: credential.temporaryPassword, expiresAt: credential.expiresAt.toISOString() }
 }
 

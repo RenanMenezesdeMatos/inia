@@ -1,4 +1,5 @@
 import { normalizeScopeLinks } from "../../auth/application/manageable-scopes.js"
+import { assertNewScopeLinksAdmissible } from "../../org-structure/application/scope-unit-admission.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { canAnywhere, canOrganizationWide } from "../../access/domain/access-decision.js"
@@ -400,6 +401,10 @@ export function createPostgresCommunicationStore(db: Database): CommunicationSto
         universes,
         products: products.rows,
       }
+    },
+
+    async admitNewLinks(organizationId, links, options) {
+      await assertNewScopeLinksAdmissible(db, organizationId, links, options)
     },
 
     async resolveReferences(organizationId, input) {

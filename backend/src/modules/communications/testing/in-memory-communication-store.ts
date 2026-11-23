@@ -1,3 +1,4 @@
+import { DomainError } from "../../../shared/domain/domain-error.js"
 import { linksReach, type ScopeLink } from "../../../shared/domain/scope-links/scope-links.js"
 import type { AudienceOptions, CommunicationRights, CommunicationStore, CommunicationUpdate, NewCommunication, SavedCommunication } from "../application/communication-service.js"
 import {
@@ -41,7 +42,7 @@ export class InMemoryCommunicationStore implements CommunicationStore {
   constructor(
     private readonly people: Person[],
     private readonly rights: Record<string, CommunicationRights> = {},
-    private readonly catalog: { teams?: { id: string; subteams?: string[] }[]; products?: string[] } = {},
+    private readonly catalog: { teams?: { id: string; subteams?: string[] }[]; products?: string[]; /** Grupos/Subgrupos sem operador em produção. */ withoutProduction?: string[] } = {},
   ) {}
 
   async loadRights(_organizationId: string, accountId: string) {
@@ -264,6 +265,13 @@ export class InMemoryCommunicationStore implements CommunicationStore {
 
   async audienceOptions(): Promise<AudienceOptions> {
     return { teams: (this.catalog.teams ?? []).map((team) => ({ id: team.id, name: team.id, universe: null, subteams: (team.subteams ?? []).map((id) => ({ id, name: id })) })), universes: ["B2B", "B2C"], products: (this.catalog.products ?? []).map((id) => ({ id, name: id, familyName: null })) }
+  }
+
+  /** Mesma regra do Postgres (`assertNewScopeLinksAdmissible`): vínculo novo sem operador em produção = 422 com a lista. */
+  async admitNewLinks(_organizationId: string, links: readonly ScopeLink[], options: { previous: readonly ScopeLink[]; universe: string | null }): Promise<void> {
+    const previous = new Set(options.previous.map((link) => `${link.teamId}:${link.subteamId ?? "*"}`))
+    const blocked = links.filter((link) => !previous.has(`${link.teamId}:${link.subteamId ?? "*"}`) && (this.catalog.withoutProduction ?? []).includes(link.subteamId ?? link.teamId))
+    if (blocked.length) throw new DomainError("Sem operadores em produção.", "SCOPE_UNIT_WITHOUT_PRODUCTION_OPERATORS", 422, { units: blocked.map((link) => link.subteamId ?? link.teamId) })
   }
 
   /** Mesma regra do Postgres (`normalizeScopeLinks`): Subgrupo ganha o Grupo-pai do catálogo; `teamId` divergente = inválido. */

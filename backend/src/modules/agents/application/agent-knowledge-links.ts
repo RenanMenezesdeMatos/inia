@@ -3,8 +3,10 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import { canManageScope, getManageableScopes, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
 import { canReadDocument, loadDocumentScopes, type DocumentScope } from "../../knowledge/application/knowledge-document-read-access.js"
 import { asOperatingUniverse, universesCompatible, type OperatingUniverse } from "../../operating-universe/domain/operating-universe.js"
-import { knowledgeFitsAgentSql } from "../../knowledge/application/knowledge-agent-fit.js"
-import { parseAgentConfig, sameAgentConfig, type AgentConfig } from "../domain/agent-config.js"
+import { configAgentTeamIdsSql, knowledgeFitsAgentSql, liveAgentTeamIdsSql } from "../../knowledge/application/knowledge-agent-fit.js"
+import { scopedTargetOf } from "../../org-structure/application/resource-scope-links.js"
+import { resourceScopeOf, type ResourceScope } from "../../../shared/domain/scope-links/resource-scope.js"
+import { agentScopeOf, parseAgentConfig, sameAgentConfig, type AgentConfig } from "../domain/agent-config.js"
 
 /**
  * ASSOCIAR AGENTES A PARTIR DA BASE (20/11/2026). Antes, ligar uma base nova a um agente exigia sair da base, abrir o agente, editar
@@ -40,7 +42,7 @@ export function knowledgeIdsAfter(current: readonly string[], knowledgeDocumentI
 export type KnowledgeLinkBlock = "SCOPE" | "UNIVERSE" | "DRAFT_RESTRICTED"
 
 export const KNOWLEDGE_LINK_BLOCK_MESSAGES: Record<KnowledgeLinkBlock, string> = {
-  SCOPE: "A base não vale para o Grupo deste agente — só bases globais ou do mesmo Grupo entram num agente de Grupo.",
+  SCOPE: "A base não vale para nenhum Grupo deste agente — só bases globais ou de um dos Grupos dele entram num agente de Grupos.",
   UNIVERSE: "A base e o agente são de universos de atuação diferentes, e universos não se misturam.",
   DRAFT_RESTRICTED: "O rascunho deste agente é de um alcance que você não administra.",
 }
@@ -51,12 +53,9 @@ export type KnowledgeLinkCandidate = {
   agentType: string
   active: boolean
   operatingUniverse: OperatingUniverse | null
-  scopeType: string
-  /** Grupo do alcance em edição (o Grupo-pai, quando o agente é de Subgrupo) e o Subgrupo — para o filtro por Grupo. */
-  teamId: string | null
-  subteamId: string | null
-  teamName: string | null
-  subteamName: string | null
+  /** Alcance em edição (rascunho, ou a vigente): ALL_TEAMS ou GROUPS + os vínculos (Grupo inteiro ou um Subgrupo, com os nomes). */
+  scopeType: "ALL_TEAMS" | "GROUPS"
+  scopeLinks: KnowledgeLinkScopeLink[]
   /** A versão vigente (o que a IA usa) já consulta a base. Agente nunca publicado: sempre false. */
   linkedInUse: boolean
   /** O que está em edição (rascunho, ou a vigente sem rascunho) tem a base. */
@@ -68,6 +67,8 @@ export type KnowledgeLinkCandidate = {
   blockMessage: string | null
 }
 
+export type KnowledgeLinkScopeLink = { teamId: string; teamName: string | null; subteamId: string | null; subteamName: string | null }
+
 type CandidateRow = {
   id: string
   name: string
@@ -75,8 +76,7 @@ type CandidateRow = {
   active: boolean
   operating_universe: string | null
   scope_type: string
-  team_id: string | null
-  subteam_id: string | null
+  live_links: { teamId: string; subteamId: string | null }[]
   current_version_id: string | null
   current_version_number: number | null
   live_config: unknown
@@ -85,15 +85,6 @@ type CandidateRow = {
   draft_updated_at: string | null
   draft_updated_by_name: string | null
   linked_in_use: boolean
-  edit_scope_type: string
-  edit_team_id: string | null
-  edit_subteam_id: string | null
-  live_group_team_id: string | null
-  live_team_name: string | null
-  live_subteam_name: string | null
-  edit_group_team_id: string | null
-  edit_team_name: string | null
-  edit_subteam_name: string | null
   scope_compatible: boolean
 }
 
@@ -148,50 +139,48 @@ export async function loadKnowledgeLinkCandidates(db: Pick<Database, "query">, o
        select a.*, cv.version_number current_version_number, cv.config live_config, coalesce(a.draft_config, cv.config) edit_config
          from agents a left join agent_versions cv on cv.id = a.current_version_id
         where a.organization_id = $1 and ($3::uuid[] is null or a.id = any($3::uuid[]))
-     ), scoped as (
-       select c.*,
-              coalesce(c.edit_config->>'scopeType', c.scope_type) edit_scope_type,
-              case when c.edit_config is null then c.team_id else (c.edit_config->>'teamId')::uuid end edit_team_id,
-              case when c.edit_config is null then c.subteam_id else (c.edit_config->>'subteamId')::uuid end edit_subteam_id
-         from cand c
      )
-     select s.id, s.name, s.agent_type, s.active, s.operating_universe, s.scope_type, s.team_id, s.subteam_id,
-            s.current_version_id, s.current_version_number, s.live_config, s.draft_config, s.draft_revision, s.draft_updated_at, s.draft_updated_by_name,
+     select c.id, c.name, c.agent_type, c.active, c.operating_universe, c.scope_type,
+            coalesce((select json_agg(json_build_object('teamId', l.team_id, 'subteamId', l.subteam_id)) from agent_scope_links l where l.agent_id = c.id), '[]'::json) live_links,
+            c.current_version_id, c.current_version_number, c.live_config, c.draft_config, c.draft_revision, c.draft_updated_at, c.draft_updated_by_name,
             -- Agente nunca publicado não está em uso: a linha viva dele só acompanha o rascunho.
-            s.current_version_id is not null and exists (select 1 from agent_knowledge_documents akd where akd.agent_id = s.id and akd.knowledge_document_id = $2) linked_in_use,
-            s.edit_scope_type, s.edit_team_id, s.edit_subteam_id,
-            coalesce(s.team_id, (select st.team_id from subteams st where st.id = s.subteam_id)) live_group_team_id,
-            (select name from teams where id = coalesce(s.team_id, (select st.team_id from subteams st where st.id = s.subteam_id))) live_team_name,
-            (select name from subteams where id = s.subteam_id) live_subteam_name,
-            coalesce(s.edit_team_id, (select st.team_id from subteams st where st.id = s.edit_subteam_id)) edit_group_team_id,
-            (select name from teams where id = coalesce(s.edit_team_id, (select st.team_id from subteams st where st.id = s.edit_subteam_id))) edit_team_name,
-            (select name from subteams where id = s.edit_subteam_id) edit_subteam_name,
-            ${knowledgeFitsAgentSql("$2::uuid", { scopeType: "s.edit_scope_type", teamId: "s.edit_team_id", subteamId: "s.edit_subteam_id" })} scope_compatible
-       from scoped s
-      order by s.name, s.id`,
+            c.current_version_id is not null and exists (select 1 from agent_knowledge_documents akd where akd.agent_id = c.id and akd.knowledge_document_id = $2) linked_in_use,
+            -- Alcance EM EDIÇÃO (rascunho, ou a vigente; sem nenhum dos dois, a linha viva) — a regra que assertKnowledge confere ao gravar.
+            ${knowledgeFitsAgentSql("$2::uuid", {
+              scopeType: "coalesce(c.edit_config->>'scopeType', c.scope_type)",
+              teamIds: `(case when c.edit_config is null then ${liveAgentTeamIdsSql("c.id")} else ${configAgentTeamIdsSql("c.edit_config")} end)`,
+            })} scope_compatible
+       from cand c
+      order by c.name, c.id`,
     [organizationId, context.knowledgeDocumentId, onlyIds ? [...onlyIds] : null],
   )).rows
 
-  return rows
-    .filter((row) => canManageScope(context.scopes, { scopeType: row.scope_type, teamId: row.team_id, subteamId: row.subteam_id }))
-    .filter((row) => row.active || canManageScope(context.inactiveScopes, { scopeType: row.scope_type, teamId: row.team_id, subteamId: row.subteam_id }))
+  const liveScopeOf = (row: CandidateRow): ResourceScope => resourceScopeOf({ scopeType: row.scope_type === "ALL_TEAMS" ? "ALL_TEAMS" : "GROUPS", scopeLinks: row.live_links })
+  const visible = rows
+    .filter((row) => canManageScope(context.scopes, scopedTargetOf(liveScopeOf(row))))
+    .filter((row) => row.active || canManageScope(context.inactiveScopes, scopedTargetOf(liveScopeOf(row))))
+  const names = await scopeLinkNames(db, visible.flatMap((row) => [...liveScopeOf(row).links, ...(row.draft_config ? agentScopeOf(parseAgentConfig(row.draft_config)).links : []), ...(row.live_config ? agentScopeOf(parseAgentConfig(row.live_config)).links : [])]))
+  const named = (scope: ResourceScope): KnowledgeLinkScopeLink[] => scope.links.map((link) => ({ teamId: link.teamId, teamName: names.teams.get(link.teamId) ?? null, subteamId: link.subteamId, subteamName: link.subteamId ? (names.subteams.get(link.subteamId) ?? null) : null }))
+
+  return visible
     .map((row) => {
       const live = row.current_version_id && row.live_config ? parseAgentConfig(row.live_config) : null
       const draft = row.draft_config ? parseAgentConfig(row.draft_config) : null
-      const draftRestricted = draft !== null && !canManageScope(context.scopes, { scopeType: draft.scopeType, teamId: draft.teamId, subteamId: draft.subteamId })
+      const draftRestricted = draft !== null && !canManageScope(context.scopes, scopedTargetOf(agentScopeOf(draft)))
       // Rascunho de outro alcance (run-8, SB-02): nada dele sai — nem o alcance, nem se tem a base, nem se tem outras alterações (o `GET /:id`
       // também o esconde com `restricted: true`). A linha mostra o agente como está em uso e fica bloqueada.
       if (draftRestricted) {
+        const liveScope = liveScopeOf(row)
         return {
           id: row.id, name: row.name, agentType: row.agent_type, active: row.active, operatingUniverse: asOperatingUniverse(row.operating_universe),
-          scopeType: row.scope_type, teamId: row.scope_type === "ALL_TEAMS" ? null : row.live_group_team_id, subteamId: row.scope_type === "SUBTEAM" ? row.subteam_id : null,
-          teamName: row.live_team_name, subteamName: row.live_subteam_name,
+          scopeType: liveScope.scopeType, scopeLinks: named(liveScope),
           linkedInUse: row.linked_in_use, linkedInDraft: row.linked_in_use, published: row.current_version_id !== null, currentVersionNumber: row.current_version_number,
           draft: { revision: row.draft_revision, pending: true, otherChanges: false, updatedAt: null, updatedByName: null },
           block: "DRAFT_RESTRICTED" as const, blockMessage: KNOWLEDGE_LINK_BLOCK_MESSAGES.DRAFT_RESTRICTED,
         }
       }
       const editing = draft ?? live
+      const editingScope = editing ? agentScopeOf(editing) : liveScopeOf(row)
       const linkedInDraft = editing ? editing.knowledgeDocumentIds.includes(context.knowledgeDocumentId) : row.linked_in_use
       const universeMismatch = !universesCompatible(context.knowledgeUniverse, asOperatingUniverse(row.operating_universe))
       const block: KnowledgeLinkBlock | null = !linkedInDraft && !row.scope_compatible ? "SCOPE" : !linkedInDraft && universeMismatch ? "UNIVERSE" : null
@@ -201,11 +190,8 @@ export async function loadKnowledgeLinkCandidates(db: Pick<Database, "query">, o
         agentType: row.agent_type,
         active: row.active,
         operatingUniverse: asOperatingUniverse(row.operating_universe),
-        scopeType: row.edit_scope_type,
-        teamId: row.edit_scope_type === "ALL_TEAMS" ? null : row.edit_group_team_id,
-        subteamId: row.edit_scope_type === "SUBTEAM" ? row.edit_subteam_id : null,
-        teamName: row.edit_team_name,
-        subteamName: row.edit_subteam_name,
+        scopeType: editingScope.scopeType,
+        scopeLinks: named(editingScope),
         linkedInUse: row.linked_in_use,
         linkedInDraft,
         published: row.current_version_id !== null,
@@ -223,6 +209,18 @@ export async function loadKnowledgeLinkCandidates(db: Pick<Database, "query">, o
     })
 }
 
+/** Nomes dos Grupos e Subgrupos dos vínculos (uma consulta para a lista inteira). */
+async function scopeLinkNames(db: Pick<Database, "query">, links: readonly { teamId: string; subteamId: string | null }[]): Promise<{ teams: Map<string, string>; subteams: Map<string, string> }> {
+  const teamIds = [...new Set(links.map((link) => link.teamId))]
+  const subteamIds = [...new Set(links.flatMap((link) => (link.subteamId ? [link.subteamId] : [])))]
+  if (teamIds.length === 0 && subteamIds.length === 0) return { teams: new Map(), subteams: new Map() }
+  const rows = (await db.query<{ kind: "TEAM" | "SUBTEAM"; id: string; name: string }>(
+    `select 'TEAM' kind, id, name from teams where id = any($1::uuid[]) union all select 'SUBTEAM' kind, id, name from subteams where id = any($2::uuid[])`,
+    [teamIds, subteamIds],
+  )).rows
+  return { teams: new Map(rows.filter((row) => row.kind === "TEAM").map((row) => [row.id, row.name])), subteams: new Map(rows.filter((row) => row.kind === "SUBTEAM").map((row) => [row.id, row.name])) }
+}
+
 /** A base está ligada ao agente — no que a IA usa ou no rascunho (aba "Ligados"); senão, o agente está "Disponível". */
 export const isKnowledgeLinked = (candidate: Pick<KnowledgeLinkCandidate, "linkedInUse" | "linkedInDraft">) => candidate.linkedInUse || candidate.linkedInDraft
 
@@ -234,7 +232,7 @@ export type KnowledgeLinkListFilter = {
   agentType?: string | undefined
   /** Universo do agente; PENDING = sem universo. */
   universe?: string | undefined
-  /** Alcance do agente: só os de todos os Grupos, os de um Grupo (com os Subgrupos dele) ou os de um Subgrupo. */
+  /** Alcance do agente: só os de todos os Grupos, os com algum vínculo no Grupo (inteiro ou Subgrupo dele) ou com o Subgrupo escolhido. */
   scopeType?: "ALL_TEAMS" | undefined
   teamId?: string | undefined
   subteamId?: string | undefined
@@ -249,9 +247,9 @@ export function matchesKnowledgeLinkFilter(candidate: KnowledgeLinkCandidate, fi
   if (filter.agentType && candidate.agentType !== filter.agentType) return false
   if (filter.universe && (filter.universe === "PENDING" ? candidate.operatingUniverse !== null : candidate.operatingUniverse !== filter.universe)) return false
   if (filter.subteamId) {
-    if (candidate.subteamId !== filter.subteamId) return false
+    if (!candidate.scopeLinks.some((link) => link.subteamId === filter.subteamId)) return false
   } else if (filter.teamId) {
-    if (candidate.teamId !== filter.teamId) return false
+    if (!candidate.scopeLinks.some((link) => link.teamId === filter.teamId)) return false
   } else if (filter.scopeType === "ALL_TEAMS" && candidate.scopeType !== "ALL_TEAMS") return false
   if (filter.state === "PUBLISHED" && !(candidate.published && candidate.active)) return false
   if (filter.state === "NOT_PUBLISHED" && candidate.published) return false

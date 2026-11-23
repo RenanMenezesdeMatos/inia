@@ -1,12 +1,12 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
 import type { ReactNode } from "react"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, screen } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
-import { TooltipProvider } from "@/components/ui/tooltip"
 import type { Agent } from "@/schemas/admin/agent.schema"
 
+import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
 import { NewOrchestratorPage } from "./orchestrator-editor-page"
 
 /**
@@ -14,6 +14,7 @@ import { NewOrchestratorPage } from "./orchestrator-editor-page"
  * trocar o universo limpa o agente orquestrador que deixou de caber. O backend recusa a mistura (OPERATING_UNIVERSE_LINK_CONFLICT).
  */
 vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} })
+vi.mock("@/services/scope-units/scope-units-service", async () => (await import("@/components/admin/shared/testing/scope-units-fake")).scopeUnitsServiceFrom([]))
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }) }))
 vi.mock("@xyflow/react", () => ({
   ReactFlow: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
@@ -95,7 +96,7 @@ async function chooseUniverse(name: RegExp) {
 
 describe("Orquestrador — universo encadeia os agentes", () => {
   it("escolhido B2B, o agente B2C não é oferecido; trocar para B2C limpa o agente B2B escolhido", async () => {
-    render(<TooltipProvider><NewOrchestratorPage /></TooltipProvider>)
+    renderWithQuery(<NewOrchestratorPage />)
     await chooseUniverse(/^B2B/)
     expect(screen.getByRole("button", { name: /Coordenação Empresas/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /Coordenação Pendente/ })).toBeInTheDocument()

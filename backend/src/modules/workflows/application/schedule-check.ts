@@ -7,6 +7,7 @@ import { resolveEligibleOperatorIds } from "./workflow-eligibility.js"
 import { resolveOrganizationTimezone } from "./organization-timezone.js"
 import { isDateDue, localDateParts, zonedTimeToIso, type ScheduleRecurrenceConfig } from "./schedule-recurrence.js"
 import { isAssumedWorkday, resolveRelativeInstant, type EmployeeShift } from "./shift-schedule.js"
+import { workflowLiveScopeLinksSql } from "../domain/workflow-scope.js"
 
 
 /**
@@ -33,6 +34,7 @@ type ScheduledWorkflowRow = {
   id: string
   version_id: string
   scope_type: string
+  scope_links: { teamId: string; subteamId: string | null }[]
   team_id: string | null
   subteam_id: string | null
   mode: "CALENDAR" | "RELATIVE_TO_SHIFT" | null
@@ -73,7 +75,7 @@ export async function runScheduleCheck(db: Database, now: Date = new Date()): Pr
   // Só a configuração PUBLICADA (colunas vivas): o rascunho (`draft_*`) nunca é lido aqui —
   // editar o gatilho/Abrangência/população de um Workflow ativo não muda nada até Publicar.
   const workflows = await db.query<ScheduledWorkflowRow>(
-    `select w.organization_id, w.id, w.active_version_id version_id, w.scope_type, w.team_id, w.subteam_id,
+    `select w.organization_id, w.id, w.active_version_id version_id, w.scope_type, ${workflowLiveScopeLinksSql("w.id")} scope_links, w.team_id, w.subteam_id,
             w.trigger_config ->> 'mode' mode,
             array(select jsonb_array_elements_text(w.trigger_config -> 'times')) times,
             coalesce((w.trigger_config ->> 'intervalDays')::int, 1) interval_days,
@@ -115,6 +117,7 @@ export async function runScheduleCheck(db: Database, now: Date = new Date()): Pr
 function scheduleConfigurationOf(row: ScheduledWorkflowRow): ScheduleConfiguration {
   return {
     scopeType: row.scope_type,
+    scopeLinks: row.scope_links ?? [],
     teamId: row.team_id,
     subteamId: row.subteam_id,
     mode: row.mode,
@@ -133,9 +136,11 @@ function scheduleConfigurationOf(row: ScheduledWorkflowRow): ScheduleConfigurati
 /** Configuração de Agenda + população, no formato que o planejador precisa — vem da linha publicada
  * (checador) ou de uma configuração ainda em RASCUNHO (prévia de impacto da publicação). */
 export type ScheduleConfiguration = {
+  /** Abrangência PUBLICADA (checador) ou do rascunho (prévia): ALL_TEAMS ou GROUPS + `scopeLinks` (legado TEAM/SUBTEAM nos ids). */
   scopeType: string
-  teamId: string | null
-  subteamId: string | null
+  scopeLinks?: readonly { teamId: string; subteamId: string | null }[] | undefined
+  teamId?: string | null | undefined
+  subteamId?: string | null | undefined
   mode: "CALENDAR" | "RELATIVE_TO_SHIFT" | null | undefined
   times: string[]
   intervalDays: number
@@ -168,7 +173,7 @@ export async function planDueScheduleEnrollments(
 ): Promise<DueScheduleSlot[]> {
   const { date: today, time: nowHHmm } = localDateParts(clock.now, clock.timezone)
   // Mesma elegibilidade (Abrangência + Filtro Populacional) da ingestão por Flag e do QA Lab.
-  const population = { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse, requireActiveAccess: config.requireActiveAccess }
+  const population = { scopeType: config.scopeType, scopeLinks: config.scopeLinks, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse, requireActiveAccess: config.requireActiveAccess }
 
   if (config.mode === "RELATIVE_TO_SHIFT") {
     if (!config.relative || !isAssumedWorkday(today)) return []
@@ -218,7 +223,7 @@ export async function planDueScheduleEnrollments(
 export async function resolveScheduleSubjects(db: Database, organization: string, config: ScheduleConfiguration): Promise<string[]> {
   const structure = config.consolidatedStructure
   if (!structure) {
-    return resolveEligibleOperatorIds(db, organization, { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse, requireActiveAccess: config.requireActiveAccess })
+    return resolveEligibleOperatorIds(db, organization, { scopeType: config.scopeType, scopeLinks: config.scopeLinks, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse, requireActiveAccess: config.requireActiveAccess })
   }
   const anchorId = consolidatedStructureAnchorId(structure)
   const memberIds = await resolveStructureAnchorOperatorIds(db, structure, anchorId)

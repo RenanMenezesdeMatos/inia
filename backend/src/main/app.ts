@@ -53,6 +53,7 @@ import { createProductCatalogRouter } from "../modules/product-catalog/presentat
 import { createOperatingUniverseRouter } from "../modules/operating-universe/presentation/operating-universe-router.js"
 import { createOperationalCalendarRouter } from "../modules/people/presentation/operational-calendar-router.js"
 import { createOrgStructureRouter } from "../modules/org-structure/presentation/org-structure-router.js"
+import { createScopeUnitOptionsRouter } from "../modules/org-structure/presentation/scope-unit-options-router.js"
 import { createPersonOrganizationStructureRouter } from "../modules/org-structure/presentation/person-organization-structure-router.js"
 import { createTeamCalendarRouter } from "../modules/people/presentation/team-calendar-router.js"
 import { createMyJourneyRouter } from "../modules/people/presentation/my-journey-router.js"
@@ -443,6 +444,8 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/admin/operating-universe", createOperatingUniverseRouter(database))
   app.use("/api/v1/admin/operational-calendar", can("configuration.manage"), orgWideWrites, createOperationalCalendarRouter(database))
   app.use("/api/v1/admin/org-structure", can("configuration.manage"), createOrgStructureRouter(database))
+  // Opções de Grupo/Subgrupo dos seletores de alcance: cada chamada diz a permissão da tela e confere (lista fechada, escopo dela).
+  app.use("/api/v1/admin/scope-units", requireAuth, createScopeUnitOptionsRouter(database))
   app.use("/api/v1/admin/indicator-rules", can("configuration.manage"), createIndicatorRuleRouter(database))
   // V1.6.2 — estratégia de diagnóstico do indicador (versionada; a tela de Indicadores configura, o runtime da V1.6.1 executa).
   app.use("/api/v1/admin/indicator-diagnostic-strategies", can("configuration.manage"), costly(/\/simulate$/), createDiagnosticStrategyRouter(database))

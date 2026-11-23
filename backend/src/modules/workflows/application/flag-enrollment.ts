@@ -18,7 +18,7 @@ export type FlagEnrollmentInput = {
 /**
  * Matrícula produtiva por Flag de canal (chamada pela ingestão de interações): pra cada Workflow
  * publicado disparado por esta flag, matricula SÓ se o operador da interação é elegível pela
- * Abrangência (ALL_TEAMS / TEAM / SUBTEAM) E pelo Filtro Populacional — a MESMA regra do checador
+ * Abrangência (ALL_TEAMS / GROUPS + vínculos) E pelo Filtro Populacional — a MESMA regra do checador
  * de agenda e do QA Lab (workflow-eligibility.ts). Decisão pontual por operador: nunca carrega a
  * população inteira por interação. Só matricula: quem avalia a Condition (valor da flag,
  * comparador) e roda a ação é o motor de workflow (engine.ts), em ticks periódicos. `lookups`: ver
@@ -32,7 +32,7 @@ export async function enrollFlagWorkflows(db: Queryable, input: FlagEnrollmentIn
   const operator = await lookups.operator(input.organizationId, input.operatorId)
   let enrolled = 0
   for (const workflow of candidates) {
-    const population = { scopeType: workflow.scope_type, teamId: workflow.team_id, subteamId: workflow.subteam_id, populationFilter: workflow.population_filter, operatingUniverse: workflow.operating_universe ?? null, requireActiveAccess: workflow.require_active_access === true }
+    const population = { scopeType: workflow.scope_type, scopeLinks: workflow.scope_links ?? [], teamId: workflow.team_id, subteamId: workflow.subteam_id, populationFilter: workflow.population_filter, operatingUniverse: workflow.operating_universe ?? null, requireActiveAccess: workflow.require_active_access === true }
     if (!(await isOperatorEligibleForWorkflow(db as Database, input.organizationId, population, input.operatorId, operator, lookups.structureMembers))) continue
     const triggerNode = await lookups.triggerNode(workflow.active_version_id)
     if (!triggerNode) continue

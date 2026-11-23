@@ -51,6 +51,7 @@ vi.mock("../../../shared/application/model-routing/llm-gateway.js", async (impor
 const { env } = await import("../../../config/env.js")
 const { createApp } = await import("../../../main/app.js")
 const { setProofAccountPassword } = await import("../../auth/testing/proof-account-password.js")
+const { eligibleProofTeamIds, linkProofWorkflowToTeam, linkProofWorkflowVersionToTeam } = await import("./proof-scope-units.js")
 const { processEnrollment } = await import("../../workflows/application/engine.js")
 const { previewWorkflowRetry, confirmWorkflowRetry } = await import("../../workflows/application/workflow-retry.js")
 const { countFanOutChildren } = await import("../../workflows/application/consolidate-results-executor.js")
@@ -138,10 +139,12 @@ const agentGraph = (agentId: string, withOutput = false) => ({
 
 async function insertWorkflow(name: string, graph: unknown, teamId: string | null = teamA) {
   const workflow = (await pool.query<{ id: string }>(
-    `insert into workflows (organization_id, name, trigger_config, draft_trigger_config, draft_graph, active, scope_type, team_id, draft_scope_type, draft_team_id) values ($1,$2,$3,$3,$4,true,$5,$6,$5,$6) returning id`,
-    [ORG, `${PREFIX}${name}`, JSON.stringify({ kind: "channel_flag", channelFlagId: "00000000-0000-4000-8000-000000000000" }), JSON.stringify(graph), teamId ? "TEAM" : "ALL_TEAMS", teamId],
+    `insert into workflows (organization_id, name, trigger_config, draft_trigger_config, draft_graph, active, scope_type, draft_scope_type) values ($1,$2,$3,$3,$4,true,$5,$5) returning id`,
+    [ORG, `${PREFIX}${name}`, JSON.stringify({ kind: "channel_flag", channelFlagId: "00000000-0000-4000-8000-000000000000" }), JSON.stringify(graph), teamId ? "GROUPS" : "ALL_TEAMS"],
   )).rows[0]!.id
+  await linkProofWorkflowToTeam(pool, ORG, workflow, teamId)
   const version = (await pool.query<{ id: string }>(`insert into workflow_versions (workflow_id, graph) values ($1,$2) returning id`, [workflow, JSON.stringify(graph)])).rows[0]!.id
+  await linkProofWorkflowVersionToTeam(pool, version, teamId)
   await pool.query(`update workflows set active_version_id = $2 where id = $1`, [workflow, version])
   return { workflow, version }
 }
@@ -155,7 +158,7 @@ async function claimed(id: string): Promise<Claimed> {
   return (await pool.query<Claimed>(
     `select we.id, we.organization_id, we.workflow_id, we.version_id, we.interaction_id, we.indicator_measurement_id, we.scheduled_subject_id, we.scheduled_for, we.current_node_id,
             we.matched_flag_name, we.matched_value_boolean, we.matched_value_numeric, we.status, we.attempts, we.revision, we.node_outputs, we.variables, we.parent_enrollment_id, we.retry_of_enrollment_id,
-            w.scope_type, w.team_id workflow_team_id, w.subteam_id workflow_subteam_id, w.consolidated_structure, w.population_filter, now()::text claimed_until
+            w.scope_type, coalesce((select json_agg(json_build_object('teamId', l.team_id, 'subteamId', l.subteam_id)) from workflow_scope_links l where l.workflow_id = w.id), '[]'::json) scope_links, w.team_id workflow_team_id, w.subteam_id workflow_subteam_id, w.consolidated_structure, w.population_filter, now()::text claimed_until
      from workflow_enrollments we join workflows w on w.id = we.workflow_id where we.id = $1`,
     [id],
   )).rows[0]!
@@ -184,7 +187,8 @@ describe.skipIf(!ENABLED)("Revisão da PEN-002/PEN-076 — atualização automá
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: env.TEST_DATABASE_URL })
     await cleanup()
-    const teams = (await pool.query<{ id: string }>(`select id from teams where organization_id = $1 order by name limit 2`, [ORG])).rows
+    // Grupos com operador em produção: vínculo novo de agente exige (249).
+    const teams = (await eligibleProofTeamIds(pool, ORG, 2)).map((id) => ({ id }))
     teamA = teams[0]!.id
     teamB = teams[1]!.id
     operator = (await pool.query<{ id: string }>(`insert into people (organization_id, name, role, team_id) values ($1,$2,'OPERATOR',$3) returning id`, [ORG, `${PREFIX}Operador`, teamA])).rows[0]!.id

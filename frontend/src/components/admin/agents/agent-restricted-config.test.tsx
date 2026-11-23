@@ -45,6 +45,8 @@ const lookups = vi.hoisted(() => ({
   domains: { data: [], isPending: false },
 }))
 vi.mock("@/queries/admin/use-org-structure-queries", () => ({ useManageableTeamsQuery: () => lookups.teams }))
+// Opções do campo de alcance vêm do servidor (`/admin/scope-units`): o falso aplica as mesmas regras sobre a estrutura acima.
+vi.mock("@/services/scope-units/scope-units-service", async () => (await import("@/components/admin/shared/testing/scope-units-fake")).scopeUnitsServiceFrom([{ id: "team-b", name: "Grupo B", subteams: [] }]))
 vi.mock("@/services/admin/agent-knowledge-options-service", () => ({
   searchKnowledgeOptions: async () => ({ items: [], nextCursor: null, total: 0 }),
   fetchKnowledgeOptionIds: async () => ({ ids: [], total: 0, truncated: false }),
@@ -64,9 +66,11 @@ const LIVE: AgentConfig = {
   objective: "Orientar a retenção",
   description: "Feedback das chamadas de retenção",
   contextPrompt: "Você orienta a retenção do Grupo B.",
+  // Formato antigo de vínculo único (rascunho/versão anteriores à 249): lido com o mesmo alcance.
   scopeType: "TEAM",
   teamId: "team-b",
   subteamId: null,
+  scopeLinks: [],
   specialty: null,
   specialtyKind: null,
   domain: null,
@@ -91,7 +95,8 @@ const AGENT: Agent = {
   createdAt: "2026-10-01T00:00:00.000Z",
   createdByName: "Admin",
   usageCount: 3,
-  scopeType: "TEAM",
+  scopeType: "GROUPS",
+  scopeLinks: [{ teamId: "team-b", teamName: "Grupo B", subteamId: null, subteamName: null }],
   teamId: "team-b",
   teamName: "Grupo B",
   subteamId: null,

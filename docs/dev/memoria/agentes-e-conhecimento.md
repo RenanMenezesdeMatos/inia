@@ -320,8 +320,15 @@ de terminar. Decidido na sessão sem o usuário (ele valida em 20/11).
 - **Tela:** a barra é do `xhr.upload.onprogress` (`adminUploadWithProgress` em `lib/admin/admin-api.ts`; o `fetch` não informa envio). O id
   é gerado na tela (`newUploadId`: `crypto.randomUUID` só existe em https/localhost; fora disso, `getRandomValues`) e vai no formulário ANTES do
   arquivo. `components/admin/knowledge/knowledge-upload-progress/`: `KnowledgeUploadProgress` (barra + etapas), `KnowledgeRecentUploads`
-  ("Envios recentes" na lista; "Último envio de arquivo" no editor) e `useTrackedUpload`. A navegação para o editor depois de criar só
+  (só o "Último envio de arquivo" no editor; os "Envios recentes" no topo da lista das bases SAÍRAM em 22/11 a pedido do usuário — atrapalhavam
+  a lista; não voltar) e `useTrackedUpload`. A navegação para o editor depois de criar só
   acontece se a pessoa ainda está na tela. Concluído sem ressalva vira uma linha com "Ver etapas"; o que estava em andamento continua aberto.
+- **22/11 (VM, primeira subida com OCR em uso):** (1) o editor montava o texto uma vez: o OCR terminava com a tela aberta e ela continuava com
+  o texto de antes e o aviso "Não foi possível extrair texto" até um F5 — agora, quando a leitura termina, o texto lido e o arquivo entram
+  sozinhos (durante a leitura o texto é só leitura, então nada digitado se perde). (2) "Visualizar" do rascunho de PDF convertido usa a mesma
+  leitura da base publicada (`KnowledgeReadingView`, imagens pela rota da versão do rascunho): antes os prints só apareciam depois de publicar.
+  (3) Envio `DONE` com OCR pedido e sem a leitura (apagada em cascata com o rascunho descartado/trocado) ficava "na fila" para sempre e aberto;
+  agora a etapa vira `SKIPPED` "Leitura não feita: o rascunho deste envio foi descartado ou trocado." (`ocrStage` em `upload-stages.ts`).
 - **Armadilha encontrada:** depois da resposta de erro, a releitura pelo `refetch` capturado no clique não chegava ao servidor no navegador
   (no teste passava). Agora `settle` lê direto pelo id e grava no cache, com 6 s de releitura se ainda vier vazio. O `Progress` do kit não
   passava o valor para a raiz (sem `aria-valuenow`): corrigido.
@@ -423,6 +430,29 @@ npx tsx scripts/dev/pdf-ocr-eval/gerar-digitalizado.ts ../output/pdf-ocr-digital
 
 **Limitações:** a busca dos especialistas quando o esclarecimento passa a vez (`retrieveKnowledgeForAgent`) continua só BM25; o catálogo do chat ainda carrega o texto de todas as bases do escopo em memória (cache por versão) — com um Agent vinculado a centenas de bases grandes, medir memória antes da VM; dimensão do vetor = a nativa do modelo (sem campo na tela); embedding na VM ainda desligado no gateway (sem policy = só BM25, nada quebra); qualidade da resposta com a busca nova no chat medida só no piloto (Gemini, 41 bases, V3 empatou) — não remedida com o modelo do cliente.
 
+
+### Gíria do Glossário no vetor (implementada 2026-11-23, migration 251, DESLIGADA)
+
+Pergunta do responsável: o operador usa um termo da operação que a base não escreve. **Medição** (opção 4, `docs/dev/busca-em-escala/README.md`,
+"Gíria do Glossário na seção"; 20 gírias **sintéticas**, US$ 0,28): a pré-leitura do jargão foi de 6–17 para 18–20 de 20 nos três modelos,
+com perda de 1 seção fora do jargão em quase todas as combinações. Sem nenhuma perda, só "só vetor" no gemini-embedding-001. Por isso
+o responsável escolheu **implementar só no vetor e deixar desligado**.
+
+- **O que faz:** o trecho que cita o termo oficial ganha `Também chamado: <termo>` **só no texto que vira vetor**. O termo oficial é a 1ª oração
+  da definição no Glossário, comparada sem acento e sem maiúsculas. A pergunta, o índice de texto (BM25), o trecho lido pela IA e o cartão
+  (motor de feedback) não mudam (`knowledge/domain/glossary-jargon.ts`, `GLOSSARY_JARGON_VECTOR_V1`; `embedding-texts.ts`).
+- **Interruptor:** `INIA_KB_GLOSSARY_JARGON_VECTORS=on` no `.env` da API **e** do processamento (o mesmo valor nos dois), depois reinicie os
+  dois (`knowledge-glossary-jargon.ts`). Padrão: desligado, e aí texto, hash e chamadas ficam exatamente como antes.
+- **Reindexação:** `knowledge_embedding_index.jargon_key` (migration 251) guarda o Glossário com que a versão foi indexada. Ligar, desligar ou
+  editar o Glossário refaz as versões aos poucos (25 por organização por rodada); só os trechos que citam um termo geram chamada.
+- **Sem buraco na troca:** a busca procura o vetor com a gíria e, se ele ainda não existe, o sem gíria. A limpeza mantém os dois enquanto a
+  gíria está ligada, e por isso desligar volta na hora, sem gerar nada. Glossário ilegível na indexação deixa a organização para a próxima
+  rodada; nunca é tratado como Glossário vazio.
+- **Convenção do cadastro:** a definição precisa começar pelo termo oficial como a base o escreve ("Duplicidade de cobrança: …").
+  Definição que começa por outra coisa não enriquece nada.
+- **Antes de ligar:** medir com gírias reais da operação (o gabarito v4 é sintético) e com o modelo da VM (`text-embedding-3-small`, não
+  medido). A qualidade da resposta do chat não foi medida. O motor de feedback (transcrição) não passa por esta busca.
+- **Bancos:** 251 aplicada no `inia` (23/11). O `inia_test` está em 248 e ficou sem 249–251, porque não apliquei as migrations de outra sessão.
 
 ### Editor da base nos moldes de Publicações e assuntos cadastráveis (2026-11-17, migration 224)
 
@@ -569,3 +599,4 @@ passa do limite, e nenhum agente a usa).
   para a monitoria" abaixo de "Em uso pela IA" e parágrafo âmbar no rascunho, ambos `data-testid="knowledge-size-warning"`. Publicar continua liberado.
 - **Testes**: 3 casos em `knowledge-lifecycle.test.tsx`. Não conferido na tela (sessão do navegador expirada em 21/11). Wiki: `/wiki/bases-conhecimento#status`.
 
+> 23/11/2026 — Agentes e Orquestradores com vários Grupos/Subgrupos (migration 249), resolução e sobreposição de Orquestradores: ver [alcance-multigrupo.md](alcance-multigrupo.md), seção "Seletor pesquisável, elegibilidade e alcance N".

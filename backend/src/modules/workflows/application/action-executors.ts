@@ -26,6 +26,7 @@ import type { InvestigationTarget } from "../../feedback-engine/application/inve
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { agentSnapshotFor } from "../../agents/application/agent-runtime-context.js"
 import { AgentInactiveError } from "../../agents/domain/agent-inactive-error.js"
+import { workflowScopedTarget } from "../domain/workflow-scope.js"
 import { withWorkflowAgent } from "./workflow-agent-version.js"
 
 export type ActionExecutionContext = {
@@ -49,7 +50,9 @@ export type ActionExecutionContext = {
     nodeOutputs: Record<string, unknown>
     variables: Record<string, unknown>
   }
+  /** Abrangência PUBLICADA do Workflow (249): ALL_TEAMS ou GROUPS + `scopeLinks` (legado TEAM/SUBTEAM + ids só em dublês de teste). */
   scopeType: string
+  scopeLinks?: readonly { teamId: string; subteamId: string | null }[]
   teamId: string | null
   subteamId: string | null
   inputContext: string
@@ -758,7 +761,7 @@ const callAgent: Executor = async (config, context) => {
   if (monitored) return monitored
   // A etapa executa a versão VIGENTE do agente (revisão da PEN-002/PEN-076), se ele estiver ativo (PEN-070) e autorizado para o
   // alcance do Workflow (condição de segurança da revisão) — conferido agora, quando a execução dele vai começar.
-  return withWorkflowAgent(context.db, context.organizationId, config.agentId, { scopeType: context.scopeType, teamId: context.teamId, subteamId: context.subteamId }, () => callAgentVersion(config, context))
+  return withWorkflowAgent(context.db, context.organizationId, config.agentId, workflowScopedTarget(context), () => callAgentVersion(config, context))
 }
 
 async function callAgentVersion(config: Extract<ActionConfig, { actionType: "CALL_AGENT" }>, context: ActionExecutionContext): Promise<ActionResult> {
@@ -784,15 +787,21 @@ const setConfigValue: Executor = async (config, context) => {
 
   // Configuração persistente — em produção grava em org_config_values; no QA Lab o sink só
   // registra que "isso seria alterado", nunca toca a configuração real (Parte 34 do pedido).
-  await context.effects.setConfigValue(context.db, {
-    organizationId: context.organizationId,
-    scopeType: context.scopeType,
-    teamId: context.teamId,
-    subteamId: context.subteamId,
-    configKey: config.configKey,
-    valueType: config.valueType,
-    value: config.value,
-  })
+  // Abrangência com vários Grupos/Subgrupos: um valor por vínculo (Grupo inteiro = TEAM; Subgrupo = SUBTEAM), o mesmo que um Workflow
+  // de escopo único gravava para o seu Grupo/Subgrupo. GROUPS sem vínculo não grava nada (não alcança ninguém).
+  const targets =
+    context.scopeType === "GROUPS"
+      ? (context.scopeLinks ?? []).map((link) => (link.subteamId ? { scopeType: "SUBTEAM", teamId: link.teamId, subteamId: link.subteamId } : { scopeType: "TEAM", teamId: link.teamId, subteamId: null }))
+      : [{ scopeType: context.scopeType, teamId: context.teamId, subteamId: context.subteamId }]
+  for (const target of targets) {
+    await context.effects.setConfigValue(context.db, {
+      organizationId: context.organizationId,
+      ...target,
+      configKey: config.configKey,
+      valueType: config.valueType,
+      value: config.value,
+    })
+  }
   return {}
 }
 

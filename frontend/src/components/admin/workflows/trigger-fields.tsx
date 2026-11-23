@@ -41,10 +41,12 @@ import { cn } from "@/lib/utils"
 import { TimeListEditor } from "./time-list-editor"
 import { fitsUniverse } from "@/lib/operating-universe/hierarchy"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
+import type { ResourceScopePayload } from "@/lib/scope-links/scope-links"
 import { useWorkflowUniverse } from "./workflow-universe-context"
 
 type ScheduleTrigger = Extract<WorkflowTriggerInput, { kind: "schedule" }>
-type ScopeInput = { scopeType: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; teamId?: string }
+/** Abrangência (249) no formato da API — a prévia relativa ao expediente lista quem ela alcança. */
+type ScopeInput = ResourceScopePayload
 
 function scheduleModeOf(trigger: ScheduleTrigger): "CALENDAR" | "RELATIVE_TO_SHIFT" {
   return trigger.mode === "RELATIVE_TO_SHIFT" ? "RELATIVE_TO_SHIFT" : "CALENDAR"

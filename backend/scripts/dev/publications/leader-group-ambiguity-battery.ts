@@ -58,8 +58,8 @@ const GROUPS = [
   { teamId: "10000000-0000-4000-8000-000000000005", name: "Ouvidoria", code: "OUV-3", step: "abrir a manifestação na fila de Ouvidoria e retornar ao cliente em até 5 dias úteis" },
 ]
 const CODES = GROUPS.map((group) => group.code)
-const ownOrchestrators: InteractiveOrchestratorScope[] = GROUPS.map((group, index) => ({ id: `orch-${index + 1}`, name: `INIA ${group.name}`, scopeType: "TEAM", teamId: group.teamId }))
-const sharedOrchestrator: InteractiveOrchestratorScope[] = [{ id: "orch-all", name: "INIA Todos os grupos", scopeType: "ALL_TEAMS", teamId: null }]
+const ownOrchestrators: InteractiveOrchestratorScope[] = GROUPS.map((group, index) => ({ id: `orch-${index + 1}`, name: `INIA ${group.name}`, scopeType: "GROUPS", teamIds: [group.teamId] }))
+const sharedOrchestrator: InteractiveOrchestratorScope[] = [{ id: "orch-all", name: "INIA Todos os grupos", scopeType: "ALL_TEAMS", teamIds: [] }]
 
 const scope: ProcessScope = {
   groups: GROUPS.map(({ teamId, name }) => ({ teamId, name })),

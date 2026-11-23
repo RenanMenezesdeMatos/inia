@@ -223,7 +223,16 @@ export function createInterventionAdminRouter(db: Database) {
     // Onde roda: pelo nome só os Workflows que quem consulta abriria (workflows.manage na Abrangência publicada); os demais só contam.
     const usage = await loadPolicyWorkflowUsage(db, organizationOf(request), policy.id)
     const manageable = scopesWithPermission(accessOf(request), "workflows.manage")
-    const opens = (workflow: PolicyWorkflowUsage) => manageable.some((scope) => scopeCovers(scope, workflow.scopeType === "ALL_TEAMS" ? { type: "ORGANIZATION" } : workflow.scopeType === "TEAM" ? { type: "GROUP", teamId: workflow.teamId! } : { type: "SUBGROUP", teamId: workflow.teamId!, subteamId: workflow.subteamId! }))
+    // Com vários Grupos (249), a mesma regra de `canManageWorkflow`: TODOS os vínculos no escopo (sem vínculo = ninguém abre).
+    const covers = (target: Parameters<typeof scopeCovers>[1]) => manageable.some((scope) => scopeCovers(scope, target))
+    const opens = (workflow: PolicyWorkflowUsage) =>
+      workflow.scopeType === "ALL_TEAMS"
+        ? covers({ type: "ORGANIZATION" })
+        : workflow.scopeType === "GROUPS"
+          ? workflow.scopeLinks.length > 0 && workflow.scopeLinks.every((link) => covers(link.subteamId ? { type: "SUBGROUP", teamId: link.teamId, subteamId: link.subteamId } : { type: "GROUP", teamId: link.teamId }))
+          : workflow.scopeType === "TEAM"
+            ? covers({ type: "GROUP", teamId: workflow.teamId! })
+            : covers({ type: "SUBGROUP", teamId: workflow.teamId!, subteamId: workflow.subteamId! })
     const visible = usage.filter(opens)
     const workflows = { items: visible.map(({ id, name, active, published, inDraft }) => ({ id, name, active, published, inDraft })), outOfScope: usage.length - visible.length, running: usage.some((workflow) => workflow.published && workflow.active) }
     response.json({ data: { ...view, workflows, can: { edit: coversPolicy(accessOf(request), "intervention_policies.edit", policy), publish: coversPolicy(accessOf(request), "intervention_policies.publish", policy), simulate: canAnywhere(accessOf(request), "intervention_policies.simulate") || canAnywhere(accessOf(request), "workflows.manage"), audit: canAnywhere(accessOf(request), "intervention_policies.audit") } } })

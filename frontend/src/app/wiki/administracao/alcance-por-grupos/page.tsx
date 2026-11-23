@@ -7,23 +7,25 @@ import { READ_ONLY_LABEL } from "@/schemas/admin/argument-script.schema"
 
 export const metadata: Metadata = {
   title: "Alcance por vários Grupos",
-  description: "Bases de Conhecimento, Comunicados, Alinhamentos operacionais e Argumentários num cadastro só para vários Grupos: Grupo inteiro ou só alguns Subgrupos de cada um, o resumo “Vale para”, escopo global, universo e produto, quem administra um conteúdo compartilhado e a precedência entre alinhamentos.",
+  description: "Publicações, Alinhamentos, Argumentários, Bases, Agentes, Orquestradores, Workflows, Indicadores e Produtos num cadastro só para vários Grupos e Subgrupos: o seletor com busca, só Grupos e Subgrupos com operadores em produção, “Todos” explícito, universo e produto, quem administra um conteúdo compartilhado e a precedência entre alinhamentos e Orquestradores.",
 }
 
 const TOC: WikiTocEntry[] = [
   { id: "visao-geral", label: "Um conteúdo, vários Grupos" },
   { id: "exemplo", label: "Exemplo-guia" },
   { id: "como-escolher", label: "Como escolher o alcance" },
+  { id: "em-producao", label: "Só Grupos com operadores em produção" },
   { id: "global", label: "Escopo global é outra escolha" },
   { id: "por-cima", label: "Universo, produto e permissões" },
   { id: "por-conteudo", label: "Em cada tela" },
   { id: "quem-administra", label: "Quem administra um conteúdo compartilhado" },
   { id: "alinhamentos", label: "Alinhamentos que se cruzam" },
+  { id: "orquestradores", label: "Orquestradores que se cruzam" },
   { id: "listas", label: "Listas, filtros e contagens" },
   { id: "limitacoes", label: "Limitações atuais" },
 ]
 
-/** As quatro telas que usam o mesmo seletor de alcance — rótulos copiados das telas. */
+/** As telas que usam o mesmo seletor de alcance — rótulos copiados das telas. */
 const SCREENS: { area: string; menu: string; field: string; global: string; when: string; href: string }[] = [
   {
     area: "Base de conhecimento",
@@ -37,7 +39,7 @@ const SCREENS: { area: string; menu: string; field: string; global: string; when
     area: "Comunicado (Público específico)",
     menu: "Comunicação › Publicações",
     field: "Grupos (depois do Universo de atuação)",
-    global: "Sem Grupo escolhido, vale para todo o universo escolhido. “Toda a empresa” é outra opção de público.",
+    global: "“Todo o universo X” (com o universo escolhido). Para todos os universos, o público “Toda a empresa”.",
     when: "Antes de sair. Depois que o comunicado sai, o público não muda.",
     href: "/wiki/acompanhamento#comunicados",
   },
@@ -57,6 +59,46 @@ const SCREENS: { area: string; menu: string; field: string; global: string; when
     when: "Na versão: mudar os Grupos vai para o rascunho e vale a partir da publicação.",
     href: "/wiki/administracao#areas",
   },
+  {
+    area: "Agente",
+    menu: "Atendimento com IA › Agentes",
+    field: "Alcance",
+    global: "Todos os Grupos e Subgrupos (do universo do agente)",
+    when: "Vai para o rascunho do agente e vale ao publicar a versão.",
+    href: "/wiki/agents",
+  },
+  {
+    area: "Orquestrador",
+    menu: "Atendimento com IA › Orquestradores",
+    field: "Alcance",
+    global: "Todos os Grupos e Subgrupos (do universo do Orquestrador)",
+    when: "Vale ao publicar a versão. Mesmo Grupo ou Subgrupo que outro Orquestrador ativo do chat = recusado.",
+    href: "#orquestradores",
+  },
+  {
+    area: "Workflow",
+    menu: "Automação › Workflows",
+    field: "Abrangência",
+    global: "Todos os Grupos e Subgrupos (do universo do Workflow)",
+    when: "Fica no rascunho e só vale ao Publicar, como o resto da configuração.",
+    href: "/wiki/workflows",
+  },
+  {
+    area: "Indicador",
+    menu: "Dados › Indicadores",
+    field: "Alcance",
+    global: "Todos os Grupos e Subgrupos (do universo do indicador)",
+    when: "Na hora. Vale só na Administração (listas, filtros e seleção); não muda cálculo, meta nem feedback.",
+    href: "/wiki/indicadores",
+  },
+  {
+    area: "Produto",
+    menu: "Atendimento com IA › Produtos",
+    field: "Alcance",
+    global: "Todos os Grupos e Subgrupos (do universo do produto)",
+    when: "Na hora. Vale só na Administração; o universo do produto continua sendo o do cadastro e a análise das chamadas não muda.",
+    href: "/wiki/bases-conhecimento#produtos",
+  },
 ]
 
 export default function MultiGroupScopePage() {
@@ -65,11 +107,13 @@ export default function MultiGroupScopePage() {
       <WikiPageHeader
         eyebrow="10 · Administração e Segurança"
         title="Alcance por vários Grupos"
-        lead="Bases de Conhecimento, Comunicados, Alinhamentos operacionais e Argumentários podem valer para vários Grupos com um cadastro só: o mesmo conteúdo, o mesmo histórico e uma única edição. Para cada Grupo, você escolhe o Grupo inteiro ou só alguns Subgrupos dele."
+        lead="Publicações, Alinhamentos operacionais, Argumentários, Bases de Conhecimento, Agentes, Orquestradores, Workflows, Indicadores e Produtos podem valer para vários Grupos e Subgrupos com um cadastro só: o mesmo conteúdo, o mesmo histórico e uma única edição. Você escolhe Grupos inteiros, Subgrupos avulsos ou “Todos”."
       >
         <div className="flex flex-wrap gap-2 pt-2">
           <CapabilityBadge label="Vários Grupos num cadastro" />
           <CapabilityBadge label="Grupo inteiro ou só alguns Subgrupos" />
+          <CapabilityBadge label="Busca por nome, sem acento" />
+          <CapabilityBadge label="Só com operadores em produção" />
           <CapabilityBadge label="Resumo “Vale para” antes de salvar" />
           <CapabilityBadge label="Validado no servidor" />
         </div>
@@ -108,16 +152,17 @@ export default function MultiGroupScopePage() {
         </ExampleCard>
       </WikiSection>
 
-      <WikiSection id="como-escolher" title="Como escolher o alcance" eyebrow="O mesmo seletor nas quatro telas">
+      <WikiSection id="como-escolher" title="Como escolher o alcance" eyebrow="O mesmo seletor em todas as telas">
         <StepList
           steps={[
-            { title: "Escolha o universo, quando a tela pede", detail: "Escolhido o universo de atuação, só aparecem Grupos e Subgrupos dele. Um Grupo já escolhido que não cabe mais aparece marcado “(fora do universo escolhido)”, para você decidir." },
-            { title: "Adicionar Grupo", detail: "Escolha um Grupo na lista. Só aparecem os Grupos que você administra (e os do universo, se houver)." },
-            { title: "Grupo inteiro ou Só alguns Subgrupos", detail: "Para cada Grupo adicionado: “Grupo inteiro” ou “Só alguns Subgrupos”, marcando um a um. Com recorte por Subgrupo, marque ao menos um — senão a tela avisa e não salva." },
-            { title: "Repita para outros Grupos", detail: "Cada Grupo tem o próprio recorte. O X ao lado do nome tira o Grupo do alcance." },
-            { title: "Confira o resumo “Vale para”", detail: "Fica sempre visível, antes de salvar ou publicar: por exemplo, “Grupo A (Grupo inteiro) · Grupo B: só B1, B3”. Sem nenhum Grupo, mostra “Nenhum Grupo escolhido”." },
+            { title: "Escolha o universo, quando a tela pede", detail: "Escolhido o universo de atuação, só aparecem Grupos e Subgrupos dele. O que já estava escolhido e não cabe mais fica marcado “Fora do universo”, com o botão “Remover os que não cabem” — nada some em silêncio." },
+            { title: "Grupos e Subgrupos específicos ou Todos", detail: "Duas opções lado a lado. “Todos os Grupos e Subgrupos” diz no próprio rótulo o que alcança e inclui os que forem criados depois; só quem administra a organização inteira escolhe." },
+            { title: "Adicionar Grupo ou Subgrupo", detail: "Abre a busca, com duas abas: Grupos e Subgrupos. Digite parte do nome, sem se preocupar com maiúsculas e acentos; na aba Subgrupos, vale também o nome do Grupo (“cobrança tarde”). A lista mostra o Grupo de cada Subgrupo, o universo e quantos operadores estão em produção, e carrega mais conforme você rola." },
+            { title: "Marque quantos quiser", detail: "Escolher um Grupo vale para o Grupo inteiro; escolher um Subgrupo vale só para ele, nunca para os outros Subgrupos do mesmo Grupo. Subgrupo de um Grupo já escolhido inteiro aparece como “Já incluído”. Buscar de novo, rolar ou trocar de aba não desfaz nada do que já foi marcado." },
+            { title: "Confira os escolhidos e o resumo “Vale para”", detail: "Cada escolha vira um selo com o X para tirá-la. O resumo fica sempre visível antes de salvar, por exemplo “Grupo A (Grupo inteiro) · Grupo B › B1”. Sem nenhuma escolha, a tela pede ao menos uma." },
           ]}
         />
+        <FieldRow label="Teclado" value="Na busca, ↑ e ↓ percorrem as opções, Enter marca ou desmarca e Esc fecha. “Carregar mais” também é um botão." />
         <WarningCallout kind="tip" title="O servidor é quem decide">
           A tela ajuda, mas quem valida é o servidor, também por chamada direta à API. São recusados: o mesmo Grupo ou Subgrupo duas vezes, um Subgrupo
           junto do próprio Grupo inteiro (o Grupo inteiro já o inclui), um Subgrupo que não é do Grupo indicado, um Grupo de outra organização,
@@ -125,16 +170,34 @@ export default function MultiGroupScopePage() {
         </WarningCallout>
       </WikiSection>
 
+      <WikiSection id="em-producao" title="Só Grupos com operadores em produção" eyebrow="Para novas escolhas">
+        <p>
+          A busca oferece só Grupos e Subgrupos com <strong className="font-medium text-foreground">ao menos um operador ativo com a situação “Em produção”</strong>.
+          No Grupo, contam os operadores dele e os de qualquer Subgrupo dele — por isso um Grupo aparece mesmo quando só um dos Subgrupos tem gente em
+          produção; os Subgrupos sem ninguém em produção não aparecem. Com universo escolhido, contam só os operadores daquele universo. O servidor
+          aplica a mesma regra ao salvar: um Grupo ou Subgrupo novo sem operador em produção é recusado, também por chamada direta à API.
+        </p>
+        <FieldRow label="Na edição" value="O que já estava salvo continua na lista dos escolhidos, mesmo que tenha perdido os operadores em produção, marcado “Sem operadores em produção”. Você pode manter e salvar ou tirar. Tirado, só volta quando tiver operador em produção de novo." />
+        <FieldRow label="Filtros e relatórios" value="A regra vale para escolher o alcance de um cadastro. Filtros de listas, relatórios e o histórico continuam mostrando todos os Grupos e Subgrupos." />
+      </WikiSection>
+
       <WikiSection id="global" title="Escopo global é outra escolha" eyebrow="Nunca por ausência">
         <p>
-          Valer para todos — <em>Todos os grupos</em> numa base ou argumentário, <em>Todo o universo</em> num alinhamento — é uma opção própria do
-          seletor, ao lado de <em>Grupos específicos</em>, e só quem administra a organização inteira consegue salvá-la (o servidor recusa dos demais).
-          Ela não se mistura com Grupos: ou o conteúdo é global, ou tem uma lista de Grupos.
+          Valer para todos — <em>Todos os Grupos e Subgrupos</em> do universo do cadastro (agente, Orquestrador, Workflow, indicador, produto, base,
+          argumentário), <em>Todo o universo</em> num alinhamento ou numa publicação — é uma opção própria do seletor, ao lado de{" "}
+          <em>Grupos e Subgrupos específicos</em>, e só quem administra a organização inteira consegue salvá-la (o servidor recusa dos demais). Ela não
+          se mistura com Grupos: ou o cadastro vale para todos, ou tem uma lista de Grupos e Subgrupos. E não é “marcar tudo o que está na lista”: um
+          Grupo criado depois entra sozinho.
+        </p>
+        <p>
+          <strong className="font-medium text-foreground">Universos continuam separados.</strong> Cada cadastro pertence a um universo; “Todos” vale
+          para os Grupos e Subgrupos daquele universo, e Grupos de outro universo são recusados. Só a publicação, que não pertence a um universo, alcança
+          todos os universos — pelo público “Toda a empresa”.
         </p>
         <p>
           <strong className="font-medium text-foreground">Conteúdo sem Grupo nunca vira “todos”.</strong> Se um Grupo ou Subgrupo deixa de existir, o
-          conteúdo perde aquele item do alcance — não passa a valer para a organização. No comunicado de público específico, deixar os Grupos em
-          branco é uma escolha explícita e visível na tela (“Sem Grupo escolhido, vale para todo o universo”), feita junto do universo.
+          conteúdo perde aquele item do alcance — não passa a valer para a organização. Na publicação de público específico, “Todo o universo X” é
+          uma opção marcada à parte, que só aparece depois de escolher o universo.
         </p>
       </WikiSection>
 
@@ -212,6 +275,18 @@ export default function MultiGroupScopePage() {
         <FieldRow label="Produto" value="Um alinhamento só para um produto nunca derruba o geral: os dois valem e, para aquele produto, o específico prevalece." />
       </WikiSection>
 
+      <WikiSection id="orquestradores" title="Orquestradores que se cruzam" eyebrow="Uma resposta por pessoa">
+        <p>
+          No chat, cada pessoa é atendida por um Orquestrador só: vale o que tem o recorte mais específico <em>para ela</em> — um Subgrupo dela, depois
+          o Grupo dela inteiro, depois “Todos” —, do universo dela; no empate, o mais recente. Por isso a INIA recusa salvar um Orquestrador do chat
+          ativo com o mesmo Grupo inteiro ou o mesmo Subgrupo de outro Orquestrador do chat ativo, do mesmo universo, e mostra quais se cruzam.
+        </p>
+        <ExampleCard title="Grupo inteiro × Subgrupo">
+          O Orquestrador X vale para o Grupo A inteiro; o Y, só para o Subgrupo A1. Quem está em A1 é atendido por Y; o resto do Grupo A, por X. Não é
+          conflito. Se Y também tivesse o Grupo A inteiro, a gravação seria recusada.
+        </ExampleCard>
+      </WikiSection>
+
       <WikiSection id="listas" title="Listas, filtros e contagens" eyebrow="Uma linha por conteúdo, uma pessoa uma vez">
         <FieldRow label="Lista" value="Mostra todos os Grupos e Subgrupos do alcance (por exemplo, “Grupo A · Grupo B › B1”). Filtrar por um Grupo ou Subgrupo traz os conteúdos com algum item do alcance ali, cada um uma vez." />
         <FieldRow label="Quem consome" value="O mesmo conteúdo alcançado por dois itens do alcance aparece uma vez para a pessoa — no chat, no Acompanhamento, na monitoria ou no material de apoio." />
@@ -229,6 +304,8 @@ export default function MultiGroupScopePage() {
             { href: "/wiki/bases-conhecimento", label: "Bases de Conhecimento" },
             { href: "/wiki/acompanhamento#comunicados", label: "Comunicados e Publicações" },
             { href: "/wiki/administracao", label: "Administração", hint: "Argumentários e Alinhamentos operacionais" },
+            { href: "/wiki/agents", label: "Agentes" },
+            { href: "/wiki/workflows", label: "Workflows" },
             { href: "/wiki/seguranca", label: "Segurança e Escopo" },
           ]}
         />

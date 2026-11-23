@@ -21,6 +21,7 @@ vi.mock("../../access/domain/roles.js", async (importOriginal) => {
 const { env } = await import("../../../config/env.js")
 const { createApp } = await import("../../../main/app.js")
 const { setProofAccountPassword } = await import("../../auth/testing/proof-account-password.js")
+const { eligibleProofTeamIds } = await import("./proof-scope-units.js")
 const { resolveAgentVersionForRun } = await import("../application/agent-versions.js")
 
 const ENABLED = process.env.INIA_DB_PROOF === "1"
@@ -86,7 +87,8 @@ describe.skipIf(!ENABLED)("Associar agentes a partir da base — mesmo ciclo de 
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: env.TEST_DATABASE_URL })
     await cleanup()
-    const teams = (await pool.query<{ id: string }>(`select id from teams where organization_id = $1 order by name limit 2`, [ORG])).rows
+    // Grupos com operador em produção: vínculo novo de agente exige (249).
+    const teams = (await eligibleProofTeamIds(pool, ORG, 2)).map((id) => ({ id }))
     teamA = teams[0]!.id
     teamB = teams[1]!.id
     const person = (await pool.query<{ id: string }>(`insert into people (organization_id, name, role, team_id) values ($1, 'Prova Gestor Agentes Bases', 'ADMIN', $2) returning id`, [ORG, teamA])).rows[0]!.id

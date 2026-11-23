@@ -128,7 +128,9 @@ export type UploadRunView = {
 const pages = (count: number) => `${count} ${count === 1 ? "página" : "páginas"}`
 
 function ocrStage(stage: UploadStage, job: UploadOcrJob | null): UploadStageView {
-  if (!job) return { ...stage, progress: null }
+  // Envio concluído com o OCR ainda por fazer e sem a leitura: ela foi apagada com o rascunho (descartado ou trocado). Sem isso o envio
+  // ficava "na fila" para sempre, aberto no topo da lista.
+  if (!job) return stage.state === "PENDING" || stage.state === "RUNNING" ? { ...stage, state: "SKIPPED", detail: "Leitura não feita: o rascunho deste envio foi descartado ou trocado.", progress: null } : { ...stage, progress: null }
   if (job.status === "QUEUED") return { ...stage, state: "PENDING", detail: `${pages(job.pagesTotal)} digitalizada${job.pagesTotal === 1 ? "" : "s"} na fila de leitura.`, progress: null }
   if (job.status === "RUNNING") {
     const detail = job.stage === "PRINTS" ? `Recortando os prints e lendo de novo as páginas com print: ${job.pagesDone} de ${job.pagesTotal}.` : `Desenhando e lendo as páginas: ${job.pagesDone} de ${job.pagesTotal}.`

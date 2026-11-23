@@ -1,6 +1,7 @@
 "use client"
 
 import { UniverseBadge } from "@/components/operating-universe/universe-badge"
+import { resourceScopeLabel } from "@/lib/scope-links/scope-links"
 import { useMemo, useState } from "react"
 import { Activity, BookText, CalendarRange, Gauge, ListChecks, Pencil, Plus, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react"
 
@@ -310,6 +311,9 @@ function IndicatorDefinitionSummary({ indicator }: { indicator: IndicatorWithRul
       <DefinitionRow label="Fechamento oficial">
         {indicator.officialClosureSupported ? "Pode receber fechamento oficial mensal (competência): valor, meta, atingimento, quartil e peso chegam prontos." : <span className="text-muted-foreground">Não recebe fechamento oficial.</span>}
       </DefinitionRow>
+      <DefinitionRow label="Alcance">
+        {resourceScopeLabel({ scopeType: indicator.scopeType ?? "ALL_TEAMS", scopeLinks: indicator.scopeLinks ?? [] }, `Todos os Grupos e Subgrupos${indicator.operatingUniverse ? ` do universo ${indicator.operatingUniverse}` : ""}`)}
+      </DefinitionRow>
       <DefinitionRow label="Regras por Grupo/Subgrupo">
         {indicator.calculationRules.length === 0 ? <span className="text-muted-foreground">Nenhuma — usa o padrão geral.</span> : `${indicator.calculationRules.length} regra(s) — ver aba Regras de cálculo.`}
       </DefinitionRow>
@@ -571,6 +575,8 @@ function IndicatorCard({ indicator, onManage }: { indicator: IndicatorWithRules;
           <span aria-hidden>·</span>
           <span>{DESIRED_DIRECTION_LABELS[indicator.desiredDirection as DesiredDirection] ?? indicator.desiredDirection}</span>
           <UniverseBadge universe={indicator.operatingUniverse} />
+          <span aria-hidden>·</span>
+          <span>Alcance: {resourceScopeLabel({ scopeType: indicator.scopeType ?? "ALL_TEAMS", scopeLinks: indicator.scopeLinks ?? [] }, "Todos os Grupos e Subgrupos")}</span>
         </>
       }
       title={indicator.name}

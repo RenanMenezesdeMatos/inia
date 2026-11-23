@@ -8,6 +8,8 @@ import { abandonKnowledgeEmbeddingGc, collectKnowledgeEmbeddingGarbage, type Kno
 import { liveKnowledgeVersion } from "./live-knowledge-version.js"
 import { knowledgeProductsSql } from "./knowledge-products.js"
 import { knowledgeScaleRetrievalEnabled } from "./knowledge-recall.js"
+import { knowledgeGlossaryJargonEnabled, queryGlossaryJargonRules } from "./knowledge-glossary-jargon.js"
+import { jargonKeyOf, type JargonRule } from "../domain/glossary-jargon.js"
 import { missingKnowledgeVectorHashes, storeKnowledgeVectors } from "./knowledge-vector-store.js"
 
 /**
@@ -38,6 +40,8 @@ export type KnowledgeEmbeddingJobDeps = {
   enabled?: boolean
   /** Limpeza dos vetores que ninguém mais referencia (`knowledge-embedding-gc.ts`); false desliga. */
   gc?: KnowledgeEmbeddingGcOptions | false
+  /** Gíria do Glossário no vetor (`knowledge-glossary-jargon.ts`); padrão = o interruptor do ambiente (desligado). */
+  glossaryJargon?: boolean
 }
 
 export const DEFAULT_MAX_TEXTS_PER_RUN = 2_048
@@ -62,10 +66,21 @@ export async function processKnowledgeEmbeddingIndex(db: Database, deps: Knowled
     if (budget <= 0) break
     const modelKey = await embeddingModel(organizationId)
     if (!modelKey) continue
+    let jargon: JargonRule[] = []
+    if (deps.glossaryJargon ?? knowledgeGlossaryJargonEnabled()) {
+      try {
+        jargon = await queryGlossaryJargonRules(db, organizationId)
+      } catch (error) {
+        // Glossário ilegível ≠ Glossário vazio: a organização fica para a próxima rodada, sem refazer nem apagar nada.
+        console.error(JSON.stringify({ event: "knowledge_embedding_jargon_unavailable", organizationId, name: (error as Error)?.name }))
+        continue
+      }
+    }
+    const jargonKey = jargonKeyOf(jargon)
     const versions = (await db.query<VersionRow>(
       `select * from (
        select kd.id document_id, coalesce(kv.config->>'title', kd.title) title, kd.title registered_title, kv.id version_id, kv.content, ei.attempts,
-              ei.status index_status, ei.next_attempt_at, ei.updated_at index_updated_at, ei.products_key, ei.version_id indexed_version,
+              ei.status index_status, ei.next_attempt_at, ei.updated_at index_updated_at, ei.products_key, ei.jargon_key, ei.version_id indexed_version,
               ${knowledgeProductsSql("kd.id", "kd.organization_id")} products
          from knowledge_documents kd
          join lateral (${liveKnowledgeVersion("kd.id", "id, content, config")}) kv on true
@@ -75,14 +90,16 @@ export async function processKnowledgeEmbeddingIndex(db: Database, deps: Knowled
            or (v.index_status = 'FAILED' and coalesce(v.next_attempt_at, v.index_updated_at) <= $3)
            -- Produto da base mudou (vínculo, nome ou família): os textos mudam, a versão é indexada de novo.
            or (v.index_status = 'DONE' and v.products_key is distinct from v.products)
+           -- Glossário mudou ou a gíria no vetor foi ligada/desligada (migration 251): a versão é indexada de novo.
+           or (v.index_status = 'DONE' and v.jargon_key is distinct from $5::text)
         order by v.indexed_version nulls first, v.title
         limit $4`,
-      [organizationId, modelKey, now(), deps.maxVersionsPerOrganization ?? DEFAULT_MAX_VERSIONS],
+      [organizationId, modelKey, now(), deps.maxVersionsPerOrganization ?? DEFAULT_MAX_VERSIONS, jargonKey],
     )).rows
     // Indexação em dia: um passo da limpeza dos vetores sem referência. Com trabalho de indexação, a passada em curso é abandonada.
     if (versions.length === 0) {
       if (deps.gc !== false) {
-        await collectKnowledgeEmbeddingGarbage(db, organizationId, modelKey, now(), deps.gc ?? {}).catch((error: unknown) => {
+        await collectKnowledgeEmbeddingGarbage(db, organizationId, modelKey, now(), { ...(deps.gc ?? {}), jargon }).catch((error: unknown) => {
           abandonKnowledgeEmbeddingGc(organizationId)
           console.error(JSON.stringify({ event: "knowledge_embedding_gc_failed", organizationId, name: (error as Error)?.name }))
         })
@@ -92,7 +109,7 @@ export async function processKnowledgeEmbeddingIndex(db: Database, deps: Knowled
     abandonKnowledgeEmbeddingGc(organizationId)
     for (const version of versions) {
       if (budget <= 0) break
-      const outcome = await indexVersion(db, { organizationId, modelKey, version, budget, embed, now })
+      const outcome = await indexVersion(db, { organizationId, modelKey, version, budget, embed, now, jargon, jargonKey })
       budget -= outcome.sent
       if (outcome.status === "DONE") indexed += 1
       if (outcome.stopOrganization) break
@@ -101,11 +118,11 @@ export async function processKnowledgeEmbeddingIndex(db: Database, deps: Knowled
   return indexed
 }
 
-async function indexVersion(db: Database, input: { organizationId: string; modelKey: string; version: VersionRow; budget: number; embed: NonNullable<KnowledgeEmbeddingJobDeps["embed"]>; now: () => Date }): Promise<{ status: "DONE" | "PARTIAL" | "FAILED"; sent: number; stopOrganization: boolean }> {
+async function indexVersion(db: Database, input: { organizationId: string; modelKey: string; version: VersionRow; budget: number; embed: NonNullable<KnowledgeEmbeddingJobDeps["embed"]>; now: () => Date; jargon: readonly JargonRule[]; jargonKey: string | null }): Promise<{ status: "DONE" | "PARTIAL" | "FAILED"; sent: number; stopOrganization: boolean }> {
   const { organizationId, modelKey, version } = input
   const chunks = chunkKnowledgeDocument({ id: version.document_id, title: version.title, content: version.content })
   // Trechos com o título da versão (o que o chat usa); cartão com o título do cadastro (o que o motor de feedback usa).
-  const texts = embeddingTextsOf({ documentId: version.document_id, documentTitle: version.title, versionId: version.version_id, chunks }, { cardTitle: version.registered_title, products: version.products })
+  const texts = embeddingTextsOf({ documentId: version.document_id, documentTitle: version.title, versionId: version.version_id, chunks }, { cardTitle: version.registered_title, products: version.products, jargon: input.jargon })
   const missing = new Set(await missingKnowledgeVectorHashes(db, organizationId, modelKey, texts.map((text) => text.hash)))
   const pending = [...new Map(texts.filter((text) => missing.has(text.hash)).map((text) => [text.hash, text])).values()]
   let sent = 0
@@ -125,11 +142,11 @@ async function indexVersion(db: Database, input: { organizationId: string; model
     // Todos os textos recusados = provavelmente configuração (modelo/parâmetro), não o conteúdo: falha com nova tentativa, como antes.
     if (pending.length > 0 && rejected === pending.length) throw new AiProviderError("INVALID_REQUEST", { message: "O modelo de embedding recusou todos os textos da versão." })
     await db.query(
-      `insert into knowledge_embedding_index (organization_id, version_id, model_key, status, texts, embedded, attempts, error_code, error_message, next_attempt_at, updated_at, products_key)
-       values ($1, $2, $3, 'DONE', $4, $5, coalesce($6, 0) + 1, $9, $10, null, $7, $8)
+      `insert into knowledge_embedding_index (organization_id, version_id, model_key, status, texts, embedded, attempts, error_code, error_message, next_attempt_at, updated_at, products_key, jargon_key)
+       values ($1, $2, $3, 'DONE', $4, $5, coalesce($6, 0) + 1, $9, $10, null, $7, $8, $11)
        on conflict (version_id, model_key) do update set status = 'DONE', texts = excluded.texts, embedded = knowledge_embedding_index.embedded + excluded.embedded,
-         attempts = excluded.attempts, error_code = excluded.error_code, error_message = excluded.error_message, next_attempt_at = null, updated_at = excluded.updated_at, products_key = excluded.products_key`,
-      [organizationId, version.version_id, modelKey, texts.length, stored, version.attempts, input.now(), version.products, rejected > 0 ? "INVALID_REQUEST" : null, rejected > 0 ? `${rejected} texto(s) recusado(s) pelo modelo de embedding: ficam só na busca por texto.` : null],
+         attempts = excluded.attempts, error_code = excluded.error_code, error_message = excluded.error_message, next_attempt_at = null, updated_at = excluded.updated_at, products_key = excluded.products_key, jargon_key = excluded.jargon_key`,
+      [organizationId, version.version_id, modelKey, texts.length, stored, version.attempts, input.now(), version.products, rejected > 0 ? "INVALID_REQUEST" : null, rejected > 0 ? `${rejected} texto(s) recusado(s) pelo modelo de embedding: ficam só na busca por texto.` : null, input.jargonKey],
     )
     return { status: "DONE", sent, stopOrganization: false }
   } catch (error) {

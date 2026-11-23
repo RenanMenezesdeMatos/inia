@@ -82,6 +82,7 @@ import { WorkflowSettingsSheet } from "./workflow-settings-sheet"
 import { GoLiveImpactDialog } from "./go-live-impact-dialog"
 import { usePublishFlow } from "./use-publish-flow"
 import { describeConfigurationChanges } from "./workflow-configuration-summary"
+import { workflowScopePayload } from "./workflow-scope"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 /** Badge "Individual"/"Consolidado · <estrutura>" ao lado da Abrangência — herança visual do
@@ -277,8 +278,8 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
   // nunca a cada tecla (ver use-publish-validation.ts).
   const [savedRevision, setSavedRevision] = useState(0)
   const revision = useMemo(
-    () => JSON.stringify([savedRevision, editable.scopeType, editable.teamId, editable.subteamId, editable.trigger, editable.consolidatedStructure ?? null, editable.populationFilter ?? null]),
-    [savedRevision, editable.scopeType, editable.teamId, editable.subteamId, editable.trigger, editable.consolidatedStructure, editable.populationFilter],
+    () => JSON.stringify([savedRevision, editable.scopeType, editable.scopeLinks, editable.trigger, editable.consolidatedStructure ?? null, editable.populationFilter ?? null]),
+    [savedRevision, editable.scopeType, editable.scopeLinks, editable.trigger, editable.consolidatedStructure, editable.populationFilter],
   )
   const publishValidation = usePublishValidation({ workflowId: workflow.id, revision, isDirty, localIssueCount: graphIssues.length })
   // Agente inativo ou nunca publicado numa etapa (CA-009.12, PEN-047): a etapa fica destacada e a tela explica — lido das
@@ -549,7 +550,7 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
                 graph={currentGraph}
                 trigger={editable.trigger}
                 workflowId={workflow.id}
-                scope={{ scopeType: editable.scopeType, teamId: editable.teamId ?? undefined, subteamId: editable.subteamId ?? undefined }}
+                scope={workflowScopePayload(editable)}
                 evaluationMode={editable.consolidatedStructure ? "CONSOLIDATED" : "INDIVIDUAL"}
                 consolidatedStructure={editable.consolidatedStructure ?? null}
                 populationFilter={editable.populationFilter ?? null}

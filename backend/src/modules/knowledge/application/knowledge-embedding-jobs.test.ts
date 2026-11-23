@@ -92,3 +92,53 @@ describe("indexação das bases — texto enviado (RAG-02)", () => {
     expect(indexWrites.map((write) => [write.status, write.params[6]])).toEqual([["FAILED", "INVALID_REQUEST"]])
   })
 })
+
+describe("indexação das bases — gíria do Glossário no vetor (migration 251)", () => {
+  const glossaryDb = (versions: ReturnType<typeof version>[], glossary: () => { term: string; definition: string }[]) => {
+    const base = fakeDb(versions)
+    const sqls: { sql: string; params: unknown[] }[] = []
+    const db = {
+      query: async (sql: string, params: unknown[] = []) => {
+        sqls.push({ sql, params })
+        if (sql.includes("from glossary_terms")) return { rows: glossary() }
+        return (base.db as unknown as { query: (sql: string, params: unknown[]) => Promise<unknown> }).query(sql, params)
+      },
+    } as unknown as Database
+    return { ...base, db, sqls }
+  }
+  const GLOSSARY = [{ term: "conta gêmea", definition: "Duplicidade de cobrança: a mesma cobrança duas vezes." }]
+  const runWith = (db: Database, glossaryJargon: boolean, sent: string[]) => processKnowledgeEmbeddingIndex(db, { enabled: true, glossaryJargon, embeddingModel: async () => "embed", embed: async (request) => (sent.push(...request.texts), request.texts.map(vectorOf)), gc: false, now: () => new Date("2026-11-23T12:00:00Z") })
+
+  it("desligada (padrão): não lê o Glossário, texto e chave como antes", async () => {
+    const { db, sqls, indexWrites } = glossaryDb([version(1, "## Duplicidade de cobrança\nDuas contas.")], () => GLOSSARY)
+    const sent: string[] = []
+    await runWith(db, false, sent)
+    expect(sqls.some((entry) => entry.sql.includes("glossary_terms"))).toBe(false)
+    expect(sent.some((text) => text.includes("Também chamado"))).toBe(false)
+    expect(indexWrites[0]!.params[10]).toBeNull()
+  })
+
+  it("ligada: o trecho que cita o termo oficial vai com a gíria; a versão grava a chave do Glossário e é refeita quando ela muda", async () => {
+    const { db, sqls, indexWrites } = glossaryDb([version(1, "## Duplicidade de cobrança\nDuas contas.")], () => GLOSSARY)
+    const sent: string[] = []
+    await runWith(db, true, sent)
+    expect(sent.filter((text) => text.includes("Também chamado: conta gêmea."))).toHaveLength(1)
+    const key = indexWrites[0]!.params[10]
+    expect(typeof key).toBe("string")
+    const select = sqls.find((entry) => entry.sql.includes("left join knowledge_embedding_index"))!
+    expect(select.sql).toContain("v.jargon_key is distinct from $5::text")
+    expect(select.params[4]).toBe(key)
+  })
+
+  it("Glossário ilegível: a organização fica para a próxima rodada (nunca vira Glossário vazio)", async () => {
+    const { db, indexWrites } = glossaryDb([version(1)], () => {
+      throw new Error("indisponível")
+    })
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    const sent: string[] = []
+    expect(await runWith(db, true, sent)).toBe(0)
+    error.mockRestore()
+    expect(sent).toEqual([])
+    expect(indexWrites).toEqual([])
+  })
+})

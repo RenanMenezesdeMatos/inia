@@ -386,6 +386,53 @@ describe("detalhe: em uso × rascunho × atualização", () => {
  * Rascunho cujo alcance quem lê não alcança (d7c5be69): a API manda só número e situação e recusa editar, trocar arquivo, reprocessar,
  * publicar e descartar com 403. A tela diz isso no lugar do editor vazio e não oferece essas ações; a versão em uso continua normal.
  */
+describe("editor: PDF digitalizado (VM, 22/11)", () => {
+  const PDF_CONFIG: KnowledgeVersionConfig = { ...CONFIG, sourceType: "PDF", file: { filename: "it-faturamento.pdf", sizeBytes: 4096 } as KnowledgeVersionConfig["file"] }
+  const ocrJob = (status: "RUNNING" | "DONE") => ({ id: "j1", status, stage: "READING" as const, pagesDone: status === "DONE" ? 2 : 1, pagesTotal: 2, errorCode: null, errorMessage: null, createdAt: "2026-11-22T21:09:35.000Z", finishedAt: null })
+  const extraction = {
+    version: "PDF_MARKDOWN_V1", pageCount: 2, headings: 1, tables: 0, repeatedLinesRemoved: 0, taggedPages: 0, edited: false,
+    pages: [{ page: 1, status: "TEXT" as const, chars: 40, headings: 1, tables: 0, offset: 0 }, { page: 2, status: "TEXT" as const, chars: 30, headings: 0, tables: 0, offset: 40 }],
+    images: [{ id: "img-print-1", page: 1, offset: 20, width: 800, height: 400 }],
+  }
+  const pdfDraft = (content: string, textAvailable: boolean, job: ReturnType<typeof ocrJob> | null, withExtraction: boolean) =>
+    withDraft({
+      draft: { ...DRAFT, content, textAvailable, config: PDF_CONFIG, extraction: withExtraction ? extraction : null, ocr: job },
+      editable: { versionId: "v5", version: 5, status: "DRAFT", content, extraction: withExtraction ? extraction : null, config: PDF_CONFIG, textAvailable, restricted: false },
+    })
+
+  it("o OCR termina com a tela aberta: o texto lido entra sozinho e o aviso de 'sem texto' sai, sem precisar de F5", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const lido = "# Alteração do endereço\n\nTexto lido pelo OCR na página 1.\n\nPágina 2."
+    service.fetchKnowledgeDocument.mockResolvedValueOnce(pdfDraft("", false, ocrJob("RUNNING"), false)).mockResolvedValue(pdfDraft(lido, true, ocrJob("DONE"), true))
+    renderWithQuery(<EditKnowledgePage documentId="kb-1" />)
+    expect(await screen.findByText(/Não foi possível extrair texto deste arquivo/)).toBeInTheDocument()
+    await act(() => vi.advanceTimersByTimeAsync(3_100))
+    await waitFor(() => expect(screen.getByLabelText("Texto extraído do arquivo")).toHaveValue(lido))
+    expect(screen.queryByText(/Não foi possível extrair texto deste arquivo/)).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Salvar rascunho" })).toBeDisabled()
+  })
+
+  it("Visualizar do rascunho mostra os prints no lugar, antes de publicar", async () => {
+    service.fetchKnowledgeDocument.mockResolvedValue(pdfDraft("# Alteração do endereço\n\nAbra a tela de contas.\n\nPágina 2 sem print.", true, ocrJob("DONE"), true))
+    renderWithQuery(<EditKnowledgePage documentId="kb-1" />)
+    await screen.findByLabelText("Texto extraído do arquivo")
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Visualizar/ }), { button: 0 })
+    const preview = await screen.findByTestId("knowledge-markdown-preview")
+    const image = await within(preview).findByRole("img")
+    expect(image.getAttribute("src")).toContain("/api/v1/admin/knowledge/kb-1/versions/v5/images/img-print-1")
+  })
+
+  it("rascunho de texto continua com a leitura formatada de sempre, sem imagens", async () => {
+    service.fetchKnowledgeDocument.mockResolvedValue(withDraft())
+    renderWithQuery(<EditKnowledgePage documentId="kb-1" />)
+    await screen.findByLabelText("Conteúdo")
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Visualizar/ }), { button: 0 })
+    const preview = await screen.findByTestId("knowledge-markdown-preview")
+    expect(within(preview).getByText("Texto do rascunho, ainda fora de uso.")).toBeInTheDocument()
+    expect(within(preview).queryByRole("img")).not.toBeInTheDocument()
+  })
+})
+
 describe("rascunho fora do escopo de quem lê", () => {
   it("aviso no lugar do rascunho, com quem salvou e quando; sem Editar, Publicar nem Descartar; a versão em uso continua visível", async () => {
     await renderDetail(withRestrictedDraft())

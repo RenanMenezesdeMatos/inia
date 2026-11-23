@@ -1,6 +1,7 @@
 import type { ConsolidatedStructure } from "./consolidated-structure-schema.js"
 import type { PopulationFilter } from "./population-filter-schema.js"
 import type { TriggerConfig } from "./trigger-config-schema.js"
+import { workflowScopeKey } from "./workflow-scope.js"
 
 /**
  * CONFIGURAÇÃO de um Workflow — tudo que, fora do grafo, decide QUANDO ele nasce e PARA QUEM:
@@ -17,9 +18,12 @@ import type { TriggerConfig } from "./trigger-config-schema.js"
  */
 export type WorkflowConfiguration = {
   triggerConfig: TriggerConfig
+  /** Abrangência (249): `ALL_TEAMS` ou `GROUPS` + `scopeLinks` (ver workflow-scope.ts). */
   scopeType: string
-  teamId: string | null
-  subteamId: string | null
+  scopeLinks: { teamId: string; subteamId: string | null }[]
+  /** Legado (TEAM/SUBTEAM, anterior à 249): só em dublês de teste e snapshots antigos — o banco grava sempre null. */
+  teamId?: string | null
+  subteamId?: string | null
   consolidatedStructure: ConsolidatedStructure | null
   populationFilter: PopulationFilter | null
   /** Universo de atuação (B2B/B2C/B2X; null = pendente) — parte da Abrangência: só vale ao Publicar. */
@@ -67,7 +71,7 @@ function normalizedPopulation(filter: PopulationFilter | null | undefined): Popu
 export function configurationChanges(draft: WorkflowConfiguration, published: WorkflowConfiguration): ConfigurationChange[] {
   const changes: ConfigurationChange[] = []
   if (stableJson(draft.triggerConfig) !== stableJson(published.triggerConfig)) changes.push("TRIGGER")
-  if (draft.scopeType !== published.scopeType || (draft.teamId ?? null) !== (published.teamId ?? null) || (draft.subteamId ?? null) !== (published.subteamId ?? null) || (draft.operatingUniverse ?? null) !== (published.operatingUniverse ?? null)) {
+  if (workflowScopeKey(draft) !== workflowScopeKey(published) || (draft.operatingUniverse ?? null) !== (published.operatingUniverse ?? null)) {
     changes.push("SCOPE")
   }
   if (

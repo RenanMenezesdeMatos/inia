@@ -1,4 +1,4 @@
-import type { AgentConfig } from "../domain/agent-config.js"
+import { agentScopeFields, agentScopeOf, type AgentConfig } from "../domain/agent-config.js"
 
 /**
  * Bancos simulados dos testes de unidade: respostas às consultas de VERSÃO do agente (migration 164; PEN-002) a partir da
@@ -23,9 +23,13 @@ export function fakeAgentConfig(row: FakeAgentRow = {}): AgentConfig {
     objective: pick<string>("objective") ?? "",
     description: pick<string>("description") ?? "",
     contextPrompt: pick<string>("context_prompt", "contextPrompt") ?? "",
-    scopeType: pick<AgentConfig["scopeType"]>("scope_type", "scopeType") ?? "ALL_TEAMS",
-    teamId: pick<string | null>("team_id", "teamId") ?? null,
-    subteamId: pick<string | null>("subteam_id", "subteamId") ?? null,
+    // Alcance em qualquer formato da linha simulada (legado TEAM/SUBTEAM + ids ou 249 com `scopeLinks`) → o formato novo.
+    ...agentScopeFields(agentScopeOf({
+      scopeType: pick<string>("scope_type", "scopeType") ?? "ALL_TEAMS",
+      teamId: pick<string | null>("team_id", "teamId") ?? null,
+      subteamId: pick<string | null>("subteam_id", "subteamId") ?? null,
+      scopeLinks: pick<{ teamId: string; subteamId: string | null }[]>("scope_links", "scopeLinks") ?? null,
+    })),
     specialty: pick<string | null>("specialty") ?? null,
     specialtyKind: pick<string | null>("specialty_kind", "specialtyKind") ?? null,
     domain: pick<string | null>("domain") ?? null,

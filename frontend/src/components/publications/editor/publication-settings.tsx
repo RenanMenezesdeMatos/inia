@@ -2,7 +2,7 @@
 
 import { MultiOrgScopeField } from "@/components/admin/shared/multi-org-scope-field"
 
-import { scopeValueAfterUniverseChange, scopeValueIssue } from "@/lib/scope-links/scope-links"
+import { scopeValueIssue } from "@/lib/scope-links/scope-links"
 
 import { Building2, CalendarClock, Globe2, Info, Lock, Star, Tags, Users } from "lucide-react"
 
@@ -19,7 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useAudiencePreviewQuery } from "@/queries/communications/use-communications"
 import { COMMUNICATION_MAX_SUMMARY, COMMUNICATION_TAGS, COMMUNICATION_UNIVERSES, type AudienceOptions, type EditorialForm } from "@/schemas/communications/communication.schema"
 
-import { audienceDescription, civilPartsOf, instantOf, segmentPayloadOf, segmentTeamOptions } from "../publication-form"
+import { audienceDescription, civilPartsOf, instantOf, segmentPayloadOf } from "../publication-form"
 import { SearchablePicker } from "./searchable-picker"
 
 type Patch = (patch: Partial<EditorialForm>) => void
@@ -68,9 +68,9 @@ export function PublicationScheduleSettings({ form, patch, locked, publishedAtLa
 
 export function PublicationAudienceSettings({ form, patch, locked, options, optionsLoading }: { form: EditorialForm; patch: Patch; locked: boolean; options: AudienceOptions | undefined; optionsLoading: boolean }) {
   const allowed = options?.audiences ?? ["TEAM"]
-  const segmentReady = form.audience !== "SEGMENT" || Boolean(form.segment.universe || (form.segment.scope.groups.length > 0 && !scopeValueIssue(form.segment.scope)))
+  // "Todo o universo" exige o universo; "Grupos e Subgrupos específicos" exige ao menos uma escolha completa.
+  const segmentReady = form.audience !== "SEGMENT" || (form.segment.scope.global ? Boolean(form.segment.universe) : form.segment.scope.groups.length > 0 && !scopeValueIssue(form.segment.scope))
   const preview = useAudiencePreviewQuery({ audience: form.audience, segment: form.audience === "SEGMENT" ? segmentPayloadOf(form.segment) : null }, !locked && segmentReady && Boolean(options))
-  const teamOptions = segmentTeamOptions(options)
 
   return (
     <SettingsSection title="Público" icon={Users}>
@@ -93,7 +93,9 @@ export function PublicationAudienceSettings({ form, patch, locked, options, opti
                   <Select value={form.segment.universe ?? ANY_UNIVERSE} onValueChange={(value) => {
                     const universe = value === ANY_UNIVERSE ? null : (value as (typeof COMMUNICATION_UNIVERSES)[number])
                     // Trocar o universo tira do recorte os Grupos/Subgrupos que não são dele (Grupo sem universo continua: pendente).
-                    patch({ segment: { universe, scope: scopeValueAfterUniverseChange(form.segment.scope, teamOptions, (unit) => !universe || !unit || unit === universe) } })
+                    // "Todo o universo" sem universo não existe: volta para a escolha específica. Os escolhidos que não cabem ficam marcados
+                    // no seletor ("Fora do universo"), com o botão para tirá-los — nada some em silêncio.
+                    patch({ segment: { universe, scope: universe ? form.segment.scope : { ...form.segment.scope, global: false } } })
                   }}>
                     <SelectTrigger id="publication-universe" className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -104,11 +106,15 @@ export function PublicationAudienceSettings({ form, patch, locked, options, opti
                 </div>
               ) : null}
               <MultiOrgScopeField
-                teams={teamOptions.filter((team) => !form.segment.universe || !team.operatingUniverse || team.operatingUniverse === form.segment.universe || team.subteams.some((subteam) => subteam.operatingUniverse === form.segment.universe))}
+                permission="communications.publish_organization"
+                universe={form.segment.universe}
                 value={form.segment.scope}
                 onChange={(scope) => patch({ segment: { ...form.segment, scope } })}
-                label="Grupos"
-                hint="Sem Grupo escolhido, vale para todo o universo. Para cada Grupo: o Grupo inteiro ou só alguns Subgrupos."
+                allowGlobal={Boolean(form.segment.universe)}
+                globalLabel={form.segment.universe ? `Todo o universo ${form.segment.universe}` : "Todo o universo"}
+                globalDescription="Todos os Grupos e Subgrupos do universo, inclusive os que forem criados depois."
+                label="Grupos e Subgrupos"
+                hint={form.segment.universe ? "Escolha o universo inteiro ou Grupos e Subgrupos específicos dele." : "Sem universo escolhido: escolha Grupos e Subgrupos de qualquer universo. Para todos os universos, use “Toda a empresa”."}
               />
               <p className="text-xs text-muted-foreground">Recebe quem está, no cadastro de hoje, no universo escolhido e em um dos Grupos (inteiro) ou Subgrupos marcados. Quem mudar de Grupo passa a ver ou deixa de ver.</p>
             </div>

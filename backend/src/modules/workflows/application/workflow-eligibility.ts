@@ -1,6 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { populationFilterAnchorId, populationFilterSchema, type PopulationFilter } from "../domain/population-filter-schema.js"
 import type { StructureAnchor } from "../domain/structure-anchor-schema.js"
+import { workflowScopeReaches, type WorkflowScopeInput } from "../domain/workflow-scope.js"
 import { activeAccessSql, resolvePopulationFilterOperatorIds, resolveStructureAnchorOperatorIds } from "./hierarchy-subjects.js"
 
 /**
@@ -8,7 +9,7 @@ import { activeAccessSql, resolvePopulationFilterOperatorIds, resolveStructureAn
  *
  *   Workflow (Abrangência + Filtro Populacional) + Operador → ELEGÍVEL ou NÃO.
  *
- * Abrangência (ALL_TEAMS / TEAM / SUBTEAM) E Filtro Populacional (ausente = todos) — nunca
+ * Abrangência (ALL_TEAMS / GROUPS + vínculos — 249) E Filtro Populacional (ausente = todos) — nunca
  * alternativas — E, quando o Workflow liga "Somente quem tem acesso ativo à INIA" (migration 225),
  * conta de acesso ativa. Quem consome:
  *   - ingestão por Flag (ingestion-router.ts → flag-enrollment.ts): decisão pontual, um operador
@@ -22,10 +23,7 @@ import { activeAccessSql, resolvePopulationFilterOperatorIds, resolveStructureAn
  * Flag só conhecia ALL_TEAMS/TEAM (SUBTEAM nunca casava) e ignorava o Filtro Populacional —
  * QA e produção discordavam sobre "este operador pode disparar este Workflow?".
  */
-export type WorkflowPopulation = {
-  scopeType: string
-  teamId: string | null
-  subteamId: string | null
+export type WorkflowPopulation = WorkflowScopeInput & {
   /** `population_filter` cru (jsonb) ou já parseado; null/ausente = ALL. */
   populationFilter: unknown
   /** Universo do Workflow (publicado). Com a exigência ativa na organização, só operadores do MESMO universo; null (pendente) = ninguém. */
@@ -59,6 +57,7 @@ export async function resolveEligibleOperatorIds(db: Database, organizationId: s
   const filter = parsePopulationFilter(population.populationFilter)
   return resolvePopulationFilterOperatorIds(db, organizationId, filter, {
     scopeType: population.scopeType,
+    scopeLinks: population.scopeLinks,
     teamId: population.teamId,
     subteamId: population.subteamId,
     operatingUniverse: population.operatingUniverse,
@@ -131,15 +130,7 @@ async function isLoadedOperatorEligible(db: Database, population: WorkflowPopula
   return members.includes(operator.id)
 }
 
+/** Mesma regra de `resolveScopeOperatorIds`: ALL_TEAMS, ou algum vínculo alcança (Grupo inteiro por `team_id`, Subgrupo por `subteam_id`). */
 function matchesScope(population: WorkflowPopulation, operator: EligibleOperatorRow): boolean {
-  switch (population.scopeType) {
-    case "ALL_TEAMS":
-      return true
-    case "TEAM":
-      return population.teamId !== null && operator.team_id === population.teamId
-    case "SUBTEAM":
-      return population.subteamId !== null && operator.subteam_id === population.subteamId
-    default:
-      return false
-  }
+  return workflowScopeReaches(population, { teamId: operator.team_id, subteamId: operator.subteam_id })
 }

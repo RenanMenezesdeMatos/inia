@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CalendarClock, ChevronDown, FileText, Globe2, Megaphone, Plus, Star, Users, Building2 } from "lucide-react"
@@ -13,9 +13,8 @@ import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { PageHeader, StatusChip } from "@/components/ui/surface"
+import { StatusChip } from "@/components/ui/surface"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { OperationalAlignmentsPage } from "@/components/operational-alignments/operational-alignments-page"
 import { useAdminListState } from "@/hooks/use-admin-list-state"
 import { formatDateTime } from "@/lib/format/date"
@@ -24,6 +23,7 @@ import { useModerationCommunicationsQuery, useMyCommunicationsQuery } from "@/qu
 import { COMMUNICATION_STATE_LABELS, type CommunicationState, type EditorialCommunicationSummary } from "@/schemas/communications/communication.schema"
 
 import { newPublicationPath, publicationPath, STATE_TONES } from "./publication-form"
+import { PublicationsFrame, usePublicationsAccess, type PublicationsTab } from "./publications-frame"
 import { moderationPath, newAlignmentPath, PUBLICATIONS_PATH } from "./publications-route"
 
 /** De quem: "Minhas" (área editorial) ou "Toda a organização" (moderação — só com `canModerateCommunications`). */
@@ -145,8 +145,6 @@ function CommunicationsList() {
   )
 }
 
-type PublicationsTab = "comunicados" | "alinhamentos"
-
 /**
  * PUBLICAÇÕES — a área editorial (Administração › Comunicação › Publicações), com os dois tipos de publicação:
  *   - Comunicados (só informação: aviso, novidade) — quem tem o papel de comunicados;
@@ -155,17 +153,15 @@ type PublicationsTab = "comunicados" | "alinhamentos"
  * A aba fica no endereço (`?tipo=alinhamentos`; `&novo=1` abre o formulário) para o "Nova publicação" e para voltar ao mesmo lugar.
  */
 export function PublicationsListPage() {
-  const me = useCurrentUserQuery()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const capabilities = me.data?.access.capabilities
-  const canPublish = Boolean(capabilities?.canPublishTeamCommunications || capabilities?.canPublishOrganizationCommunications)
-  // Mesma permissão da tela de alinhamentos (papel Gestor de alinhamentos ou administração), nunca a de configuração.
-  const canManageAlignments = capabilities?.canManageOperationalAlignments ?? false
+  const { isLoading, canPublish, canManageAlignments } = usePublicationsAccess()
   const requested: PublicationsTab = searchParams.get("tipo") === "alinhamentos" ? "alinhamentos" : "comunicados"
   const tab: PublicationsTab = !canPublish && canManageAlignments ? "alinhamentos" : requested === "alinhamentos" && !canManageAlignments ? "comunicados" : requested
   const startWithNew = searchParams.get("novo") === "1"
   const setTab = (next: PublicationsTab) => router.replace(next === "alinhamentos" ? `${PUBLICATIONS_PATH}?tipo=alinhamentos` : PUBLICATIONS_PATH)
+  // Formulário de alinhamento aberto: sem o cabeçalho e as abas da área, igual ao editor de comunicado (que é outra página).
+  const [alignmentEditorOpen, setAlignmentEditorOpen] = useState(false)
 
   const newButton = (
     <DropdownMenu>
@@ -192,19 +188,10 @@ export function PublicationsListPage() {
     </DropdownMenu>
   )
 
-  if (me.isLoading) return null
+  if (isLoading) return null
   return (
-    <div className="space-y-5">
-      <PageHeader icon={Megaphone} title="Publicações" description="Comunicados (avisos e novidades, só informação) e alinhamentos operacionais (orientações temporárias de processo, com vigência e público). A INIA usa os dois no chat para quem os recebe." actions={newButton} />
-      {canPublish && canManageAlignments ? (
-        <Tabs value={tab} onValueChange={(value) => setTab(value as PublicationsTab)}>
-          <TabsList>
-            <TabsTrigger value="comunicados"><Megaphone />Comunicados</TabsTrigger>
-            <TabsTrigger value="alinhamentos"><CalendarClock />Alinhamentos operacionais</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      ) : null}
-      {tab === "alinhamentos" ? <OperationalAlignmentsPage key={startWithNew ? "novo" : "lista"} embedded startWithNew={startWithNew} /> : <CommunicationsList />}
-    </div>
+    <PublicationsFrame tab={tab} onTabChange={setTab} actions={newButton} hideHeader={tab === "alinhamentos" && alignmentEditorOpen}>
+      {tab === "alinhamentos" ? <OperationalAlignmentsPage key={startWithNew ? "novo" : "lista"} embedded startWithNew={startWithNew} onEditorOpenChange={setAlignmentEditorOpen} /> : <CommunicationsList />}
+    </PublicationsFrame>
   )
 }

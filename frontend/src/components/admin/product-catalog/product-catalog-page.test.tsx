@@ -160,7 +160,7 @@ describe("Produtos — lista e detalhe por produto", () => {
     fireEvent.click(within(form).getByRole("combobox", { name: "Universo de atuação *" }))
     fireEvent.click(await screen.findByRole("option", { name: /^B2B/ }))
     fireEvent.click(within(form).getByRole("button", { name: "Criar produto" }))
-    await waitFor(() => expect(service.createProductNode.mock.calls[0]?.[0]).toEqual({ kind: "PRODUCT", name: "Linha IP", code: "LINHA_IP", description: null, parentId: null, operatingUniverse: "B2B" }))
+    await waitFor(() => expect(service.createProductNode.mock.calls[0]?.[0]).toEqual({ kind: "PRODUCT", name: "Linha IP", code: "LINHA_IP", description: null, parentId: null, operatingUniverse: "B2B", scopeType: "ALL_TEAMS", scopeLinks: [] }))
     expect(await screen.findByTestId("product-detail-LINHA_IP")).toBeInTheDocument()
   })
 
@@ -175,7 +175,7 @@ describe("Produtos — lista e detalhe por produto", () => {
     fireEvent.click(within(form).getByRole("combobox", { name: "Universo de atuação *" }))
     fireEvent.click(await screen.findByRole("option", { name: /^B2X/ }))
     fireEvent.click(within(form).getByRole("button", { name: "Criar produto" }))
-    await waitFor(() => expect(service.createProductNode.mock.calls[0]?.[0]).toEqual({ kind: "PRODUCT", code: "LINHA_IP", name: "Linha IP", description: "linha IP, voz pela internet", parentId: "f1", operatingUniverse: "B2X" }))
+    await waitFor(() => expect(service.createProductNode.mock.calls[0]?.[0]).toEqual({ kind: "PRODUCT", code: "LINHA_IP", name: "Linha IP", description: "linha IP, voz pela internet", parentId: "f1", operatingUniverse: "B2X", scopeType: "ALL_TEAMS", scopeLinks: [] }))
   })
 
   it("catálogo vazio explica que a análise segue como antes e oferece cadastrar", async () => {

@@ -6,7 +6,7 @@ import { FIT_SUBTEAM_PARENT, KNOWLEDGE_AGENT_FIT_CASES, type FitAgentScope, type
  * sem cópia) responde o caderno único. A SQL do servidor responde o MESMO caderno na prova de banco `knowledge-agent-fit-proof`.
  */
 type DocumentScope = { scopeType: string; teamId: string | null; teamName: string | null; subteamId: string | null; subteamName: string | null }
-type AgentScope = { scopeType: "ALL_TEAMS" } | { scopeType: "TEAM"; teamId: string } | { scopeType: "SUBTEAM"; subteamId: string; teamId?: string }
+type AgentScope = { scopeType: "ALL_TEAMS" } | { scopeType: "TEAM"; teamId: string } | { scopeType: "SUBTEAM"; subteamId: string; teamId?: string } | { scopeType: "GROUPS"; links: { teamId: string | null; subteamId: string | null }[] }
 type Team = { id: string; name: string; subteams: { id: string; name: string }[] }
 type FitsAgentScope = (option: { orgScopes: DocumentScope[] }, scope: AgentScope | undefined, teams: readonly Team[] | undefined) => boolean
 
@@ -26,6 +26,14 @@ function documentScope(scope: FitDocumentScope): DocumentScope {
 /** O formulário do agente de Subgrupo pode não saber o Grupo-pai: a tela o acha pela lista de Grupos. Os dois jeitos são conferidos. */
 function agentScopes(scope: FitAgentScope): AgentScope[] {
   if (scope.scopeType === "ALL_TEAMS") return [{ scopeType: "ALL_TEAMS" }]
+  if (scope.scopeType === "GROUPS") {
+    const isTeam = (link: string): link is FitTeam => link === "A" || link === "B"
+    // O vínculo de Subgrupo com e sem o Grupo-pai (a tela acha o pai pela lista de Grupos).
+    return [
+      { scopeType: "GROUPS", links: scope.links.map((link) => (isTeam(link) ? { teamId: teamId(link), subteamId: null } : { teamId: teamId(FIT_SUBTEAM_PARENT[link]), subteamId: subteamId(link) })) },
+      { scopeType: "GROUPS", links: scope.links.map((link) => (isTeam(link) ? { teamId: teamId(link), subteamId: null } : { teamId: null, subteamId: subteamId(link) })) },
+    ]
+  }
   if (scope.scopeType === "TEAM") return [{ scopeType: "TEAM", teamId: teamId(scope.team) }]
   return [{ scopeType: "SUBTEAM", subteamId: subteamId(scope.subteam) }, { scopeType: "SUBTEAM", subteamId: subteamId(scope.subteam), teamId: teamId(FIT_SUBTEAM_PARENT[scope.subteam]) }]
 }

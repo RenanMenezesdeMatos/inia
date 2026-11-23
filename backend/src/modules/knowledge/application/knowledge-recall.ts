@@ -13,6 +13,8 @@ import { nearest, normalized } from "../domain/vector-math.js"
 import { expandAcronyms, type GlossaryAcronym } from "../domain/query-acronyms.js"
 import { loadKnowledgeVectors } from "./knowledge-vector-store.js"
 import { loadKnowledgeProducts } from "./knowledge-products.js"
+import { knowledgeGlossaryJargonEnabled, loadGlossaryJargonRules } from "./knowledge-glossary-jargon.js"
+import { jargonKeyOf, type JargonRule } from "../domain/glossary-jargon.js"
 
 /**
  * BUSCA NAS BASES EM ESCALA — camadas 2 e 4 (`docs/dev/memoria/agentes-e-conhecimento.md`, "busca nas bases em escala"):
@@ -69,6 +71,12 @@ export type KnowledgeRecallDeps = {
   products?: (organizationId: string, documentIds: readonly string[]) => Promise<Map<string, string>>
   /** Siglas do Glossário da organização: a definição entra na consulta (texto e vetor) quando a sigla está na pergunta (`query-acronyms.ts`). */
   acronyms?: (organizationId: string) => Promise<GlossaryAcronym[]>
+  /**
+   * Gíria do Glossário no texto do vetor (`domain/glossary-jargon.ts`, interruptor `INIA_KB_GLOSSARY_JARGON_VECTORS`, desligado por padrão).
+   * Ausente = vetores sem gíria, exatamente como antes. Presente: o trecho que cita o termo oficial é procurado pelo vetor COM a gíria e,
+   * enquanto a indexação não o gerou, pelo vetor sem a gíria.
+   */
+  jargon?: (organizationId: string) => Promise<JargonRule[]>
 }
 
 /**
@@ -115,6 +123,17 @@ export function createKnowledgeRecall(deps: KnowledgeRecallDeps) {
 
   const productCache = new Map<string, { at: number; value: string | null }>()
   const acronymCache = new Map<string, { at: number; value: GlossaryAcronym[] }>()
+  const jargonCache = new Map<string, { at: number; value: { rules: JargonRule[]; key: string | null } }>()
+
+  async function jargonOf(organizationId: string): Promise<{ rules: JargonRule[]; key: string | null }> {
+    if (!deps.jargon) return { rules: [], key: null }
+    const cached = jargonCache.get(organizationId)
+    if (cached && Date.now() - cached.at <= METADATA_TTL_MS) return cached.value
+    const rules = await deps.jargon(organizationId).catch(() => [] as JargonRule[])
+    const value = { rules, key: jargonKeyOf(rules) }
+    jargonCache.set(organizationId, { at: Date.now(), value })
+    return value
+  }
 
   async function productsOf(organizationId: string, documentIds: readonly string[]): Promise<Map<string, string>> {
     if (!deps.products) return new Map()
@@ -146,11 +165,11 @@ export function createKnowledgeRecall(deps: KnowledgeRecallDeps) {
     return expandAcronyms(question, acronyms).searchQuery
   }
 
-  function textsOf(source: CatalogSource, products?: string | null): EmbeddingText[] {
-    const key = `${source.documentId}|${source.versionId}|${source.documentTitle}|${products ?? ""}`
+  function textsOf(source: CatalogSource, products?: string | null, jargon?: { rules: JargonRule[]; key: string | null }): EmbeddingText[] {
+    const key = `${source.documentId}|${source.versionId}|${source.documentTitle}|${products ?? ""}|${jargon?.key ?? ""}`
     const cached = textsByVersion.get(key)
     if (cached) return cached
-    const texts = embeddingTextsOf(source, { products: products ?? null })
+    const texts = embeddingTextsOf(source, { products: products ?? null, ...(jargon?.key ? { jargon: jargon.rules } : {}) })
     textsByVersion.set(key, texts)
     return texts
   }
@@ -212,10 +231,19 @@ export function createKnowledgeRecall(deps: KnowledgeRecallDeps) {
       try {
         // A lista do chat já traz o produto de cada base; quem não traz (motor de feedback) busca pelo cadastro.
         const products = await productsOf(input.organizationId, input.sources.filter((source) => source.products === undefined).map((source) => source.documentId))
-        const chunkTexts = input.sources.flatMap((source) => textsOf(source, source.products !== undefined ? source.products : products.get(source.documentId)).filter((text) => text.kind === "CHUNK"))
-        const vectors = await deps.loadVectors(input.organizationId, query.modelKey, chunkTexts.map((text) => text.hash))
-        const items = chunkTexts.flatMap((text) => {
-          const found = vectors.get(text.hash)
+        const jargon = await jargonOf(input.organizationId)
+        const productOf = (source: CatalogSource) => (source.products !== undefined ? source.products : products.get(source.documentId))
+        // Com a gíria ligada, cada trecho tem o hash com gíria e o sem gíria (reserva enquanto a indexação não chega); iguais quando
+        // o trecho não cita nenhum termo oficial.
+        const chunkTexts = input.sources.flatMap((source) => {
+          const plain = textsOf(source, productOf(source)).filter((text) => text.kind === "CHUNK")
+          if (!jargon.key) return plain.map((text) => ({ text, fallback: null as string | null }))
+          const enriched = textsOf(source, productOf(source), jargon).filter((text) => text.kind === "CHUNK")
+          return enriched.map((text, index) => ({ text, fallback: plain[index] && plain[index]!.hash !== text.hash ? plain[index]!.hash : null }))
+        })
+        const vectors = await deps.loadVectors(input.organizationId, query.modelKey, [...new Set(chunkTexts.flatMap(({ text, fallback }) => (fallback ? [text.hash, fallback] : [text.hash])))])
+        const items = chunkTexts.flatMap(({ text, fallback }) => {
+          const found = vectors.get(text.hash) ?? (fallback ? vectors.get(fallback) : undefined)
           return found ? [{ item: { documentId: text.documentId, chunkIndex: text.chunkIndex! }, vector: found }] : []
         })
         indexedChunks = items.length
@@ -276,6 +304,8 @@ export function postgresKnowledgeRecall(db: Database): KnowledgeRecall {
     embedQuery: async ({ organizationId, text, modelKey, source }) => (await embedKnowledgeTexts({ organizationId, texts: [text], purpose: "QUERY", modelKey, stage: "QUERY", source }))?.[0] ?? null,
     loadVectors: (organizationId, modelKey, hashes) => loadKnowledgeVectors(db, organizationId, modelKey, hashes),
     products: (organizationId, documentIds) => loadKnowledgeProducts(db, organizationId, documentIds),
+    // Gíria do Glossário no vetor: desligada por padrão (`INIA_KB_GLOSSARY_JARGON_VECTORS=on` liga; reinicie a API e o processamento).
+    ...(knowledgeGlossaryJargonEnabled() ? { jargon: (organizationId: string) => loadGlossaryJargonRules(db, organizationId) } : {}),
     // Siglas do Glossário na consulta: medidas em 16/11/2026 sem ganho (e 2 seções a menos entre os candidatos) — não ligadas. A
     // capacidade fica (`acronyms`), o Glossário continua indo inteiro para a IA no esclarecimento.
   })

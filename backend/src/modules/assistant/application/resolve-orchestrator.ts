@@ -8,6 +8,8 @@ import { resolveEffectiveStructuredOutput, type StructuredOutputDefinition } fro
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { ApplicationInvariantError } from "../../../shared/domain/execution-failure.js"
 import { scopesAreCompatible, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
+import { resourceScopeOf, resourceScopeReachSql, resourceScopeSpecificitySql, type ResourceScope } from "../../../shared/domain/scope-links/resource-scope.js"
+import { loadResourceScopeLinks, scopedTargetOf } from "../../org-structure/application/resource-scope-links.js"
 import { withAgentSnapshots } from "../../agents/application/agent-runtime-context.js"
 import { resolveAgentVersionForRun } from "../../agents/application/agent-versions.js"
 import { assertExecutionAuthorized, executionDenialFor, recordExecutionDenial } from "../../agents/application/agent-execution-authorization.js"
@@ -29,7 +31,7 @@ export type ResolvedOrchestrator = {
   /** Versões dos agentes desta resolução (orquestrador + especialistas) — a execução roda dentro delas (agent-runtime-context.ts). */
   agentSnapshots?: AgentRuntimeSnapshot[]
   /** Alcance do Orquestrador em execução — contra ele a versão vigente de cada especialista é autorizada, também na hora da chamada. */
-  consumerScope?: { scopeType: string; teamId: string | null; subteamId: string | null }
+  consumerScope?: ScopedTarget
   systemPrompt: string
   /** V1.7.1 — tipo de especialidade e domínio de negócio (FK) de cada especialista: base do roteamento declarativo por domínio. */
   specialists: { agentId: string; agentVersionId?: string | null; toolName: string; specialtyKind?: string | null; businessDomainId?: string | null }[]
@@ -60,8 +62,6 @@ type OrchestratorRow = {
   id: string
   name: string
   scope_type: string
-  team_id: string | null
-  subteam_id: string | null
   orchestrator_agent_id: string
   objective: string
   description: string
@@ -100,9 +100,11 @@ type OrchestratorVersionPin = {
 }
 
 type OrchestratorVersionConfig = {
+  /** Alcance gravado na versão: ALL_TEAMS | GROUPS + `scopeLinks` (249) ou o legado TEAM/SUBTEAM + ids (lido por `resourceScopeOf`). */
   scopeType?: string
   teamId?: string | null
   subteamId?: string | null
+  scopeLinks?: { teamId?: string | null; subteamId?: string | null }[] | null
   specialists?: { agentId: string; toolName: string }[]
   outputInstructions?: string | null
   outputSchema?: unknown
@@ -117,6 +119,19 @@ async function loadOrchestratorVersion(db: Database, orchestratorId: string, pin
       ? (await db.query<{ id: string; number: number; config: OrchestratorVersionConfig }>(`select id, version_number "number", config from assistant_orchestrator_versions where orchestrator_id = $1 order by (origin = 'MIGRATION') desc, version_number asc limit 1`, [orchestratorId])).rows[0]
       : (await db.query<{ id: string; number: number; config: OrchestratorVersionConfig }>(`select v.id, v.version_number "number", v.config from assistant_orchestrators o join assistant_orchestrator_versions v on v.id = o.current_version_id where o.id = $1`, [orchestratorId])).rows[0]
   return row ?? null
+}
+
+/** Alcance gravado numa versão do Orquestrador (formato novo ou legado; SUBTEAM legado sem Grupo-pai gravado busca o pai real). */
+async function versionScopedTarget(db: Database, config: OrchestratorVersionConfig): Promise<ScopedTarget> {
+  const subteamId = config.scopeType === "SUBTEAM" && !config.teamId ? (config.subteamId ?? null) : null
+  const parent = subteamId ? ((await db.query<{ team_id: string }>(`select team_id from subteams where id = $1`, [subteamId])).rows[0]?.team_id ?? null) : null
+  return scopedTargetOf(resourceScopeOf(config, () => parent))
+}
+
+/** Alcance vigente do Orquestrador (coluna + vínculos). */
+async function liveOrchestratorScope(db: Database, orchestrator: Pick<OrchestratorRow, "id" | "scope_type">): Promise<ResourceScope> {
+  if (orchestrator.scope_type === "ALL_TEAMS") return { scopeType: "ALL_TEAMS", links: [] }
+  return { scopeType: "GROUPS", links: (await loadResourceScopeLinks(db, "ORCHESTRATOR", [orchestrator.id])).get(orchestrator.id) ?? [] }
 }
 
 /** Versão vigente de um especialista, ou null quando ele não pode atender (inexistente, nunca publicado, inativo). */
@@ -139,8 +154,8 @@ async function buildResolvedOrchestrator(db: Database, orchestrator: Orchestrato
   // da migração e o rascunho do QA Lab chegam aqui sem passar por ela. Falha antes de qualquer especialista, base ou IA, e é
   // terminal: a versão do Workflow é fixa, nada muda entre uma tentativa e outra. Nunca cai na versão atual nem segue sem os
   // especialistas. Versão sem alcance gravado usa o do Orquestrador de hoje, como na publicação.
-  if (pinned && version.config.scopeType) {
-    const versionScope = { scopeType: version.config.scopeType, teamId: version.config.teamId ?? null, subteamId: version.config.subteamId ?? null }
+  const versionScope = pinned && version.config.scopeType ? await versionScopedTarget(db, version.config) : null
+  if (pinned && versionScope) {
     if (!(await scopesAreCompatible(db, pin.workflowScope, versionScope))) {
       throw new ApplicationInvariantError(
         `A etapa usa a versão ${version.number} do Orquestrador "${orchestrator.name}", que não está disponível para o grupo deste workflow. Escolha a versão atual do Orquestrador na etapa e publique o workflow de novo.`,
@@ -153,9 +168,7 @@ async function buildResolvedOrchestrator(db: Database, orchestrator: Orchestrato
     : (await db.query<{ agentId: string; toolName: string }>(`select agent_id "agentId", tool_name "toolName" from assistant_orchestrator_specialists where orchestrator_id = $1 order by agent_id`, [orchestrator.id])).rows
   // Alcance do Orquestrador em execução (o da versão fixada pelo Workflow, ou o atual): a versão vigente de cada especialista
   // precisa cobri-lo, com as bases autorizadas — a atualização automática nunca amplia acesso.
-  const consumerScope = pinned && version.config.scopeType
-    ? { scopeType: version.config.scopeType, teamId: version.config.teamId ?? null, subteamId: version.config.subteamId ?? null }
-    : { scopeType: orchestrator.scope_type, teamId: orchestrator.team_id, subteamId: orchestrator.subteam_id }
+  const consumerScope: ScopedTarget = versionScope ?? scopedTargetOf(await liveOrchestratorScope(db, orchestrator))
   // Universos não se misturam: com a exigência ativa, só especialistas do MESMO universo do Orquestrador (pendente = fora).
   const universeAllowed = await specialistUniverseFilter(db, orchestrator.organization_id, orchestrator.id, listed.map((entry) => entry.agentId))
   const resolvedSpecialists = (await Promise.all(listed.filter((entry) => universeAllowed(entry.agentId)).map(async (entry) => {
@@ -311,7 +324,7 @@ export async function resolveOrchestratorForSubject(
 }
 
 /**
- * O Orquestrador de um GRUPO: o do próprio Grupo (escopo TEAM) ou, sem ele, o de "Todos os grupos" — a mesma regra da consulta
+ * O Orquestrador de um GRUPO: o que tem o Grupo inteiro entre os vínculos ou, sem ele, o de "Todos os grupos" — a mesma regra da consulta
  * de processo de quem lidera vários Grupos (`listInteractiveOrchestratorScopes` + `orchestratorForTeam`), que escolhe por Grupo.
  */
 export async function resolveOrchestratorForTeam(
@@ -326,7 +339,11 @@ export async function resolveOrchestratorForTeam(
   return resolveOrchestratorForPlacement(db, organizationId, { teamId, subteamId: null, universes }, invocationContext, query)
 }
 
-/** Preferência: Subgrupo > Grupo > Todos os grupos (o mais recente de cada nível). */
+/**
+ * Preferência pelo VÍNCULO QUE ALCANÇA a pessoa (249): vínculo do Subgrupo dela (2) > vínculo do Grupo dela inteiro (1) > "Todos os
+ * Grupos" (0); no mesmo nível, o mais recente. Um vínculo de Subgrupo nunca alcança os Subgrupos irmãos. Sem pessoa (Grupo só), só os
+ * vínculos de Grupo inteiro e "Todos" contam.
+ */
 async function resolveOrchestratorForPlacement(
   db: Database,
   organizationId: string,
@@ -336,13 +353,13 @@ async function resolveOrchestratorForPlacement(
   alignmentSubjectPersonId: string | null = null,
 ): Promise<ResolvedOrchestrator | null> {
   const orchestratorRow = await db.query<OrchestratorRow>(
-    `select o.organization_id, o.id, o.name, o.scope_type, o.team_id, o.subteam_id, o.orchestrator_agent_id, a.objective, a.description, a.context_prompt, o.output_instructions, o.output_schema, o.structured_output, o.recommend_support_materials
+    `select o.organization_id, o.id, o.name, o.scope_type, o.orchestrator_agent_id, a.objective, a.description, a.context_prompt, o.output_instructions, o.output_schema, o.structured_output, o.recommend_support_materials
      from assistant_orchestrators o
      join agents a on a.id = o.orchestrator_agent_id
      where o.organization_id = $1 and o.active and o.invocation_mode in ('BOTH', $3)
-       and (o.scope_type = 'ALL_TEAMS' or (o.scope_type = 'TEAM' and o.team_id = $2) or (o.scope_type = 'SUBTEAM' and o.subteam_id = $4))
+       and ${resourceScopeReachSql({ linksTable: "ORCHESTRATOR", ownerIdExpr: "o.id", scopeTypeExpr: "o.scope_type", teamExpr: "$2::uuid", subteamExpr: "$4::uuid" })}
        and ($5::text[] is null or o.operating_universe = any($5::text[]))
-     order by case o.scope_type when 'SUBTEAM' then 0 when 'TEAM' then 1 else 2 end, o.created_at desc
+     order by ${resourceScopeSpecificitySql({ linksTable: "ORCHESTRATOR", ownerIdExpr: "o.id", scopeTypeExpr: "o.scope_type", teamExpr: "$2::uuid", subteamExpr: "$4::uuid" })} desc nulls last, o.created_at desc
      limit 1`,
     [organizationId, placement.teamId, invocationContext, placement.subteamId, placement.universes ? [...placement.universes] : null],
   )
@@ -352,22 +369,34 @@ async function resolveOrchestratorForPlacement(
 }
 
 /** Orquestradores do chat/voz ativos da organização com o escopo de cada um — na ORDEM de preferência de `resolveOrchestratorForTeam`. */
-export type InteractiveOrchestratorScope = { id: string; name: string; scopeType: "ALL_TEAMS" | "TEAM"; teamId: string | null; /** Universo de atuação do Orquestrador (nulo = pendente). */ operatingUniverse?: string | null }
+export type InteractiveOrchestratorScope = {
+  id: string
+  name: string
+  /** "Todos os Grupos" ou vínculos (249). */
+  scopeType: "ALL_TEAMS" | "GROUPS"
+  /** Grupos com vínculo de Grupo INTEIRO (os únicos que alcançam o Grupo como um todo; vínculo de Subgrupo não). */
+  teamIds: readonly string[]
+  /** Universo de atuação do Orquestrador (nulo = pendente). */
+  operatingUniverse?: string | null
+}
 
 /**
  * `universes`: universos que quem consulta alcança (null = sem filtro: organização sem a exigência ativa). Com o filtro, Orquestrador de
  * outro universo ou pendente fica fora — a mesma regra do chat de quem atende (`resolveOrchestratorForSubject`); vazio = nenhum.
  */
 export async function listInteractiveOrchestratorScopes(db: Database, organizationId: string, universes: readonly string[] | null = null): Promise<InteractiveOrchestratorScope[]> {
-  const result = await db.query<{ id: string; name: string; scope_type: "ALL_TEAMS" | "TEAM"; team_id: string | null; operating_universe: string | null }>(
-    `select o.id, o.name, o.scope_type, o.team_id, o.operating_universe
+  // Só quem alcança um Grupo INTEIRO conta (Orquestrador só de Subgrupos não responde pelo Grupo, como antes com SUBTEAM).
+  const result = await db.query<{ id: string; name: string; scope_type: "ALL_TEAMS" | "GROUPS"; team_ids: string[]; operating_universe: string | null }>(
+    `select o.id, o.name, o.scope_type, o.operating_universe,
+            coalesce((select array_agg(l.team_id order by l.team_id) from assistant_orchestrator_scope_links l where l.orchestrator_id = o.id and l.subteam_id is null), '{}'::uuid[]) team_ids
        from assistant_orchestrators o
-      where o.organization_id = $1 and o.active and o.invocation_mode in ('BOTH', 'INTERACTIVE') and o.scope_type in ('ALL_TEAMS', 'TEAM')
+      where o.organization_id = $1 and o.active and o.invocation_mode in ('BOTH', 'INTERACTIVE')
+        and (o.scope_type = 'ALL_TEAMS' or exists (select 1 from assistant_orchestrator_scope_links l where l.orchestrator_id = o.id and l.subteam_id is null))
         and ($2::text[] is null or o.operating_universe = any($2::text[]))
-      order by (o.scope_type = 'TEAM') desc, o.created_at desc`,
+      order by (o.scope_type = 'GROUPS') desc, o.created_at desc`,
     [organizationId, universes ? [...universes] : null],
   )
-  return result.rows.map((row) => ({ id: row.id, name: row.name, scopeType: row.scope_type, teamId: row.team_id, operatingUniverse: row.operating_universe }))
+  return result.rows.map((row) => ({ id: row.id, name: row.name, scopeType: row.scope_type, teamIds: row.team_ids ?? [], operatingUniverse: row.operating_universe }))
 }
 
 /**
@@ -377,7 +406,7 @@ export async function listInteractiveOrchestratorScopes(db: Database, organizati
  */
 export function orchestratorForTeam(scopes: readonly InteractiveOrchestratorScope[], teamId: string | null, groupUniverses: readonly string[] | null = null): InteractiveOrchestratorScope | null {
   const candidates = groupUniverses === null ? scopes : scopes.filter((scope) => scope.operatingUniverse != null && groupUniverses.includes(scope.operatingUniverse))
-  return candidates.find((scope) => scope.scopeType === "TEAM" && teamId !== null && scope.teamId === teamId) ?? candidates.find((scope) => scope.scopeType === "ALL_TEAMS") ?? null
+  return candidates.find((scope) => scope.scopeType === "GROUPS" && teamId !== null && scope.teamIds.includes(teamId)) ?? candidates.find((scope) => scope.scopeType === "ALL_TEAMS") ?? null
 }
 
 /**
@@ -402,7 +431,7 @@ export async function resolveOrchestratorById(
   universes: readonly string[] | null = null,
 ): Promise<ResolvedOrchestrator | null> {
   const orchestratorRow = await db.query<OrchestratorRow>(
-    `select o.organization_id, o.id, o.name, o.scope_type, o.team_id, o.subteam_id, o.orchestrator_agent_id, a.objective, a.description, a.context_prompt, o.output_instructions, o.output_schema, o.structured_output, o.recommend_support_materials
+    `select o.organization_id, o.id, o.name, o.scope_type, o.orchestrator_agent_id, a.objective, a.description, a.context_prompt, o.output_instructions, o.output_schema, o.structured_output, o.recommend_support_materials
      from assistant_orchestrators o
      join agents a on a.id = o.orchestrator_agent_id
      where o.id = $1 and o.organization_id = $2 and o.active and o.invocation_mode in ('BOTH', $3)

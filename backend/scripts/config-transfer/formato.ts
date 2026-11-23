@@ -80,6 +80,8 @@ export type DadosItem = {
   ASSUNTO: { name: string; description: string | null; active: boolean }
   DOMINIO: { code: string; name: string; description: string | null; active: boolean }
   INDICADOR: {
+    /** Alcance do indicador (250: vários Grupos/Subgrupos; `[TODOS]` = todos). Pacote antigo não tem: entra como TODOS (o de antes). */
+    alcances?: Alcance[]
     definicao: {
       code: string
       name: string
@@ -133,6 +135,9 @@ export type DadosItem = {
     objective: string
     description: string
     contextPrompt: string
+    /** Vínculos do agente (249: vários Grupos/Subgrupos; `[TODOS]` = todos). Pacotes antigos têm só `alcance` (um). */
+    alcances?: Alcance[]
+    /** Legado (pacote exportado antes da 249): o alcance único. Pacote novo leva o primeiro vínculo aqui, só para leitores antigos. */
     alcance: Alcance
     bases: string[]
     specialtyKind: string | null
@@ -148,6 +153,9 @@ export type DadosItem = {
   }
   ORQUESTRADOR: {
     name: string
+    /** Vínculos do Orquestrador (249: vários Grupos/Subgrupos; `[TODOS]` = todos). Pacotes antigos têm só `alcance` (um). */
+    alcances?: Alcance[]
+    /** Legado (pacote exportado antes da 249): o alcance único. Pacote novo leva o primeiro vínculo aqui, só para leitores antigos. */
     alcance: Alcance
     agenteOrquestrador: string
     especialistas: string[]
@@ -165,6 +173,9 @@ export type DadosItem = {
   WORKFLOW: {
     name: string
     description: string | null
+    /** Abrangência publicada (249: vários Grupos/Subgrupos; `[TODOS]` = todos). Pacotes antigos têm só `alcance` (um). */
+    alcances?: Alcance[]
+    /** Legado (pacote exportado antes da 249): o alcance único. Pacote novo leva o primeiro vínculo aqui, só para leitores antigos. */
     alcance: Alcance
     /** Gatilho como está na origem; o de flag aponta para a flag pelo item (`flag`), não pelo id. */
     gatilho: Record<string, unknown>

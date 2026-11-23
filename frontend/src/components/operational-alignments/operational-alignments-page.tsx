@@ -2,7 +2,7 @@
 
 import { linksLabel } from "@/lib/scope-links/scope-links"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { CalendarClock, FileText, MoreHorizontal, Pencil, Plus, Trash2, Users } from "lucide-react"
 
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
@@ -108,7 +108,8 @@ function AlignmentCard({ item, onOpen, onEdit, onDelete }: { item: AlignmentList
 type View = { tab: "list" } | { tab: "reasons" } | { tab: "form"; selectedId: string | null; editing?: boolean }
 
 /**
- * ALINHAMENTOS OPERACIONAIS — mesma estrutura das telas da Administração (Lista × formulário na página, sem painel lateral):
+ * ALINHAMENTOS OPERACIONAIS — Lista e Motivos num card com abas; o formulário (novo, editar) abre fora dele, no formato do editor de
+ * comunicado (voltar, barra de estado, texto à esquerda e configurações na lateral direita):
  * orientações temporárias de um ou mais processos para um público e um período. A mesma regra vale no chat (data da consulta) e na
  * monitoria (data do atendimento); a base oficial nunca muda.
  */
@@ -116,7 +117,7 @@ type View = { tab: "list" } | { tab: "reasons" } | { tab: "form"; selectedId: st
  * `embedded`: dentro de Administração › Publicações (aba "Alinhamentos operacionais"), sem o cabeçalho próprio — o título é o da
  * área editorial; o botão de novo alinhamento continua aqui. `startWithNew`: abre direto no formulário (Nova publicação › Alinhamento).
  */
-export function OperationalAlignmentsPage({ embedded = false, startWithNew = false }: { embedded?: boolean; startWithNew?: boolean } = {}) {
+export function OperationalAlignmentsPage({ embedded = false, startWithNew = false, onEditorOpenChange }: { embedded?: boolean; startWithNew?: boolean; onEditorOpenChange?: (open: boolean) => void } = {}) {
   const scopeOptions = useAlignmentScopeOptionsQuery()
   const list = useAdminListState({ storageKey: "operational-alignments", defaultFilters: DEFAULT_FILTERS })
   // Filtros encadeados: universo → Grupo → Subgrupo (o Grupo/Subgrupo de outro universo some; trocar o universo limpa o que não cabe).
@@ -131,10 +132,14 @@ export function OperationalAlignmentsPage({ embedded = false, startWithNew = fal
   const actions = { onOpen: openItem, onEdit: editItem, onDelete: (item: AlignmentListItem) => setDeletingId(item.id) }
   const backToList = () => setView({ tab: "list" })
   const selectedId = view.tab === "form" ? view.selectedId : null
+  // Formulário aberto (novo ou existente): sai do card com abas, como o editor de comunicado; quem embute pode esconder o cabeçalho.
+  const editorOpen = view.tab === "form"
+  useEffect(() => { onEditorOpenChange?.(editorOpen) }, [editorOpen, onEditorOpenChange])
+  const backLabel = embedded ? "Publicações" : "Alinhamentos operacionais"
 
   return (
     <section className="space-y-4">
-{embedded ? (
+{editorOpen ? null : embedded ? (
         view.tab === "list" ? <div className="flex justify-end"><Button onClick={openCreate}><Plus /> Novo alinhamento</Button></div> : null
       ) : (
       <PageHeader
@@ -144,13 +149,19 @@ export function OperationalAlignmentsPage({ embedded = false, startWithNew = fal
         actions={view.tab === "list" ? <Button onClick={openCreate}><Plus /> Novo alinhamento</Button> : null}
       />
       )}
+      {view.tab === "form" ? (
+        selectedId === null ? (
+          <AlignmentForm editing={null} backLabel={backLabel} onSaved={(detail) => setView({ tab: "form", selectedId: detail.id })} onCancel={backToList} />
+        ) : (
+          <AlignmentDetailPanel key={`${selectedId}-${view.editing ? "edit" : "view"}`} id={selectedId} startEditing={Boolean(view.editing)} onBack={backToList} onDiscarded={backToList} />
+        )
+      ) : (
       <Card>
         <CardContent>
-          <Tabs value={view.tab} onValueChange={(value) => (value === "list" ? backToList() : value === "reasons" ? setView({ tab: "reasons" }) : setView({ tab: "form", selectedId }))}>
+          <Tabs value={view.tab} onValueChange={(value) => (value === "list" ? backToList() : setView({ tab: "reasons" }))}>
             <TabsList>
               <TabsTrigger value="list">Lista</TabsTrigger>
               <TabsTrigger value="reasons">Motivos</TabsTrigger>
-              <TabsTrigger value="form">{view.tab === "form" && selectedId === null ? "Novo alinhamento" : "Alinhamento"}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="list" className="mt-4 space-y-4">
@@ -190,18 +201,10 @@ export function OperationalAlignmentsPage({ embedded = false, startWithNew = fal
               {view.tab === "reasons" ? <AlignmentReasonsPanel /> : null}
             </TabsContent>
 
-            <TabsContent value="form" className="mt-4">
-              {view.tab === "form" ? (
-                selectedId === null ? (
-                  <AlignmentForm editing={null} onSaved={(detail) => setView({ tab: "form", selectedId: detail.id })} onCancel={backToList} />
-                ) : (
-                  <AlignmentDetailPanel key={`${selectedId}-${view.tab === "form" && view.editing ? "edit" : "view"}`} id={selectedId} startEditing={view.tab === "form" && Boolean(view.editing)} onBack={backToList} onDiscarded={backToList} />
-                )
-              ) : null}
-            </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
+      )}
       {deletingId ? <DeleteConfirm id={deletingId} onClose={() => setDeletingId(null)} onDeleted={() => setDeletingId(null)} /> : null}
     </section>
   )

@@ -54,6 +54,9 @@ export type IndicatorDefinitionInput = {
   iconKey: string | null
   /** Universo de atuação — só na criação (registro existente muda pela classificação do universo). */
   operatingUniverse?: OperatingUniverse
+  /** Alcance operacional (migration 250): "Todos" do universo do indicador ou Grupos/Subgrupos específicos. Ausente = inalterado. */
+  scopeType?: "ALL_TEAMS" | "GROUPS"
+  scopeLinks?: { teamId: string; subteamId: string | null }[]
 }
 
 export async function createIndicatorDefinition(input: IndicatorDefinitionInput): Promise<{ id: string }> {

@@ -3,6 +3,7 @@ import { universeFromBody } from "../../operating-universe/application/universe-
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { canManageScope, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
+import { loadResourceScopeLinks } from "../../org-structure/application/resource-scope-links.js"
 import { businessDomainInputSchema, businessDomainPatchSchema, type BusinessDomainInput, type BusinessDomainRecord } from "../domain/business-domain.js"
 
 /**
@@ -63,7 +64,11 @@ async function queryDependencies(db: Queryable, organizationId: string, domain: 
       order by o.name`,
     [organizationId, domain.id, domain.code],
   )
-  return { agents: agents.rows, orchestrators: orchestrators.rows }
+  // Orquestradores (249): alcance pelos vínculos — `canManageScope` em GROUPS confere todos eles.
+  const orchestratorLinks = await loadResourceScopeLinks(db, "ORCHESTRATOR", orchestrators.rows.filter((row) => row.scopeType === "GROUPS").map((row) => row.id))
+  // Agentes (249): idem — vínculos em `agent_scope_links`.
+  const agentLinks = await loadResourceScopeLinks(db, "AGENT", agents.rows.filter((row) => row.scopeType === "GROUPS").map((row) => row.id))
+  return { agents: agents.rows.map((row) => (row.scopeType === "GROUPS" ? { ...row, links: agentLinks.get(row.id) ?? [] } : row)), orchestrators: orchestrators.rows.map((row) => (row.scopeType === "GROUPS" ? { ...row, links: orchestratorLinks.get(row.id) ?? [] } : row)) }
 }
 
 const itemOf = ({ id, name, active }: DependencyRow) => ({ id, name, active })

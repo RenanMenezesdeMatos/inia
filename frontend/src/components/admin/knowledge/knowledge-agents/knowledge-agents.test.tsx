@@ -33,7 +33,7 @@ const BASE = "11111111-1111-4111-8111-111111111111"
 
 function candidate(id: string, name: string, overrides: Partial<KnowledgeLinkCandidate> = {}): KnowledgeLinkCandidate {
   return {
-    id, name, agentType: "CALL_FEEDBACK", active: true, operatingUniverse: null, scopeType: "ALL_TEAMS", teamId: null, subteamId: null, teamName: null, subteamName: null,
+    id, name, agentType: "CALL_FEEDBACK", active: true, operatingUniverse: null, scopeType: "ALL_TEAMS", scopeLinks: [],
     linkedInUse: false, linkedInDraft: false, published: true, currentVersionNumber: 1,
     draft: { revision: 3, pending: false, otherChanges: false, updatedAt: null, updatedByName: null },
     block: null, blockMessage: null, ...overrides,

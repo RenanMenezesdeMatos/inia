@@ -25,6 +25,7 @@ vi.mock("../../access/domain/roles.js", async (importOriginal) => {
 const { env } = await import("../../../config/env.js")
 const { createApp } = await import("../../../main/app.js")
 const { setProofAccountPassword } = await import("../../auth/testing/proof-account-password.js")
+const { eligibleProofTeamIds, linkProofWorkflowToTeam, linkProofWorkflowVersionToTeam } = await import("./proof-scope-units.js")
 const { productionAgentRuns } = await import("../../workflows/application/effect-sink.js")
 const { resolveAgentVersionForRun } = await import("../application/agent-versions.js")
 const { configFromLiveRow, AGENT_LIVE_COLUMNS, sameAgentConfig, parseAgentConfig } = await import("../domain/agent-config.js")
@@ -81,13 +82,15 @@ async function cleanup() {
 
 async function insertWorkflow(name: string, graph: unknown, options: { teamId?: string | null; active?: boolean; publish?: boolean } = {}) {
   const workflow = (await pool.query<{ id: string }>(
-    `insert into workflows (organization_id, name, trigger_config, draft_graph, active, scope_type, team_id, draft_scope_type, draft_team_id) values ($1,$2,$3,$4,$5,$6,$7,$6,$7) returning id`,
-    [ORG, `${PREFIX}${name}`, JSON.stringify({ kind: "channel_flag", channelFlagId: "00000000-0000-4000-8000-000000000000" }), JSON.stringify(graph), options.active ?? true, options.teamId ? "TEAM" : "ALL_TEAMS", options.teamId ?? null],
+    `insert into workflows (organization_id, name, trigger_config, draft_graph, active, scope_type, draft_scope_type) values ($1,$2,$3,$4,$5,$6,$6) returning id`,
+    [ORG, `${PREFIX}${name}`, JSON.stringify({ kind: "channel_flag", channelFlagId: "00000000-0000-4000-8000-000000000000" }), JSON.stringify(graph), options.active ?? true, options.teamId ? "GROUPS" : "ALL_TEAMS"],
   )).rows[0]!.id
+  await linkProofWorkflowToTeam(pool, ORG, workflow, options.teamId ?? null)
   created.workflows.push(workflow)
   let version: string | null = null
   if (options.publish !== false) {
     version = (await pool.query<{ id: string }>(`insert into workflow_versions (workflow_id, graph) values ($1,$2) returning id`, [workflow, JSON.stringify(graph)])).rows[0]!.id
+    await linkProofWorkflowVersionToTeam(pool, version, options.teamId ?? null)
     await pool.query(`update workflows set active_version_id = $2 where id = $1`, [workflow, version])
   }
   return { workflow, version }
@@ -107,7 +110,7 @@ async function claimed(id: string): Promise<Claimed> {
   return (await pool.query<Claimed>(
     `select we.id, we.organization_id, we.workflow_id, we.version_id, we.interaction_id, we.indicator_measurement_id, we.scheduled_subject_id, we.scheduled_for, we.current_node_id,
             we.matched_flag_name, we.matched_value_boolean, we.matched_value_numeric, we.status, we.attempts, we.revision, we.node_outputs, we.variables, we.parent_enrollment_id,
-            w.scope_type, w.team_id workflow_team_id, w.subteam_id workflow_subteam_id, w.consolidated_structure, w.population_filter, now()::text claimed_until
+            w.scope_type, coalesce((select json_agg(json_build_object('teamId', l.team_id, 'subteamId', l.subteam_id)) from workflow_scope_links l where l.workflow_id = w.id), '[]'::json) scope_links, w.team_id workflow_team_id, w.subteam_id workflow_subteam_id, w.consolidated_structure, w.population_filter, now()::text claimed_until
      from workflow_enrollments we join workflows w on w.id = we.workflow_id where we.id = $1`,
     [id],
   )).rows[0]!
@@ -126,7 +129,8 @@ describe.skipIf(!ENABLED)("Ciclo de vida dos agentes — exclusão, desativaçã
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: env.TEST_DATABASE_URL })
     await cleanup()
-    const teams = (await pool.query<{ id: string }>(`select id from teams where organization_id = $1 order by name limit 2`, [ORG])).rows
+    // Grupos com operador em produção: vínculo novo de agente exige (249).
+    const teams = (await eligibleProofTeamIds(pool, ORG, 2)).map((id) => ({ id }))
     teamA = teams[0]!.id
     teamB = teams[1]!.id
     operatorId = (await pool.query<{ id: string }>(`select id from people where organization_id = $1 and role = 'OPERATOR' limit 1`, [ORG])).rows[0]!.id
@@ -155,7 +159,9 @@ describe.skipIf(!ENABLED)("Ciclo de vida dos agentes — exclusão, desativaçã
       expect(agent.current_version_id, `agente ${agent.id} sem versão`).not.toBeNull()
       const version = (await pool.query<{ config: unknown }>(`select config from agent_versions where id = $1`, [agent.current_version_id])).rows[0]!
       const knowledge = (await pool.query<{ id: string }>(`select knowledge_document_id id from agent_knowledge_documents where agent_id = $1`, [agent.id])).rows.map((row) => row.id)
-      expect(sameAgentConfig(parseAgentConfig(version.config), configFromLiveRow(agent as never, knowledge)), `agente ${agent.id}`).toBe(true)
+      // Vínculos de alcance (249): a versão antiga (TEAM/SUBTEAM) e a linha viva convertida têm o MESMO alcance.
+      const links = (await pool.query<{ teamId: string; subteamId: string | null }>(`select team_id "teamId", subteam_id "subteamId" from agent_scope_links where agent_id = $1`, [agent.id])).rows
+      expect(sameAgentConfig(parseAgentConfig(version.config), configFromLiveRow(agent as never, knowledge, links)), `agente ${agent.id}`).toBe(true)
     }
     expect((await pool.query(`select 1 from assistant_orchestrators where current_version_id is null`)).rowCount).toBe(0)
     const sample = agents[0]!.current_version_id!

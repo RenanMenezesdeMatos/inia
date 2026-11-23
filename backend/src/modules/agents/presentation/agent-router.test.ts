@@ -55,7 +55,7 @@ type AgentFixture = { id: string; name: string; agentType: string; objective: st
 function liveRowOf(agent: AgentFixture, overrides: Record<string, unknown> = {}) {
   return {
     name: agent.name, agent_type: agent.agentType, objective: agent.objective, description: agent.description, context_prompt: agent.contextPrompt,
-    scope_type: agent.scopeType, team_id: agent.teamId, subteam_id: agent.subteamId, specialty: null, specialty_kind: null, domain: null, capability: null,
+    scope_type: agent.scopeType === "ALL_TEAMS" ? "ALL_TEAMS" : "GROUPS", specialty: null, specialty_kind: null, domain: null, capability: null,
     consolidated_input: false, business_domain_id: null, recommend_support_materials: false, investigation_capabilities: [],
     action_limits_enabled: agent.actionLimitsEnabled, action_limits: agent.actionLimits, ...overrides,
   }
@@ -65,7 +65,7 @@ function liveRowOf(agent: AgentFixture, overrides: Record<string, unknown> = {})
 function lifecycleRowOf(agent: AgentFixture, overrides: Record<string, unknown> = {}) {
   return {
     id: agent.id, organizationId: ACCOUNT.organization_id, active: agent.active, currentVersionId: `${agent.id}-v1`, currentVersionNumber: 1,
-    draftConfig: null, draftRevision: 0, draftUpdatedAt: null, draftUpdatedByName: null, scopeType: agent.scopeType, teamId: agent.teamId, subteamId: agent.subteamId, ...overrides,
+    draftConfig: null, draftRevision: 0, draftUpdatedAt: null, draftUpdatedByName: null, scopeType: agent.scopeType === "ALL_TEAMS" ? "ALL_TEAMS" : "GROUPS", ...overrides,
   }
 }
 
@@ -89,6 +89,19 @@ function fakeDatabase(
       return { rows: [], rowCount: 0 }
     }
     const byId = (id: unknown) => [AGENT_TEAM_A, AGENT_TEAM_B].find((row) => row.id === id)
+    // Vínculos de alcance (249): o agente de Grupo das fixtures tem um vínculo com o Grupo inteiro.
+    if (sql.includes("from agent_scope_links where agent_id = any")) {
+      const rows = ((params?.[0] as string[]) ?? []).flatMap((id) => {
+        const agent = byId(id)
+        return agent && agent.scopeType !== "ALL_TEAMS" && agent.teamId ? [{ owner_id: agent.id, team_id: agent.teamId, subteam_id: agent.subteamId }] : []
+      })
+      return { rows, rowCount: rows.length }
+    }
+    // Grupos existentes da organização (normalizeScopeLinks): os pedidos existem; Subgrupos, nenhum.
+    if (sql.includes("select id from teams where id = any")) {
+      const rows = ((params?.[0] as string[]) ?? []).map((id) => ({ id }))
+      return { rows, rowCount: rows.length }
+    }
     // Ciclo de vida (agent-versions.ts › loadAgentLifecycle) busca por `a.id = $1` — antes do AGENT_SELECT, que também lê `from agents a`.
     if (sql.includes('a.draft_config "draftConfig"')) {
       const agent = byId(params?.[0])
@@ -111,7 +124,7 @@ function fakeDatabase(
     if (sql.includes("select scope_type") && sql.includes("from agents where id")) {
       const id = params?.[0]
       const agent = [AGENT_TEAM_A, AGENT_TEAM_B].find((row) => row.id === id)
-      return agent ? { rows: [{ scopeType: agent.scopeType, teamId: agent.teamId, subteamId: agent.subteamId, active: agent.active }], rowCount: 1 } : { rows: [], rowCount: 0 }
+      return agent ? { rows: [{ scopeType: agent.scopeType === "ALL_TEAMS" ? "ALL_TEAMS" : "GROUPS", active: agent.active, operatingUniverse: null }], rowCount: 1 } : { rows: [], rowCount: 0 }
     }
     return { rows: [], rowCount: 0 }
   }
@@ -300,17 +313,17 @@ describe("agent-router — Agent DOMAIN referencia um Domínio de negócio do ca
     const byId = await agent.post("/api/v1/admin/agents").send({ ...baseBody, specialtyKind: "DOMAIN", businessDomainId: "d0000000-0000-4000-8000-000000000005" })
     expect(byId.status).toBe(201)
     // colunas vivas: … $11 specialty, $12 specialty_kind, $13 domain, $14 capability, $15 consolidated_input, $16 business_domain_id, $17 recommend_support_materials (padrão false), $18 capacidades
-    expect(inserts[0]!.slice(10, 18)).toEqual(["LOGISTICA", "DOMAIN", "LOGISTICA", null, false, "d0000000-0000-4000-8000-000000000005", false, []])
+    expect(inserts[0]!.slice(8, 16)).toEqual(["LOGISTICA", "DOMAIN", "LOGISTICA", null, false, "d0000000-0000-4000-8000-000000000005", false, []])
     // O rascunho criado (PEN-002) carrega a MESMA especialidade.
     expect(drafts[0]).toMatchObject({ specialty: "LOGISTICA", specialtyKind: "DOMAIN", domain: "LOGISTICA", businessDomainId: "d0000000-0000-4000-8000-000000000005" })
     // Forma de compatibilidade (só o código): resolve para a MESMA FK.
     const byCode = await agent.post("/api/v1/admin/agents").send({ ...baseBody, name: "Agent · Entregas 2", specialtyKind: "DOMAIN", domain: "logistica" })
     expect(byCode.status).toBe(201)
-    expect(inserts[1]!.slice(10, 18)).toEqual(["LOGISTICA", "DOMAIN", "LOGISTICA", null, false, "d0000000-0000-4000-8000-000000000005", false, []])
+    expect(inserts[1]!.slice(8, 16)).toEqual(["LOGISTICA", "DOMAIN", "LOGISTICA", null, false, "d0000000-0000-4000-8000-000000000005", false, []])
     // Legado puro (`specialty` = código) também resolve para a FK — dual-read na entrada.
     const legacy = await agent.post("/api/v1/admin/agents").send({ ...baseBody, name: "Agent · Faturamento", specialty: "FATURAMENTO" })
     expect(legacy.status).toBe(201)
-    expect(inserts[2]!.slice(10, 18)).toEqual(["FATURAMENTO", "DOMAIN", "FATURAMENTO", null, false, "d0000000-0000-4000-8000-000000000001", false, []])
+    expect(inserts[2]!.slice(8, 16)).toEqual(["FATURAMENTO", "DOMAIN", "FATURAMENTO", null, false, "d0000000-0000-4000-8000-000000000001", false, []])
   })
 
   it("CROSS_CUTTING/PERFORMANCE/SYNTHESIS não exigem nem aceitam domínio; domínio DESATIVADO não entra num Agent novo, mas um Agent existente que já o tinha continua salvando", async () => {
@@ -321,7 +334,7 @@ describe("agent-router — Agent DOMAIN referencia um Domínio de negócio do ca
       const ok = await agent.post("/api/v1/admin/agents").send({ ...baseBody, specialtyKind })
       expect(ok.status, specialtyKind).toBe(201)
     }
-    expect(inserts.map((params) => params[15])).toEqual([null, null, null])
+    expect(inserts.map((params) => params[13])).toEqual([null, null, null])
     const inactive = await agent.post("/api/v1/admin/agents").send({ ...baseBody, specialtyKind: "DOMAIN", domain: "BACKOFFICE" })
     expect(inactive.status).toBe(422)
     expect(inactive.body.error.code).toBe("BUSINESS_DOMAIN_INACTIVE")
@@ -382,7 +395,7 @@ describe("agent-router — Limites de atuação (migration 124)", () => {
     expect(draftOf(writes.find((write) => write.sql.includes("set draft_config")), 2)).toMatchObject({ actionLimitsEnabled: true, actionLimits: "Só faturamento." })
     const history = JSON.parse(String(writes.find((write) => write.sql.includes("insert into agent_history"))!.params[5]))
     // Com o alcance da configuração anterior e da nova: decide quem lê os valores (agent-router.config-scope.test.ts).
-    const allTeams = { scopeType: "ALL_TEAMS", teamId: null, subteamId: null }
+    const allTeams = { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, scopeLinks: [] }
     expect(history).toEqual([{ field: "actionLimits", label: "Limites de atuação", from: "Desligados — Só faturamento.", to: "Ligados — Só faturamento.", configScopes: [allTeams, allTeams] }])
 
     writes.length = 0

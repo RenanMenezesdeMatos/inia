@@ -3,9 +3,8 @@ import { configurationChanges, stableJson, type WorkflowConfiguration } from "./
 
 const PUBLISHED: WorkflowConfiguration = {
   triggerConfig: { kind: "manual", context: "INTERACTION" },
-  scopeType: "TEAM",
-  teamId: "11111111-1111-4111-8111-111111111111",
-  subteamId: null,
+  scopeType: "GROUPS",
+  scopeLinks: [{ teamId: "11111111-1111-4111-8111-111111111111", subteamId: null }],
   consolidatedStructure: null,
   populationFilter: null,
   operatingUniverse: null,
@@ -27,10 +26,20 @@ describe("configurationChanges — rascunho × publicada", () => {
     const draft: WorkflowConfiguration = {
       ...PUBLISHED,
       scopeType: "ALL_TEAMS",
-      teamId: null,
+      scopeLinks: [],
       populationFilter: { kind: "SUPERVISOR_TEAM", supervisorId: "22222222-2222-4222-8222-222222222222" },
     }
     expect(configurationChanges(draft, PUBLISHED)).toEqual(["SCOPE", "ANALYSIS"])
+  })
+
+  it("vínculos da Abrangência: mesma lista em outra ordem não é mudança; acrescentar/trocar um Subgrupo é", () => {
+    const A = "11111111-1111-4111-8111-111111111111"
+    const B = "11111111-1111-4111-8111-111111111112"
+    const B1 = "33333333-3333-4333-8333-333333333331"
+    const published: WorkflowConfiguration = { ...PUBLISHED, scopeLinks: [{ teamId: A, subteamId: null }, { teamId: B, subteamId: B1 }] }
+    expect(configurationChanges({ ...published, scopeLinks: [{ teamId: B, subteamId: B1 }, { teamId: A, subteamId: null }] }, published)).toEqual([])
+    expect(configurationChanges({ ...published, scopeLinks: [{ teamId: A, subteamId: null }] }, published)).toEqual(["SCOPE"])
+    expect(configurationChanges({ ...published, scopeLinks: [{ teamId: A, subteamId: null }, { teamId: B, subteamId: null }] }, published)).toEqual(["SCOPE"])
   })
 
   it('ligar ou desligar "Somente quem tem acesso ativo à INIA" é mudança de população; ausente e desligada são a mesma coisa', () => {

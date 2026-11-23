@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import type pg from "pg"
 import { loadResultsPage } from "../application/workflow-results-reader.js"
 import { getManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { linkWorkflowScope } from "./workflow-scope-fixtures.js"
 import { closeProofTransaction, openProofTransaction, createAccount, createPerson, createTeam, insertEnrollment, insertLiveWorkflow, loginAs, ORG, triggerNode, endNode, flowEdge, type ProofClient } from "./p5-proof-helpers.js"
 
 const ENABLED = process.env.INIA_DB_PROOF === "1"
@@ -61,7 +62,9 @@ describe.skipIf(!ENABLED)("Execuções do Workflow — escopo pela pessoa da exe
     expect((await httpB.get(`${base}/enrollments`)).status).toBe(404)
 
     // Movido para o Grupo B (estado que rascunho + Publicar produz): o B passa a administrar o Workflow…
-    await db.query("update workflows set scope_type = 'TEAM', team_id = $2, draft_scope_type = 'TEAM', draft_team_id = $2 where id = $1", [workflow.workflowId, teamB])
+    // Abrangência por vínculos (249): o vínculo do Grupo A vira o do Grupo B (publicado e rascunho).
+    await db.query("delete from workflow_scope_links where workflow_id = $1", [workflow.workflowId])
+    await linkWorkflowScope(db, workflow.workflowId, [{ teamId: teamB }])
     const list = await httpB.get(`${base}/enrollments`)
     expect(list.status).toBe(200)
     // …mas a execução sobre o operador do Grupo A não sai, nem com o marcador — a mesma resposta da aba Resultados.
@@ -115,7 +118,13 @@ describe.skipIf(!ENABLED)("Execuções do Workflow — escopo pela pessoa da exe
       [ORG, workflow.workflowId, workflow.versionId, teamMeasurement],
     )).rows[0]!.id
     expect((await httpB.get(`${base}/enrollments/${rootless}/agent-records`)).status).toBe(404)
-    await db.query("update workflow_versions set team_id = $2 where id = $1", [workflow.versionId, teamB])
+    // A versão guarda a Abrangência nos vínculos (249): passada para o Grupo B, o B lê; com A e B, o B não lê (falta o A).
+    await db.query("update workflow_versions set scope_links = $2 where id = $1", [workflow.versionId, JSON.stringify([{ teamId: teamB, subteamId: null }])])
+    expect((await httpB.get(`${base}/enrollments/${rootless}/agent-records`)).status).toBe(200)
+    await db.query("update workflow_versions set scope_links = $2 where id = $1", [workflow.versionId, JSON.stringify([{ teamId: teamA, subteamId: null }, { teamId: teamB, subteamId: null }])])
+    expect((await httpB.get(`${base}/enrollments/${rootless}/agent-records`)).status).toBe(404)
+    // Versão anterior à 249 (TEAM + team_id, sem vínculos) continua lida.
+    await db.query("update workflow_versions set scope_type = 'TEAM', team_id = $2, scope_links = null where id = $1", [workflow.versionId, teamB])
     expect((await httpB.get(`${base}/enrollments/${rootless}/agent-records`)).status).toBe(200)
     await db.query("update workflow_versions set scope_type = null, team_id = null where id = $1", [workflow.versionId])
     expect((await httpB.get(`${base}/enrollments/${rootless}/agent-records`)).status).toBe(404)

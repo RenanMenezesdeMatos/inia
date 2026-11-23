@@ -141,3 +141,53 @@ As bases dos casos T são fictícias (`taxonomy-fixtures.json`). A ligação fam
 - G09 e G10, que usam bases com produto, continuaram certas.
 
 **Gasto do chat nesta aprovação:** US$ 1,84 de US$ 2 (1,38 + 0,27 + 0,06 + 0,04 + 0,08). Na busca, US$ 0,002.
+
+## Gíria do Glossário na seção — opção 4 (23/11/2026)
+
+Pergunta do responsável: o operador usa um termo da operação que a base não escreve. A busca acha a seção?
+
+**Opção medida:** na indexação, a seção que contém o **termo oficial** ganha uma linha `Também chamado: <gíria>`. O termo oficial é a 1ª
+oração da definição no Glossário. A pergunta do operador não muda. Foram três variantes: a gíria no texto e no vetor, só no texto (BM25) e
+só no vetor. Implementado **só no roteiro** (`withJargon` em `eval-recall.ts`); nada mudou no produto.
+
+**Gabarito v4** (`gold-v4-jargao.json`, sha256 `9a1d60d5…0fde7a`, gravado antes de medir): 20 perguntas (J01–J20) e 20 seções em 5 procedimentos
+reais (reparo de banda larga, contestação, cancelamento, portabilidade móvel, gestor e titularidade entre empresas).
+- **As gírias são sintéticas,** criadas pela IA a pedido do responsável ("pane de bairro", "conta gêmea", "número tampão", "papo de 171"…).
+  Elas testam o mecanismo, não a cobertura do jargão real da operação.
+- Nenhuma gíria existe no corpus, e a pergunta nunca usa o termo oficial.
+- O enriquecimento tocou 59 seções com as bases reais e 368 com as distratoras, porque termos como "roaming internacional" estão nelas.
+
+**Resultado:** seções já lidas na 1ª decisão. J = as 20 do jargão; demais = as 58 dos gabaritos v1–v3. As seções entre os candidatos não caíram
+em nenhum caso.
+
+| Modelo · escala | V2: J | V2 + gíria (texto e vetor): J · demais | Só texto: J · demais | Só vetor: J · demais |
+|---|---|---|---|---|
+| bge-m3 · 72 | 6 | **19** · 44 (−1) | 15 · 45 | **19** · 44 (−1) |
+| bge-m3 · 1072 | 6 | **18** · 44 (−1) | 13 · 45 | **18** · 44 (−1) |
+| gemini-embedding-001 · 72 | 13 | **20** · 53 | 16 · 53 | **20** · 53 |
+| gemini-embedding-001 · 1072 | 13 | **20** · 52 (−1) | 16 · 52 (−1) | **20** · 53 |
+| gemini-embedding-2 · 72 | 17 | **20** · 53 | **20** · 53 | 18 · 53 |
+| gemini-embedding-2 · 1072 | 17 | **20** · 52 (−1) | **20** · 52 (−1) | 18 · 53 |
+
+- **O ganho no jargão é grande e se repete nos três modelos.** No bge-m3, a pré-leitura do jargão foi de 6 para 18–19 de 20. No Gemini 001,
+  de 13 para 20.
+- Sem ajuda, o vetor do Gemini já entende parte das gírias (13–17 de 20). Só o BM25 acha 1–3.
+- **As perdas, sempre de 1 seção e só na pré-leitura:**
+  - G05 no bge-m3, com a gíria no vetor: caiu da 3ª para a 5ª posição;
+  - G09 com 1072 bases no Gemini, com a gíria no texto: caiu da 7ª para a 9ª/10ª posição.
+
+  As duas continuam entre os candidatos. Pelo tamanho do gabarito, estão no ruído, mas pela regra (qualidade não pode cair) contam.
+- **Sem nenhuma perda:** só a variante "só vetor" no gemini-embedding-001 (20 de 20 no jargão; 53 e 53 nas demais).
+
+**Gasto:** US$ 0,28 estimados (Gemini 001: 0,10; Gemini 2: 0,17). O bge-m3 é local, sem custo.
+
+**Limites:**
+- Gírias sintéticas e "limpas": cada uma é a única pista da pergunta.
+- A regra "1ª oração da definição = termo oficial" é uma convenção que o cadastro do Glossário teria que seguir.
+- O modelo da VM (`text-embedding-3-small`) não foi medido.
+- A qualidade da resposta do chat não foi medida.
+- O motor de feedback (transcrição) não usa esta busca.
+
+**Decisão do responsável (23/11/2026):** a gíria entra **só no vetor** (a variante sem perda no Gemini 001) e fica **desligada**.
+Interruptor `INIA_KB_GLOSSARY_JARGON_VECTORS=on` na API e no processamento, depois reinício (migration 251). Detalhes em
+`docs/dev/memoria/agentes-e-conhecimento.md`, "Gíria do Glossário no vetor".

@@ -150,16 +150,18 @@ async function lerDestino(cliente: ClienteInia, itens: Item[]): Promise<Destino>
   const chatAtivoPorAlcance = new Map<string, string>()
   for (const orquestrador of orquestradores) {
     if (orquestrador.active !== true || orquestrador.invocationMode === "WORKFLOW") continue
-    const alcance: AlcanceResolvido = orquestrador.subteamId
-      ? {
-          scopeType: "SUBTEAM",
-          teamId: texto(orquestrador.teamId),
-          subteamId: texto(orquestrador.subteamId),
-        }
-      : orquestrador.teamId
-        ? { scopeType: "TEAM", teamId: texto(orquestrador.teamId) }
-        : { scopeType: "ALL_TEAMS" }
-    chatAtivoPorAlcance.set(chaveDeAlcance(alcance), texto(orquestrador.name))
+    // Alcance (249): "todos" ou um vínculo por Grupo/Subgrupo em `scopeLinks` (`teamId`/`subteamId` ficam nulos).
+    const vinculos = Array.isArray(orquestrador.scopeLinks) ? (orquestrador.scopeLinks as { teamId?: unknown; subteamId?: unknown }[]) : []
+    const alcances: AlcanceResolvido[] = orquestrador.scopeType === "ALL_TEAMS"
+      ? [{ scopeType: "ALL_TEAMS" }]
+      : vinculos.length > 0
+        ? vinculos.map((vinculo) => (vinculo.subteamId ? { scopeType: "SUBTEAM", teamId: texto(vinculo.teamId), subteamId: texto(vinculo.subteamId) } : { scopeType: "TEAM", teamId: texto(vinculo.teamId) }))
+        : orquestrador.subteamId
+          ? [{ scopeType: "SUBTEAM", teamId: texto(orquestrador.teamId), subteamId: texto(orquestrador.subteamId) }]
+          : orquestrador.teamId
+            ? [{ scopeType: "TEAM", teamId: texto(orquestrador.teamId) }]
+            : []
+    for (const alcance of alcances) chatAtivoPorAlcance.set(chaveDeAlcance(alcance), texto(orquestrador.name))
   }
 
   const padrao = cenarios.scenes.find((cenario) => cenario.id === cenarios.defaultSceneId)
@@ -209,6 +211,12 @@ const escopoMultiNoCorpo = (alcances: readonly AlcanceResolvido[]) =>
   alcances.length === 0 || alcances.some((alcance) => alcance.scopeType === "ALL_TEAMS")
     ? { scopeType: "ALL_TEAMS", links: [] }
     : { scopeType: "GROUPS", links: alcances.map((alcance) => (alcance.scopeType === "SUBTEAM" ? { teamId: alcance.teamId, subteamId: alcance.subteamId } : { teamId: (alcance as { teamId: string }).teamId })) }
+
+/** Alcance do agente (249): algum TODOS = todos os Grupos; senão, um vínculo por alcance resolvido (`scopeLinks`). */
+const alcanceDoRecursoNoCorpo = (alcances: readonly AlcanceResolvido[]) =>
+  alcances.length === 0 || alcances.some((alcance) => alcance.scopeType === "ALL_TEAMS")
+    ? { scopeType: "ALL_TEAMS" }
+    : { scopeType: "GROUPS", scopeLinks: alcances.map((alcance) => (alcance.scopeType === "SUBTEAM" ? { teamId: alcance.teamId, subteamId: alcance.subteamId } : { teamId: (alcance as { teamId: string }).teamId, subteamId: null })) }
 
 const alcanceNoCorpo = (alcance: AlcanceResolvido | null) =>
   !alcance || alcance.scopeType === "ALL_TEAMS"
@@ -313,7 +321,8 @@ async function criar(cliente: ClienteInia, linha: LinhaDoPlano, idDe: IdDe, regi
     case "DOMINIO":
       return (await cliente.post<{ id: string }>("/api/v1/admin/business-domains", semVazios({ ...item.dados }))).id
     case "INDICADOR": {
-      const id = (await cliente.post<{ id: string }>("/api/v1/admin/indicator-rules/definitions", semVazios({ ...item.dados.definicao }))).id
+      // Alcance (250) no mesmo corpo: a rota grava definição e vínculos na mesma transação.
+      const id = (await cliente.post<{ id: string }>("/api/v1/admin/indicator-rules/definitions", { ...semVazios({ ...item.dados.definicao }), ...alcanceDoRecursoNoCorpo(linha.alcances) })).id
       registro.desfazer = `/api/v1/admin/indicator-rules/definitions/${id}`
       registro.avisos.push(...(await complementarIndicador(cliente, item, id, [...(item.dados.glossario ? (["GLOSSARIO"] as const) : []), ...(item.dados.estrategia ? (["ESTRATEGIA"] as const) : [])], idDe)))
       return id
@@ -374,7 +383,7 @@ async function criar(cliente: ClienteInia, linha: LinhaDoPlano, idDe: IdDe, regi
         objective: dados.objective,
         description: dados.description,
         contextPrompt: dados.contextPrompt,
-        ...alcanceNoCorpo(linha.alcance),
+        ...alcanceDoRecursoNoCorpo(linha.alcances),
         knowledgeDocumentIds: dados.bases.map((titulo) => idDe("BASE", titulo)).filter((id): id is string => Boolean(id)),
         ...semVazios(especialidade),
         recommendSupportMaterials: dados.recommendSupportMaterials,
@@ -405,7 +414,8 @@ async function criar(cliente: ClienteInia, linha: LinhaDoPlano, idDe: IdDe, regi
           : {}
       const corpo = {
         name: dados.name,
-        ...alcanceNoCorpo(linha.alcance),
+        // Alcance (249): todos os vínculos resolvidos (pacote antigo = o alcance único).
+        ...alcanceDoRecursoNoCorpo(linha.alcances),
         orchestratorAgentId: idDe("AGENTE", dados.agenteOrquestrador),
         specialistAgentIds: dados.especialistas.map((nome) => idDe("AGENTE", nome)),
         invocationMode: dados.invocationMode,
@@ -579,7 +589,8 @@ async function criarWorkflow(cliente: ClienteInia, linha: LinhaDoPlano, item: It
   const corpo = {
     name: dados.name,
     ...semVazios({ description: dados.description }),
-    ...alcanceNoCorpo(linha.alcance),
+    // Abrangência (249): todos os vínculos resolvidos (pacote antigo = o alcance único).
+    ...alcanceDoRecursoNoCorpo(linha.alcances),
     trigger: trocar(dados.gatilho),
   }
   const id = (await cliente.post<{ id: string }>("/api/v1/admin/workflows", corpo)).id

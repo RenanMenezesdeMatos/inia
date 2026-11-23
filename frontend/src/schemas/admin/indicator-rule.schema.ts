@@ -65,6 +65,9 @@ export const indicatorWithRulesSchema = z.object({
   goodPractices: z.string().nullable(),
   feedbackGuidance: z.string().nullable(),
   calculationRules: z.array(calculationRuleSchema),
+  /** Alcance operacional (250): ALL_TEAMS = todos os Grupos/Subgrupos do universo; GROUPS = os vínculos. Opcional: tolera backend anterior. */
+  scopeType: z.enum(["ALL_TEAMS", "GROUPS"]).optional(),
+  scopeLinks: z.array(z.object({ teamId: z.string(), teamName: z.string().nullable().optional(), subteamId: z.string().nullable(), subteamName: z.string().nullable().optional() })).optional(),
   /** V1.6.2 — status compacto da estratégia de diagnóstico com IA (opcional: tolera backend anterior). */
   diagnosticStrategyStatus: z.enum(["NOT_CONFIGURED", "DRAFT", "PUBLISHED", "INACTIVE"]).optional(),
   diagnosticStrategyDraftPending: z.boolean().optional(),

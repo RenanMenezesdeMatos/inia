@@ -2,7 +2,7 @@ import pg from "pg"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { env } from "../../../config/env.js"
 import { knowledgeFitsAgentSql } from "../application/knowledge-agent-fit.js"
-import { FIT_SUBTEAM_PARENT, KNOWLEDGE_AGENT_FIT_CASES, type FitAgentScope, type FitDocumentScope, type FitSubteam, type FitTeam } from "./knowledge-agent-fit-cases.js"
+import { FIT_SUBTEAM_PARENT, fitAgentTeams, KNOWLEDGE_AGENT_FIT_CASES, type FitAgentScope, type FitDocumentScope, type FitSubteam, type FitTeam } from "./knowledge-agent-fit-cases.js"
 
 /**
  * PROVA da regra "a base cabe no agente" contra o banco de TESTE real (run-8, ARQ-03): a SQL única (`knowledgeFitsAgentSql`, usada ao
@@ -53,11 +53,11 @@ describe.skipIf(!ENABLED)("a base cabe no agente — a SQL do servidor responde 
     return id
   }
 
-  const agentParams = (scope: FitAgentScope) => [scope.scopeType, scope.scopeType === "TEAM" ? teams[scope.team] : null, scope.scopeType === "SUBTEAM" ? subteams[scope.subteam] : null]
+  const agentParams = (scope: FitAgentScope) => [scope.scopeType, fitAgentTeams(scope).map((team) => teams[team])]
 
   it.each(KNOWLEDGE_AGENT_FIT_CASES)("$name", async (fitCase) => {
     const documentId = await insertDocument(fitCase.document)
-    const sql = `select ${knowledgeFitsAgentSql("$1::uuid", { scopeType: "$2::text", teamId: "$3::uuid", subteamId: "$4::uuid" })} fits`
+    const sql = `select ${knowledgeFitsAgentSql("$1::uuid", { scopeType: "$2::text", teamIds: "$3::uuid[]" })} fits`
     const result = await client.query<{ fits: boolean }>(sql, [documentId, ...agentParams(fitCase.agent)])
     expect(result.rows[0]!.fits).toBe(fitCase.fits)
   })

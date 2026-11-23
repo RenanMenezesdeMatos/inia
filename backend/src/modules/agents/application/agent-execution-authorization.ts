@@ -1,8 +1,9 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { scopesAreCompatible, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
-import type { AgentRuntimeSnapshot } from "../domain/agent-config.js"
-import { knowledgeFitsAgentSql } from "../../knowledge/application/knowledge-agent-fit.js"
+import { agentScopeOf, type AgentRuntimeSnapshot } from "../domain/agent-config.js"
+import { agentTeamIdsOf, knowledgeFitsAgentSql } from "../../knowledge/application/knowledge-agent-fit.js"
+import { scopedTargetOf } from "../../org-structure/application/resource-scope-links.js"
 
 /**
  * Condição de segurança da revisão aprovada da PEN-002/PEN-076 (03/11/2026): com a atualização automática, a versão VIGENTE de
@@ -39,18 +40,20 @@ export class AgentAccessBlockedError extends DomainError {
   }
 }
 
-const scopeOf = (snapshot: AgentRuntimeSnapshot): ScopedTarget => ({ scopeType: snapshot.config.scopeType, teamId: snapshot.config.teamId, subteamId: snapshot.config.subteamId })
+/** Alcance da versão (vários vínculos desde a 249): o consumidor precisa estar coberto — cada Grupo efetivo dele entre os do agente. */
+const scopeOf = (snapshot: AgentRuntimeSnapshot): ScopedTarget => scopedTargetOf(agentScopeOf(snapshot.config))
 
 /** Motivo do bloqueio, ou null quando a versão pode executar para este consumidor. */
 export async function executionDenialFor(db: Database, snapshot: AgentRuntimeSnapshot, consumer: ScopedTarget | null): Promise<ExecutionDenialReason | null> {
   if (consumer && !(await scopesAreCompatible(db, consumer, scopeOf(snapshot)))) return "SCOPE"
   const ids = [...new Set(snapshot.config.knowledgeDocumentIds)]
   if (ids.length === 0) return null
+  const scope = agentScopeOf(snapshot.config)
   const rows = (await db.query<{ id: string; same_org: boolean; allowed: boolean }>(
-    `select d.id, d.organization_id = $2 same_org, ${knowledgeFitsAgentSql("d.id", { scopeType: "$3::text", teamId: "$4::uuid", subteamId: "$5::uuid" })} allowed
+    `select d.id, d.organization_id = $2 same_org, ${knowledgeFitsAgentSql("d.id", { scopeType: "$3::text", teamIds: "$4::uuid[]" })} allowed
        from knowledge_documents d
       where d.id = any($1::uuid[]) and d.deleted_at is null`,
-    [ids, snapshot.organizationId, snapshot.config.scopeType, snapshot.config.teamId, snapshot.config.subteamId],
+    [ids, snapshot.organizationId, scope.scopeType, agentTeamIdsOf(scope)],
   )).rows
   return rows.some((row) => !row.same_org || !row.allowed) ? "KNOWLEDGE" : null
 }

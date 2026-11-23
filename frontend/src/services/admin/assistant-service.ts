@@ -7,7 +7,7 @@ import { pageResultSchema, toQueryString, type DateRangeFilter, type ListParams,
 import { orchestratorSchema, orchestratorVersionSchema, type Orchestrator, type OrchestratorInvocationMode, type OrchestratorVersion } from "@/schemas/admin/assistant.schema"
 import type { OutputSchema } from "@/schemas/admin/output-schema-fields"
 import { structuredOutputUsageSchema, type StructuredOutputDefinition, type StructuredOutputUsage } from "@/schemas/admin/structured-output"
-import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import type { ResourceScopePayload } from "@/lib/scope-links/scope-links"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 export async function fetchOrchestrators(): Promise<Orchestrator[]> {
@@ -38,7 +38,8 @@ export async function fetchOrchestrator(id: string): Promise<Orchestrator> {
 
 export type OrchestratorInput = {
   name: string
-  orgScope: OrgScopeValue
+  /** Alcance (249): ALL_TEAMS ou GROUPS + vínculos (`resourceScopePayloadOf`). */
+  scope: ResourceScopePayload
   orchestratorAgentId: string
   specialistAgentIds: string[]
   invocationMode: OrchestratorInvocationMode
@@ -87,9 +88,8 @@ export async function createOrchestrator(input: OrchestratorInput & { operatingU
   return orchestratorSchema.parse(
     await adminSend("/api/v1/admin/assistant-orchestrators", "POST", {
       name: input.name,
-      scopeType: input.orgScope.scopeType,
-      teamId: input.orgScope.teamId,
-      subteamId: input.orgScope.subteamId,
+      scopeType: input.scope.scopeType,
+      scopeLinks: input.scope.scopeLinks,
       orchestratorAgentId: input.orchestratorAgentId,
       specialistAgentIds: input.specialistAgentIds,
       invocationMode: input.invocationMode,
@@ -105,9 +105,8 @@ export async function updateOrchestrator(id: string, input: OrchestratorInput): 
   return orchestratorSchema.parse(
     await adminSend(`/api/v1/admin/assistant-orchestrators/${id}`, "PATCH", {
       name: input.name,
-      scopeType: input.orgScope.scopeType,
-      teamId: input.orgScope.teamId,
-      subteamId: input.orgScope.subteamId,
+      scopeType: input.scope.scopeType,
+      scopeLinks: input.scope.scopeLinks,
       orchestratorAgentId: input.orchestratorAgentId,
       specialistAgentIds: input.specialistAgentIds,
       invocationMode: input.invocationMode,

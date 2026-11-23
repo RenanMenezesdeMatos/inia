@@ -183,8 +183,8 @@ describe("chat da INIA para lideranças", () => {
       groupsOfStructure: () => ({ kind: "NOT_FOUND" as const, message: "x" }),
     }
     const ORCHESTRATORS = [
-      { id: "orch-fat", name: "INIA Faturamento", scopeType: "TEAM" as const, teamId: "team-fat" },
-      { id: "orch-all", name: "INIA Geral", scopeType: "ALL_TEAMS" as const, teamId: null },
+      { id: "orch-fat", name: "INIA Faturamento", scopeType: "GROUPS" as const, teamIds: ["team-fat"] },
+      { id: "orch-all", name: "INIA Geral", scopeType: "ALL_TEAMS" as const, teamIds: [] },
     ]
 
     function processSetup(processArgs: Record<string, unknown>, scopeExtra: { orchestratorUniverses?: readonly string[] | null } = {}) {

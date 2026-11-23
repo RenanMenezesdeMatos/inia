@@ -4,7 +4,8 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { respondList, searchParam, SqlFilter, type PageResult } from "../../../shared/presentation/list-query.js"
 import { canManageAllLinks, coversOrganization, resolveScopeLinksForWrite, SCOPE_LINK_FAILURE_MESSAGE, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
-import { linkKey } from "../../../shared/domain/scope-links/scope-links.js"
+import { linkKey, type ScopeLink } from "../../../shared/domain/scope-links/scope-links.js"
+import { assertNewScopeLinksAdmissible } from "../../org-structure/application/scope-unit-admission.js"
 import { alignmentLinksSql } from "../infrastructure/operational-alignment-loaders.js"
 import { checkResponse, type ResponseCheckResult } from "../../governance/application/response-compliance.js"
 import { loadUniverseAccess, universeForbidden } from "../../operating-universe/application/universe-access.js"
@@ -357,7 +358,7 @@ export async function getAlignment(db: Queryable, organizationId: string, scopes
 // ---------------------------------------------------------------------------------------------
 
 /** Escopo + universo + processos: tudo conferido no backend, com os dados do banco (nunca o que a tela diz). */
-async function assertInputAllowed(db: Queryable, actor: AlignmentActor & { sub: string }, scopes: AlignmentScopes, input: AlignmentInput): Promise<AlignmentInput & { responsibleJobTitle: string | null }> {
+async function assertInputAllowed(db: Queryable, actor: AlignmentActor & { sub: string }, scopes: AlignmentScopes, input: AlignmentInput, previousLinks: readonly ScopeLink[] = []): Promise<AlignmentInput & { responsibleJobTitle: string | null }> {
   const scope = normalizedScope(input)
   if (scope.scopeType === "UNIVERSE" && !coversOrganization(scopes)) throw new DomainError("Só quem administra a organização inteira publica um alinhamento para todo o universo. Escolha um Grupo ou Subgrupo.", "OPERATIONAL_ALIGNMENT_SCOPE_FORBIDDEN", 403)
   let links = scope.links
@@ -380,6 +381,8 @@ async function assertInputAllowed(db: Queryable, actor: AlignmentActor & { sub: 
   // Vale para CADA vínculo: multi-grupo nunca mistura universos (todos os Grupos/Subgrupos são do universo do alinhamento).
   if (scope.scopeType !== "UNIVERSE" && [...groupUniverses.values()].some((universe) => !universe)) throw new DomainError("Algum Grupo/Subgrupo escolhido ainda não tem universo de atuação. Classifique-o em Administração › Universo de atuação antes de publicar um alinhamento para ele.", "OPERATIONAL_ALIGNMENT_GROUP_UNCLASSIFIED", 422)
   if (groupUniverse) throw new DomainError(`Um dos Grupos/Subgrupos escolhidos é do universo ${groupUniverse}; o alinhamento está marcado como ${input.operatingUniverse}. Universos são separados.`, "OPERATIONAL_ALIGNMENT_UNIVERSE_CONFLICT", 409)
+  // Vínculo NOVO precisa de operador em produção (a regra do seletor); o que alguma versão já tinha continua aceito.
+  if (scope.scopeType === "GROUPS") await assertNewScopeLinksAdmissible(db, actor.organizationId, links, { previous: previousLinks })
   const access = await loadUniverseAccess(db, { organizationId: actor.organizationId, sub: actor.sub, personId: actor.personId ?? "00000000-0000-0000-0000-000000000000" })
   if (access.enforced && !access.universes.includes(input.operatingUniverse)) throw universeForbidden()
   const documents = (await db.query<{ id: string; title: string; operating_universe: string | null }>(`select id, title, operating_universe from knowledge_documents where id = any($1::uuid[]) and organization_id = $2 and deleted_at is null`, [input.affectedDocumentIds, actor.organizationId])).rows
@@ -500,7 +503,7 @@ export async function createAlignment(db: Database, actor: AlignmentActor & { su
 export async function updateAlignment(db: Database, actor: AlignmentActor & { sub: string }, scopes: AlignmentScopes, id: string, body: unknown) {
   requirePerson(actor)
   const versions = await loadAlignmentOrThrow(db, actor.organizationId, scopes, id)
-  const input = await assertInputAllowed(db, actor, scopes, alignmentInputSchema.parse(body))
+  const input = await assertInputAllowed(db, actor, scopes, alignmentInputSchema.parse(body), linksOfVersions(versions))
   const published = versions.find((version) => version.status === "PUBLISHED")
   if (published && !input.changeReason) throw new DomainError("Informe o motivo da alteração: o alinhamento já foi publicado e a nova versão fica no histórico.", "OPERATIONAL_ALIGNMENT_CHANGE_REASON_REQUIRED", 422)
   await inTransaction(db, async (client) => {
@@ -593,6 +596,8 @@ export async function previewPublication(db: Database, organizationId: string, s
 
 const publishSchema = z.object({ relations: z.array(z.object({ alignmentId: z.string().uuid(), relation: z.enum(["SAME_TOPIC", "INDEPENDENT"]) })).max(200).default([]) }).strict()
 
+/** Vínculos que alguma versão do alinhamento já tem (ficam aceitos mesmo sem operador em produção). */
+const linksOfVersions = (versions: readonly VersionRow[]): ScopeLink[] => versions.flatMap((version) => (version.links ?? []).map((link) => ({ teamId: link.teamId, subteamId: link.subteamId ?? null })))
 const inputOfDraft = (draft: VersionRow) => alignmentInputSchema.parse({ title: draft.title, guidance: draft.guidance, responsiblePersonId: draft.responsible_person_id, affectedDocumentIds: (draft.documents ?? []).map((document) => document.id), reasonId: draft.reason_id, requestSubjectIds: (draft.request_subjects ?? []).map((subject) => subject.id), affectedTopic: draft.affected_topic, justification: draft.justification, operatingUniverse: draft.operating_universe, scopeType: draft.scope_type, links: (draft.links ?? []).map((link) => ({ teamId: link.teamId, subteamId: link.subteamId })), productId: draft.product_id, startsOn: draft.starts_on, endsOn: draft.ends_on, changeReason: draft.change_reason })
 
 /**
@@ -606,7 +611,7 @@ export async function publishAlignment(db: Database, actor: AlignmentActor & { s
   const versions = await loadAlignmentOrThrow(db, actor.organizationId, scopes, id)
   const draft = versions.find((version) => version.status === "DRAFT")
   if (!draft) throw new DomainError("Não há rascunho para publicar.", "OPERATIONAL_ALIGNMENT_NO_DRAFT", 409)
-  const input = await assertInputAllowed(db, actor, scopes, inputOfDraft(draft))
+  const input = await assertInputAllowed(db, actor, scopes, inputOfDraft(draft), linksOfVersions(versions))
   const previous = versions.find((version) => version.status === "PUBLISHED") ?? null
   if (previous && input.startsOn < previous.starts_on) throw new DomainError(`A nova versão não pode começar antes da versão publicada (${previous.starts_on}): o que já valia não é reescrito.`, "OPERATIONAL_ALIGNMENT_RETROACTIVE_VERSION", 422)
   if (previous && !input.changeReason) throw new DomainError("Informe o motivo da alteração.", "OPERATIONAL_ALIGNMENT_CHANGE_REASON_REQUIRED", 422)

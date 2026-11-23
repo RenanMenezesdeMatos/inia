@@ -11,8 +11,8 @@ import { buildProcessConsultationToolset, groupChoiceText, groupNamedByAsker, PR
  */
 const GROUPS = ["Residencial", "Empresarial", "Fibra", "Móvel", "Ouvidoria"].map((name, index) => ({ teamId: `team-${index + 1}`, name }))
 const NAMES = GROUPS.map((group) => group.name)
-const OWN: InteractiveOrchestratorScope[] = GROUPS.map((group, index) => ({ id: `orch-${index + 1}`, name: `INIA ${group.name}`, scopeType: "TEAM", teamId: group.teamId }))
-const SHARED: InteractiveOrchestratorScope[] = [{ id: "orch-all", name: "INIA Todos", scopeType: "ALL_TEAMS", teamId: null }]
+const OWN: InteractiveOrchestratorScope[] = GROUPS.map((group, index) => ({ id: `orch-${index + 1}`, name: `INIA ${group.name}`, scopeType: "GROUPS", teamIds: [group.teamId] }))
+const SHARED: InteractiveOrchestratorScope[] = [{ id: "orch-all", name: "INIA Todos", scopeType: "ALL_TEAMS", teamIds: [] }]
 
 function toolset(askerTexts: string[], orchestrators = OWN) {
   const consulted: ProcessConsultation[] = []

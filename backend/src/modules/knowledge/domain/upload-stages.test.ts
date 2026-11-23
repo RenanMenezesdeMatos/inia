@@ -83,6 +83,16 @@ describe("etapas do processamento do arquivo enviado", () => {
     expect(view.stages.every((stage) => stage.key === "CHECK" || stage.state !== "DONE")).toBe(true)
   })
 
+  it("leitura apagada com o rascunho (descartado ou trocado): o envio termina, com o OCR como não feito — nunca 'na fila' para sempre", () => {
+    const run = { status: "DONE" as const, stages: pdfSavedWithOcr(), errorCode: null, errorMessage: null, updatedAt: T0 }
+    const view = uploadRunView(run, null, later(1000))
+    expect(view.finished).toBe(true)
+    expect(view.stages.find((stage) => stage.key === "OCR")).toMatchObject({ state: "SKIPPED", detail: "Leitura não feita: o rascunho deste envio foi descartado ou trocado." })
+    // Sem OCR pedido, a etapa já gravada continua como está.
+    const docx = { ...run, stages: initialUploadStages("DOCX") }
+    expect(uploadRunView(docx, null, later(1000)).stages.find((stage) => stage.key === "OCR")?.detail).toBe(initialUploadStages("DOCX").find((stage) => stage.key === "OCR")?.detail)
+  })
+
   it("requisição sem notícia além do prazo aparece interrompida, com a etapa em curso falhada", () => {
     const run = { status: "PROCESSING" as const, stages: startStage(initialUploadStages("PDF"), "IMAGES", T0), errorCode: null, errorMessage: null, updatedAt: T0 }
     expect(uploadRunView(run, null, later(UPLOAD_RUN_STALE_MS - 1)).status).toBe("PROCESSING")

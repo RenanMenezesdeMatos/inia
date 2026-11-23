@@ -112,6 +112,26 @@ describe("plano da importação", () => {
     expect(situacaoDe(plano, "ARGUMENTARIO:Todos")?.situacao).toBe("CRIAR")
   })
 
+  it("alcance do indicador (250, QA-08): vínculos resolvidos no destino; pacote antigo = todos; restrito sem vínculo e Grupo desconhecido bloqueiam", () => {
+    const definicao = (code: string) => ({ code }) as DadosItem["INDICADOR"]["definicao"]
+    const itens = [
+      item("INDICADOR", "RESTRITO", { definicao: definicao("RESTRITO"), alcances: [{ tipo: "GRUPO", grupo: "A" }, { tipo: "SUBGRUPO", grupo: "B", subgrupo: "Voz" }] }),
+      item("INDICADOR", "ANTIGO", { definicao: definicao("ANTIGO") }),
+      item("INDICADOR", "SEM_VINCULO", { definicao: definicao("SEM_VINCULO"), alcances: [] }),
+      item("INDICADOR", "OUTRO_GRUPO", { definicao: definicao("OUTRO_GRUPO"), alcances: [{ tipo: "GRUPO", grupo: "Inexistente" }] }),
+    ]
+    const grupos = new Map([
+      ["a", { id: "a-id", nome: "A", subgrupos: new Map() }],
+      ["b", { id: "b-id", nome: "B", subgrupos: new Map([["voz", { id: "bv-id", nome: "Voz" }]]) }],
+    ])
+    const plano = montarPlano(itens, todosMarcados(itens), destinoVazio({ grupos }), [])
+    expect(situacaoDe(plano, "INDICADOR:RESTRITO")).toMatchObject({ situacao: "CRIAR", alcances: [{ scopeType: "TEAM", teamId: "a-id" }, { scopeType: "SUBTEAM", teamId: "b-id", subteamId: "bv-id" }] })
+    expect(situacaoDe(plano, "INDICADOR:ANTIGO")).toMatchObject({ situacao: "CRIAR", alcances: [{ scopeType: "ALL_TEAMS" }] })
+    expect(situacaoDe(plano, "INDICADOR:SEM_VINCULO")?.situacao).toBe("BLOQUEADO")
+    expect(situacaoDe(plano, "INDICADOR:OUTRO_GRUPO")?.situacao).toBe("BLOQUEADO")
+    expect(plano.dePara).toContainEqual(expect.objectContaining({ tipo: "GRUPO", origem: "Inexistente" }))
+  })
+
   it("ligação opcional que falta vira aviso, não bloqueio", () => {
     const itens = [agente("Com base", { bases: ["Manual"] }), item("BASE", "Manual", {})]
     itens[0]!.opcionais = ["BASE:Manual"]
@@ -167,6 +187,20 @@ describe("plano da importação", () => {
     const chat = item("ORQUESTRADOR", "Chat", { name: "Chat", alcance: { tipo: "TODOS" }, active: true, invocationMode: "INTERACTIVE" } as DadosItem["ORQUESTRADOR"])
     const plano = montarPlano([chat], todosMarcados([chat]), destinoVazio({ chatAtivoPorAlcance: new Map([["ALL_TEAMS", "INIA da nuvem"]]) }), [])
     expect(situacaoDe(plano, "ORQUESTRADOR:Chat")?.motivos[0]).toContain('"INIA da nuvem"')
+  })
+
+  it("orquestrador com vários vínculos (249) vai com todos, nunca como TODOS, e qualquer vínculo ocupado bloqueia (run-10 SEA-01)", () => {
+    const grupos = new Map([
+      ["a", { id: "a-id", nome: "A", subgrupos: new Map() }],
+      ["b", { id: "b-id", nome: "B", subgrupos: new Map([["voz", { id: "bv-id", nome: "Voz" }]]) }],
+    ])
+    const dados = { name: "Chat", alcances: [{ tipo: "GRUPO", grupo: "A" }, { tipo: "SUBGRUPO", grupo: "B", subgrupo: "Voz" }], alcance: { tipo: "GRUPO", grupo: "A" }, active: true, invocationMode: "INTERACTIVE" } as unknown as DadosItem["ORQUESTRADOR"]
+    const livre = montarPlano([item("ORQUESTRADOR", "Chat", dados)], todosMarcados([item("ORQUESTRADOR", "Chat", dados)]), destinoVazio({ grupos }), [])
+    expect(situacaoDe(livre, "ORQUESTRADOR:Chat")).toMatchObject({ situacao: "CRIAR", alcances: [{ scopeType: "TEAM", teamId: "a-id" }, { scopeType: "SUBTEAM", teamId: "b-id", subteamId: "bv-id" }] })
+    const ocupado = montarPlano([item("ORQUESTRADOR", "Chat", dados)], todosMarcados([item("ORQUESTRADOR", "Chat", dados)]), destinoVazio({ grupos, chatAtivoPorAlcance: new Map([["SUBTEAM:bv-id", "Voz B"]]) }), [])
+    expect(situacaoDe(ocupado, "ORQUESTRADOR:Chat")?.motivos[0]).toContain('"Voz B"')
+    const vazio = { ...dados, alcances: [] } as unknown as DadosItem["ORQUESTRADOR"]
+    expect(situacaoDe(montarPlano([item("ORQUESTRADOR", "Chat", vazio)], todosMarcados([item("ORQUESTRADOR", "Chat", vazio)]), destinoVazio({ grupos }), []), "ORQUESTRADOR:Chat")?.situacao).toBe("BLOQUEADO")
   })
 
   it("cenário com período que encontra outro do destino bloqueia", () => {

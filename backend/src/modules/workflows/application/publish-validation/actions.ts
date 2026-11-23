@@ -6,6 +6,8 @@ import { findStructuredOutputField } from "../../../assistant/domain/structured-
 import { VARIABLE_TYPE_CHECKERS } from "../action-executors.js"
 import { findAncestorNodeIds, resolveNodeContexts, type FlowGraph } from "../../domain/graph-schema.js"
 import type { PublishCatalogContext, PublishGraphContext } from "./context.js"
+import { loadResourceScopeLinks } from "../../../org-structure/application/resource-scope-links.js"
+import { workflowScopedTarget } from "../../domain/workflow-scope.js"
 import { parseSourcePath } from "./source-paths.js"
 
 // Família AÇÕES E AGENTES: "Chamar agente" sem destino e referências de Agent; "Definir variável" (valor fixo/dinâmico,
@@ -176,6 +178,9 @@ export async function validateAgentReferences(context: PublishGraphContext): Pro
       `select id, name, active, agent_type, specialty, specialty_kind, domain, consolidated_input, scope_type, team_id, subteam_id, current_version_id from agents where id = any($1::uuid[]) and organization_id = $2`,
       [agentIds, organizationId],
     )
+    // Alcance do Agente (249): ALL_TEAMS ou vínculos em `agent_scope_links`.
+    const agentLinksById = await loadResourceScopeLinks(db, "AGENT", agentRows.rows.flatMap((agentRow) => (agentRow.scope_type === "GROUPS" ? [agentRow.id] : [])))
+    const workflowTarget = workflowScopedTarget(row)
     const agentContexts = resolveNodeContexts(graph)
     for (const node of graph.nodes) {
       if (node.type !== "action") continue
@@ -193,7 +198,7 @@ export async function validateAgentReferences(context: PublishGraphContext): Pro
       const found = live
       // Mesma regra do Orquestrador (achado A-F08): um Agent exclusivo de outro Grupo — com o prompt, as bases e as Tools de
       // investigação dele — nunca roda para gente de fora do Grupo dele. Revalidado a cada publicação.
-      if (found.scope_type && !(await scopesAreCompatible(db, row, { scopeType: found.scope_type, teamId: found.team_id ?? null, subteamId: found.subteam_id ?? null }))) {
+      if (found.scope_type && !(await scopesAreCompatible(db, workflowTarget, workflowScopedTarget({ scopeType: found.scope_type, teamId: found.team_id ?? null, subteamId: found.subteam_id ?? null, scopeLinks: agentLinksById.get(found.id) ?? [] })))) {
         throw new DomainError(`O agente "${found.name}" não está disponível para o grupo deste workflow.`, "WORKFLOW_AGENT_SCOPE_FORBIDDEN", 422, { nodeId: node.id })
       }
       // Pós-JOIN só com Agent que aceita o resultado consolidado (síntese); um Agent de síntese

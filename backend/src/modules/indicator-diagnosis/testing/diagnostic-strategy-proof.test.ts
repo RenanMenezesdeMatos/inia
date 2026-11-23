@@ -188,7 +188,9 @@ describe.skipIf(!ENABLED)("V1.6.2 — estratégia de diagnóstico do indicador: 
     const simulate = (collaboratorId: string) => ({ source: "PUBLISHED", collaboratorId, measurementId: measurement, agentId: agent, aiPolicy: "STOP_BEFORE_AI" })
     expect((await scoped.post(`${base}/${tma}/simulate`).send(simulate(operatorB.id))).status).toBe(404)
     // Agent de OUTRO Grupo (bases dele) não roda para quem administra o Grupo A, nem aparece na lista (achado AI-06).
-    const agentOfB = (await client.query<{ id: string }>("insert into agents (organization_id, name, agent_type, objective, description, context_prompt, scope_type, team_id) values ($1, 'Proof 162 Agent B', 'CALL_FEEDBACK', 'o', 'd', 'c', 'TEAM', $2) returning id", [org, teamB])).rows[0]!.id
+    // Agente do Grupo B (249): GROUPS + um vínculo com o Grupo inteiro.
+    const agentOfB = (await client.query<{ id: string }>("insert into agents (organization_id, name, agent_type, objective, description, context_prompt, scope_type) values ($1, 'Proof 162 Agent B', 'CALL_FEEDBACK', 'o', 'd', 'c', 'GROUPS') returning id", [org])).rows[0]!.id
+    await client.query("insert into agent_scope_links (agent_id, organization_id, team_id) values ($1, $2, $3)", [agentOfB, org, teamB])
     expect((await scoped.post(`${base}/${tma}/simulate`).send({ ...simulate(operatorA.id), agentId: agentOfB })).status).toBe(404)
     expect((await scoped.get(`${base}/${tma}/simulation-options`)).body.data.agents.map((entry: { id: string }) => entry.id)).not.toContain(agentOfB)
     // Regressão (QA 2026-09-25): as PESSOAS vêm antes das medições. Uma pessoa com centenas de medições diárias e nome

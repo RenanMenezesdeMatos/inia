@@ -50,3 +50,40 @@ describe("reset da massa demo × leituras de alinhamento (AL-07)", () => {
     expect(statements.some((statement) => statement.startsWith("delete from operational_alignment_reads"))).toBe(false)
   })
 })
+
+describe("reset da massa demo × vínculos de alcance (DADOS-05/QA-07)", () => {
+  const TEAM = "de000000-0000-4000-8000-0000000000bb"
+  const massWithTeam = { ...mass, structure: { ...mass.structure, teams: [{ id: TEAM }], subteams: [] } } as unknown as DemoMass
+
+  it("vínculo de Indicador/Produto num Grupo demo aborta antes da transação, com a dependência listada", async () => {
+    const statements: string[] = []
+    const client = {
+      query: async (sql: string) => {
+        const text = sql.replace(/\s+/g, " ").trim()
+        statements.push(text)
+        if (text.startsWith("select count(*)::text from indicator_scope_links where team_id")) return { rows: [{ count: "2" }], rowCount: 1 }
+        if (text.startsWith("select count(*)::text from product_operational_scope_links where subteam_id")) return { rows: [{ count: "1" }], rowCount: 1 }
+        if (text.startsWith("select count(*)")) return { rows: [{ count: "0" }], rowCount: 1 }
+        return { rows: [], rowCount: 0 }
+      },
+    } as unknown as pg.PoolClient
+    const report = await resetDemoMass(client, massWithTeam)
+    expect(report.blockers).toEqual([
+      { table: "indicator_scope_links", column: "team_id", count: 2 },
+      { table: "product_operational_scope_links", column: "subteam_id", count: 1 },
+    ])
+    expect(statements.includes("begin")).toBe(false)
+  })
+
+  it("as cinco tabelas de vínculo (249/250) são conferidas por Grupo e Subgrupo, sem a coluna `id` que elas não têm", async () => {
+    const { client, statements } = scriptedClient({ reads: 0 })
+    await resetDemoMass(client, massWithTeam)
+    for (const table of ["workflow_scope_links", "agent_scope_links", "assistant_orchestrator_scope_links", "indicator_scope_links", "product_operational_scope_links"]) {
+      for (const column of ["team_id", "subteam_id"]) {
+        const query = statements.find((statement) => statement.startsWith(`select count(*)::text from ${table} where ${column} =`))
+        expect(query, `${table}.${column}`).toBeDefined()
+        expect(query).not.toMatch(/\bid = any\(\$2/)
+      }
+    }
+  })
+})

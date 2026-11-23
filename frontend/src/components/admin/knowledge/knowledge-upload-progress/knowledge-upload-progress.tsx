@@ -171,7 +171,7 @@ export function KnowledgeUploadProgress({ filename, sizeBytes, transfer, waiting
         {!run && requestError ? (
           <p className="rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">{requestError}</p>
         ) : null}
-        {run && !run.finished ? <p className="text-xs text-muted-foreground">Pode sair desta tela: o processamento continua no servidor, e o estado fica em “Envios recentes” na lista das bases.</p> : null}
+        {run && !run.finished ? <p className="text-xs text-muted-foreground">Pode sair desta tela: o processamento continua no servidor, e o estado fica em “Último envio de arquivo”, dentro da base.</p> : null}
       </div>
 
       {showDocumentLink && run?.documentId ? (

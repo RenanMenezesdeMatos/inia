@@ -2,6 +2,8 @@ import { DomainError } from "../../../../shared/domain/domain-error.js"
 import { scopesAreCompatible } from "../../../auth/application/manageable-scopes.js"
 import type { FlatOutputSchemaField } from "../../../assistant/domain/output-schema-fields.js"
 import { resolveEffectiveStructuredOutput } from "../../../assistant/domain/structured-output-definition.js"
+import { loadResourceScopeLinks } from "../../../org-structure/application/resource-scope-links.js"
+import { workflowScopedTarget } from "../../domain/workflow-scope.js"
 import type { PublishCatalogContext, PublishTriggerContext } from "./context.js"
 
 // Família ORQUESTRADOR: carga (com a abrangência) e referências do nó Orquestrador, inclusive o roteamento declarado.
@@ -19,13 +21,17 @@ export async function loadWorkflowOrchestrators(context: PublishTriggerContext):
        from assistant_orchestrators where id = any($1::uuid[]) and organization_id = $2`,
       [orchestratorIds, organizationId],
     )
+    // Alcance do Orquestrador (249): ALL_TEAMS ou vínculos em `assistant_orchestrator_scope_links` — cada Grupo do Workflow precisa estar
+    // entre os do Orquestrador (`scopesAreCompatible`).
+    const linksById = await loadResourceScopeLinks(db, "ORCHESTRATOR", schemaRows.rows.flatMap((orchestratorRow) => (orchestratorRow.scopeType === "GROUPS" ? [orchestratorRow.id] : [])))
+    const workflowTarget = workflowScopedTarget(row)
     for (const orchestratorRow of schemaRows.rows) {
       orchestratorRowsById.set(orchestratorRow.id, orchestratorRow)
       // Nunca vazamento cross-group (Parte 6/24 do pedido): um Orchestrator exclusivo de outro
       // grupo não pode ser chamado por este Workflow, mesmo que já estivesse salvo no rascunho
       // antes de uma troca de Abrangência — validado de novo a cada publish, nunca só na hora
       // de escolher no picker.
-      if (!(await scopesAreCompatible(db, row, orchestratorRow))) {
+      if (!(await scopesAreCompatible(db, workflowTarget, workflowScopedTarget({ ...orchestratorRow, scopeLinks: linksById.get(orchestratorRow.id) ?? [] })))) {
         throw new DomainError(
           `O Orchestrator "${orchestratorRow.name}" não está disponível para o grupo deste workflow.`,
           "WORKFLOW_ORCHESTRATOR_SCOPE_FORBIDDEN",
@@ -59,13 +65,15 @@ export async function validateOrchestratorReferences(context: PublishCatalogCont
     // tira o alcance e os especialistas da versão fixada (resolve-orchestrator.ts), e a versão vem do rascunho enviado pelo cliente.
     // Conferir só o Orquestrador de hoje (loadWorkflowOrchestrators) deixaria fixar a versão de quando ele era de outro Grupo.
     if (node.config.orchestratorVersionId) {
-      const version = (await db.query<{ scopeType: string | null; teamId: string | null; subteamId: string | null }>(
-        `select config->>'scopeType' "scopeType", config->>'teamId' "teamId", config->>'subteamId' "subteamId" from assistant_orchestrator_versions where id = $1 and orchestrator_id = $2`,
+      const version = (await db.query<{ scopeType: string | null; teamId: string | null; subteamId: string | null; scopeLinks: { teamId: string | null; subteamId: string | null }[] | null }>(
+        `select config->>'scopeType' "scopeType", config->>'teamId' "teamId", config->>'subteamId' "subteamId", config->'scopeLinks' "scopeLinks" from assistant_orchestrator_versions where id = $1 and orchestrator_id = $2`,
         [node.config.orchestratorVersionId, node.config.orchestratorId],
       )).rows[0]
       if (!version) throw new DomainError(`O nó "${node.label}" referencia uma versão que não é do Orquestrador "${found.name}".`, "WORKFLOW_ORCHESTRATOR_VERSION_NOT_FOUND", 422, { nodeId: node.id })
-      // Versão sem alcance gravado: a execução usa o do Orquestrador de hoje, já conferido acima.
-      if (version.scopeType && !(await scopesAreCompatible(db, row, { scopeType: version.scopeType, teamId: version.teamId ?? null, subteamId: version.subteamId ?? null }))) {
+      // Versão sem alcance gravado: a execução usa o do Orquestrador de hoje, já conferido acima. O snapshot pode ser o formato antigo
+      // (TEAM/SUBTEAM + ids) ou o novo (GROUPS + `scopeLinks`, 249) — os dois com o mesmo alcance.
+      const versionTarget = version.scopeType ? workflowScopedTarget({ scopeType: version.scopeType, teamId: version.teamId, subteamId: version.subteamId, scopeLinks: version.scopeLinks ?? [] }) : null
+      if (versionTarget && !(await scopesAreCompatible(db, workflowScopedTarget(row), versionTarget))) {
         throw new DomainError(
           `O nó "${node.label}" fixa uma versão do Orquestrador "${found.name}" que não está disponível para o grupo deste workflow — use a versão atual.`,
           "WORKFLOW_ORCHESTRATOR_VERSION_SCOPE_FORBIDDEN",

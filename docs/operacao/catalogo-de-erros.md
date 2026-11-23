@@ -1624,7 +1624,7 @@ já diz a regra; a família do status diz como investigar.
 
 **Recuperação:** Restabelecer a dependência; repetir a ação. **Escalar para:** Infraestrutura da VM (servidor, IIS, PostgreSQL). Sem solução em 30 min: equipe de desenvolvimento da INIA com a referência, o horário UTC e as linhas do log.
 
-## Códigos dos módulos (981)
+## Códigos dos módulos (995)
 
 ### Módulo `access`
 
@@ -1638,6 +1638,7 @@ já diz a regra; a família do status diz como investigar.
 | `ACCESS_EMAIL_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Informe o e-mail que a pessoa vai usar para entrar. | `backend/src/modules/access/application/account-access-service.ts` |
 | `ACCESS_LAST_TENANT_ADMIN` | 409 | FAMILIA-CONFLITO | Este é o último Administrador geral ativo — conceda o papel a outra pessoa antes de revogar. | `backend/src/modules/access/application/access-service.ts`<br>`backend/src/modules/access/application/account-access-service.ts`<br>`backend/src/modules/users/presentation/user-account-router.ts` |
 | `ACCESS_NOT_ENABLED` | 409 | FAMILIA-CONFLITO | O acesso desta pessoa está desabilitado — use “Habilitar acesso”. | `backend/src/modules/access/application/account-access-service.ts` |
+| `ACCESS_PASSWORD_MANAGED_BY_NETWORK` | 409 | FAMILIA-CONFLITO | A senha desta conta é gerenciada pelo Active Directory: a pessoa entra com a matrícula e a senha de rede. Para trocar ou desbloquear, procure o suporte da rede. | `backend/src/modules/access/application/account-access-service.ts` |
 | `ACCESS_PERSON_INACTIVE` | 409 | FAMILIA-CONFLITO | Esta pessoa está inativa no cadastro — reative-a antes de habilitar o acesso. | `backend/src/modules/access/application/account-access-service.ts` |
 | `ACCESS_PERSON_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Pessoa não encontrada. | `backend/src/modules/access/application/access-service.ts`<br>`backend/src/modules/access/application/account-access-service.ts` |
 | `ACCESS_ROLE_ALREADY_ASSIGNED` | 409 | FAMILIA-CONFLITO | Esta conta já tem este papel com o mesmo escopo. | `backend/src/modules/access/application/access-service.ts` |
@@ -1750,13 +1751,13 @@ já diz a regra; a família do status diz como investigar.
 | `AGENT_INACTIVE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Este agente está inativo. | `backend/src/modules/agents/domain/agent-inactive-error.ts`<br>`backend/src/modules/indicator-diagnosis/application/simulate-diagnostic-strategy.ts`<br>`backend/src/modules/qa-lab/application/run-agent-simulation.ts` |
 | `AGENT_INACTIVE_RESTRICTED` | 403 | FAMILIA-ACESSO | Este agente está inativo. Só administradores consultam o cadastro, o histórico completo e as execuções de agentes inativos, e podem reativá-los ou excluí-los. | `backend/src/modules/agents/presentation/agent-router.ts` |
 | `AGENT_KNOWLEDGE_NOT_FOUND` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Uma das bases de conhecimento selecionadas não existe ou foi excluída. | `backend/src/modules/agents/application/agent-config-rules.ts` |
-| `AGENT_KNOWLEDGE_SCOPE_FORBIDDEN` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Uma das bases de conhecimento selecionadas vale para outro Grupo — escolha bases globais ou do Grupo deste agente. | `backend/src/modules/agents/application/agent-config-rules.ts` |
+| `AGENT_KNOWLEDGE_SCOPE_FORBIDDEN` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Uma das bases de conhecimento selecionadas vale para outro Grupo — escolha bases globais ou de um dos Grupos deste agente. | `backend/src/modules/agents/application/agent-config-rules.ts` |
 | `AGENT_NAME_TAKEN` | 409 | FAMILIA-CONFLITO | Já existe um agente com esse nome. | `backend/src/modules/agents/application/agent-config-rules.ts` |
 | `AGENT_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Agente não encontrado. | `backend/src/modules/agents/application/agent-config-rules.ts`<br>`backend/src/modules/agents/application/agent-deletion.ts`<br>`backend/src/modules/agents/application/agent-versions.ts`<br>`backend/src/modules/agents/application/run-agent.ts`<br>`backend/src/modules/indicator-diagnosis/application/simulate-diagnostic-strategy.ts`<br>`backend/src/modules/indicator-diagnosis/presentation/diagnostic-strategy-router.ts` |
 | `AGENT_NOT_PUBLISHED` | 409, 422 | FAMILIA-CONFLITO | Este agente ainda não foi publicado: o rascunho é tudo o que existe dele. | `backend/src/modules/agents/application/agent-versions.ts`<br>`backend/src/modules/agents/presentation/agent-router.ts` |
 | `AGENT_NOTHING_TO_PUBLISH` | 409 | FAMILIA-CONFLITO | Não há alterações em rascunho para publicar. | `backend/src/modules/agents/application/agent-versions.ts` |
 | `AGENT_RUN_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Execução não encontrada. | `backend/src/modules/agents/presentation/agent-router.ts` |
-| `AGENT_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem permissão para mover o agente para esse escopo. | `backend/src/modules/agents/application/agent-config-rules.ts`<br>`backend/src/modules/agents/presentation/agent-router.ts` |
+| `AGENT_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem permissão para mover o agente para esse escopo. | `backend/src/modules/agents/application/agent-config-rules.ts`<br>`backend/src/modules/org-structure/application/resource-scope-links.ts` |
 | `AGENT_SPECIALTY_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/agents/application/agent-config-rules.ts` |
 | `AGENT_UNEXPECTED_RESPONSE` | 502 | FAMILIA-DEPENDENCIA | Resposta inesperada do agente no reparo de cobertura. | `backend/src/modules/agents/application/run-agent.ts` |
 | `AGENT_VERSION_NOT_FOUND` | 404, 422 | FAMILIA-NAO-ENCONTRADO | A versão do agente referenciada não existe. | `backend/src/modules/agents/application/agent-versions.ts`<br>`backend/src/modules/agents/presentation/agent-router.ts` |
@@ -1784,6 +1785,25 @@ já diz a regra; a família do status diz como investigar.
 | `TOOL_INVALID_INDICATOR` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Indicador "${indicatorCode}" não existe no catálogo. Códigos válidos: ${known.rows.map((item) => item.code).join(", ")}. | `backend/src/modules/investigation/application/tool-context.ts` |
 | `TOOL_INVALID_PERIOD` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Período inválido. | `backend/src/modules/investigation/application/tool-context.ts` |
 | `TOOL_KNOWLEDGE_UNAVAILABLE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Consulta à base indisponível: esta análise não tem um Agent com bases autorizadas. | `backend/src/modules/investigation/application/tools/context-tools.ts` |
+
+### Módulo `org-structure`
+
+| Código | Status | Família | Mensagem | Onde |
+| --- | --- | --- | --- | --- |
+| `AGENT_SCOPE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Alcance do agente inválido: Grupo ou Subgrupo inexistente, repetido, junto do próprio Grupo inteiro ou nenhum escolhido. | `backend/src/modules/org-structure/application/resource-scope-links.ts` |
+| `EMPTY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/org-structure/application/resource-scope-links.ts` |
+| `INDICATOR_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Só quem administra a organização inteira escolhe “Todos os Grupos e Subgrupos” para o indicador. | `backend/src/modules/org-structure/application/resource-scope-links.ts` |
+| `INDICATOR_SCOPE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Alcance do indicador inválido: Grupo ou Subgrupo inexistente, repetido, junto do próprio Grupo inteiro ou nenhum escolhido. | `backend/src/modules/org-structure/application/resource-scope-links.ts` |
+| `ORCHESTRATOR_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Seu escopo de administração não cobre o alcance escolhido para o Orquestrador. | `backend/src/modules/org-structure/application/resource-scope-links.ts` |
+| `ORCHESTRATOR_SCOPE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Alcance do Orquestrador inválido: Grupo ou Subgrupo inexistente, repetido, junto do próprio Grupo inteiro ou nenhum escolhido. | `backend/src/modules/org-structure/application/resource-scope-links.ts` |
+| `PRODUCT_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Só quem administra a organização inteira altera o alcance de um produto. | `backend/src/modules/org-structure/application/resource-scope-links.ts` |
+| `PRODUCT_SCOPE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Alcance do produto inválido: Grupo ou Subgrupo inexistente, repetido, junto do próprio Grupo inteiro ou nenhum escolhido. | `backend/src/modules/org-structure/application/resource-scope-links.ts` |
+| `SCOPE_UNIT_OUTSIDE_UNIVERSE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Fora do universo ${universe} deste cadastro: ${names.join(", ")}. Escolha Grupos e Subgrupos do mesmo universo. | `backend/src/modules/org-structure/application/scope-unit-admission.ts` |
+| `SCOPE_UNIT_WITHOUT_PRODUCTION_OPERATORS` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Sem operadores em produção: ${names.join(", ")}. Só Grupos e Subgrupos com ao menos um operador em produção podem ser escolhidos. | `backend/src/modules/org-structure/application/scope-unit-admission.ts` |
+| `SCOPE_UNITS_CURSOR_INVALID` | 400 | FAMILIA-REGRA-DE-NEGOCIO | Posição da lista inválida — recarregue as opções. | `backend/src/modules/org-structure/presentation/scope-unit-options-router.ts` |
+| `TEAM_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Grupo não encontrado. | `backend/src/modules/org-structure/presentation/org-structure-router.ts` |
+| `WORKFLOW_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Seu escopo de administração não cobre a Abrangência escolhida para o Workflow. | `backend/src/modules/org-structure/application/resource-scope-links.ts`<br>`backend/src/modules/workflows/application/publish-workflow.ts` |
+| `WORKFLOW_SCOPE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Abrangência do Workflow inválida: Grupo ou Subgrupo inexistente, repetido, junto do próprio Grupo inteiro ou nenhum escolhido. | `backend/src/modules/org-structure/application/resource-scope-links.ts`<br>`backend/src/modules/workflows/application/publish-workflow.ts` |
 
 ### Módulo `workflows`
 
@@ -1899,7 +1919,6 @@ já diz a regra; a família do status diz como investigar.
 | `WORKFLOW_RETRY_RECORD_CANCELLED` | — | FAMILIA-DEPENDENCIA | A medição desta execução foi cancelada na Central de Dados. Ela precisa voltar a valer, por uma carga ou por Reativar, antes de uma nova tentativa. | `backend/src/modules/workflows/application/workflow-retry.ts` |
 | `WORKFLOW_RETRY_REVIEWER_MISSING` | — | FAMILIA-DEPENDENCIA | ${NO_REVIEWER_MESSAGES[cause]} Ajuste a hierarquia ou o revisor da etapa antes de tentar de novo. | `backend/src/modules/workflows/application/workflow-retry.ts` |
 | `WORKFLOW_RETRY_WORKFLOW_INACTIVE` | — | FAMILIA-DEPENDENCIA | (mensagem montada no código) | `backend/src/modules/workflows/application/workflow-retry.ts` |
-| `WORKFLOW_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem permissão para publicar este workflow na Abrangência do rascunho. | `backend/src/modules/workflows/application/publish-workflow.ts`<br>`backend/src/modules/workflows/presentation/workflow-router/definition-routes.ts` |
 | `WORKFLOW_SELECT_EMPLOYEES_INVALID_MODE` | — | FAMILIA-DEPENDENCIA | O nó "${node.label}" ("Selecionar colaboradores") exige uma estrutura ou uma coleção como contexto — não pode vir depois de "Aplicar individualmente". | `backend/src/modules/workflows/application/publish-validation/fan-out.ts` |
 | `WORKFLOW_SELECT_EMPLOYEES_MISSING_CRITERION` | — | FAMILIA-DEPENDENCIA | O nó "${node.label}" ("Selecionar colaboradores") precisa de um critério de seleção configurado. | `backend/src/modules/workflows/application/publish-validation/fan-out.ts` |
 | `WORKFLOW_SELECT_EMPLOYEES_MISSING_RANKING` | — | FAMILIA-DEPENDENCIA | O nó "${node.label}" ("Selecionar colaboradores") precisa de uma configuração de ranking. | `backend/src/modules/workflows/application/publish-validation/fan-out.ts` |
@@ -1967,15 +1986,15 @@ já diz a regra; a família do status diz como investigar.
 | `ASSISTANT_REPLY_IN_PROGRESS` | 409 | FAMILIA-CONFLITO | Esta pergunta ainda está sendo respondida. Aguarde a resposta aparecer na conversa. | `backend/src/modules/assistant/application/assistant-reply-runs.ts` |
 | `ASSISTANT_TIMEOUT` | 422, 504 | FAMILIA-REGRA-DE-NEGOCIO | A INIA demorou demais para responder. | `backend/src/modules/assistant/infrastructure/gemini-function-calling-client.ts` |
 | `FUNNEL_PERIOD_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Informe as datas no formato AAAA-MM-DD. | `backend/src/modules/assistant/application/reply-funnel.ts` |
-| `ORCHESTRATOR_AGENT_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Um dos agentes selecionados não existe mais. | `backend/src/modules/assistant/application/orchestrator-versions.ts`<br>`backend/src/modules/assistant/presentation/assistant-router.ts` |
+| `ORCHESTRATOR_AGENT_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Um dos agentes selecionados não existe mais. | `backend/src/modules/assistant/application/orchestrator-scope.ts`<br>`backend/src/modules/assistant/application/orchestrator-versions.ts`<br>`backend/src/modules/assistant/presentation/assistant-router.ts` |
 | `ORCHESTRATOR_AGENT_NOT_PUBLISHED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O agente "${agent.name}" ainda não foi publicado. Publique-o antes de usá-lo num orquestrador. | `backend/src/modules/assistant/application/orchestrator-versions.ts` |
-| `ORCHESTRATOR_AGENT_SCOPE_FORBIDDEN` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O agente "${agent.name}" não está disponível para o grupo deste orquestrador. | `backend/src/modules/assistant/presentation/assistant-router.ts` |
+| `ORCHESTRATOR_AGENT_SCOPE_FORBIDDEN` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O agente "${agent.name}" não atende todos os Grupos deste orquestrador (precisa ser de "Todos os Grupos" ou ter cada Grupo dele). | `backend/src/modules/assistant/application/orchestrator-scope.ts` |
 | `ORCHESTRATOR_AGENT_WRONG_TYPE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O agente escolhido precisa ser do tipo "Orquestrador" — crie ou escolha um agente desse tipo em Agentes. | `backend/src/modules/assistant/presentation/assistant-router.ts` |
 | `ORCHESTRATOR_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Orquestrador não encontrado. | `backend/src/modules/assistant/presentation/assistant-router.ts`<br>`backend/src/modules/qa-lab/application/run-orchestrator-simulation.ts` |
 | `ORCHESTRATOR_POLICY_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/assistant/presentation/assistant-router.ts` |
 | `ORCHESTRATOR_POLICY_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/assistant/presentation/assistant-router.ts` |
-| `ORCHESTRATOR_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem permissão para criar um orquestrador nesse escopo. | `backend/src/modules/assistant/presentation/assistant-router.ts` |
-| `ORCHESTRATOR_SCOPE_TAKEN` | 409 | FAMILIA-CONFLITO | Já existe um orquestrador ativo atendendo o chat/voz nesse escopo — desative-o, ou restrinja um dos dois a \"Somente Workflow\", pra evitar que os dois disputem quem responde o operador. | `backend/src/modules/assistant/presentation/assistant-router.ts` |
+| `ORCHESTRATOR_SCOPE_OVERLAP` | 409 | FAMILIA-CONFLITO | Outro orquestrador ativo já atende o chat/voz nos mesmos Grupos/Subgrupos: ${list.map((entry) =>  | `backend/src/modules/assistant/application/orchestrator-scope.ts` |
+| `ORCHESTRATOR_SCOPE_TAKEN` | 409 | FAMILIA-CONFLITO | Já existe um orquestrador ativo atendendo o chat/voz em "Todos os Grupos e Subgrupos" neste universo: "${taken.map((row) => row.name).join('", "')}". Desative-o, ou restrinja um dos dois a "Só workflows", pra evitar q… | `backend/src/modules/assistant/application/orchestrator-scope.ts`<br>`backend/src/modules/assistant/presentation/assistant-router.ts` |
 | `ORCHESTRATOR_SPECIALIST_FORBIDDEN_BY_POLICY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/assistant/presentation/assistant-router.ts` |
 | `ORCHESTRATOR_VERSION_CONFLICT` | 409 | FAMILIA-CONFLITO | Outra pessoa gravou este orquestrador depois que você o abriu. Atualize para ver a versão atual; o que você alterou continua na tela. | `backend/src/modules/assistant/application/orchestrator-versions.ts` |
 | `RATING_DETAILS_NOT_ALLOWED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O motivo da descurtida só vale nas conversas abertas por você com a INIA. | `backend/src/modules/assistant/application/assistant-interaction-ratings.ts` |
@@ -2756,6 +2775,7 @@ já diz a regra; a família do status diz como investigar.
 | `PRODUCT_NODE_IN_USE` | 409 | FAMILIA-CONFLITO | Este item é usado agora por bases, indícios ou produtos dentro dele: tire-o de lá antes de excluir, ou desative. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
 | `PRODUCT_NODE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Produto ou categoria não encontrado. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
 | `PRODUCT_PARENT_INACTIVE` | 409, 422 | FAMILIA-CONFLITO | A categoria escolhida está desativada. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_SCOPE_NOT_FOR_CATEGORY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Categoria não tem alcance próprio: o alcance é de cada produto. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
 | `PRODUCT_SCOPE_SOURCE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Base não encontrada nesta organização. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
 | `PRODUCT_SCOPE_TARGET_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escolha só produtos ou categorias ativos. | `backend/src/modules/product-catalog/application/product-scope-assignments.ts` |
 | `PRODUCT_TREE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
@@ -2841,12 +2861,6 @@ já diz a regra; a família do status diz como investigar.
 | `PENDING_ACTION_DECISION_NOT_ALLOWED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Esta decisão não está prevista no workflow para esta revisão. | `backend/src/modules/pending-actions/application/build-pending-actions.ts` |
 | `PENDING_ACTION_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Pendência não encontrada ou não endereçada a você. | `backend/src/modules/pending-actions/application/build-pending-actions.ts`<br>`backend/src/modules/people/application/workday-reconciliation-service.ts` |
 | `PENDING_ACTION_UNAVAILABLE` | 409 | FAMILIA-CONFLITO | Esta execução não está mais aguardando esta revisão. | `backend/src/modules/pending-actions/application/build-pending-actions.ts` |
-
-### Módulo `org-structure`
-
-| Código | Status | Família | Mensagem | Onde |
-| --- | --- | --- | --- | --- |
-| `TEAM_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Grupo não encontrado. | `backend/src/modules/org-structure/presentation/org-structure-router.ts` |
 
 ### Módulo `usage-analytics`
 

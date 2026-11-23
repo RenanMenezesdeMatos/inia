@@ -21,6 +21,7 @@ import { fetchKnowledgeOptionIds } from "@/services/admin/agent-knowledge-option
 
 import { ConfirmButton } from "./confirm-button"
 import { KnowledgeOptionRow } from "./knowledge-option-row"
+import { agentTeamIds } from "./picker-rules"
 
 const ALL = "__all__"
 const STATE_OPTIONS: FilterOption<KnowledgeOptionState>[] = [
@@ -29,13 +30,12 @@ const STATE_OPTIONS: FilterOption<KnowledgeOptionState>[] = [
   { value: "ARCHIVED", label: "Arquivadas" },
 ]
 
-/** Grupos que o filtro oferece: os do universo e, para agente de Grupo/Subgrupo, só o Grupo dele (as outras bases não podem ser ligadas). */
+/** Grupos que o filtro oferece: os do universo e, para agente de Grupos/Subgrupos, só os Grupos dele (as outras bases não podem ser ligadas). */
 function teamsForPicker(teams: readonly Team[] | undefined, universe: OperatingUniverse | undefined, agentScope: AgentKnowledgeScope | undefined): Team[] | undefined {
   if (!teams) return undefined
   const inUniverse = teamsForUniverse(teams, universe)
-  if (!agentScope || agentScope.scopeType === "ALL_TEAMS") return inUniverse
-  const teamId = agentScope.scopeType === "TEAM" ? agentScope.teamId : (agentScope.teamId ?? inUniverse.find((team) => team.subteams.some((subteam) => subteam.id === agentScope.subteamId))?.id)
-  return inUniverse.filter((team) => team.id === teamId)
+  const teamIds = agentTeamIds(agentScope, inUniverse)
+  return teamIds ? inUniverse.filter((team) => teamIds.has(team.id)) : inUniverse
 }
 
 /** Produto: famílias (inclui os produtos dela) e produtos, agrupados pela família — só os que aparecem em alguma base. */
@@ -211,7 +211,7 @@ export function AvailablePanel({ selectedIds, onChange, known, universe, agentSc
         <p className="text-xs text-muted-foreground" aria-live="polite">
           {total === null ? "Contando bases…" : `${total} ${total === 1 ? "base disponível" : "bases disponíveis"}${hasFilters ? " neste filtro" : ""}`}
           {universe ? <> · só <UniverseBadge universe={universe} className="align-middle" /> e pendentes</> : null}
-          {agentScope && agentScope.scopeType !== "ALL_TEAMS" ? " · globais e do Grupo do agente" : null}
+          {agentScope && agentScope.scopeType !== "ALL_TEAMS" ? " · globais e dos Grupos do agente" : null}
         </p>
         <ConfirmButton
           icon={<ListChecks data-icon="inline-start" />}

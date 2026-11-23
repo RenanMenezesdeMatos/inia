@@ -246,7 +246,7 @@ async function ensureWorkflow(personId: string, minutes: number): Promise<{ id: 
   }
   await pool.query("update workflows set trigger_config = $2, draft_graph = $3, population_filter = $4, consolidated_structure = null, active = true, updated_at = now() where id = $1", [id, JSON.stringify(trigger), JSON.stringify(graph), JSON.stringify(populationFilter)])
   // A MESMA validação do botão Publicar (Agenda + "Fechamentos oficiais" + indicador + estratégia publicada + Gerar feedback + Output).
-  const validated = await validateWorkflowForPublish(db, ORG, id, { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, draftGraph: graph, triggerConfig: trigger as never, consolidatedStructure: null })
+  const validated = await validateWorkflowForPublish(db, ORG, id, { scopeType: "ALL_TEAMS", scopeLinks: [], draftGraph: graph, triggerConfig: trigger as never, consolidatedStructure: null })
   const version = (await pool.query<{ id: string }>("insert into workflow_versions(workflow_id, graph, created_by) values ($1,$2,$3) returning id", [id, JSON.stringify(validated), ACTOR.personId])).rows[0]!.id
   await pool.query("update workflows set active_version_id = $1, updated_at = now() where id = $2", [version, id])
   return { id, version, time: `${localDate} ${local}` }

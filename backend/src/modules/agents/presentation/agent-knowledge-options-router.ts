@@ -27,6 +27,8 @@ import { decodeKnowledgeOptionsCursor, encodeKnowledgeOptionsCursor } from "../d
 const uuid = z.string().uuid()
 const agentScopeSchema = z.discriminatedUnion("scopeType", [
   z.object({ scopeType: z.literal("ALL_TEAMS") }),
+  // Vários vínculos (249): Grupo inteiro ou um Subgrupo (o Grupo-pai é achado no servidor quando não vem).
+  z.object({ scopeType: z.literal("GROUPS"), links: z.array(z.object({ teamId: uuid.nullish(), subteamId: uuid.nullish() }).refine((link) => Boolean(link.teamId || link.subteamId), "Informe o Grupo ou o Subgrupo.")).max(300) }),
   z.object({ scopeType: z.literal("TEAM"), teamId: uuid }),
   z.object({ scopeType: z.literal("SUBTEAM"), subteamId: uuid, teamId: uuid.optional() }),
 ])

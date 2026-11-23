@@ -3,6 +3,7 @@ import { contentHashOf, documentCardText, embeddingTextsOf } from "../domain/emb
 import { chunkKnowledgeDocument } from "../domain/knowledge-chunking.js"
 import { liveKnowledgeVersion } from "./live-knowledge-version.js"
 import { knowledgeProductsSql } from "./knowledge-products.js"
+import type { JargonRule } from "../domain/glossary-jargon.js"
 
 /**
  * LIMPEZA dos vetores das bases (`knowledge_embedding_vectors`, migration 200). O vetor é dado DERIVADO (cache refeito a partir das versões
@@ -35,6 +36,11 @@ export type KnowledgeEmbeddingGcOptions = {
   maxPagesPerRun?: number
   /** Outro modelo com indexação mais recente que isto é preservado. */
   otherModelGraceMs?: number
+  /**
+   * Regras da gíria do Glossário no vetor quando ligada (`knowledge-glossary-jargon.ts`): os textos COM e SEM a gíria contam como
+   * referenciados — a busca usa o sem gíria como reserva enquanto a indexação não chega, e desligar volta na hora, sem gerar nada.
+   */
+  jargon?: readonly JargonRule[]
 }
 
 export const DEFAULT_GC_INTERVAL_MS = 6 * 3_600_000
@@ -64,7 +70,7 @@ type LiveRow = { document_id: string; title: string; registered_title: string; v
 type OlderRow = { document_id: string; registered_title: string; version_id: string; content: string; products: string | null }
 
 /** Hashes referenciados (modelo atual) e as versões vigentes publicadas. Lido em páginas por documento. */
-export async function referencedKnowledgeHashes(db: Database, organizationId: string): Promise<{ hashes: Set<string>; liveVersionIds: string[] }> {
+export async function referencedKnowledgeHashes(db: Database, organizationId: string, jargon: readonly JargonRule[] = []): Promise<{ hashes: Set<string>; liveVersionIds: string[] }> {
   const hashes = new Set<string>()
   const liveVersionIds: string[] = []
   let after = "00000000-0000-0000-0000-000000000000"
@@ -83,6 +89,7 @@ export async function referencedKnowledgeHashes(db: Database, organizationId: st
       liveVersionIds.push(row.version_id)
       const chunks = chunkKnowledgeDocument({ id: row.document_id, title: row.title, content: row.content })
       for (const text of embeddingTextsOf({ documentId: row.document_id, documentTitle: row.title, versionId: row.version_id, chunks }, { cardTitle: row.registered_title, products: row.products })) hashes.add(text.hash)
+      if (jargon.length > 0) for (const text of embeddingTextsOf({ documentId: row.document_id, documentTitle: row.title, versionId: row.version_id, chunks }, { cardTitle: row.registered_title, products: row.products, jargon })) hashes.add(text.hash)
     }
     if (rows.length < VERSION_PAGE) break
     after = rows.at(-1)!.document_id
@@ -128,7 +135,7 @@ export async function collectKnowledgeEmbeddingGarbage(db: Database, organizatio
     const graceMs = options.otherModelGraceMs ?? DEFAULT_OTHER_MODEL_GRACE_MS
     const models = (await db.query<{ model_key: string; last_indexed_at: Date }>(`select model_key, max(updated_at) last_indexed_at from knowledge_embedding_index where organization_id = $1 group by model_key`, [organizationId])).rows
     const preservedModels = new Set(models.filter((row) => row.model_key !== modelKey && now.getTime() - new Date(row.last_indexed_at).getTime() < graceMs).map((row) => row.model_key))
-    const { hashes, liveVersionIds } = await referencedKnowledgeHashes(db, organizationId)
+    const { hashes, liveVersionIds } = await referencedKnowledgeHashes(db, organizationId, options.jargon ?? [])
     await db.query(
       `delete from knowledge_embedding_index where organization_id = $1 and not (model_key = any($4::text[])) and (model_key <> $2 or not (version_id = any($3::uuid[])))`,
       [organizationId, modelKey, liveVersionIds, [...preservedModels]],

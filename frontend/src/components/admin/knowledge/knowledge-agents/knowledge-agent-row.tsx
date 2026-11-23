@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { StatusChip } from "@/components/ui/surface"
 import { UniverseBadge } from "@/components/operating-universe/universe-badge"
+import { resourceScopeLabel } from "@/lib/scope-links/scope-links"
 import { cn } from "@/lib/utils"
 import { AGENT_TYPE_LABELS, type AgentType } from "@/schemas/admin/agent.schema"
 import type { KnowledgeLinkCandidate } from "@/schemas/admin/agent-knowledge-links.schema"
@@ -11,8 +12,8 @@ import type { OperatingUniverse } from "@/schemas/operating-universe/operating-u
 
 import { knowledgeLinkStatusOf } from "./knowledge-agents-status"
 
-export const agentScopeLabelOf = (agent: Pick<KnowledgeLinkCandidate, "scopeType" | "teamName" | "subteamName">) =>
-  agent.scopeType === "ALL_TEAMS" ? "Todos os grupos" : agent.scopeType === "SUBTEAM" ? `Subgrupo ${agent.subteamName ?? "—"}` : `Grupo ${agent.teamName ?? "—"}`
+/** Alcance do agente (249): "Todos os grupos" ou os vínculos por nome ("Grupo A · Grupo B › B1"). */
+export const agentScopeLabelOf = (agent: Pick<KnowledgeLinkCandidate, "scopeType" | "scopeLinks">) => resourceScopeLabel(agent, "Todos os grupos")
 
 /**
  * Um agente na lista da base, nos moldes da linha do seletor de bases do agente: caixa de marcar com o nome (nome acessível), selos de

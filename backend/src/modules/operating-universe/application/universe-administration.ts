@@ -1,3 +1,7 @@
+import { RESOURCE_SCOPE_LINK_TABLES, type ResourceScopeLinksTable } from "../../../shared/domain/scope-links/resource-scope.js"
+import { assertNoInteractiveScopeOverlap } from "../../assistant/application/orchestrator-scope.js"
+import { loadResourceScopeLinks } from "../../org-structure/application/resource-scope-links.js"
+import { assertScopeLinksInUniverse } from "../../org-structure/application/scope-unit-admission.js"
 import { argumentScriptGoverningVersionIdsSql } from "../../argument-scripts/infrastructure/argument-script-loaders.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
@@ -145,14 +149,24 @@ function scopeSql(kind: UniverseResourceKind, teams: string, subteams: string): 
       and not exists (select 1 from argument_script_version_scopes l where l.version_id in ${governing}
         and not coalesce((l.subteam_id is null and l.team_id = any(${teams}::uuid[])) or l.subteam_id = any(${subteams}::uuid[]), false)))`
   }
-  if (kind === "WORKFLOW" || kind === "AGENT" || kind === "ORCHESTRATOR") return reach("r")
+  if (kind === "WORKFLOW" || kind === "AGENT" || kind === "ORCHESTRATOR") {
+    // Vínculos (249): ao menos um, e TODOS no escopo; "Todos os grupos" nunca.
+    const { table, ownerColumn } = RESOURCE_SCOPE_LINK_TABLES[kind]
+    return `(r.scope_type = 'GROUPS' and exists (select 1 from ${table} l where l.${ownerColumn} = r.id)
+      and not exists (select 1 from ${table} l where l.${ownerColumn} = r.id
+        and not coalesce((l.subteam_id is null and l.team_id = any(${teams}::uuid[])) or l.subteam_id = any(${subteams}::uuid[]), false)))`
+  }
   return "false"
 }
 
 type ScopeColumns = { scope_type: string | null; team_id: string | null; subteam_id: string | null; scopes: { scopeType: string; teamId: string | null; subteamId: string | null }[] | null }
 
 function scopeSelect(kind: UniverseResourceKind): string {
-  if (kind === "WORKFLOW" || kind === "AGENT" || kind === "ORCHESTRATOR") return `r.scope_type, r.team_id, r.subteam_id, null::json scopes`
+  if (kind === "WORKFLOW" || kind === "AGENT" || kind === "ORCHESTRATOR") {
+    const { table, ownerColumn } = RESOURCE_SCOPE_LINK_TABLES[kind]
+    return `r.scope_type, null::uuid team_id, null::uuid subteam_id,
+      (select json_agg(json_build_object('scopeType', case when l.subteam_id is null then 'TEAM' else 'SUBTEAM' end, 'teamId', l.team_id, 'subteamId', l.subteam_id)) from ${table} l where l.${ownerColumn} = r.id) scopes`
+  }
   if (kind === "ARGUMENT_SCRIPT") {
     const governing = argumentScriptGoverningVersionIdsSql("r.id")
     return `case when exists (select 1 from argument_script_versions gv where gv.id in ${governing} and gv.scope_type = 'ALL_TEAMS') then 'ALL_TEAMS' end scope_type, null::uuid team_id, null::uuid subteam_id,
@@ -166,7 +180,7 @@ function canTouch(scopes: ManageableScopes, kind: UniverseResourceKind, row: Sco
   if (scopes.unrestricted || scopes.allTeams) return true
   if (UNIVERSE_RESOURCES[kind].organizationWide) return false
   if (kind === "ARGUMENT_SCRIPT" && row.scope_type === "ALL_TEAMS") return false
-  if (kind === "KNOWLEDGE_DOCUMENT" || kind === "ARGUMENT_SCRIPT") return (row.scopes ?? []).length > 0 && (row.scopes ?? []).every((scope) => canManageScope(scopes, { scopeType: scope.scopeType as never, teamId: scope.teamId, subteamId: scope.subteamId }))
+  if (kind === "KNOWLEDGE_DOCUMENT" || kind === "ARGUMENT_SCRIPT" || row.scope_type === "GROUPS") return (row.scopes ?? []).length > 0 && (row.scopes ?? []).every((scope) => canManageScope(scopes, { scopeType: scope.scopeType as never, teamId: scope.teamId, subteamId: scope.subteamId }))
   return row.scope_type !== null && canManageScope(scopes, { scopeType: row.scope_type as never, teamId: row.team_id, subteamId: row.subteam_id })
 }
 
@@ -199,11 +213,18 @@ export async function classifyResource(db: Database, actor: Actor, kind: Univers
     if (kind === "WORKFLOW" && locked.operating_universe !== null) throw new DomainError("Para mudar o universo de um Workflow já classificado, edite a Abrangência no editor e publique (muda quem entra nas próximas execuções).", "OPERATING_UNIVERSE_WORKFLOW_USE_EDITOR", 409)
     const conflicts = await resourceLinkConflicts(client, actor.organizationId, kind, id, universe)
     if (conflicts.length > 0) throw resourceConflictError(kind, conflicts)
+    // Vínculos de Grupo/Subgrupo já salvos precisam ser do universo novo (run-10 SEA-04): reclassificar não contorna a regra do seletor.
+    if (universe !== null && kind in RESOURCE_SCOPE_LINK_TABLES) {
+      const links = (await loadResourceScopeLinks(client, kind as ResourceScopeLinksTable, [id])).get(id) ?? []
+      await assertScopeLinksInUniverse(client, actor.organizationId, links, universe)
+    }
     const updated = kind === "WORKFLOW"
       ? await client.query(`update workflows set operating_universe = $3, draft_operating_universe = $3 where id = $1 and organization_id = $2`, [id, actor.organizationId, universe])
       : await client.query(`update ${def.write} set operating_universe = $3 where id = $1 and organization_id = $2`, [id, actor.organizationId, universe])
     // Nada gravado (excluído no meio do caminho) = nada auditado.
     if ((updated.rowCount ?? 0) === 0) throw notFound()
+    // Orquestrador que muda de universo pode passar a disputar o mesmo vínculo com outro ativo do universo novo (run-10 SEA-04).
+    if (kind === "ORCHESTRATOR") await assertNoInteractiveScopeOverlap(client, actor.organizationId, id)
     await client.query(
       `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'OPERATING_UNIVERSE_CLASSIFIED', $3, $4, $5::jsonb)`,
       [actor.organizationId, actor.personId, kind.toLowerCase(), id, JSON.stringify({ kind, from: locked.operating_universe, to: universe, actorAccountId: actor.sub })],

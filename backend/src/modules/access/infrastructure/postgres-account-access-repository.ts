@@ -7,6 +7,8 @@ type Queryable = Pick<Database, "query">
 
 /** Situação do acesso em SQL — a MESMA regra de `accountAccessStatusOf` (domain/account-access-status.ts). */
 const ACCESS_STATUS_SQL = `case when ua.id is null or not ua.active then 'DISABLED' when ua.password_change_required then 'PENDING_PASSWORD_CHANGE' else 'ACTIVE' end`
+/** Quem gerencia a senha em SQL — a MESMA regra de `credentialProviderOf` (domain/account-access-status.ts) e do login. */
+const NETWORK_MANAGED_SQL = `(select o.network_login_enabled from organizations o where o.id = ua.organization_id) and not ua.emergency_local_access`
 
 type ListRow = {
   total: string
@@ -14,8 +16,9 @@ type ListRow = {
   team_id: string | null; team_name: string | null; subteam_id: string | null; subteam_name: string | null
   account_id: string | null; email: string | null; account_active: boolean | null; last_login_at: Date | null; password_change_required: boolean | null
   temporary_password_issued_at: Date | null; temporary_password_expires_at: Date | null; access_disabled_at: Date | null; role_codes: string[] | null
+  network_managed: boolean | null
 }
-type TargetRow = { person_id: string; name: string; person_active: boolean; team_id: string | null; subteam_id: string | null; account_id: string | null; email: string | null; active: boolean | null; session_version: number | null; password_change_required: boolean | null; led_placements?: { teamId: string | null; subteamId: string | null }[] | null }
+type TargetRow = { person_id: string; name: string; person_active: boolean; team_id: string | null; subteam_id: string | null; account_id: string | null; email: string | null; active: boolean | null; session_version: number | null; password_change_required: boolean | null; network_managed: boolean | null; led_placements?: { teamId: string | null; subteamId: string | null }[] | null }
 type AssignmentRow = { role_code: string; scope_type: AccessScope["type"]; team_id: string | null; subteam_id: string | null; subteam_team_id: string | null }
 
 const toScope = (row: AssignmentRow): AccessScope =>
@@ -54,11 +57,12 @@ export function createPostgresAccountAccessRepository(db: Queryable): AccountAcc
     if (!row) return null
     return {
       personId: row.person_id, name: row.name, personActive: row.person_active, teamId: row.team_id, subteamId: row.subteam_id, ledPlacements: row.led_placements ?? [],
-      account: row.account_id ? { accountId: row.account_id, email: row.email!, active: row.active === true, sessionVersion: row.session_version ?? 0, passwordChangeRequired: row.password_change_required === true, assignments: await assignmentsOf(organizationId, row.account_id) } : null,
+      account: row.account_id ? { accountId: row.account_id, email: row.email!, active: row.active === true, sessionVersion: row.session_version ?? 0, passwordChangeRequired: row.password_change_required === true, credentialProvider: row.network_managed ? "NETWORK" : "LOCAL", assignments: await assignmentsOf(organizationId, row.account_id) } : null,
     }
   }
   // Subárvore liderada (reports_to, qualquer profundidade, só ativos; profundidade limitada contra ciclo no cadastro).
   const TARGET_SELECT = `select p.id person_id, p.name, p.active person_active, p.team_id, p.subteam_id, ua.id account_id, ua.email, ua.active, ua.session_version, ua.password_change_required,
+      case when ua.id is null then null else ${NETWORK_MANAGED_SQL} end network_managed,
       coalesce((
         with recursive tree as (
           select c.id, c.team_id, c.subteam_id, c.active, 1 depth from people c where c.reports_to_id = p.id and c.organization_id = p.organization_id
@@ -90,7 +94,7 @@ export function createPostgresAccountAccessRepository(db: Queryable): AccountAcc
                   t.id team_id, t.name team_name, st.id subteam_id, st.name subteam_name,
                   ua.id account_id, ua.email, ua.active account_active, ua.last_login_at, ua.password_change_required,
                   ua.temporary_password_issued_at, ua.temporary_password_expires_at, ua.access_disabled_at,
-                  ${ACCESS_STATUS_SQL} access_status
+                  ${ACCESS_STATUS_SQL} access_status, case when ua.id is null then null else ${NETWORK_MANAGED_SQL} end network_managed
            from people p
            left join user_accounts ua on ua.person_id = p.id and ua.organization_id = p.organization_id
            left join teams t on t.id = p.team_id
@@ -113,6 +117,7 @@ export function createPostgresAccountAccessRepository(db: Queryable): AccountAcc
           ? {
               accountId: row.account_id, email: row.email!, active: row.account_active === true, lastLoginAt: row.last_login_at, passwordChangeRequired: row.password_change_required === true,
               temporaryPasswordIssuedAt: row.temporary_password_issued_at, temporaryPasswordExpiresAt: row.temporary_password_expires_at, accessDisabledAt: row.access_disabled_at, roleCodes: row.role_codes ?? [],
+              credentialProvider: row.network_managed ? "NETWORK" : "LOCAL",
             }
           : null,
       }))
@@ -175,10 +180,12 @@ export function createPostgresAccountAccessRepository(db: Queryable): AccountAcc
     async issueTemporaryPassword(input) {
       const id = await write(withAudit(
         `with changed as (
-           update user_accounts
+           update user_accounts ua
               set password_hash = $4, password_change_required = true, temporary_password_issued_at = $5, temporary_password_expires_at = $6,
                   session_version = session_version + 1, updated_at = $5
             where organization_id = $1 and id = $2 and active and session_version = $3
+              -- Senha gerenciada pelo AD nunca vira temporária da INIA (mesmo que o login pela rede tenha sido ligado agora).
+              and not coalesce(${NETWORK_MANAGED_SQL}, false)
             returning id, organization_id
          ), $AUDITED
          select id from changed`,

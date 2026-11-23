@@ -88,7 +88,7 @@ function fakeDatabase(fixture: Fixture, graph: FlowGraph, options: { structure?:
       }
     }
     if (text.startsWith("select id from people where organization_id = $1 and role = 'OPERATOR' and active")) {
-      return { rows: fixture.people.filter((p) => params[1] === "ALL_TEAMS" || p.teamId === params[2]).map((p) => ({ id: p.id })), rowCount: 0 }
+      return { rows: fixture.people.filter((p) => params[1] === true || (params[2] as string[]).includes(p.teamId)).map((p) => ({ id: p.id })), rowCount: 0 }
     }
     if (text.startsWith("select id from people where reports_to_id = $1 and role = 'OPERATOR'")) {
       return { rows: fixture.people.filter((p) => p.reportsTo === params[0]).map((p) => ({ id: p.id })), rowCount: 0 }

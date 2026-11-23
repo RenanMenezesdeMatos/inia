@@ -12,6 +12,7 @@ import { env } from "../../../config/env.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { resolveOrganizationTimezone } from "../application/organization-timezone.js"
 import { runScheduleCheck } from "../application/schedule-check.js"
+import { linkWorkflowScope } from "./workflow-scope-fixtures.js"
 import { localDateParts, zonedTimeToIso } from "../application/schedule-recurrence.js"
 
 const ENABLED = process.env.INIA_DB_PROOF === "1"
@@ -50,7 +51,8 @@ describe.skipIf(!ENABLED)("Checador de agenda — prova Postgres (inserção em 
     for (const operator of operators.slice(0, 2)) await pool.query("insert into employee_work_shifts (organization_id, person_id, start_time, work_minutes, effective_from) values ($1, $2, '08:00', 480, '2026-01-01')", [ORG, operator])
 
     const workflow = async (name: string, triggerConfig: object, consolidated: object | null = null) => {
-      const id = (await pool.query<{ id: string }>("insert into workflows (organization_id, name, scope_type, team_id, trigger_config, consolidated_structure) values ($1, $2, 'TEAM', $3, $4, $5) returning id", [ORG, name, team, JSON.stringify(triggerConfig), consolidated ? JSON.stringify(consolidated) : null])).rows[0]!.id
+      const id = (await pool.query<{ id: string }>("insert into workflows (organization_id, name, scope_type, trigger_config, consolidated_structure) values ($1, $2, 'ALL_TEAMS', $3, $4) returning id", [ORG, name, JSON.stringify(triggerConfig), consolidated ? JSON.stringify(consolidated) : null])).rows[0]!.id
+      await linkWorkflowScope(pool, id, [{ teamId: team }])
       created.workflows.push(id)
       const version = (await pool.query<{ id: string }>("insert into workflow_versions (workflow_id, graph) values ($1, $2) returning id", [id, JSON.stringify(GRAPH)])).rows[0]!.id
       await pool.query("update workflows set active_version_id = $2 where id = $1", [id, version])

@@ -28,6 +28,7 @@ import type { FlowGraph } from "@/schemas/admin/workflow-graph.schema"
 import { GO_LIVE_CONFIRMATION_CODES, type Workflow } from "@/schemas/admin/workflow.schema"
 import { WORKFLOW_RETRY_HANDLED_CODES } from "@/schemas/admin/workflow-retry.schema"
 
+import type { ResourceScopePayload } from "@/lib/scope-links/scope-links"
 import { adminQueryKeys } from "./admin-query-keys"
 
 export function useWorkflowsQuery() {
@@ -59,7 +60,7 @@ export function useWorkflowEnrollmentsPageQuery(id: string, params: WorkflowEnro
  * fazer sentido mostrar uma prévia. */
 export function useSchedulePreviewQuery(
   trigger: Extract<WorkflowTriggerInput, { kind: "schedule" }>,
-  scope: { scopeType: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; teamId?: string } | undefined,
+  scope: ResourceScopePayload | undefined,
   enabled: boolean,
 ) {
   return useQuery({

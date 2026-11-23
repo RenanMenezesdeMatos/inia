@@ -245,7 +245,9 @@ export type WorkflowSnapshot = {
   graphChecksum: string
   graph: unknown
   triggerConfig: unknown
+  /** Abrangência (249): ALL_TEAMS ou GROUPS + `scopeLinks`. Snapshots anteriores têm TEAM/SUBTEAM + ids (mesmo alcance). */
   scopeType: string
+  scopeLinks?: { teamId: string; subteamId: string | null }[]
   teamId: string | null
   subteamId: string | null
   consolidatedStructure: unknown
@@ -267,7 +269,7 @@ export type EmployeeRun = { employeeId: string; fanOutNodeId: string; state: Wor
 
 export type WorkflowSimulationSession = {
   graph: unknown
-  workflow: { scopeType: string; teamId: string | null; subteamId: string | null; consolidatedStructure?: unknown; populationFilter?: unknown }
+  workflow: { scopeType: string; scopeLinks?: readonly { teamId: string; subteamId: string | null }[]; teamId: string | null; subteamId: string | null; consolidatedStructure?: unknown; populationFilter?: unknown }
   enrollment: Record<string, unknown>
   inputContext: string
   options: { mode: WorkflowRunMode; untilNodeId: string | null; aiPolicy: AiPolicy; maxAiCalls: number | null }

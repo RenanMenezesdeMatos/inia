@@ -18,6 +18,9 @@ import {
 import { z } from "zod"
 import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 import { lockKnowledgeDocument, saveKnowledgeDraft } from "../../knowledge/application/knowledge-versions.js"
+import { loadResourceScope, replaceResourceScopeLinks, resolveResourceScopeForWrite } from "../../org-structure/application/resource-scope-links.js"
+import { resourceScopeLinksJsonSql } from "../../../shared/domain/scope-links/resource-scope.js"
+import { resourceScopeFields } from "../../../shared/presentation/scope-links-schema.js"
 import { applyProductScopeAssignment, assertProductNodesActive, normalizedProductNodeIds, sameProductNodeIds } from "./product-scope-assignments.js"
 
 /**
@@ -48,10 +51,13 @@ const NODE_USAGE = `
   (select count(*) from product_scope_assignments s where s.organization_id = n.organization_id and n.id = any(s.node_ids))::int "scopeCount",
   (select count(*) from product_scope_assignments s where s.organization_id = n.organization_id and s.effective_until is null and n.id = any(s.node_ids))::int "openScopeCount",
   (select count(*) from product_catalog_nodes c where c.parent_id = n.id)::int "childCount",
-  (select count(*) from product_identification_criterion_versions v join product_identification_criteria c on c.id = v.criterion_id where v.organization_id = n.organization_id and n.id = any(v.target_node_ids) and (v.status = 'DRAFT' or (v.status = 'APPROVED' and (v.effective_until is null or v.effective_until > now()))))::int "liveCriteriaCount"`
-type NodeRow = { id: string; kind: "FAMILY" | "PRODUCT"; code: string; name: string; description: string | null; parentId: string | null; active: boolean; archivedAt: Date | null; createdAt: Date; updatedAt: Date; criteriaCount: number; scopeCount: number; openScopeCount: number; childCount: number; liveCriteriaCount: number; operatingUniverse: string | null }
-export type ProductNodeListItem = ProductNodeRecord & { operatingUniverse: string | null; criteriaCount: number; scopeCount: number; childCount: number; inUse: boolean; blocksDeletion: boolean }
-const nodeOf = (row: NodeRow): ProductNodeListItem => ({ id: row.id, kind: row.kind, code: row.code, name: row.name, description: row.description, parentId: row.parentId, active: row.active, archivedAt: row.archivedAt ? new Date(row.archivedAt).toISOString() : null, createdAt: new Date(row.createdAt).toISOString(), updatedAt: new Date(row.updatedAt).toISOString(), operatingUniverse: row.operatingUniverse ?? null, criteriaCount: row.criteriaCount, scopeCount: row.scopeCount, childCount: row.childCount, inUse: row.criteriaCount > 0 || row.scopeCount > 0, blocksDeletion: row.openScopeCount > 0 || row.liveCriteriaCount > 0 || row.childCount > 0 })
+  (select count(*) from product_identification_criterion_versions v join product_identification_criteria c on c.id = v.criterion_id where v.organization_id = n.organization_id and n.id = any(v.target_node_ids) and (v.status = 'DRAFT' or (v.status = 'APPROVED' and (v.effective_until is null or v.effective_until > now()))))::int "liveCriteriaCount",
+  n.scope_type "scopeType", ${resourceScopeLinksJsonSql("PRODUCT", "n.id")} "scopeLinks"`
+type NodeRow = { id: string; kind: "FAMILY" | "PRODUCT"; code: string; name: string; description: string | null; parentId: string | null; active: boolean; archivedAt: Date | null; createdAt: Date; updatedAt: Date; criteriaCount: number; scopeCount: number; openScopeCount: number; childCount: number; liveCriteriaCount: number; operatingUniverse: string | null; scopeType: "ALL_TEAMS" | "GROUPS"; scopeLinks: ProductScopeLinkView[] }
+/** Vínculo do alcance operacional do produto (250), com os nomes para a tela. */
+export type ProductScopeLinkView = { teamId: string; teamName: string; subteamId: string | null; subteamName: string | null }
+export type ProductNodeListItem = ProductNodeRecord & { operatingUniverse: string | null; scopeType: "ALL_TEAMS" | "GROUPS"; scopeLinks: ProductScopeLinkView[]; criteriaCount: number; scopeCount: number; childCount: number; inUse: boolean; blocksDeletion: boolean }
+const nodeOf = (row: NodeRow): ProductNodeListItem => ({ id: row.id, kind: row.kind, code: row.code, name: row.name, description: row.description, parentId: row.parentId, active: row.active, archivedAt: row.archivedAt ? new Date(row.archivedAt).toISOString() : null, createdAt: new Date(row.createdAt).toISOString(), updatedAt: new Date(row.updatedAt).toISOString(), operatingUniverse: row.operatingUniverse ?? null, scopeType: row.scopeType, scopeLinks: row.scopeLinks ?? [], criteriaCount: row.criteriaCount, scopeCount: row.scopeCount, childCount: row.childCount, inUse: row.criteriaCount > 0 || row.scopeCount > 0, blocksDeletion: row.openScopeCount > 0 || row.liveCriteriaCount > 0 || row.childCount > 0 })
 
 export async function listProductNodes(db: Queryable, organizationId: string): Promise<ProductNodeListItem[]> {
   const rows = (await db.query<NodeRow>(
@@ -87,7 +93,8 @@ export async function createProductNode(db: Database, actor: ProductCatalogActor
       `insert into product_catalog_nodes (organization_id, kind, code, name, description, parent_id, created_by, updated_by, operating_universe) values ($1,$2,$3,$4,$5,$6,$7,$7,$8) returning id`,
       [actor.organizationId, input.kind, input.code, input.name, input.description, input.parentId, actor.personId, input.operatingUniverse ?? null],
     )).rows[0]!.id
-    await audit(client, actor, "product_catalog_node", "PRODUCT_NODE_CREATED", created, { kind: input.kind, code: input.code, name: input.name, parentId: input.parentId, operatingUniverse: input.operatingUniverse ?? null })
+    const scope = await applyProductOperationalScope(client, actor, { id: created, kind: input.kind, operatingUniverse: input.operatingUniverse ?? null, scopeType: "ALL_TEAMS" }, body)
+    await audit(client, actor, "product_catalog_node", "PRODUCT_NODE_CREATED", created, { kind: input.kind, code: input.code, name: input.name, parentId: input.parentId, operatingUniverse: input.operatingUniverse ?? null, ...(scope ? { scope } : {}) })
     return created
   }).catch(rethrowCode)
   return requireNode(db, actor.organizationId, id)
@@ -115,9 +122,34 @@ export async function updateProductNode(db: Database, actor: ProductCatalogActor
       `update product_catalog_nodes set code = $3, name = $4, description = $5, parent_id = $6, updated_by = $7, updated_at = now(), operating_universe = $8 where id = $1 and organization_id = $2`,
       [id, actor.organizationId, input.code ?? current.code, input.name ?? current.name, input.description === undefined ? current.description : input.description, parentId, actor.personId, universe],
     )
+    const scope = await applyProductOperationalScope(client, actor, { id, kind: current.kind, operatingUniverse: universe ?? null, scopeType: current.scopeType }, body)
+    if (scope) await audit(client, actor, "product_catalog_node", "PRODUCT_NODE_SCOPE_CHANGED", id, { before: { scopeType: current.scopeType, links: current.scopeLinks.map((link) => ({ teamId: link.teamId, subteamId: link.subteamId })) }, after: scope })
     await audit(client, actor, "product_catalog_node", "PRODUCT_NODE_UPDATED", id, { before: { code: current.code, name: current.name, description: current.description, parentId: current.parentId }, after: { code: input.code ?? current.code, name: input.name ?? current.name, parentId, operatingUniverse: universe }, ...(universe !== current.operatingUniverse ? { operatingUniverseFrom: current.operatingUniverse } : {}) })
   }).catch(rethrowCode)
   return requireNode(db, actor.organizationId, id)
+}
+
+const productScopeInputSchema = z.object({ scopeType: resourceScopeFields.scopeType.optional(), scopeLinks: resourceScopeFields.scopeLinks }).passthrough()
+
+/**
+ * ALCANCE OPERACIONAL do produto (250) — separado do pertencimento (`operating_universe`): "Todos os Grupos e Subgrupos" do universo do
+ * produto (padrão, dinâmico) ou Grupos/Subgrupos específicos. Só PRODUTO; categoria não tem alcance. Corpo sem `scopeType` = inalterado.
+ * Vínculo novo: do universo do produto e com operador em produção; o já salvo continua aceito. Escrita do catálogo é só de quem
+ * administra a organização inteira (`writesRequireOrganization` na montagem da rota), por isso o escopo de gestão é a organização.
+ * Usado na Administração (lista, filtro e seleção de produtos); a análise de chamada não lê (decisão de 23/11/2026).
+ */
+async function applyProductOperationalScope(db: Queryable, actor: ProductCatalogActor, node: { id: string; kind: string; operatingUniverse: string | null; scopeType: string }, body: unknown) {
+  const input = productScopeInputSchema.parse(body ?? {})
+  if (!input.scopeType) return null
+  if (node.kind !== "PRODUCT") {
+    if (input.scopeType === "ALL_TEAMS") return null
+    throw new DomainError("Categoria não tem alcance próprio: o alcance é de cada produto.", "PRODUCT_SCOPE_NOT_FOR_CATEGORY", 422)
+  }
+  const previous = await loadResourceScope(db, "PRODUCT", node.id, node.scopeType)
+  const scope = await resolveResourceScopeForWrite(db, actor.organizationId, { unrestricted: true }, { scopeType: input.scopeType, scopeLinks: input.scopeLinks ?? [] }, { codePrefix: "PRODUCT", previous, universe: node.operatingUniverse })
+  await db.query(`update product_catalog_nodes_all set scope_type = $3 where id = $1 and organization_id = $2`, [node.id, actor.organizationId, scope.scopeType])
+  await replaceResourceScopeLinks(db, "PRODUCT", actor.organizationId, node.id, scope)
+  return { scopeType: scope.scopeType, links: scope.links }
 }
 
 export async function setProductNodeActive(db: Queryable, actor: ProductCatalogActor, id: string, active: boolean, now: Date = new Date()): Promise<ProductNodeListItem> {

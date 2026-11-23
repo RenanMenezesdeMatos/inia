@@ -36,9 +36,11 @@ export type PublishCatalogContext = PublishTriggerContext & {
 }
 
 export type PublishValidationRow = {
+  /** Abrangência do rascunho (249): ALL_TEAMS ou GROUPS + `scopeLinks` (legado TEAM/SUBTEAM + ids só em dublês de teste). */
   scopeType: string
-  teamId: string | null
-  subteamId: string | null
+  scopeLinks?: readonly { teamId: string; subteamId: string | null }[] | undefined
+  teamId?: string | null | undefined
+  subteamId?: string | null | undefined
   draftGraph: unknown
   triggerConfig: TriggerConfig
   consolidatedStructure: ConsolidatedStructure | null

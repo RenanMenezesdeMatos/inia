@@ -16,6 +16,7 @@ import { evaluateDataCondition } from "../../workflows/application/condition-eva
 import { assertNodeMatchesIndicatorCatalog, assertPublishedWorkflowMatchesIndicatorCatalog } from "../../workflows/application/indicator-graph-guard.js"
 import { resolvePreviousTimeWindow, resolveTimeWindow } from "../../workflows/application/time-window.js"
 import { applyIndicatorCorrection, impactForViewer, previewIndicatorCorrection } from "../application/indicator-correction-service.js"
+import { linkWorkflowScope } from "../../workflows/testing/workflow-scope-fixtures.js"
 import { createIndicatorDefinition, findIndicatorDefinition, updateIndicatorDefinition } from "../application/indicator-definition-service.js"
 
 /**
@@ -95,7 +96,8 @@ function conditionNode(nodeId: string, indicatorCode: string, aggregation: strin
 }
 
 async function insertWorkflow(workflowId: string, name: string, draftNode: unknown, publishedNode: unknown | null, active: boolean) {
-  await db.query(`insert into workflows (id, organization_id, name, scope_type, team_id, trigger_config, draft_graph, active) values ($1, $2, $3, 'TEAM', $4, $5, $6, $7)`, [workflowId, ORG, name, TEAM, JSON.stringify({ kind: "schedule", mode: "CALENDAR", intervalDays: 1, times: ["08:00"], frequency: { type: "DAILY" } }), JSON.stringify({ nodes: [draftNode], edges: [] }), active])
+  await db.query(`insert into workflows (id, organization_id, name, scope_type, trigger_config, draft_graph, active) values ($1, $2, $3, 'ALL_TEAMS', $4, $5, $6)`, [workflowId, ORG, name, JSON.stringify({ kind: "schedule", mode: "CALENDAR", intervalDays: 1, times: ["08:00"], frequency: { type: "DAILY" } }), JSON.stringify({ nodes: [draftNode], edges: [] }), active])
+  await linkWorkflowScope(db, workflowId, [{ teamId: TEAM }])
   if (!publishedNode) return
   const version = await db.query<{ id: string }>(`insert into workflow_versions (workflow_id, graph) values ($1, $2) returning id`, [workflowId, JSON.stringify({ nodes: [publishedNode], edges: [] })])
   await db.query(`update workflows set active_version_id = $1 where id = $2`, [version.rows[0]!.id, workflowId])

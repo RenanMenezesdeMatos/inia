@@ -49,7 +49,7 @@ const OPERATORS = [JOAO, MARIA, PEDRO, LUCAS, INATIVO, RITA, TIAGO, BIA]
  * O inativo no cadastro tem conta ativa de propósito — cadastro inativo nunca entra, com ou sem acesso. */
 const ACTIVE_ACCOUNTS = new Set([JOAO, PEDRO, RITA, INATIVO])
 
-type WorkflowRow = { id: string; active_version_id: string | null; active: boolean; scope_type: string; team_id: string | null; subteam_id: string | null; population_filter: unknown; require_active_access?: boolean; channelFlagId?: string; indicatorCode?: string }
+type WorkflowRow = { id: string; active_version_id: string | null; active: boolean; scope_type: string; scope_links?: readonly { teamId: string | null; subteamId: string | null }[] | undefined; team_id?: string | null | undefined; subteam_id?: string | null | undefined; population_filter: unknown; require_active_access?: boolean; channelFlagId?: string; indicatorCode?: string }
 
 /** Banco fake que implementa de verdade as consultas de people (mesmo SQL de hierarchy-subjects/
  * workflow-eligibility), workflows por flag e a tabela de matrículas. */
@@ -72,7 +72,8 @@ function fakeDatabase(workflows: WorkflowRow[] = []) {
     if (text.startsWith("select id from people where organization_id = $1 and role = 'OPERATOR' and active")) {
       const rows = people
         .filter((person) => person.role === "OPERATOR" && person.active)
-        .filter((person) => params[1] === "ALL_TEAMS" || (params[1] === "TEAM" && person.team_id === params[2]) || (params[1] === "SUBTEAM" && person.subteam_id === params[3]))
+        // Abrangência ($2 todos, $3 Grupos inteiros por team_id, $4 Subgrupos por subteam_id — workflowReachSql).
+        .filter((person) => params[1] === true || (params[2] as string[]).includes(person.team_id ?? "") || (params[3] as string[]).includes(person.subteam_id ?? ""))
         // "Somente quem tem acesso ativo à INIA" ($6): só quem tem conta de acesso ativa.
         .filter((person) => params[5] !== true || ACTIVE_ACCOUNTS.has(person.id))
         .map((person) => ({ id: person.id }))
@@ -134,6 +135,12 @@ const cases: { name: string; population: WorkflowPopulation; eligible: string[] 
   { name: "ALL_TEAMS + Filtro Colaborador específico → só ele", population: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, populationFilter: { kind: "EMPLOYEE", employeeId: MARIA }, operatingUniverse: null, requireActiveAccess: false }, eligible: [MARIA] },
   { name: "Abrangência E filtro: TEAM FATURAS + Filtro Subgrupo PREMIUM (RETENÇÃO) → ninguém", population: { scopeType: "TEAM", teamId: TEAM_FATURAS, subteamId: null, populationFilter: { kind: "SUBTEAM", subteamId: SUB_PREMIUM }, operatingUniverse: null, requireActiveAccess: false }, eligible: [] },
   { name: "SUBTEAM PREMIUM + Filtro Grupo RETENÇÃO → só quem satisfaz os dois", population: { scopeType: "SUBTEAM", teamId: null, subteamId: SUB_PREMIUM, populationFilter: { kind: "TEAM", teamId: TEAM_RETENCAO }, operatingUniverse: null, requireActiveAccess: false }, eligible: [PEDRO, RITA, TIAGO] },
+  // Vários Grupos (249): vínculos Grupo inteiro FATURAS + Subgrupo PREMIUM de RETENÇÃO → FATURAS inteiro e só PREMIUM (BÁSICO, irmão, fora),
+  // cada operador uma vez. GROUPS sem vínculo não alcança ninguém (nunca vira "todos").
+  { name: "GROUPS [FATURAS inteiro, PREMIUM] → FATURAS + PREMIUM, BÁSICO fora", population: { scopeType: "GROUPS", scopeLinks: [{ teamId: TEAM_FATURAS, subteamId: null }, { teamId: TEAM_RETENCAO, subteamId: SUB_PREMIUM }], populationFilter: null, operatingUniverse: null, requireActiveAccess: false }, eligible: [JOAO, MARIA, PEDRO, RITA, TIAGO] },
+  { name: "GROUPS [RETENÇÃO inteiro] → os dois Subgrupos de RETENÇÃO", population: { scopeType: "GROUPS", scopeLinks: [{ teamId: TEAM_RETENCAO, subteamId: null }], populationFilter: null, operatingUniverse: null, requireActiveAccess: false }, eligible: [PEDRO, LUCAS, RITA, TIAGO, BIA] },
+  { name: "GROUPS [FATURAS, PREMIUM] + Filtro Equipe do Carlos → João e Rita (Bia é do BÁSICO)", population: { scopeType: "GROUPS", scopeLinks: [{ teamId: TEAM_FATURAS, subteamId: null }, { teamId: TEAM_RETENCAO, subteamId: SUB_PREMIUM }], populationFilter: { kind: "SUPERVISOR_TEAM", supervisorId: CARLOS }, operatingUniverse: null, requireActiveAccess: false }, eligible: [JOAO, RITA] },
+  { name: "GROUPS sem vínculo → ninguém", population: { scopeType: "GROUPS", scopeLinks: [], populationFilter: null, operatingUniverse: null, requireActiveAccess: false }, eligible: [] },
   // "Somente quem tem acesso ativo à INIA" (migration 225): só quem tem conta de acesso ativa, somado à Abrangência e ao Filtro.
   { name: "ALL_TEAMS + acesso ativo → só quem tem conta ativa (conta desativada e sem conta ficam fora)", population: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, populationFilter: null, operatingUniverse: null, requireActiveAccess: true }, eligible: [JOAO, PEDRO, RITA] },
   { name: "TEAM FATURAS + acesso ativo → só João (Maria tem conta desativada)", population: { scopeType: "TEAM", teamId: TEAM_FATURAS, subteamId: null, populationFilter: null, operatingUniverse: null, requireActiveAccess: true }, eligible: [JOAO] },
@@ -312,8 +319,8 @@ describe("Ingestão por Indicador — matrícula produtiva respeita Abrangência
 describe("Paridade Flag × Indicador × QA Lab — a elegibilidade organizacional não depende do Trigger", () => {
   const populations = cases.map((scenario) => scenario.population)
   const publishBoth = (population: WorkflowPopulation): WorkflowRow[] => [
-    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaf", active_version_id: "77777777-7777-4777-8777-777777777777", active: true, scope_type: population.scopeType, team_id: population.teamId, subteam_id: population.subteamId, population_filter: population.populationFilter, require_active_access: population.requireActiveAccess, channelFlagId: FLAG },
-    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaai", active_version_id: "77777777-7777-4777-8777-777777777777", active: true, scope_type: population.scopeType, team_id: population.teamId, subteam_id: population.subteamId, population_filter: population.populationFilter, require_active_access: population.requireActiveAccess, indicatorCode: "QUALIDADE" },
+    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaf", active_version_id: "77777777-7777-4777-8777-777777777777", active: true, scope_type: population.scopeType, scope_links: population.scopeLinks ?? undefined, team_id: population.teamId, subteam_id: population.subteamId, population_filter: population.populationFilter, require_active_access: population.requireActiveAccess, channelFlagId: FLAG },
+    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaai", active_version_id: "77777777-7777-4777-8777-777777777777", active: true, scope_type: population.scopeType, scope_links: population.scopeLinks ?? undefined, team_id: population.teamId, subteam_id: population.subteamId, population_filter: population.populationFilter, require_active_access: population.requireActiveAccess, indicatorCode: "QUALIDADE" },
   ]
 
   it("para a mesma Abrangência + Filtro + operador, Flag e Indicador matriculam (ou não) igual — e igual ao que o QA Lab considera elegível", async () => {
@@ -340,8 +347,8 @@ describe("Paridade Flag × Indicador × QA Lab — a elegibilidade organizaciona
 describe("Matrícula em lote — leituras lembradas pelo lote, mesmas matrículas", () => {
   const suffix = (index: number) => String(index).padStart(12, "0")
   const workflows: WorkflowRow[] = cases.flatMap((scenario, index) => [
-    { id: `aaaaaaaa-aaaa-4aaa-8aaa-${suffix(index)}`, active_version_id: `77777777-7777-4777-8777-${suffix(index)}`, active: true, scope_type: scenario.population.scopeType, team_id: scenario.population.teamId, subteam_id: scenario.population.subteamId, population_filter: scenario.population.populationFilter, channelFlagId: FLAG },
-    { id: `bbbbbbbb-bbbb-4bbb-8bbb-${suffix(index)}`, active_version_id: `88888888-8888-4888-8888-${suffix(index)}`, active: true, scope_type: scenario.population.scopeType, team_id: scenario.population.teamId, subteam_id: scenario.population.subteamId, population_filter: scenario.population.populationFilter, require_active_access: scenario.population.requireActiveAccess, indicatorCode: index % 2 === 0 ? "QUALIDADE" : "TMA" },
+    { id: `aaaaaaaa-aaaa-4aaa-8aaa-${suffix(index)}`, active_version_id: `77777777-7777-4777-8777-${suffix(index)}`, active: true, scope_type: scenario.population.scopeType, scope_links: scenario.population.scopeLinks ?? undefined, team_id: scenario.population.teamId, subteam_id: scenario.population.subteamId, population_filter: scenario.population.populationFilter, channelFlagId: FLAG },
+    { id: `bbbbbbbb-bbbb-4bbb-8bbb-${suffix(index)}`, active_version_id: `88888888-8888-4888-8888-${suffix(index)}`, active: true, scope_type: scenario.population.scopeType, scope_links: scenario.population.scopeLinks ?? undefined, team_id: scenario.population.teamId, subteam_id: scenario.population.subteamId, population_filter: scenario.population.populationFilter, require_active_access: scenario.population.requireActiveAccess, indicatorCode: index % 2 === 0 ? "QUALIDADE" : "TMA" },
   ])
   // Um lote: cada pessoa com várias medições (dois indicadores com Workflow, um sem) e várias flags — como numa carga real.
   const events = [0, 1, 2].flatMap((day) => [...OPERATORS, CARLOS].flatMap((operatorId) => ["QUALIDADE", "TMA", "SEM_WORKFLOW"].map((indicatorCode) => ({ day, operatorId, indicatorCode }))))

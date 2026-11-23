@@ -172,7 +172,10 @@ export default function AdministrationPage() {
           entregue; ela vale por tempo limitado. No primeiro login com essa senha, a pessoa só consegue criar a própria senha (Nova senha e Confirmar
           nova senha) ou sair — nenhuma outra tela ou API responde. <strong className="font-medium text-foreground">Nova senha temporária</strong>{" "}
           invalida a senha atual e <strong className="font-medium text-foreground">Desabilitar</strong> impede o login; as duas encerram as sessões
-          abertas da pessoa. Ninguém altera o próprio acesso, e só altera o acesso de alguém quem poderia conceder todos os papéis dessa pessoa. Depois
+          abertas da pessoa. Com o login pela rede ligado, a conta que entra com a matrícula e a senha de rede tem a senha gerenciada pelo Active
+          Directory: “Nova senha temporária” fica indisponível, com o motivo na linha, e o servidor recusa o pedido (troca ou desbloqueio da senha de
+          rede é com o suporte da rede). A conta de emergência, que entra com e-mail e senha, continua recebendo senha temporária. Ninguém altera o
+          próprio acesso, e só altera o acesso de alguém quem poderia conceder todos os papéis dessa pessoa. Depois
           de 5 tentativas de login erradas em 15 minutos, o e-mail fica bloqueado por alguns minutos. Toda ação fica auditada, sem a senha.
         </p>
         <p>

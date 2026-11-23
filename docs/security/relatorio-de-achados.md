@@ -1057,3 +1057,47 @@ congelado), QA-08 (cenários de dev buscam bases pelo título antigo), QA-12. Em
 o que está bom como está ficaram em `docs/dev/memoria/banco-e-consultas.md` § "Auditoria de arquitetura de dados — run-9".
 Provas de banco rodadas uma a uma no banco de teste com a 248: login-throttle, read-confirmation, feedback-engine-workflow, feedback-delivery,
 installation, workflow-engine-concurrency.
+
+## Décima terceira rodada (23/11/2026, run-10: skill da Cloudflare em modo delimitado, QA funcional, arquitetura de dados, varredura AppSec)
+
+Escopo: mudanças ainda não commitadas sobre `c0917481` (228 arquivos, migrations 249 e 250): seletor pesquisável de Grupo/Subgrupo
+(`GET /api/v1/admin/scope-units`), só Grupos/Subgrupos com operador "Em produção" nas novas escolhas, alcance com vários vínculos ou
+"Todos" em Agentes, Orquestradores, Workflows, Indicadores e Produtos (e o seletor novo em Publicações, Alinhamentos, Argumentários e Bases),
+Orquestrador pelo vínculo mais específico e "Nova senha temporária" recusada para conta que entra pelo AD. Quatro auditores só de leitura
+(`sec-escopo-api`, `sec-acesso-cliente`, `qa-funcional`, `dados`); relatórios em `~/security-audit-skill/inia/run-10/agents/*/relatorio.md`.
+Nenhum achado crítico; nenhum vazamento entre organizações; nenhum SQL injetável (nomes de tabela vêm de mapa fechado).
+Varredura AppSec (Semgrep, Gitleaks, OSV, Syft) numa cópia limpa (`HEAD` + os arquivos da entrega): Gitleaks e OSV 0 novo; Semgrep 4
+`tainted-sql-string` novos (filtros de Grupo/Subgrupo em `agent-router.ts` e `indicator-rule-router.ts`) — falso positivo: só entra no
+SQL o marcador `$N` de `SqlFilter.param`; linha de base regravada com esses 4 depois da triagem. Rodada na pasta principal, o Semgrep
+bateu no limite de 4 GB do contêiner (arquivos não versionados grandes): rode sempre numa cópia limpa.
+
+| Id | Sev. | Achado | Situação |
+|---|---|---|---|
+| R13-01 (QA-01, SEA-02) | Alta | A regra "a base cabe no agente" aceitava base de ALGUM Grupo do agente: com agente de A + B, a base só de A chegava a quem é de B (a busca não sabe quem pergunta) — reabria o A-F07 | Corrigido: com vários Grupos a base precisa valer para CADA um (ou ser global); mesma SQL no salvar, na execução, na busca, nas opções e na pré-seleção; caderno de casos (tela e banco) atualizado. Nenhum agente do dev tinha vários Grupos |
+| R13-02 (SEA-01) | Média | Config-transfer exportava Orquestrador restrito a Grupos como "Todos" (lia `team_id`, nulo desde a 249) — ampliava o alcance no destino — e o plano via todo Orquestrador GROUPS do destino como "Todos" | Corrigido: exporta e importa os vínculos (`alcances`), checa sobreposição por vínculo; teste |
+| R13-03 (DADOS-01/03) | Média | Seletor e admissão contavam operadores com `or` entre `team_id` e `subteam_id`: uma varredura de `people` por Grupo antes do LIMIT (14,6 s com 2.000 Grupos × 100 mil pessoas) | Corrigido: `exists` em dois ramos indexados e contagem só nas linhas da página (25 ms medido pelo auditor); contagem idêntica conferida nos 16 Grupos do dev |
+| R13-04 (SEA-04, DADOS-02, QA-02/05) | Média | Trocar o universo (Workflow pelo PATCH, Agente/Orquestrador/Indicador/Produto pela tela de Universos) não conferia os vínculos já salvos nem a sobreposição de Orquestradores | Corrigido: `assertScopeLinksInUniverse` em todos os vínculos quando o universo muda; `assertNoInteractiveScopeOverlap` na reclassificação; Salvar do Workflow e do Agente travado com vínculo fora do universo; prova de banco |
+| R13-05 (QA-03) | Média | Orquestrador com universo pendente não disputava com o de universo definido (a checagem usava `is not distinct from`), mas sem a exigência ativa os dois atendem a mesma pessoa | Corrigido: pendente conflita com qualquer universo; prova de banco |
+| R13-06 (QA-04) | Média | Bases eram o único cadastro sem a regra do seletor no servidor (vínculo novo de outro universo ou sem operador em produção passava) | Corrigido: admissão na criação e na edição, preservando o que a base já tem |
+| R13-07 (SEA-03, SAC-01) | Baixa | `GET /admin/scope-units?ids=` ignorava o escopo de quem pede (nome, universo e contagem de qualquer Grupo pelo id) | Corrigido: escopo vale nos dois modos; a tela mostra "fora do seu escopo ou removido"; prova |
+| R13-08 (DADOS-04) | Baixa | Dois salvamentos simultâneos da Abrangência de um Workflow nunca publicado deixavam a união dos vínculos | Corrigido: transação com a linha travada antes do comando |
+| R13-09 (DADOS-05, QA-07) | Baixa | Reset da massa demo não conhecia os vínculos de Indicador/Produto (e a pré-checagem pedia `id` a tabelas de vínculo sem `id`) | Corrigido, com testes |
+| R13-10 (QA-06/08a/10/15) | Baixa | Consulta por ids limitada a 200 (alcance aceita 300) e erro silencioso; alcance do Indicador fora da transferência; Agente removia Grupos em silêncio ao trocar o universo; `listbox` com botão dentro | Corrigido (ids em lotes de 40 por causa do limite de query string do IIS) |
+| R13-11 (provas) | Baixa | Três provas simulavam a linha do motor de Workflow sem `scope_links` (falhariam com Workflow restrito) | Corrigido em knowledge-version-lifecycle e response-compliance; as outras passam (Workflows de "Todos") |
+
+Aceitos ou em aberto (R-51): SEA-05 (o 409 de sobreposição cita o Orquestrador em conflito — o conflito é sempre num Grupo de quem salva),
+SEA-06/DADOS-06 (`organization_id` das tabelas de vínculo sem amarração no banco; toda escrita passa pela normalização), SEA-07 (Subgrupo
+conta pelo Grupo-pai na compatibilidade — anterior à 249), SAC-02 (lista de acessos com escopo passa a mostrar quais contas são de
+emergência — agrava pouco o SLR-07), SAC-03 (conta do AD mantém senha local antiga, que volta a valer se o login pela rede for
+desligado — variação do SLR-09), SAC-04 (conta AD sem matrícula fica sem forma de entrar; falha fechada), QA-08 b/c/d (de-para da
+transferência que gera vínculo repetido ou "Todos" misturado; elegibilidade no destino sem aviso no plano), QA-09 (filtros por Grupo das
+listas com semânticas diferentes), QA-11 (249 não é reaplicável — o executor aplica uma vez), QA-12/13, DADOS-07/08/09 (informativos),
+remoção silenciosa de vínculos ao trocar o universo em Alinhamentos, Argumentários e Bases.
+
+Validação com IA real (teto garantido de US$ 2, reserva do pior caso antes de cada chamada, banco de dev já com a 249): a operadora do
+Grupo "Atendimento Demo" recebe o Orquestrador do Grupo (não o de "Todos"), e quem é de outro Grupo recebe o de "Todos". O chat não
+manda limite de saída ao `gemini-3.8-flash` (pior caso de cerca de US$ 0,51 por chamada): só com a reserva do pior caso a resposta não
+cabia; com o acerto pelo `usageMetadata` de cada resposta (a sobra volta, o teto continua garantido), duas perguntas completas custaram
+US$ 0,0137 e US$ 0,0149 confirmados (4 chamadas cada). "Segunda via da fatura" — que nenhuma base do Grupo cobre — recebeu "não
+encontrei nas bases, procure sua liderança"; "contestação de cobrança" recebeu o passo a passo da base do Grupo. Tela conferida numa pilha isolada (API com IA simulada): seletor com "Todos do universo" explícito,
+pré-seleção de bases só com as que valem para todos os Grupos, troca de universo marcando "Fora do universo" e travando "Criar agente".

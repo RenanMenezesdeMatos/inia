@@ -284,6 +284,8 @@ describe.skipIf(!ENABLED)("Alinhamentos operacionais — prova Postgres (cadastr
   it("alcance (run-5 PUB-01/PUB-02): versão antiga do próprio Grupo não dá acesso; universo fora do alcance some", async () => {
     const operation = (await client.query<{ id: string }>("select id from operations where organization_id = $1 order by created_at limit 1", [ORG])).rows[0]!.id
     const teamA = (await client.query<{ id: string }>("insert into teams (organization_id, operation_id, name, operating_universe) values ($1, $2, 'Proof AO Alcance A', 'B2C') returning id", [ORG, operation])).rows[0]!.id
+    // Vínculo novo exige ao menos um operador "Em produção" no Grupo escolhido (seletor de alcance, 23/11/2026).
+    await client.query("insert into people (organization_id, name, role, team_id, active, current_employment_status) values ($1, 'Proof AO Operador A', 'OPERATOR', $2, true, 'EM_PRODUCAO')", [ORG, teamA])
     const doc = (await client.query<{ id: string }>("insert into knowledge_documents (organization_id, title, document_type, operating_universe) values ($1, 'Proof AO — PR Alcance', 'PROCEDURE', 'B2C') returning id", [ORG])).rows[0]!.id
     const docB2B = (await client.query<{ id: string }>("insert into knowledge_documents (organization_id, title, document_type, operating_universe) values ($1, 'Proof AO — PR Alcance B2B', 'PROCEDURE', 'B2B') returning id", [ORG])).rows[0]!.id
     for (const id of [doc, docB2B]) await client.query("insert into knowledge_versions (organization_id, document_id, version, content, status, content_hash) values ($1, $2, 1, 'Conteúdo', 'PUBLISHED', md5($3))", [ORG, id, id])

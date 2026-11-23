@@ -10,7 +10,6 @@ import { useAdminListState } from "@/hooks/use-admin-list-state"
 
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/surface"
-import { KnowledgeRecentUploads } from "./knowledge-upload-progress/knowledge-recent-uploads"
 import { Card, CardContent } from "@/components/ui/card"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
@@ -215,7 +214,6 @@ export function KnowledgePage() {
           </Button>
         }
       />
-      <KnowledgeRecentUploads />
       <Card>
         <CardContent className="space-y-4">
           <ListToolbar

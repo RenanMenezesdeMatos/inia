@@ -34,6 +34,9 @@ export const productNodeSchema = z.object({
   updatedAt: z.coerce.string().catch(""),
   /** Universo de atuação do PRODUTO (B2B/B2C/B2X); categoria não tem universo (null). */
   operatingUniverse: operatingUniverseSchema.nullable().catch(null),
+  /** Alcance operacional do PRODUTO (250), separado do universo: ALL_TEAMS = todos os Grupos/Subgrupos do universo; GROUPS = os vínculos. */
+  scopeType: z.enum(["ALL_TEAMS", "GROUPS"]).optional().catch(undefined),
+  scopeLinks: z.array(z.object({ teamId: z.string(), teamName: z.string().nullable().optional(), subteamId: z.string().nullable(), subteamName: z.string().nullable().optional() })).optional().catch(undefined),
   criteriaCount: z.number().catch(0),
   scopeCount: z.number().catch(0),
   childCount: z.number().catch(0),

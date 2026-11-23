@@ -1,9 +1,11 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
-import type { ManageableScopes, ScopedTarget } from "../../auth/application/manageable-scopes.js"
+import type { ManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { resourceScopeJson } from "../../../shared/domain/scope-links/resource-scope.js"
+import { linkKey } from "../../../shared/domain/scope-links/scope-links.js"
 import { INVESTIGATION_CAPABILITY_LABELS, normalizeCapabilities, type InvestigationCapability } from "../../investigation/domain/capabilities.js"
 import { describeActionLimits } from "../domain/action-limits.js"
-import type { AgentConfig } from "../domain/agent-config.js"
-import { canReadAgentConfig } from "./agent-config-rules.js"
+import { agentScopeOf, type AgentConfig } from "../domain/agent-config.js"
+import { canReadAgentConfig, type AgentScopeLike } from "./agent-config-rules.js"
 import type { AgentActor } from "./agent-versions.js"
 
 /**
@@ -30,7 +32,7 @@ const FIELD_LABELS: Record<string, string> = {
 
 export type FieldChange = { field: string; label: string; from: string; to: string }
 /** Alteração com o alcance das configurações envolvidas (antes e depois) — o alcance delas decide quem lê os valores. */
-export type StoredFieldChange = FieldChange & { configScopes?: ScopedTarget[] }
+export type StoredFieldChange = FieldChange & { configScopes?: NonNullable<AgentScopeLike>[] }
 export type HistoryAction = "CREATED" | "UPDATED" | "DUPLICATED" | "PUBLISHED" | "REVERTED" | "DRAFT_DISCARDED"
 
 /** Uma linha do histórico com o rótulo do campo. */
@@ -51,13 +53,31 @@ function diffIdList(field: string, before: string[], after: string[]): FieldChan
 
 const capabilityLabel = (list: string[]) => (list.length === 0 ? "Nenhuma" : list.map((capability) => INVESTIGATION_CAPABILITY_LABELS[capability as InvestigationCapability] ?? capability).join(", "))
 
+/**
+ * Alcance mudou? Compara os VÍNCULOS (249), não só o tipo: trocar um Grupo por outro também é mudança. O texto diz o tipo e quantos
+ * vínculos entraram/saíram (os nomes ficam na tela do agente; o histórico guarda só o que não depende de cadastro que muda de nome).
+ */
+function diffScopes(before: AgentConfig, after: AgentConfig): FieldChange | null {
+  const from = agentScopeOf(before)
+  const to = agentScopeOf(after)
+  const fromKeys = new Set(from.links.map(linkKey))
+  const toKeys = new Set(to.links.map(linkKey))
+  const added = [...toKeys].filter((key) => !fromKeys.has(key)).length
+  const removed = [...fromKeys].filter((key) => !toKeys.has(key)).length
+  if (from.scopeType === to.scopeType && added === 0 && removed === 0) return null
+  const label = (scope: typeof from) => (scope.scopeType === "ALL_TEAMS" ? "Todos os Grupos e Subgrupos" : `${scope.links.length} Grupo(s)/Subgrupo(s)`)
+  const delta = from.scopeType === "GROUPS" && to.scopeType === "GROUPS" ? ` (${[added ? `+${added}` : "", removed ? `-${removed}` : ""].filter(Boolean).join(" ")})` : ""
+  return fieldChange("scopeType", label(from), `${label(to)}${delta}`)
+}
+
 /** Diferenças entre duas configurações completas (rascunho anterior → rascunho novo). */
 export function diffConfigs(before: AgentConfig, after: AgentConfig): FieldChange[] {
   const changes: FieldChange[] = []
   for (const field of ["name", "agentType", "objective", "description", "contextPrompt"] as const) {
     if (before[field] !== after[field]) changes.push(fieldChange(field, String(before[field]), String(after[field])))
   }
-  if (before.scopeType !== after.scopeType || before.teamId !== after.teamId || before.subteamId !== after.subteamId) changes.push(fieldChange("scopeType", before.scopeType, after.scopeType))
+  const scopeChange = diffScopes(before, after)
+  if (scopeChange) changes.push(scopeChange)
   const knowledgeChange = diffIdList("knowledgeDocumentIds", before.knowledgeDocumentIds, after.knowledgeDocumentIds)
   if (knowledgeChange) changes.push(knowledgeChange)
   const limitsBefore = describeActionLimits({ enabled: before.actionLimitsEnabled, text: before.actionLimits })
@@ -75,7 +95,7 @@ export function diffConfigs(before: AgentConfig, after: AgentConfig): FieldChang
 
 /** `configs`: as configurações cujos valores a alteração mostra (antes e depois) — o alcance delas decide quem lê os valores. */
 export async function recordAgentHistory(client: Pick<Database, "query">, organizationId: string, input: { agentId: string; action: HistoryAction; actor: AgentActor; changes: FieldChange[]; configs?: AgentConfig[] }): Promise<void> {
-  const configScopes = input.configs?.map((config) => ({ scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId }))
+  const configScopes = input.configs?.map((config) => resourceScopeJson(agentScopeOf(config)))
   const changes: StoredFieldChange[] = configScopes ? input.changes.map((change) => ({ ...change, configScopes })) : input.changes
   await client.query(
     `insert into agent_history(organization_id, agent_id, action, changed_by_person_id, changed_by_name, changes)

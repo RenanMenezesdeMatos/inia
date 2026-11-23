@@ -134,3 +134,38 @@ describe("normalizeScopedTarget", () => {
     expect(await normalizeScopedTarget(db, "org-1", { scopeType: "ALL_TEAMS", teamId: TEAM_A, subteamId: SUBTEAM_A1 })).toEqual({ scopeType: "ALL_TEAMS", teamId: null, subteamId: null })
   })
 })
+
+describe("alcance com vários vínculos (GROUPS, 23/11/2026)", () => {
+  const noDb = { query: async () => { throw new Error("não deveria consultar o banco") } } as unknown as Database
+  const groups = (...links: { teamId: string; subteamId: string | null }[]) => ({ scopeType: "GROUPS", teamId: null, subteamId: null, links })
+
+  it("gestão: todos os vínculos no escopo de quem edita (nunca parte deles)", () => {
+    const scopes: ManageableScopes = { unrestricted: false, allTeams: false, teamIds: new Set([TEAM_A]), subteamIds: new Set([SUBTEAM_A1, SUBTEAM_B1]) }
+    expect(canManageScope(scopes, groups({ teamId: TEAM_A, subteamId: null }, { teamId: TEAM_B, subteamId: SUBTEAM_B1 }))).toBe(true)
+    expect(canManageScope(scopes, groups({ teamId: TEAM_A, subteamId: null }, { teamId: TEAM_B, subteamId: null }))).toBe(false)
+    expect(canManageScope(scopes, groups())).toBe(false)
+  })
+
+  it("compatibilidade: cada Grupo efetivo de quem referencia precisa ser atendido pelo referenciado", async () => {
+    // Workflow em A inteiro + B1 usando agente de A e B inteiros: compatível; agente só de A: não (B1 ficaria sem o agente).
+    expect(await scopesAreCompatible(noDb, groups({ teamId: TEAM_A, subteamId: null }, { teamId: TEAM_B, subteamId: SUBTEAM_B1 }), groups({ teamId: TEAM_A, subteamId: null }, { teamId: TEAM_B, subteamId: null }))).toBe(true)
+    expect(await scopesAreCompatible(noDb, groups({ teamId: TEAM_A, subteamId: null }, { teamId: TEAM_B, subteamId: SUBTEAM_B1 }), { scopeType: "TEAM", teamId: TEAM_A, subteamId: null })).toBe(false)
+    expect(await scopesAreCompatible(noDb, { scopeType: "TEAM", teamId: TEAM_A, subteamId: null }, groups({ teamId: TEAM_A, subteamId: SUBTEAM_A1 }, { teamId: TEAM_B, subteamId: null }))).toBe(true)
+    expect(await scopesAreCompatible(noDb, { scopeType: "ALL_TEAMS", teamId: null, subteamId: null }, groups({ teamId: TEAM_A, subteamId: null }))).toBe(false)
+    expect(await scopesAreCompatible(noDb, groups({ teamId: TEAM_A, subteamId: null }), { scopeType: "ALL_TEAMS", teamId: null, subteamId: null })).toBe(true)
+  })
+
+  it("normalização: Grupo-pai real de cada Subgrupo, sem duplicata nem Subgrupo junto do próprio Grupo inteiro", async () => {
+    const db = {
+      query: async (sql: string) => {
+        if (sql.includes("from teams where id = any")) return { rows: [{ id: TEAM_A }, { id: TEAM_B }] }
+        if (sql.includes("from subteams st join teams t")) return { rows: [{ id: SUBTEAM_A1, team_id: TEAM_A }, { id: SUBTEAM_B1, team_id: TEAM_B }] }
+        throw new Error(`unexpected query: ${sql}`)
+      },
+    } as unknown as Database
+    expect(await normalizeScopedTarget(db, "org-1", groups({ teamId: TEAM_B, subteamId: null }, { teamId: null as unknown as string, subteamId: SUBTEAM_A1 }))).toEqual(groups({ teamId: TEAM_A, subteamId: SUBTEAM_A1 }, { teamId: TEAM_B, subteamId: null }))
+    expect(await normalizeScopedTarget(db, "org-1", groups({ teamId: TEAM_A, subteamId: null }, { teamId: TEAM_A, subteamId: SUBTEAM_A1 }))).toBeNull()
+    expect(await normalizeScopedTarget(db, "org-1", groups({ teamId: TEAM_B, subteamId: SUBTEAM_A1 }))).toBeNull()
+    expect(await normalizeScopedTarget(db, "org-1", groups())).toBeNull()
+  })
+})

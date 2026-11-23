@@ -112,7 +112,7 @@ describe("operating-universe-router — permissão e escopo", () => {
     expect(response.status).toBe(200)
     expect(response.body).toEqual({ data: [{ kind: "AGENT", id: AGENT_B, name: "Agente do Grupo B", operatingUniverse: null }], meta: { truncated: false, limit: 500 } })
     const list = statements.find((statement) => statement.sql.includes("from agents r where"))!
-    expect(list.sql).toContain("r.team_id = any(")
+    expect(list.sql).toContain("l.team_id = any(")
     expect(list.params).toContainEqual([TEAM_B])
   })
 

@@ -168,6 +168,14 @@ export function montarPlano(itens: Item[], selecao: Map<string, boolean>, destin
     }
 
     switch (item.tipo) {
+      case "INDICADOR":
+        // Alcance (250); pacote antigo sem `alcances` = todos os Grupos (o comportamento de antes).
+        linha.alcances = (item.dados.alcances ?? [{ tipo: "TODOS" } as const])
+          .map((alcance) => resolverAlcance(alcance, onde, linha.motivos))
+          .filter((alcance): alcance is AlcanceResolvido => alcance !== null)
+        // Restrito a Grupos sem nenhum vínculo: no destino viraria "todos os Grupos".
+        if (item.dados.alcances && item.dados.alcances.length === 0) linha.motivos.push("na origem está restrito a Grupos sem nenhum Grupo vinculado: ajuste o alcance na origem antes de transferir")
+        break
       case "BASE":
         linha.alcances = item.dados.alcances.map((alcance) => resolverAlcance(alcance, onde, linha.motivos)).filter((alcance): alcance is AlcanceResolvido => alcance !== null)
         if (item.dados.publicado === null) linha.avisos.push("na origem nunca foi publicada: vai como rascunho")
@@ -182,7 +190,13 @@ export function montarPlano(itens: Item[], selecao: Map<string, boolean>, destin
         if (!item.dados.publicado) linha.avisos.push("na origem nunca foi publicado: vai como rascunho")
         break
       case "AGENTE": {
-        linha.alcance = resolverAlcance(item.dados.alcance, onde, linha.motivos)
+        // Vários vínculos (249); pacote antigo = o alcance único.
+        linha.alcances = (item.dados.alcances ?? [item.dados.alcance])
+          .map((alcance) => resolverAlcance(alcance, onde, linha.motivos))
+          .filter((alcance): alcance is AlcanceResolvido => alcance !== null)
+        linha.alcance = linha.alcances[0] ?? null
+        // Restrito a Grupos sem nenhum vínculo não vale para ninguém; no destino viraria "todos os Grupos".
+        if (item.dados.alcances && item.dados.alcances.length === 0) linha.motivos.push("na origem está restrito a Grupos sem nenhum Grupo vinculado (não vale para ninguém): ajuste o alcance na origem antes de transferir")
         for (const campo of ["name", "objective", "description", "contextPrompt", "capability", "actionLimits"] as const) {
           const texto = (item.dados[campo] ?? "").trim()
           const limite = AGENT_TEXT_LIMITS[campo]
@@ -193,18 +207,31 @@ export function montarPlano(itens: Item[], selecao: Map<string, boolean>, destin
         break
       }
       case "ORQUESTRADOR": {
-        linha.alcance = resolverAlcance(item.dados.alcance, onde, linha.motivos)
+        // Vários vínculos (249); pacote antigo = o alcance único.
+        linha.alcances = (item.dados.alcances ?? [item.dados.alcance])
+          .map((alcance) => resolverAlcance(alcance, onde, linha.motivos))
+          .filter((alcance): alcance is AlcanceResolvido => alcance !== null)
+        linha.alcance = linha.alcances[0] ?? null
+        // Restrito a Grupos sem nenhum vínculo não vale para ninguém; no destino viraria "todos os Grupos".
+        if (item.dados.alcances && item.dados.alcances.length === 0) linha.motivos.push("na origem está restrito a Grupos sem nenhum Grupo vinculado (não vale para ninguém): ajuste o alcance na origem antes de transferir")
         const atendeChat = item.dados.active && item.dados.invocationMode !== "WORKFLOW"
-        if (atendeChat && linha.alcance) {
-          const chaveAlcance = chaveDeAlcance(linha.alcance)
-          const ocupado = destino.chatAtivoPorAlcance.get(chaveAlcance) ?? chatsDoPacote.get(chaveAlcance)
+        if (atendeChat) {
+          // Um vínculo (ou "todos") só pode ter um Orquestrador ativo de chat/voz (409 ORCHESTRATOR_SCOPE_OVERLAP na API).
+          const chaves = [...new Set(linha.alcances.map(chaveDeAlcance))]
+          const ocupado = chaves.map((chave) => destino.chatAtivoPorAlcance.get(chave) ?? chatsDoPacote.get(chave)).find((nome) => nome !== undefined)
           if (ocupado) linha.motivos.push(`já existe um orquestrador ativo atendendo o chat/voz neste alcance ("${ocupado}") — só pode haver um; desative um dos dois`)
-          else chatsDoPacote.set(chaveAlcance, item.nome)
+          else for (const chave of chaves) chatsDoPacote.set(chave, item.nome)
         }
         break
       }
       case "WORKFLOW": {
-        linha.alcance = resolverAlcance(item.dados.alcance, onde, linha.motivos)
+        // Vários vínculos (249); pacote antigo = o alcance único.
+        linha.alcances = (item.dados.alcances ?? [item.dados.alcance])
+          .map((alcance) => resolverAlcance(alcance, onde, linha.motivos))
+          .filter((alcance): alcance is AlcanceResolvido => alcance !== null)
+        linha.alcance = linha.alcances[0] ?? null
+        // Restrito a Grupos sem nenhum vínculo não vale para ninguém; no destino viraria "todos os Grupos".
+        if (item.dados.alcances && item.dados.alcances.length === 0) linha.motivos.push("na origem está restrito a Grupos sem nenhum Grupo vinculado (não vale para ninguém): ajuste o alcance na origem antes de transferir")
         for (const ref of item.dados.referencias) {
           if (ref.tipo === "NAO_TRANSFERIVEL") linha.motivos.push(`usa ${ref.descricao}`)
           if (ref.tipo === "PESSOA") {

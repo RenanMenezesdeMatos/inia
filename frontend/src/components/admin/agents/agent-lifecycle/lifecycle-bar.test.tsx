@@ -39,6 +39,7 @@ const AGENT: Agent = {
   createdByName: "Admin",
   usageCount: 3,
   scopeType: "ALL_TEAMS",
+  scopeLinks: [],
   teamId: null,
   teamName: null,
   subteamId: null,

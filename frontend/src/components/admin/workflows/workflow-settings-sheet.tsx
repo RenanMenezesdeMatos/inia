@@ -22,7 +22,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 
-import { OrgScopeSelect, orgScopeValueAfterUniverseChange, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { MultiOrgScopeField } from "@/components/admin/shared/multi-org-scope-field"
+import { resourceScopePayloadOf, scopeValueFromResource, scopeValueIssue, scopeValueKey, type ScopeLinksValue } from "@/lib/scope-links/scope-links"
 import { TriggerConfigEditor } from "./trigger-fields"
 import { WorkflowUniverseProvider } from "./workflow-universe-context"
 import { fitsUniverse, teamsForUniverse, type UniverseChoice } from "@/lib/operating-universe/hierarchy"
@@ -32,6 +33,7 @@ import { useDiscardWorkflowConfigurationMutation, useUpdateWorkflowAnalysisConfi
 import type { AnalysisConfigInput } from "@/services/admin/workflow-service"
 import { withDraftConfiguration, type WorkflowDetail } from "@/schemas/admin/workflow.schema"
 import { describeConfigurationChanges } from "./workflow-configuration-summary"
+import { workflowScopePayload, workflowScopeTeamIds } from "./workflow-scope"
 import {
   CONSOLIDATED_STRUCTURE_ANCHOR_ROLE,
   CONSOLIDATED_STRUCTURE_LABELS,
@@ -99,26 +101,23 @@ function structureGroupId(kind: StructureAnchorKind, structure: ConsolidatedStru
  * transmite que são 4 decisões em ORDEM, não campos soltos (Parte 1/5 do pedido). */
 /** Grupos/Subgrupos que a âncora pode usar: só os que quem edita gerencia, dentro da Abrangência do Workflow. */
 // Também só os do universo do Workflow (hierarquia universo → Grupo → Subgrupo); pendente cabe em qualquer universo.
+// Com vários Grupos (249): `scopeTeamIds` = Grupos da Abrangência (null = todos) — o mesmo critério do backend (`scopesAreCompatible`).
 function groupOptionsFor(
   kind: StructureAnchorKind | "ALL" | "EMPLOYEE",
   manageable: ReturnType<typeof useManageableTeamsQuery>["data"],
-  scopeType: WorkflowDetail["scopeType"],
-  teamId: WorkflowDetail["teamId"],
+  scopeTeamIds: ReadonlySet<string> | null,
   universe: UniverseChoice = null,
 ) {
   if (!manageable) return []
   const universeTeams = teamsForUniverse(manageable.teams, universe)
-  if (kind === "TEAM") {
-    const selectable = universeTeams.filter((team) => team.selectable)
-    if (scopeType === "TEAM" || scopeType === "SUBTEAM") return selectable.filter((team) => team.id === teamId)
-    return selectable
-  }
-  if (kind === "SUBTEAM") {
-    const teams = scopeType === "ALL_TEAMS" ? universeTeams : universeTeams.filter((team) => team.id === teamId)
-    return teams.flatMap((team) => team.subteams)
-  }
+  const inScope = scopeTeamIds ? universeTeams.filter((team) => scopeTeamIds.has(team.id)) : universeTeams
+  if (kind === "TEAM") return inScope.filter((team) => team.selectable)
+  if (kind === "SUBTEAM") return inScope.flatMap((team) => team.subteams)
   return []
 }
+
+/** A pessoa (pelo Grupo dela) está na Abrangência? `null` = todos os Grupos. */
+const teamInScope = (scopeTeamIds: ReadonlySet<string> | null, teamId: string | null) => scopeTeamIds === null || (teamId !== null && scopeTeamIds.has(teamId))
 
 function SectionHeading({ n, title }: { n: number; title: string }) {
   return (
@@ -147,17 +146,16 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
   const updateMutation = useUpdateWorkflowMutation()
   const updateAnalysisMutation = useUpdateWorkflowAnalysisConfigMutation(workflow.id)
 
-  const [orgScope, setOrgScope] = useState<OrgScopeValue>({
-    scopeType: editable.scopeType,
-    teamId: editable.teamId ?? undefined,
-    subteamId: editable.subteamId ?? undefined,
-  })
+  // Abrangência do rascunho (249): "Todos os Grupos e Subgrupos" do universo ou Grupos inteiros/Subgrupos escolhidos.
+  const savedScope = useMemo(() => scopeValueFromResource(editable), [editable])
+  const savedScopeKey = scopeValueKey(savedScope)
+  const [scopeValue, setScopeValue] = useState<ScopeLinksValue>(savedScope)
 
   // Abrangência do rascunho mudou: o formulário acompanha (ajuste na renderização, sem render extra).
-  const [syncedScope, setSyncedScope] = useState({ scopeType: editable.scopeType, teamId: editable.teamId, subteamId: editable.subteamId })
-  if (syncedScope.scopeType !== editable.scopeType || syncedScope.teamId !== editable.teamId || syncedScope.subteamId !== editable.subteamId) {
-    setSyncedScope({ scopeType: editable.scopeType, teamId: editable.teamId, subteamId: editable.subteamId })
-    setOrgScope({ scopeType: editable.scopeType, teamId: editable.teamId ?? undefined, subteamId: editable.subteamId ?? undefined })
+  const [syncedScopeKey, setSyncedScopeKey] = useState(savedScopeKey)
+  if (syncedScopeKey !== savedScopeKey) {
+    setSyncedScopeKey(savedScopeKey)
+    setScopeValue(savedScope)
   }
 
   const [universe, setUniverse] = useState(editable.operatingUniverse)
@@ -167,20 +165,23 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
     setUniverse(editable.operatingUniverse)
   }
   const universeEnforced = useCurrentUserQuery().data?.operatingUniverseEnforced ?? false
-  const orgScopeChanged =
-    orgScope.scopeType !== editable.scopeType || (orgScope.teamId ?? null) !== editable.teamId || (orgScope.subteamId ?? null) !== editable.subteamId
+  const linksChanged = scopeValueKey(scopeValue) !== savedScopeKey
   const universeChanged = universe !== editable.operatingUniverse
-  const scopeChanged = orgScopeChanged || universeChanged
+  const scopeChanged = linksChanged || universeChanged
+  // Escolha incompleta (nenhum Grupo, ou Grupo com recorte sem Subgrupo marcado) não salva — o backend recusaria igual.
+  const scopeIssue = linksChanged ? scopeValueIssue(scopeValue) : null
+  // Vínculo fora do universo escolhido: o aviso do campo diz que precisa sair, e o salvar fica travado até sair (run-10 QA-02).
+  const [outsideUniverse, setOutsideUniverse] = useState(0)
 
-  // Trocar o universo limpa o Grupo/Subgrupo da Abrangência que deixou de caber nele (salvos juntos em "Salvar abrangência").
+  // Trocar o universo não apaga nada em silêncio: o seletor marca o que deixou de caber e oferece "Remover os que não cabem";
+  // universo e Abrangência são salvos juntos em "Salvar abrangência".
   function handleUniverseChange(next: typeof universe) {
     setUniverse(next)
-    setOrgScope((current) => orgScopeValueAfterUniverseChange(current, manageableTeamsQuery.data?.teams, next))
   }
 
   async function handleSaveScope() {
     try {
-      await updateMutation.mutateAsync({ id: workflow.id, ...(orgScopeChanged ? { orgScope } : {}), ...(universeChanged ? { operatingUniverse: universe } : {}) })
+      await updateMutation.mutateAsync({ id: workflow.id, ...(linksChanged ? { scope: resourceScopePayloadOf(scopeValue) } : {}), ...(universeChanged ? { operatingUniverse: universe } : {}) })
     } catch {
       // já sinalizado via updateMutation.isError / toast do useAdminMutation
     }
@@ -231,23 +232,26 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
   const structureAnchorRole = CONSOLIDATED_STRUCTURE_ANCHOR_ROLE[structureKind]
   const filterAnchorRole = filterKind === "EMPLOYEE" ? "OPERATOR" : POPULATION_FILTER_ANCHOR_ROLE[filterKind as ConsolidatedStructureKind]
 
+  // Grupos da Abrangência do rascunho (null = todos): a âncora precisa estar num deles, como o backend confere.
+  const scopeTeamIds = useMemo(() => workflowScopeTeamIds(editable), [editable])
+
   const structurePeopleOptions = useMemo(() => {
     if (!structureAnchorRole || !usersQuery.data) return []
-    return usersQuery.data.filter((person) => person.role === structureAnchorRole && (editable.scopeType === "ALL_TEAMS" || person.teamId === editable.teamId) && fitsUniverse(person.operatingUniverse, editable.operatingUniverse))
-  }, [usersQuery.data, structureAnchorRole, editable.scopeType, editable.teamId, editable.operatingUniverse])
+    return usersQuery.data.filter((person) => person.role === structureAnchorRole && teamInScope(scopeTeamIds, person.teamId) && fitsUniverse(person.operatingUniverse, editable.operatingUniverse))
+  }, [usersQuery.data, structureAnchorRole, scopeTeamIds, editable.operatingUniverse])
 
   const filterPeopleOptions = useMemo(() => {
     if (!filterAnchorRole || !usersQuery.data) return []
-    return usersQuery.data.filter((person) => person.role === filterAnchorRole && (editable.scopeType === "ALL_TEAMS" || person.teamId === editable.teamId) && fitsUniverse(person.operatingUniverse, editable.operatingUniverse))
-  }, [usersQuery.data, filterAnchorRole, editable.scopeType, editable.teamId, editable.operatingUniverse])
+    return usersQuery.data.filter((person) => person.role === filterAnchorRole && teamInScope(scopeTeamIds, person.teamId) && fitsUniverse(person.operatingUniverse, editable.operatingUniverse))
+  }, [usersQuery.data, filterAnchorRole, scopeTeamIds, editable.operatingUniverse])
 
   const structureGroupOptions = useMemo(
-    () => groupOptionsFor(structureKind, manageableTeamsQuery.data, editable.scopeType, editable.teamId, editable.operatingUniverse),
-    [manageableTeamsQuery.data, structureKind, editable.scopeType, editable.teamId, editable.operatingUniverse],
+    () => groupOptionsFor(structureKind, manageableTeamsQuery.data, scopeTeamIds, editable.operatingUniverse),
+    [manageableTeamsQuery.data, structureKind, scopeTeamIds, editable.operatingUniverse],
   )
   const filterGroupOptions = useMemo(
-    () => groupOptionsFor(filterKind, manageableTeamsQuery.data, editable.scopeType, editable.teamId, editable.operatingUniverse),
-    [manageableTeamsQuery.data, filterKind, editable.scopeType, editable.teamId, editable.operatingUniverse],
+    () => groupOptionsFor(filterKind, manageableTeamsQuery.data, scopeTeamIds, editable.operatingUniverse),
+    [manageableTeamsQuery.data, filterKind, scopeTeamIds, editable.operatingUniverse],
   )
 
   // Consolidado só existe em Agenda de calendário; em qualquer outro gatilho a avaliação é sempre individual.
@@ -336,16 +340,29 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
             <p className="text-xs text-muted-foreground">Só colaboradores deste universo entram nas execuções. Agentes, Orquestradores e indicadores das etapas precisam ser do mesmo universo — conferido ao Publicar.</p>
           </div>
           {manageableTeamsQuery.data ? (
-            <OrgScopeSelect teams={manageableTeamsQuery.data.teams} value={orgScope} onChange={setOrgScope} allowAllTeams={manageableTeamsQuery.data.unrestricted} universe={universe} />
+            <MultiOrgScopeField
+              permission="workflows.manage"
+              value={scopeValue}
+              onChange={setScopeValue}
+              // "Todos" só para quem administra a organização (ou quando o rascunho já é "Todos" — o servidor mantém).
+              allowGlobal={manageableTeamsQuery.data.unrestricted || editable.scopeType === "ALL_TEAMS"}
+              globalLabel={universe ? `Todos os Grupos e Subgrupos do universo ${universe}` : "Todos os Grupos e Subgrupos"}
+              globalDescription="Vale também para os Grupos e Subgrupos criados depois: quem participa é decidido a cada execução."
+              universe={universe ?? undefined}
+              label="Grupos e Subgrupos"
+              hint="Grupo inteiro inclui todos os Subgrupos dele; um Subgrupo escolhido não leva os irmãos."
+              onOutsideUniverseChange={setOutsideUniverse}
+            />
           ) : (
             <Skeleton className="h-10 w-full" />
           )}
           <p className="text-xs text-muted-foreground">
             Em quais grupos este workflow pode atuar. Trocar a abrangência é conferido com os Orquestradores, a Estrutura Consolidada e o
-            Filtro Populacional já configurados. Se algo ficar fora do novo grupo, a troca é recusada e a mensagem diz o quê.
+            Filtro Populacional já configurados. Se algo ficar fora dos grupos escolhidos, a troca é recusada e a mensagem diz o quê.
           </p>
+          {scopeIssue ? <p className="text-xs text-foreground/70">{scopeIssue}</p> : null}
           {updateMutation.isError ? <p className="text-sm text-destructive">{(updateMutation.error as Error).message}</p> : null}
-          <Button size="sm" disabled={!scopeChanged || updateMutation.isPending} onClick={handleSaveScope}>
+          <Button size="sm" disabled={!scopeChanged || scopeIssue !== null || outsideUniverse > 0 || updateMutation.isPending} onClick={handleSaveScope}>
             {updateMutation.isPending ? "Salvando..." : "Salvar abrangência"}
           </Button>
         </div>
@@ -361,7 +378,7 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
           <TriggerConfigEditor
             trigger={editable.trigger}
             workflowId={workflow.id}
-            scope={{ scopeType: editable.scopeType, teamId: editable.teamId ?? undefined }}
+            scope={workflowScopePayload(editable)}
             graph={workflow.draftGraph}
             consolidatedStructure={editable.consolidatedStructure ?? null}
             populationFilter={editable.populationFilter ?? null}

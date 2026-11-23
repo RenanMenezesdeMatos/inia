@@ -25,7 +25,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-import { OrgScopeSelect, orgScopeValueAfterUniverseChange, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { MultiOrgScopeField } from "@/components/admin/shared/multi-org-scope-field"
+import { EMPTY_SCOPE_VALUE, scopeValueFromResource, scopeValueIssue, scopeValueKey, type ScopeLinksValue } from "@/lib/scope-links/scope-links"
 import { fitsUniverse } from "@/lib/operating-universe/hierarchy"
 import { ActionLimitsCard } from "@/components/admin/agents/action-limits-card"
 import { describeBusinessDomain, type BusinessDomainRef } from "@/schemas/admin/business-domain.schema"
@@ -285,7 +286,7 @@ function formInputOf(agent: Agent): CreateAgentInput {
     objective: agent.objective,
     description: agent.description,
     contextPrompt: agent.contextPrompt,
-    orgScope: { scopeType: agent.scopeType, teamId: agent.teamId ?? undefined, subteamId: agent.subteamId ?? undefined },
+    scope: scopeValueFromResource(agent),
     knowledgeDocumentIds: agent.knowledgeDocuments.map((document) => document.id),
     actionLimitsEnabled: agent.actionLimitsEnabled,
     actionLimits: agent.actionLimits?.trim() ? agent.actionLimits.trim() : null,
@@ -296,7 +297,7 @@ function sameFormInput(a: CreateAgentInput, b: CreateAgentInput): boolean {
   const normalize = (input: CreateAgentInput) =>
     JSON.stringify({
       ...input,
-      orgScope: { scopeType: input.orgScope.scopeType, teamId: input.orgScope.teamId ?? null, subteamId: input.orgScope.subteamId ?? null },
+      scope: scopeValueKey(input.scope),
       knowledgeDocumentIds: [...input.knowledgeDocumentIds].sort(),
       investigationCapabilities: [...(input.investigationCapabilities ?? [])].sort(),
     })
@@ -369,9 +370,8 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
   const [objective, setObjective] = useState(source?.objective ?? "")
   const [description, setDescription] = useState(source?.description ?? "")
   const [contextPrompt, setContextPrompt] = useState(source?.contextPrompt ?? "")
-  const [orgScope, setOrgScope] = useState<OrgScopeValue>(
-    source ? { scopeType: source.scopeType, teamId: source.teamId ?? undefined, subteamId: source.subteamId ?? undefined } : { scopeType: "ALL_TEAMS" },
-  )
+  // Alcance (249): "Todos os Grupos e Subgrupos" do universo do agente, ou os Grupos/Subgrupos escolhidos (cada um inteiro ou um Subgrupo).
+  const [scope, setScope] = useState<ScopeLinksValue>(source ? scopeValueFromResource(source) : { global: true, groups: [] })
   const [knowledgeDocumentIds, setKnowledgeDocumentIds] = useState<string[]>(source?.knowledgeDocuments.map((doc) => doc.id) ?? [])
   // Limites de atuação: interruptor + texto. Desligado, o texto fica guardado (volta ao religar) e não vale.
   const [actionLimitsEnabled, setActionLimitsEnabled] = useState<boolean>(source?.actionLimitsEnabled ?? false)
@@ -389,7 +389,7 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
   const knowledgeTitles = new Map((source?.knowledgeDocuments ?? []).map((document) => [document.id, document.title] as const))
   const blockedKnowledge = knowledgeDocumentIds.flatMap((id) => {
     const option = knownKnowledge.byId.get(id)
-    const problems = option ? optionProblems(option, universe, agentKnowledgeScopeOf(orgScope), manageableTeamsQuery.data?.teams) : []
+    const problems = option ? optionProblems(option, universe, agentKnowledgeScopeOf(scope), manageableTeamsQuery.data?.teams) : []
     return option && problems.length ? [{ title: option.title, problems }] : []
   })
   const domainCatalog = businessDomainsQuery.data ?? []
@@ -405,8 +405,8 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
   const [scopeCheckedFor, setScopeCheckedFor] = useState<{ agent: Agent | undefined; teams: typeof manageableTeamsQuery.data } | null>(null)
   if (scopeCheckedFor === null || scopeCheckedFor.agent !== savedAgent || scopeCheckedFor.teams !== manageableTeamsQuery.data) {
     setScopeCheckedFor({ agent: savedAgent, teams: manageableTeamsQuery.data })
-    if (!agent && manageableTeamsQuery.data && !manageableTeamsQuery.data.unrestricted && orgScope.scopeType === "ALL_TEAMS") {
-      setOrgScope({ scopeType: "TEAM" })
+    if (!agent && manageableTeamsQuery.data && !manageableTeamsQuery.data.unrestricted && scope.global) {
+      setScope(EMPTY_SCOPE_VALUE)
     }
   }
 
@@ -426,18 +426,18 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
       setObjective(agent.objective)
       setDescription(agent.description)
       setContextPrompt(agent.contextPrompt)
-      setOrgScope({ scopeType: agent.scopeType, teamId: agent.teamId ?? undefined, subteamId: agent.subteamId ?? undefined })
+      setScope(scopeValueFromResource(agent))
       setKnowledgeDocumentIds(agent.knowledgeDocuments.map((doc) => doc.id))
       setActionLimitsEnabled(agent.actionLimitsEnabled)
       setActionLimits(agent.actionLimits ?? "")
     }
   }
 
-  // Pré-seleção pelo Grupo (só na criação, regra de sempre): globais + as do Grupo (ou do Subgrupo) no universo do agente, calculadas no
-  // servidor. Só a resposta do ÚLTIMO Grupo escolhido vale (trocas rápidas não se atropelam).
+  // Pré-seleção pelos Grupos (só na criação, regra de sempre): globais + as de cada Grupo (ou Subgrupo) escolhido, no universo do agente,
+  // calculadas no servidor. Só a resposta da ÚLTIMA escolha vale (trocas rápidas não se atropelam).
   const groupDefaultsRequest = useRef(0)
-  function handleOrgScopeChange(nextScope: OrgScopeValue) {
-    setOrgScope(nextScope)
+  function handleScopeChange(nextScope: ScopeLinksValue) {
+    setScope(nextScope)
     const agentScope = agentKnowledgeScopeOf(nextScope)
     if (isEditing || !agentScope) return
     const request = ++groupDefaultsRequest.current
@@ -445,17 +445,19 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
       .then((result) => {
         if (request !== groupDefaultsRequest.current) return
         setKnowledgeDocumentIds(result.ids)
-        if (result.ids.length) toast.success(`${result.ids.length} ${result.ids.length === 1 ? "base do Grupo entrou pré-selecionada" : "bases do Grupo entraram pré-selecionadas"} — confira em “Ligadas”.`)
+        if (result.ids.length) toast.success(`${result.ids.length} ${result.ids.length === 1 ? "base dos Grupos escolhidos entrou pré-selecionada" : "bases dos Grupos escolhidos entraram pré-selecionadas"} — confira em “Ligadas”.`)
       })
       .catch(() => {
-        if (request === groupDefaultsRequest.current) toast.error("Não foi possível pré-selecionar as bases do Grupo. Escolha-as em “Disponíveis”.")
+        if (request === groupDefaultsRequest.current) toast.error("Não foi possível pré-selecionar as bases dos Grupos. Escolha-as em “Disponíveis”.")
       })
   }
 
-  // Trocar o universo (só na criação) limpa o que deixou de caber: Grupo/Subgrupo, bases e domínio de outro universo.
+  // Trocar o universo (só na criação) limpa bases e domínio de outro universo. Grupos/Subgrupos NÃO somem em silêncio (run-10 QA-10):
+  // o campo de alcance marca "Fora do universo" e oferece "Remover os que não cabem", e o salvar fica travado enquanto houver
+  // (o servidor recusa SCOPE_UNIT_OUTSIDE_UNIVERSE) — a mesma regra de Orquestradores e Workflows.
+  const [scopeOutsideUniverse, setScopeOutsideUniverse] = useState(0)
   function handleUniverseChange(next: OperatingUniverse | null) {
     setOperatingUniverse(next)
-    setOrgScope((current) => orgScopeValueAfterUniverseChange(current, manageableTeamsQuery.data?.teams, next))
     setKnowledgeDocumentIds((current) => current.filter((id) => fitsUniverse(knownKnowledge.byId.get(id)?.operatingUniverse, next)))
     if (domain && !fitsUniverse(domainUniverseOf(domain.code), next)) setDomain(null)
   }
@@ -475,7 +477,7 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
     setObjective(input.objective)
     setDescription(input.description)
     setContextPrompt(input.contextPrompt)
-    setOrgScope(input.orgScope)
+    setScope(input.scope)
     setKnowledgeDocumentIds(input.knowledgeDocumentIds)
     setActionLimitsEnabled(input.actionLimitsEnabled)
     setActionLimits(input.actionLimits ?? "")
@@ -498,7 +500,7 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
       objective,
       description,
       contextPrompt,
-      orgScope,
+      scope,
       knowledgeDocumentIds,
       actionLimitsEnabled,
       actionLimits: actionLimits.trim() ? actionLimits.trim() : null,
@@ -542,6 +544,8 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
   const saveBlockedReason = [
     draftRestricted ? RESTRICTED_DRAFT_REASON : null,
     !isEditing && !operatingUniverse ? "Escolha o universo de atuação." : null,
+    scopeValueIssue(scope),
+    scopeOutsideUniverse > 0 ? "Remova do alcance os Grupos/Subgrupos fora do universo." : null,
     overLimit.length ? `Acima do limite de caracteres: ${overLimit.join(", ")}.` : null,
     belowMin.length ? `Preencha o mínimo de caracteres: ${belowMin.join(", ")}.` : null,
     specialtyKind === "DOMAIN" && !domain?.id ? "Escolha o domínio de negócio." : null,
@@ -825,20 +829,23 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
                   <p id="agent-prompt-help" className="text-xs text-muted-foreground">Instruções detalhadas de como o agente deve raciocinar.</p>
                   <CharacterCounter id="agent-prompt-count" value={contextPrompt} limits={AGENT_TEXT_LIMITS.contextPrompt} />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Grupo</Label>
-                  {manageableTeamsQuery.data ? (
-                    <OrgScopeSelect
-                      teams={manageableTeamsQuery.data.teams}
-                      value={orgScope}
-                      onChange={handleOrgScopeChange}
-                      allowAllTeams={manageableTeamsQuery.data.unrestricted}
-                      universe={universe}
-                    />
-                  ) : (
-                    <Skeleton className="h-10 w-full" />
-                  )}
-                </div>
+                {manageableTeamsQuery.data ? (
+                  <MultiOrgScopeField
+                    permission="agents.manage"
+                    label="Alcance"
+                    value={scope}
+                    onChange={handleScopeChange}
+                    // "Todos" só para quem administra a organização inteira — ou mantido quando o agente já é de todos.
+                    allowGlobal={manageableTeamsQuery.data.unrestricted || scope.global}
+                    globalLabel={universe ? `Todos os Grupos e Subgrupos do universo ${universe}` : "Todos os Grupos e Subgrupos"}
+                    globalDescription="Vale também para os Grupos e Subgrupos que forem criados depois."
+                    universe={universe ?? undefined}
+                    hint="Escolha Grupos inteiros ou Subgrupos específicos: um Subgrupo nunca leva os irmãos."
+                    onOutsideUniverseChange={setScopeOutsideUniverse}
+                  />
+                ) : (
+                  <Skeleton className="h-10 w-full" />
+                )}
               </CardContent>
             </Card>
 
@@ -937,7 +944,7 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
                   selectedIds={knowledgeDocumentIds}
                   onChange={setKnowledgeDocumentIds}
                   universe={universe}
-                  orgScope={orgScope}
+                  scope={scope}
                   teams={manageableTeamsQuery.data?.teams}
                   known={knownKnowledge}
                   fallbackTitles={knowledgeTitles}

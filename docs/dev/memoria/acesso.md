@@ -117,6 +117,26 @@ Depois de reiniciar só os serviços da INIA, confira os servidores na tela e s�
 **Pendente:**
 - OTP: falta saber qual serviço da empresa envia e confere o código.
 - Certificado oficial para o HTTPS, pelo CSR à PKI. Até lá, o navegador mostra "Não seguro".
-- Liberação de acesso: com o login pela rede ligado, a tela ainda gera uma senha temporária, que não serve para quem entra pela rede. Falta esconder isso e dizer "entra com a matrícula".
+- Liberação de acesso: "Habilitar acesso" de uma conta que vai entrar pela rede ainda gera (e mostra) uma senha temporária, que não serve para ela. Falta dizer "entra com a matrícula" nesse diálogo. ("Nova senha temporária" já foi resolvida em 23/11 — ver abaixo.)
 - As matrículas da carga de pessoas precisam ser o login de rede: o mesmo formato do login de rede
 - Teste real na VM com a matrícula do usuário depois do deploy.
+
+### Nova senha temporária × quem gerencia a senha (23/11/2026)
+
+**Problema:** com o login pela rede ligado, "Nova senha temporária" continuava oferecida e aceita para contas que entram pela matrícula. A
+senha temporária gerada não servia para entrar (o login por e-mail responde `NETWORK_LOGIN_REQUIRED`) e dava a impressão de que a INIA trocou
+a senha de rede.
+
+**Regra:** a ação depende do PROVEDOR DA CONTA, não de como a tela de login aparece. `credentialProviderOf` (`access/domain/account-access-status.ts`)
+= a mesma regra do login (`credentialModeOf` em `postgres-network-login-repository.ts`): `NETWORK` quando a organização tem o login pela rede
+ligado e a conta não é de emergência (`emergency_local_access`); senão `LOCAL`.
+- Lista (`GET /admin/access/users`): cada conta traz `credentialProvider`; a linha traz `canIssueTemporaryPassword` (conta habilitada e LOCAL).
+- Tela (`access-users-view.tsx`): conta NETWORK mostra o botão desabilitado com a explicação ligada por `aria-describedby` ("Senha gerenciada
+  pelo Active Directory: a pessoa entra com a matrícula e a senha de rede."); Desabilitar continua.
+- API: `issueTemporaryPassword` recusa com 409 `ACCESS_PASSWORD_MANAGED_BY_NETWORK` antes de gerar; a escrita SQL também confere (o login pela
+  rede pode ser ligado entre a leitura e a escrita) e, sem linha alterada, a resposta relê a conta para devolver a causa real, não um conflito
+  genérico. Nada muda na conta recusada (hash, versão de sessão, troca obrigatória, auditoria).
+- Conta de emergência e organização com o login pela rede desligado: fluxo de senha temporária igual a antes.
+- Provas: `access-service.test.ts` (em memória, inclusive a corrida) e `access/testing/network-temporary-password-proof.test.ts` (API real,
+  liga/desliga o login pela rede numa transação). Frontend: `access.test.tsx`. Código de erro no catálogo (`errors:catalog`).
+

@@ -44,8 +44,8 @@ const GROUP_A = { teamId: "team-a", name: "Grupo A (teste)" }
 const GROUP_B = { teamId: "team-b", name: "Grupo B (teste)" }
 // PROCESS_GROUP_RULE_V1: o Grupo só vale se a pessoa o disse — as perguntas abaixo citam o Grupo ("no Grupo A").
 const ORCHESTRATORS: InteractiveOrchestratorScope[] = [
-  { id: "orch-a", name: "Orquestrador A (teste)", scopeType: "TEAM", teamId: "team-a" },
-  { id: "orch-b", name: "Orquestrador B (teste)", scopeType: "TEAM", teamId: "team-b" },
+  { id: "orch-a", name: "Orquestrador A (teste)", scopeType: "GROUPS", teamIds: ["team-a"] },
+  { id: "orch-b", name: "Orquestrador B (teste)", scopeType: "GROUPS", teamIds: ["team-b"] },
 ]
 const resolvedOrchestrator = (id: string): ResolvedOrchestrator => ({
   organizationId: TEST_ORG,

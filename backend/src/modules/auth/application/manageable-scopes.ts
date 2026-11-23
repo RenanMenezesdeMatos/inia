@@ -9,7 +9,12 @@ export type ManageableScopes =
   | { unrestricted: true }
   | { unrestricted: false; allTeams: boolean; teamIds: Set<string>; subteamIds: Set<string> }
 
-export type ScopedTarget = { scopeType: string; teamId: string | null; subteamId: string | null }
+/**
+ * Alcance de um recurso: `ALL_TEAMS` (todos os Grupos e Subgrupos — do universo do recurso, quando ele tem universo), o legado de
+ * vínculo único `TEAM`/`SUBTEAM` e `GROUPS` = vários vínculos (`links`, Grupo inteiro ou Subgrupo — 23/11/2026, Agentes, Orquestradores
+ * e Workflows). Em `GROUPS`, `teamId`/`subteamId` ficam nulos: a verdade são os vínculos.
+ */
+export type ScopedTarget = { scopeType: string; teamId: string | null; subteamId: string | null; links?: readonly ScopeLink[] | undefined }
 
 /**
  * V1.5.7 — escopos em que a CONTA da sessão tem uma permissão administrativa, derivados das ATRIBUIÇÕES DE PAPEL
@@ -38,6 +43,7 @@ export function coversOrganization(scopes: ManageableScopes): boolean {
 export function canManageScope(scopes: ManageableScopes, target: ScopedTarget): boolean {
   if (scopes.unrestricted || scopes.allTeams) return true
   if (target.scopeType === "ALL_TEAMS") return false
+  if (target.scopeType === "GROUPS") return canManageAllLinks(scopes, target.links ?? [])
   if (target.scopeType === "TEAM") return target.teamId !== null && scopes.teamIds.has(target.teamId)
   if (target.scopeType === "SUBTEAM") return target.subteamId !== null && scopes.subteamIds.has(target.subteamId)
   return false
@@ -51,6 +57,11 @@ export function canManageScope(scopes: ManageableScopes, target: ScopedTarget): 
 export async function normalizeScopedTarget(db: Pick<Database, "query">, organizationId: string, target: ScopedTarget): Promise<ScopedTarget | null> {
   if (target.scopeType === "ALL_TEAMS") return { scopeType: "ALL_TEAMS", teamId: null, subteamId: null }
   if (target.scopeType === "TEAM") return { scopeType: "TEAM", teamId: target.teamId, subteamId: null }
+  if (target.scopeType === "GROUPS") {
+    const links = await normalizeScopeLinks(db, organizationId, target.links ?? [])
+    if (!links || links.length === 0 || scopeLinkProblems(links).length > 0) return null
+    return { scopeType: "GROUPS", teamId: null, subteamId: null, links: sortLinks(links) }
+  }
   if (target.scopeType !== "SUBTEAM" || !target.subteamId) return null
   const parent = await db.query<{ team_id: string }>(`select team_id from subteams where id = $1 and organization_id = $2`, [target.subteamId, organizationId])
   const teamId = parent.rows[0]?.team_id
@@ -58,14 +69,16 @@ export async function normalizeScopedTarget(db: Pick<Database, "query">, organiz
   return { scopeType: "SUBTEAM", teamId, subteamId: target.subteamId }
 }
 
-async function effectiveTeamId(db: Database, target: ScopedTarget): Promise<string | null> {
-  if (target.scopeType === "TEAM") return target.teamId
+/** Grupos efetivos do alcance (Subgrupo → Grupo-pai). ALL_TEAMS não tem Grupo efetivo — tratado à parte em scopesAreCompatible. */
+async function effectiveTeamIds(db: Pick<Database, "query">, target: ScopedTarget): Promise<string[]> {
+  if (target.scopeType === "GROUPS") return [...new Set((target.links ?? []).map((link) => link.teamId))]
+  if (target.scopeType === "TEAM") return target.teamId ? [target.teamId] : []
   if (target.scopeType === "SUBTEAM") {
-    if (!target.subteamId) return null
+    if (!target.subteamId) return []
     const result = await db.query<{ team_id: string }>(`select team_id from subteams where id = $1`, [target.subteamId])
-    return result.rows[0]?.team_id ?? null
+    return result.rows[0]?.team_id ? [result.rows[0].team_id] : []
   }
-  return null // ALL_TEAMS não tem time efetivo — tratado à parte em scopesAreCompatible.
+  return []
 }
 
 /**
@@ -74,15 +87,16 @@ async function effectiveTeamId(db: Database, target: ScopedTarget): Promise<stri
  * entre grupos: B global (ALL_TEAMS) sempre serve; A global só pode referenciar B também global
  * (senão o Workflow dispararia pra gente de fora do grupo de B); fora isso, os dois precisam
  * resolver pro MESMO time efetivo (SUBTEAM resolve pro time-pai) — nunca comparamos apenas o
- * `scopeType`, sempre o grupo real por trás dele. Mesma função serve tanto pra validar o publish
+ * `scopeType`, sempre o grupo real por trás dele. Com vários vínculos (`GROUPS`), cada Grupo efetivo de A precisa estar entre os de B
+ * (A nunca alcança um Grupo que B não atende). Mesma função serve tanto pra validar o publish
  * de um Workflow (Orchestrator referenciado) quanto os especialistas de um Orchestrator (Agent
  * referenciado) e a troca de Abrangência de um Workflow existente.
  */
-export async function scopesAreCompatible(db: Database, referencer: ScopedTarget, referenced: ScopedTarget): Promise<boolean> {
+export async function scopesAreCompatible(db: Pick<Database, "query">, referencer: ScopedTarget, referenced: ScopedTarget): Promise<boolean> {
   if (referenced.scopeType === "ALL_TEAMS") return true
   if (referencer.scopeType === "ALL_TEAMS") return false
-  const [referencerTeam, referencedTeam] = await Promise.all([effectiveTeamId(db, referencer), effectiveTeamId(db, referenced)])
-  return referencerTeam !== null && referencerTeam === referencedTeam
+  const [referencerTeams, referencedTeams] = await Promise.all([effectiveTeamIds(db, referencer), effectiveTeamIds(db, referenced)])
+  return referencerTeams.length > 0 && referencerTeams.every((teamId) => referencedTeams.includes(teamId))
 }
 
 // Mesma regra de canManageScope, mas dentro do WHERE — a listagem paginada precisa filtrar no

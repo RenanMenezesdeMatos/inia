@@ -31,6 +31,7 @@ import {
   type FlowNode,
   type HumanReviewDecision,
 } from "../domain/graph-schema.js"
+import { workflowScopedTarget } from "../domain/workflow-scope.js"
 import type { EmployeeFanInOutput } from "./consolidate-results-executor.js"
 
 // Compat: os comparadores e o resolvedor de janela agora vivem em condition-evaluator.ts (a
@@ -75,7 +76,9 @@ export type EnrollmentRow = {
 }
 
 export type WorkflowScope = {
+  /** Abrangência PUBLICADA (249): ALL_TEAMS ou GROUPS + `scopeLinks` (legado TEAM/SUBTEAM + ids só em dublês de teste e QA Lab antigo). */
   scopeType: string
+  scopeLinks?: readonly { teamId: string; subteamId: string | null }[]
   teamId: string | null
   subteamId: string | null
   consolidatedStructure?: ConsolidatedStructure | null
@@ -176,6 +179,7 @@ async function resolveConditionPopulation(context: ProcessContext, nodeId: strin
   // recebe uma execução, não com quem a pessoa é comparada.
   const population: WorkflowPopulation = comparisonPopulationOf({
     scopeType: context.workflow.scopeType,
+    scopeLinks: context.workflow.scopeLinks ?? [],
     teamId: context.workflow.teamId,
     subteamId: context.workflow.subteamId,
     populationFilter: context.workflow.populationFilter,
@@ -421,7 +425,7 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
         const collectionNode = findPrecedingCollectionNode(context.graph, joinNode.id)
         const collection = collectionNode ? (context.enrollment.node_outputs[collectionNode.id] as EmployeeCollectionOutput | undefined) : undefined
         const synthesisConfig = node.config
-        const synthesis = await withWorkflowAgent(context.db, context.enrollment.organization_id, synthesisConfig.agentId, { scopeType: context.workflow.scopeType, teamId: context.workflow.teamId, subteamId: context.workflow.subteamId }, () =>
+        const synthesis = await withWorkflowAgent(context.db, context.enrollment.organization_id, synthesisConfig.agentId, workflowScopedTarget(context.workflow), () =>
           executeSynthesisAgent(synthesisConfig, {
             db: context.db,
             organizationId: context.enrollment.organization_id,
@@ -463,6 +467,7 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
           variables: context.enrollment.variables,
         },
         scopeType: context.workflow.scopeType,
+        scopeLinks: context.workflow.scopeLinks ?? [],
         teamId: context.workflow.teamId,
         subteamId: context.workflow.subteamId,
         inputContext: context.inputContext,
@@ -504,7 +509,7 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
 
     case "orchestrator": {
       // A versão fixada do Orquestrador só roda se servir ao Grupo do Workflow (conferida na resolução, motor e QA Lab).
-      const workflowScope = { scopeType: context.workflow.scopeType, teamId: context.workflow.teamId, subteamId: context.workflow.subteamId }
+      const workflowScope = workflowScopedTarget(context.workflow)
       const contexts = resolveNodeContexts(context.graph)
       const isConsolidated = contexts.get(node.id) === "CONSOLIDATED_RESULT"
       const result = isConsolidated
@@ -663,6 +668,7 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
       // "Selecionar colaboradores" é comparação/seleção dentro da estrutura (modo Consolidado) — sem o corte de acesso.
       const population: WorkflowPopulation = comparisonPopulationOf({
         scopeType: context.workflow.scopeType,
+        scopeLinks: context.workflow.scopeLinks ?? [],
         teamId: context.workflow.teamId,
         subteamId: context.workflow.subteamId,
         populationFilter: context.workflow.populationFilter,

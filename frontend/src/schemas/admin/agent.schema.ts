@@ -42,6 +42,11 @@ export type AgentTextField = keyof typeof AGENT_TEXT_LIMITS
 
 const agentKnowledgeDocumentSchema = z.object({ id: z.string(), title: z.string() })
 
+/** Tipo de alcance (249): ALL_TEAMS | GROUPS; TEAM/SUBTEAM só em rascunhos e versões anteriores (lidos com o mesmo alcance). */
+export const agentScopeTypeSchema = z.enum(["ALL_TEAMS", "GROUPS", "TEAM", "SUBTEAM"])
+export const agentScopeLinkSchema = z.object({ teamId: z.string(), teamName: z.string().nullable().optional(), subteamId: z.string().nullable(), subteamName: z.string().nullable().optional() })
+export type AgentScopeLink = z.infer<typeof agentScopeLinkSchema>
+
 export const agentSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -53,13 +58,17 @@ export const agentSchema = z.object({
   createdAt: z.coerce.string(),
   createdByName: z.string().nullable().catch(null),
   usageCount: z.number().catch(0),
-  scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]),
+  /** Alcance (249): ALL_TEAMS ("Todos os Grupos e Subgrupos" do universo do agente) ou GROUPS + `scopeLinks`. */
+  scopeType: agentScopeTypeSchema,
   /** Universo de atuação (nulo = pendente). Opcional: os seletores encadeiam por ele (lib/operating-universe/hierarchy.ts). */
   operatingUniverse: operatingUniverseSchema.nullable().optional().catch(null),
-  teamId: z.string().nullable(),
-  teamName: z.string().nullable(),
-  subteamId: z.string().nullable(),
-  subteamName: z.string().nullable(),
+  /** Vínculos (Grupo inteiro = `subteamId` nulo, ou um Subgrupo daquele Grupo), com os nomes. Vazio em ALL_TEAMS. */
+  scopeLinks: z.array(agentScopeLinkSchema).optional().catch(undefined),
+  /** Legado (antes da 249): só aparece em respostas antigas/dublês de teste — o alcance vale pelos `scopeLinks`. */
+  teamId: z.string().nullable().optional(),
+  teamName: z.string().nullable().optional(),
+  subteamId: z.string().nullable().optional(),
+  subteamName: z.string().nullable().optional(),
   knowledgeDocuments: z.array(agentKnowledgeDocumentSchema),
   /** Limites de atuação: interruptor + "até onde este agente vai" (desligado, o texto fica guardado e não vale). */
   actionLimitsEnabled: z.boolean().default(false),
@@ -103,9 +112,11 @@ export const agentConfigSchema = z.object({
   objective: z.string(),
   description: z.string(),
   contextPrompt: z.string(),
-  scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]),
+  scopeType: agentScopeTypeSchema,
   teamId: z.string().nullable(),
   subteamId: z.string().nullable(),
+  /** Vínculos (249). Rascunho/versão anteriores guardam o formato antigo (TEAM/SUBTEAM + ids) e chegam sem eles. */
+  scopeLinks: z.array(z.object({ teamId: z.string(), subteamId: z.string().nullable() })).catch([]).default([]),
   specialty: z.string().nullable(),
   specialtyKind: specialtyKindSchema.nullable().catch(null),
   domain: z.string().nullable(),
@@ -119,6 +130,17 @@ export const agentConfigSchema = z.object({
   knowledgeDocumentIds: z.array(z.string()),
 })
 export type AgentConfig = z.infer<typeof agentConfigSchema>
+
+/** Alcance de uma configuração (rascunho/versão) no formato da 249, com os nomes conhecidos. */
+function configScopeOf(config: Pick<AgentConfig, "scopeType" | "teamId" | "subteamId" | "scopeLinks">, named: readonly AgentScopeLink[]): Pick<Agent, "scopeType" | "scopeLinks" | "teamId" | "subteamId"> {
+  if (config.scopeType === "ALL_TEAMS") return { scopeType: "ALL_TEAMS", scopeLinks: [], teamId: null, subteamId: null }
+  const links =
+    config.scopeType === "TEAM" ? (config.teamId ? [{ teamId: config.teamId, subteamId: null }] : [])
+    : config.scopeType === "SUBTEAM" ? (config.teamId && config.subteamId ? [{ teamId: config.teamId, subteamId: config.subteamId }] : [])
+    : config.scopeLinks
+  const nameOf = (link: { teamId: string; subteamId: string | null }) => named.find((candidate) => candidate.teamId === link.teamId && candidate.subteamId === link.subteamId)
+  return { scopeType: "GROUPS", scopeLinks: links.map((link) => ({ ...link, teamName: nameOf(link)?.teamName ?? null, subteamName: nameOf(link)?.subteamName ?? null })), teamId: null, subteamId: null }
+}
 
 /**
  * O que o formulário edita: o rascunho (quando há) sobre a versão vigente. Bases do rascunho sem título conhecido aparecem pelo
@@ -135,9 +157,9 @@ export function editableAgentOf(agent: Agent): Agent {
     objective: config.objective,
     description: config.description,
     contextPrompt: config.contextPrompt,
-    scopeType: config.scopeType,
-    teamId: config.teamId,
-    subteamId: config.subteamId,
+    // Alcance do rascunho no formato novo (o legado TEAM/SUBTEAM vira um vínculo com o mesmo alcance). Os nomes vêm dos vínculos da
+    // versão vigente quando são os mesmos; os demais, do seletor (que os busca pelo id).
+    ...configScopeOf(config, agent.scopeLinks ?? []),
     specialty: agentSpecialtySchema.nullable().catch(null).parse(config.specialty),
     specialtyKind: config.specialtyKind,
     domain: config.domain,

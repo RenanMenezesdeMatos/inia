@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest"
 import { embeddingTextsOf } from "../domain/embedding-texts.js"
 import { chunkKnowledgeDocument } from "../domain/knowledge-chunking.js"
 import { createKnowledgeRecall, knowledgeScaleRetrievalEnabled } from "./knowledge-recall.js"
+import { knowledgeGlossaryJargonEnabled } from "./knowledge-glossary-jargon.js"
+import { jargonRulesOf } from "../domain/glossary-jargon.js"
 
 /** Busca com provider e índice FALSOS: o "significado" é escolhido pelo teste (nenhuma lista de palavras existe no código da INIA). */
 const BASES = [
@@ -90,5 +92,48 @@ describe("busca nas bases em escala (camada 2 e 4)", () => {
     expect(knowledgeScaleRetrievalEnabled({})).toBe(true)
     expect(knowledgeScaleRetrievalEnabled({ INIA_KB_SCALE_RETRIEVAL: "off" })).toBe(false)
     expect(knowledgeScaleRetrievalEnabled({ INIA_KB_SCALE_RETRIEVAL: "0" })).toBe(false)
+  })
+})
+
+describe("gíria do Glossário no vetor (INIA_KB_GLOSSARY_JARGON_VECTORS)", () => {
+  const RULES = jargonRulesOf([{ term: "conta gêmea", definition: "Duplicidade de cobrança: a mesma cobrança duas vezes." }])
+  const base = { documentId: "contas", documentTitle: "Contestação de contas", versionId: "contas-v1", documentType: "PROCEDURE", chunks: chunkKnowledgeDocument({ id: "contas", title: "Contestação de contas", content: "## 1. Roaming\nVerificar o país.\n\n## 2. Duplicidade de cobrança\nVerificar se há duas contas iguais." }) }
+  // O "significado" falso só reconhece a gíria: o vetor do trecho sem a linha "Também chamado" não se parece com a pergunta.
+  const meaning = (text: string) => new Float32Array([/gêmea/i.test(text) ? 1 : 0, /roaming/i.test(text) ? 1 : 0, 0.05])
+  const plain = embeddingTextsOf(base)
+  const enriched = embeddingTextsOf(base, { jargon: RULES })
+  const run = async (stored: readonly { hash: string; text: string }[], jargon: boolean) => {
+    const vectors = new Map(stored.map((text) => [text.hash, meaning(text.text)]))
+    const recall = createKnowledgeRecall({
+      embeddingModel: async () => "fake-embed",
+      embedQuery: async ({ text }) => meaning(text),
+      loadVectors: async (_organizationId, _modelKey, hashes) => new Map(hashes.filter((hash) => vectors.has(hash)).map((hash) => [hash, vectors.get(hash)!])),
+      timeoutMs: 200,
+      ...(jargon ? { jargon: async () => RULES } : {}),
+    })
+    const question = "Cliente com conta gêmea, como resolvo?"
+    return recall.recall({ organizationId: "org", question, sources: [base], query: recall.startQuery("org", question) })
+  }
+
+  it("ligada: o trecho é achado pelo vetor com a gíria", async () => {
+    const result = await run(enriched, true)
+    expect(result.trace.indexedChunks).toBe(base.chunks.length)
+    expect(result.recalled[0]).toMatchObject({ documentId: "contas", chunkIndex: base.chunks.find((chunk) => chunk.heading.includes("Duplicidade"))!.index })
+  })
+
+  it("ligada antes da indexação: usa o vetor sem gíria como reserva (nenhum trecho some)", async () => {
+    const result = await run(plain, true)
+    expect(result.trace.indexedChunks).toBe(base.chunks.length)
+  })
+
+  it("desligada: procura só os hashes de sempre", async () => {
+    expect((await run(enriched, false)).trace.indexedChunks).toBe(base.chunks.length - 1)
+    expect((await run(plain, false)).trace.indexedChunks).toBe(base.chunks.length)
+  })
+
+  it("interruptor: desligado por padrão; só on/true/1 liga", () => {
+    expect(knowledgeGlossaryJargonEnabled({})).toBe(false)
+    expect(knowledgeGlossaryJargonEnabled({ INIA_KB_GLOSSARY_JARGON_VECTORS: "off" })).toBe(false)
+    expect(knowledgeGlossaryJargonEnabled({ INIA_KB_GLOSSARY_JARGON_VECTORS: "on" })).toBe(true)
   })
 })

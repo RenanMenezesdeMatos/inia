@@ -1,10 +1,11 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
-import { cleanup, fireEvent, screen, within } from "@testing-library/react"
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { offeredScopeUnits, pickScopeUnit } from "@/components/admin/shared/testing/scope-units-fake"
 
 import { ArgumentScriptCreateForm } from "./argument-script-editor"
 
@@ -24,6 +25,7 @@ vi.mock("@/services/admin/argument-script-service", () => ({
   fetchArgumentScriptScopeOptions: vi.fn(async () => ({ allTeams: true, teamIds: [], subteamIds: [] })),
   createArgumentScript: vi.fn(),
 }))
+vi.mock("@/services/scope-units/scope-units-service", async () => (await import("@/components/admin/shared/testing/scope-units-fake")).scopeUnitsServiceFrom(fixtures.teams))
 vi.mock("@/services/admin/org-structure-service", () => ({ fetchTeams: vi.fn(async () => fixtures.teams), fetchManageableTeams: vi.fn(), fetchSubjects: vi.fn(async () => []) }))
 vi.mock("@/services/admin/business-domain-service", () => ({ fetchBusinessDomains: vi.fn(async () => fixtures.domains) }))
 vi.mock("@/services/admin/knowledge-service", () => ({ fetchKnowledgeDocuments: vi.fn(async () => []) }))
@@ -59,20 +61,17 @@ describe("Novo argumentário — universo encadeia área e escopo", () => {
     fireEvent.click(screen.getByRole("option", { name: "Contratos" }))
 
     const scope = screen.getByTestId("argument-script-scope")
-    fireEvent.click(within(scope).getByRole("radio", { name: "Grupos específicos" }))
-    fireEvent.click(within(scope).getByRole("combobox", { name: "Adicionar Grupo" }))
-    expect(optionTexts()).toEqual(["Grandes Contas"])
-    fireEvent.click(screen.getByRole("option", { name: "Grandes Contas" }))
-    expect(within(scope).getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Grandes Contas (Grupo inteiro)")
+    fireEvent.click(within(scope).getByRole("radio", { name: /Grupos e Subgrupos específicos/ }))
+    expect(await offeredScopeUnits()).toEqual(["Grandes Contas"])
+    await pickScopeUnit("Grandes Contas")
+    expect(await within(scope).findByText("Vale para:", { exact: false })).toBeInTheDocument()
+    await waitFor(() => expect(within(scope).getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Grandes Contas (Grupo inteiro)"))
 
     await chooseUniverse(/^B2C/)
     expect(screen.getByRole("combobox", { name: /Área responsável/ })).toHaveTextContent("Selecione a área")
     // O Grupo de B2B sai do escopo; no B2C só o Grupo do B2C é oferecido.
-    expect(within(scope).queryByTestId("scope-group-t2")).toBeNull()
-    expect(within(scope).getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Nenhum Grupo escolhido")
-    fireEvent.click(within(scope).getByRole("combobox", { name: "Adicionar Grupo" }))
-    expect(optionTexts()).toEqual(["Atendimento"])
-    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" })
+    await waitFor(() => expect(within(scope).getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Nenhum Grupo ou Subgrupo escolhido"))
+    expect(await offeredScopeUnits()).toEqual(["Atendimento"])
     fireEvent.click(screen.getByRole("combobox", { name: /Área responsável/ }))
     expect(optionTexts()).toEqual(["Faturamento"])
   })

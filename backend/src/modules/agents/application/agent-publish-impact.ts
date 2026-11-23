@@ -2,7 +2,9 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { scopesAreCompatible } from "../../auth/application/manageable-scopes.js"
 import { INVESTIGATION_CAPABILITY_LABELS, normalizeCapabilities, type InvestigationCapability } from "../../investigation/domain/capabilities.js"
 import { describeActionLimits } from "../domain/action-limits.js"
-import type { AgentConfig } from "../domain/agent-config.js"
+import { scopedTargetOf } from "../../org-structure/application/resource-scope-links.js"
+import { linkKey } from "../../../shared/domain/scope-links/scope-links.js"
+import { agentScopeOf, type AgentConfig } from "../domain/agent-config.js"
 import { loadVisibleAgentReferences, type AgentReference } from "./agent-deletion.js"
 import { loadAgentLifecycle, loadAgentVersion, loadLiveAgentConfig } from "./agent-versions.js"
 
@@ -18,8 +20,6 @@ import { loadAgentLifecycle, loadAgentVersion, loadLiveAgentConfig } from "./age
  * versão com a vigente em vez do rascunho. Versão que não é do agente nesta organização = null (404 na rota).
  */
 
-const SCOPE_LABEL = (config: Pick<AgentConfig, "scopeType">, teamName: string | null, subteamName: string | null) =>
-  config.scopeType === "ALL_TEAMS" ? "Todos os grupos" : config.scopeType === "TEAM" ? `Grupo ${teamName ?? "—"}` : `Subgrupo ${subteamName ?? "—"}`
 
 export type PublishImpact = {
   /** Versão que nasce ao publicar e a vigente hoje (null = primeira publicação). */
@@ -36,12 +36,18 @@ export type PublishImpact = {
   }
 }
 
+/** "Todos os grupos" ou os vínculos por nome ("Grupo A (inteiro)", "Grupo B › Subgrupo B1"), em ordem estável. */
 async function scopeLabelOf(db: Pick<Database, "query">, config: AgentConfig): Promise<string> {
-  const names = (await db.query<{ team: string | null; subteam: string | null }>(
-    `select (select name from teams where id = $1::uuid) team, (select name from subteams where id = $2::uuid) subteam`,
-    [config.teamId, config.subteamId],
-  )).rows[0]
-  return SCOPE_LABEL(config, names?.team ?? null, names?.subteam ?? null)
+  const scope = agentScopeOf(config)
+  if (scope.scopeType === "ALL_TEAMS") return "Todos os grupos"
+  if (scope.links.length === 0) return "Nenhum Grupo"
+  const names = (await db.query<{ key: string; label: string }>(
+    `select u.t::text || ':' || coalesce(u.s::text, '*') "key", case when u.s is null then t.name || ' (inteiro)' else t.name || ' › ' || coalesce(st.name, '—') end "label"
+       from unnest($1::uuid[], $2::uuid[]) u(t, s) left join teams t on t.id = u.t left join subteams st on st.id = u.s`,
+    [scope.links.map((link) => link.teamId), scope.links.map((link) => link.subteamId)],
+  )).rows
+  const labelOf = new Map(names.map((row) => [row.key, row.label]))
+  return scope.links.map((link) => labelOf.get(linkKey(link)) ?? "—").sort((a, b) => a.localeCompare(b, "pt-BR")).join(", ")
 }
 
 export async function computePublishImpact(
@@ -70,7 +76,7 @@ export async function computePublishImpact(
   const consumers = await Promise.all(
     visible.references.map(async ({ scope, ...reference }) => ({
       ...reference,
-      losesAccess: next ? !(await scopesAreCompatible(db, scope, { scopeType: next.scopeType, teamId: next.teamId, subteamId: next.subteamId })) : false,
+      losesAccess: next ? !(await scopesAreCompatible(db, scopedTargetOf(scope), scopedTargetOf(agentScopeOf(next)))) : false,
     })),
   )
   const before = live

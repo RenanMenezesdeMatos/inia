@@ -2,7 +2,13 @@ import { Router } from "express"
 import { z } from "zod"
 import type { Database } from "../../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../../shared/domain/domain-error.js"
-import { canManageScope, getManageableScopes, normalizeScopedTarget, scopesAreCompatible } from "../../../auth/application/manageable-scopes.js"
+import { canManageScope, getManageableScopes, scopesAreCompatible } from "../../../auth/application/manageable-scopes.js"
+import { loadResourceScopeLinks, resolveResourceScopeForWrite } from "../../../org-structure/application/resource-scope-links.js"
+import { assertScopeLinksInUniverse } from "../../../org-structure/application/scope-unit-admission.js"
+import type { ResourceScope } from "../../../../shared/domain/scope-links/resource-scope.js"
+import { linkKey, sortLinks } from "../../../../shared/domain/scope-links/scope-links.js"
+import { resourceScopeFields, resourceScopeTypeSchema, scopeLinksInputSchema } from "../../../../shared/presentation/scope-links-schema.js"
+import { workflowReachOf, workflowReachParams, workflowReachSql, workflowResourceScope, workflowScopedTarget, workflowScopeKey } from "../../domain/workflow-scope.js"
 import type { FlowGraph } from "../../domain/graph-schema.js"
 import { normalizeManualTrigger, validateManualTrigger, validateScheduleTrigger } from "../../application/validate-workflow-for-publish.js"
 import { triggerConfigSchema, type TriggerConfig } from "../../domain/trigger-config-schema.js"
@@ -15,6 +21,7 @@ import { structureAnchorGroupRef } from "../../domain/structure-anchor-schema.js
 import { assertGoLiveConfirmed, computeGoLiveImpact } from "../../application/go-live-impact.js"
 import { assertPublishedWorkflowMatchesIndicatorCatalog } from "../../application/indicator-graph-guard.js"
 import { writeDraftConfiguration } from "../../application/workflow-configuration-store.js"
+import type { WorkflowConfiguration } from "../../domain/workflow-configuration.js"
 import { NOT_FOUND, WORKFLOW_LIST_SELECT, assertAnchorInScope, canManageWorkflow, fetchScopedRow, triggerAllowsConsolidatedMode, triggerAllowsPopulationFilter } from "./shared.js"
 import { sessionUser } from "../../../auth/presentation/session-user.js"
 import { operatingUniverseSchema, optionalOperatingUniverseSchema } from "../../../operating-universe/domain/operating-universe.js"
@@ -23,9 +30,9 @@ import { assertUniverseRequiredFor } from "../../../operating-universe/applicati
 const createWorkflowSchema = z.object({
   name: z.string().trim().min(2),
   description: z.string().trim().optional(),
-  scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]).default("ALL_TEAMS"),
-  teamId: z.string().uuid().optional(),
-  subteamId: z.string().uuid().optional(),
+  /** Abrangência (249): ALL_TEAMS ou GROUPS + `scopeLinks` (o formato antigo TEAM/SUBTEAM + ids continua aceito e vira um vínculo). */
+  ...resourceScopeFields,
+  scopeType: resourceScopeTypeSchema.default("ALL_TEAMS"),
   trigger: triggerConfigSchema,
   /** Universo de atuação (B2B/B2C/B2X). Obrigatório depois que a organização ativa a exigência (checado no servidor). */
   operatingUniverse: optionalOperatingUniverseSchema,
@@ -34,9 +41,9 @@ const createWorkflowSchema = z.object({
 const updateWorkflowSchema = z.object({
   name: z.string().trim().min(2).optional(),
   description: z.string().trim().optional(),
-  scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]).optional(),
-  teamId: z.string().uuid().nullable().optional(),
-  subteamId: z.string().uuid().nullable().optional(),
+  /** Abrangência do RASCUNHO (só vale ao Publicar): ALL_TEAMS ou GROUPS + `scopeLinks`. */
+  ...resourceScopeFields,
+  scopeType: resourceScopeTypeSchema.optional(),
   trigger: triggerConfigSchema.optional(),
   /** Universo de atuação: vai para o RASCUNHO (como a Abrangência) e só vale ao Publicar. */
   operatingUniverse: operatingUniverseSchema.nullable().optional(),
@@ -49,7 +56,9 @@ const schedulePreviewSchema = z.object({
   trigger: triggerConfigSchema,
   // Só usado (e necessário) quando trigger.mode === "RELATIVE_TO_SHIFT" — o cálculo depende de
   // QUEM está no escopo do Workflow, algo que a Agenda de calendário nunca precisou saber.
-  scope: z.object({ scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]), teamId: z.string().uuid().nullable().optional() }).optional(),
+  scope: z
+    .object({ scopeType: resourceScopeTypeSchema, teamId: z.string().uuid().nullish(), subteamId: z.string().uuid().nullish(), scopeLinks: scopeLinksInputSchema.optional() })
+    .optional(),
 })
 
 function starterGraph(): FlowGraph {
@@ -89,6 +98,18 @@ async function validateTriggerExists(db: Database, organizationId: string, trigg
   if (!indicator.rows[0]) throw new DomainError("Indicador não encontrado.", "INDICATOR_NOT_FOUND", 404)
 }
 
+/**
+ * Alcance que o Workflow JÁ tinha (publicado ∪ rascunho): vínculos dele continuam aceitos numa edição mesmo que hoje não sejam elegíveis;
+ * e "Todos" que já era "Todos" (num dos dois) se mantém sem exigir mais do que a gestão do próprio Workflow.
+ */
+function previousScopeOf(current: { scopeType: string; scopeLinks: { teamId: string; subteamId: string | null }[]; teamId?: string | null; subteamId?: string | null; live: WorkflowConfiguration }, requestedType: string): ResourceScope {
+  const draft = workflowResourceScope(current)
+  const live = workflowResourceScope(current.live)
+  if (requestedType === "ALL_TEAMS" && (draft.scopeType === "ALL_TEAMS" || live.scopeType === "ALL_TEAMS")) return { scopeType: "ALL_TEAMS", links: [] }
+  const byKey = new Map([...draft.links, ...live.links].map((link) => [linkKey(link), link]))
+  return { scopeType: "GROUPS", links: sortLinks([...byKey.values()]) }
+}
+
 /** Criar Workflow, prévia da agenda e alterar os dados do Workflow. Registradas na ordem original (ver workflow-router.ts). */
 export function registerWorkflowDefinitionRoutes(router: Router, db: Database): void {
 
@@ -97,32 +118,43 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
     const input = createWorkflowSchema.parse(request.body)
 
     const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
-    const scope = await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })
-    if (!scope || !canManageScope(scopes, scope)) {
-      throw new DomainError("Você não tem permissão para criar workflows nesse escopo.", "WORKFLOW_SCOPE_FORBIDDEN", 403)
-    }
+    await assertUniverseRequiredFor(db, organizationId, input.operatingUniverse, "do Workflow")
+    // Abrangência: ALL_TEAMS só com escopo de organização; vínculos no escopo de quem cria, do universo do Workflow e com operador em
+    // produção (resolveResourceScopeForWrite — a mesma regra de Agentes e Orquestradores).
+    const scope = await resolveResourceScopeForWrite(db, organizationId, scopes, input, {
+      codePrefix: "WORKFLOW",
+      universe: input.operatingUniverse,
+      allTeamsMessage: "Você não tem permissão para criar workflows nesse escopo: só quem administra a organização inteira escolhe “Todos os Grupos e Subgrupos”.",
+    })
 
     validateScheduleTrigger(input.trigger)
     await validateTriggerExists(db, organizationId, input.trigger)
-    await assertUniverseRequiredFor(db, organizationId, input.operatingUniverse, "do Workflow")
     const trigger = normalizeManualTrigger(input.trigger)
 
-    // Nunca publicado: rascunho e configuração viva nascem iguais (não há runtime sem versão publicada).
+    // Nunca publicado: rascunho e configuração viva nascem iguais (não há runtime sem versão publicada) — inclusive os vínculos
+    // (`workflow_scope_links` = publicados; `draft_scope_links` = rascunho), no mesmo comando.
     const result = await db.query<{ id: string }>(
-      `insert into workflows(organization_id, name, description, scope_type, team_id, subteam_id, trigger_config, draft_graph, created_by,
-                             draft_scope_type, draft_team_id, draft_subteam_id, draft_trigger_config, operating_universe, draft_operating_universe)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$4,$5,$6,$7,$10,$10) returning id`,
+      `with created as (
+         insert into workflows(organization_id, name, description, scope_type, trigger_config, draft_graph, created_by,
+                               draft_scope_type, draft_scope_links, draft_trigger_config, operating_universe, draft_operating_universe)
+         values ($1,$2,$3,$4,$5,$6,$7,$4,$8::jsonb,$5,$9,$9) returning id, organization_id
+       ), links as (
+         insert into workflow_scope_links (workflow_id, organization_id, team_id, subteam_id)
+         select c.id, c.organization_id, l.t, l.s from created c cross join unnest($10::uuid[], $11::uuid[]) as l(t, s)
+       )
+       select id from created`,
       [
         organizationId,
         input.name,
         input.description ?? null,
         scope.scopeType,
-        scope.teamId,
-        scope.subteamId,
         JSON.stringify(withScheduleAnchor(trigger)),
         JSON.stringify(starterGraph()),
         request.user?.personId ?? null,
+        JSON.stringify(scope.links),
         input.operatingUniverse,
+        scope.links.map((link) => link.teamId),
+        scope.links.map((link) => link.subteamId),
       ],
     )
     const listResult = await db.query(`${WORKFLOW_LIST_SELECT} and w.id = $2`, [organizationId, result.rows[0]!.id])
@@ -145,14 +177,17 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
 
     if (input.trigger.mode === "RELATIVE_TO_SHIFT") {
       const relative = input.trigger.relative!
-      const scope = input.scope ?? { scopeType: "ALL_TEAMS" as const, teamId: null }
-      // A prévia lista nomes de operadores do escopo: só de um escopo que quem pede administra (achado A-F09).
-      if (!canManageScope(await getManageableScopes(db, sessionUser(request), "workflows.manage"), { scopeType: scope.scopeType, teamId: scope.teamId ?? null, subteamId: null })) {
+      const requested = input.scope ?? { scopeType: "ALL_TEAMS" as const }
+      const scope = { scopeType: requested.scopeType, teamId: requested.teamId ?? null, subteamId: requested.subteamId ?? null, scopeLinks: (requested.scopeLinks ?? []).flatMap((link) => (link.teamId ? [{ teamId: link.teamId, subteamId: link.subteamId }] : [])) }
+      // A prévia lista nomes de operadores do escopo: só de um escopo que quem pede administra (achado A-F09) — com vários Grupos,
+      // todos eles.
+      if (!canManageScope(await getManageableScopes(db, sessionUser(request), "workflows.manage"), workflowScopedTarget(scope))) {
         throw new DomainError("Você só pode pré-visualizar a agenda de Grupos do seu escopo.", "FORBIDDEN", 403)
       }
       const operators = await db.query<{ id: string; name: string }>(
-        `select id, name from people where organization_id = $1 and role = 'OPERATOR' and active and ($2 = 'ALL_TEAMS' or team_id = $3)`,
-        [organizationId, scope.scopeType, scope.teamId ?? null],
+        `select p.id, p.name from people p where p.organization_id = $1 and p.role = 'OPERATOR' and p.active
+            and ${workflowReachSql("p", { all: "$2", wholeTeamIds: "$3", subteamIds: "$4" })}`,
+        [organizationId, ...workflowReachParams(workflowReachOf(scope))],
       )
 
       // Próximo dia útil assumido (Segunda a Sexta — ver isAssumedWorkday) a partir de hoje, pra
@@ -216,34 +251,44 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
     const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
-    const movedScope = input.scopeType !== undefined ? await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null }) : null
-    if (input.scopeType !== undefined && (!movedScope || !canManageScope(scopes, movedScope))) {
-      throw new DomainError("Você não tem permissão para mover o workflow para esse escopo.", "WORKFLOW_SCOPE_FORBIDDEN", 403)
+    // Abrangência nova (do RASCUNHO): mesma validação da criação, preservando os vínculos que o Workflow já tinha (publicados ou no
+    // rascunho) mesmo que hoje não seriam elegíveis; só os NOVOS precisam ser do universo do rascunho e ter operador em produção.
+    const draftUniverse = input.operatingUniverse !== undefined ? input.operatingUniverse : current.operatingUniverse
+    const nextScope: ResourceScope | null =
+      input.scopeType !== undefined
+        ? await resolveResourceScopeForWrite(db, organizationId, scopes, input, {
+            codePrefix: "WORKFLOW",
+            previous: previousScopeOf(current, input.scopeType),
+            universe: draftUniverse,
+            allTeamsMessage: "Você não tem permissão para mover o workflow para esse escopo: só quem administra a organização inteira escolhe “Todos os Grupos e Subgrupos”.",
+          })
+        : null
+    const nextScopeInput = nextScope ? { scopeType: nextScope.scopeType, scopeLinks: nextScope.links } : current
+    // Universo do rascunho mudou: TODOS os vínculos que ficam (não só os novos) precisam ser do universo novo (run-10 SEA-04).
+    if (draftUniverse && draftUniverse !== current.operatingUniverse) {
+      await assertScopeLinksInUniverse(db, organizationId, nextScope ? nextScope.links : workflowResourceScope(current).links, draftUniverse)
     }
-    const nextScopeType = movedScope?.scopeType ?? current.scopeType
-    const nextTeamId = movedScope ? movedScope.teamId : current.teamId
-    const nextSubteamId = movedScope ? movedScope.subteamId : current.subteamId
 
     // Trocar a Abrangência não pode deixar uma referência cross-group inválida silenciosamente
     // pra trás (Parte 9 do pedido) — reavalia todo Orchestrator já referenciado no RASCUNHO contra o
     // escopo NOVO antes de aceitar a troca. A versão publicada continua rodando com a Abrangência
     // publicada até a próxima publicação (que valida o rascunho inteiro de novo).
-    const scopeIsChanging =
-      input.scopeType !== undefined && (nextScopeType !== current.scopeType || nextTeamId !== current.teamId || nextSubteamId !== current.subteamId)
+    const scopeIsChanging = nextScope !== null && workflowScopeKey(nextScopeInput) !== workflowScopeKey(current)
     if (scopeIsChanging) {
       const referencedOrchestratorIds = new Set<string>()
       for (const node of (current.draftGraph as FlowGraph | null)?.nodes ?? []) {
         // Etapa de rascunho ainda sem orquestrador escolhido não tem o que conferir.
         if (node.type === "orchestrator" && node.config.orchestratorId) referencedOrchestratorIds.add(node.config.orchestratorId)
       }
-      const nextScope = { scopeType: nextScopeType, teamId: nextTeamId, subteamId: nextSubteamId }
+      const nextTarget = workflowScopedTarget(nextScopeInput)
       if (referencedOrchestratorIds.size > 0) {
         const orchestratorRows = await db.query<{ id: string; name: string; scopeType: string; teamId: string | null; subteamId: string | null }>(
           `select id, name, scope_type "scopeType", team_id "teamId", subteam_id "subteamId" from assistant_orchestrators where id = any($1::uuid[])`,
           [[...referencedOrchestratorIds]],
         )
+        const linksById = await loadResourceScopeLinks(db, "ORCHESTRATOR", orchestratorRows.rows.flatMap((orchestrator) => (orchestrator.scopeType === "GROUPS" ? [orchestrator.id] : [])))
         for (const orchestrator of orchestratorRows.rows) {
-          if (!(await scopesAreCompatible(db, nextScope, orchestrator))) {
+          if (!(await scopesAreCompatible(db, nextTarget, workflowScopedTarget({ ...orchestrator, scopeLinks: linksById.get(orchestrator.id) ?? [] })))) {
             throw new DomainError(
               `Não é possível mover para esse escopo: o Orchestrator "${orchestrator.name}", já usado neste workflow, não está disponível para o grupo de destino.`,
               "WORKFLOW_ORCHESTRATOR_SCOPE_FORBIDDEN",
@@ -262,7 +307,7 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
           organizationId,
           consolidatedStructureAnchorId(structure),
           structureAnchorGroupRef(structure),
-          nextScope,
+          nextScopeInput,
           "Não é possível mover para esse escopo: a Estrutura Consolidada já configurada ficaria fora do grupo de destino.",
           "WORKFLOW_CONSOLIDATED_STRUCTURE_OUT_OF_SCOPE",
           409,
@@ -275,7 +320,7 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
           organizationId,
           populationFilterAnchorId(filter),
           populationFilterGroupRef(filter),
-          nextScope,
+          nextScopeInput,
           "Não é possível mover para esse escopo: o Filtro Populacional já configurado ficaria fora do grupo de destino.",
           "WORKFLOW_POPULATION_FILTER_OUT_OF_SCOPE",
           409,
@@ -327,11 +372,11 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
     }
 
     if (input.operatingUniverse === null) await assertUniverseRequiredFor(db, organizationId, null, "do Workflow")
-    if (input.trigger || input.scopeType !== undefined || input.operatingUniverse !== undefined) {
+    if (input.trigger || nextScope || input.operatingUniverse !== undefined) {
       await writeDraftConfiguration(db, organizationId, request.params.id!, {
         ...(input.operatingUniverse !== undefined ? { universe: { operatingUniverse: input.operatingUniverse } } : {}),
         ...(input.trigger ? { trigger: withScheduleAnchor(normalizeManualTrigger(input.trigger), current.triggerConfig, current.live.triggerConfig) } : {}),
-        ...(input.scopeType !== undefined ? { scope: { scopeType: nextScopeType, teamId: nextTeamId, subteamId: nextSubteamId } } : {}),
+        ...(nextScope ? { scope: { scopeType: nextScope.scopeType, scopeLinks: nextScope.links } } : {}),
       })
     }
     const updated = await db.query<{ id: string }>(

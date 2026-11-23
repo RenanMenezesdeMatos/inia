@@ -2,6 +2,7 @@ import { z } from "zod"
 import { outputSchemaSchema } from "./output-schema-fields.js"
 import { businessDomainCodeSchema } from "../../business-domains/domain/business-domain.js"
 import { orchestratorPolicyKindSchema, routingPolicyKindSchema } from "./orchestrator-policy.js"
+import { resourceScopeFields } from "../../../shared/presentation/scope-links-schema.js"
 
 // Padrão BOTH preserva o comportamento de todo orquestrador cadastrado antes deste campo
 // existir — restringir a um dos dois lados é uma escolha explícita do admin.
@@ -11,9 +12,10 @@ export const createOrchestratorSchema = z.object({
   /** Universo de atuação (B2B/B2C/B2X) — classificação direta; obrigatório com a exigência ativa (servidor). */
   operatingUniverse: z.enum(["B2B", "B2C", "B2X"]).nullish(),
   name: z.string().trim().min(2),
-  scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]).default("ALL_TEAMS"),
-  teamId: z.string().uuid().optional(),
-  subteamId: z.string().uuid().optional(),
+  // Alcance (249): "Todos os Grupos e Subgrupos" do universo do Orquestrador ou GROUPS + `scopeLinks` (Grupo inteiro ou um Subgrupo
+  // cada). TEAM/SUBTEAM + ids (formato antigo) continuam aceitos e viram um vínculo.
+  ...resourceScopeFields,
+  scopeType: resourceScopeFields.scopeType.default("ALL_TEAMS"),
   orchestratorAgentId: z.string().uuid(),
   specialistAgentIds: z.array(z.string().uuid()).default([]),
   invocationMode: orchestratorInvocationModeSchema.default("BOTH"),
@@ -45,9 +47,8 @@ export const createOrchestratorSchema = z.object({
 
 export const updateOrchestratorSchema = z.object({
   name: z.string().trim().min(2).optional(),
-  scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]).optional(),
-  teamId: z.string().uuid().nullable().optional(),
-  subteamId: z.string().uuid().nullable().optional(),
+  ...resourceScopeFields,
+  scopeType: resourceScopeFields.scopeType.optional(),
   orchestratorAgentId: z.string().uuid().optional(),
   specialistAgentIds: z.array(z.string().uuid()).optional(),
   /** PEN-050: versão do Orquestrador em que a edição se baseou. Outra gravação no meio = 409, nada gravado. */

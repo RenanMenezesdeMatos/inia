@@ -1,6 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { PopulationFilter } from "../domain/population-filter-schema.js"
 import { structureAnchorPersonId, type StructureAnchor } from "../domain/structure-anchor-schema.js"
+import { workflowReachOf, workflowReachParams, workflowReachSql, type WorkflowScopeInput } from "../domain/workflow-scope.js"
 
 /**
  * Peça que faltava no motor (achado da auditoria da evolução de Abrangência/Unidade de Análise):
@@ -68,10 +69,8 @@ export async function resolveStructureAnchorOperatorIds(db: Database, structure:
   }
 }
 
-export type WorkflowScopeRef = {
-  scopeType: string
-  teamId: string | null
-  subteamId?: string | null | undefined
+/** Abrangência (ALL_TEAMS ou GROUPS + `scopeLinks`; o legado TEAM/SUBTEAM + ids continua entendido — workflow-scope.ts). */
+export type WorkflowScopeRef = WorkflowScopeInput & {
   /** Universo do Workflow — obrigatório para nenhum chamador esquecer o filtro. */
   operatingUniverse: string | null
   /**
@@ -89,17 +88,18 @@ export function activeAccessSql(alias: string): string {
 /** Todo operador ativo elegível pela Abrangência do Workflow — o mesmo universo que hoje
  * matricula um-por-operador quando não existe filtro nenhum (`ALL`, ausente = sempre foi assim).
  * Reaproveitado por `resolvePopulationFilterOperatorIds` e por workflow-eligibility.ts.
- * SUBTEAM casa por `subteam_id` (um Workflow de Subgrupo pode ter `team_id` nulo — a Abrangência
- * de Subgrupo nunca é "o Grupo inteiro"); um `scope_type` desconhecido não elege ninguém. */
+ * ALL_TEAMS = todos os Grupos (do universo), inclusive os criados depois da publicação: a população é resolvida AGORA, a cada execução.
+ * Vínculo de Grupo inteiro casa por `team_id`; de Subgrupo, só por `subteam_id` (nunca os irmãos). Uma condição sobre a linha da
+ * pessoa — cada operador uma vez, por mais vínculos que o alcancem. GROUPS sem vínculo e `scope_type` desconhecido não elegem ninguém. */
 export async function resolveScopeOperatorIds(db: Database, organizationId: string, scope: WorkflowScopeRef): Promise<string[]> {
   const result = await db.query<{ id: string }>(
     `select id from people where organization_id = $1 and role = 'OPERATOR' and active
-       and (($2 = 'ALL_TEAMS') or ($2 = 'TEAM' and team_id = $3) or ($2 = 'SUBTEAM' and subteam_id = $4))
+       and ${workflowReachSql("people", { all: "$2", wholeTeamIds: "$3", subteamIds: "$4" })}
        -- Universo: com a exigência ativa, só operadores do universo do Workflow (Workflow pendente não elege ninguém).
        and (not exists (select 1 from organizations o where o.id = $1 and o.operating_universe_enforced_at is not null) or operating_universe = $5::text)
        -- "Somente quem tem acesso ativo à INIA": só quem tem conta de acesso ativa.
        and (not $6::boolean or ${activeAccessSql("people")})`,
-    [organizationId, scope.scopeType, scope.teamId, scope.subteamId ?? null, scope.operatingUniverse, scope.requireActiveAccess],
+    [organizationId, ...workflowReachParams(workflowReachOf(scope)), scope.operatingUniverse, scope.requireActiveAccess],
   )
   return result.rows.map((row) => row.id)
 }

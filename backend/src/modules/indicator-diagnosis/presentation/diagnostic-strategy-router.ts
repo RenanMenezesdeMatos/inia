@@ -9,6 +9,8 @@ import { localDateOf } from "../../workflows/application/time-window.js"
 import { discardStrategyDraft, loadStrategyOverview, publishStrategyDraft, saveStrategyDraft, setStrategyActive, type StrategyActor } from "../application/diagnostic-strategy-service.js"
 import { simulateDiagnosticStrategy } from "../application/simulate-diagnostic-strategy.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { scopedTargetOf } from "../../org-structure/application/resource-scope-links.js"
+import { resourceScopeLinksJsonSql, resourceScopeOf, resourceScopeReaches, type ResourceScope } from "../../../shared/domain/scope-links/resource-scope.js"
 
 /**
  * V1.6.2 — /api/v1/admin/indicator-diagnostic-strategies (montado com `configuration.manage`, a mesma permissão da tela de
@@ -45,12 +47,16 @@ export function createDiagnosticStrategyRouter(db: Database) {
    * colaborador escolhido, só um Agent que valeria para ele (global, do Grupo ou do Subgrupo dele). Antes qualquer Agent da
    * organização rodava com as bases de outro Grupo e o resultado voltava a quem testou (achado AI-06 da auditoria de 17/10/2026).
    */
-  type AgentScopeRow = { id: string; name: string; scope_type: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; team_id: string | null; subteam_id: string | null }
-  const agentUsableBy = (scopes: ManageableScopes, agent: AgentScopeRow) => agent.scope_type === "ALL_TEAMS" || canManageScope(scopes, { scopeType: agent.scope_type, teamId: agent.team_id, subteamId: agent.subteam_id })
+  // Alcance do Agent (249): ALL_TEAMS ou os vínculos (Grupo inteiro ou Subgrupo). Usar exige administrar TODOS os vínculos; valer para
+  // o colaborador = algum vínculo o alcança (Grupo inteiro = qualquer Subgrupo dele; Subgrupo = só ele, nunca os irmãos).
+  type AgentScopeRow = { id: string; name: string; scope_type: string; scope_links: { teamId: string; subteamId: string | null }[] }
+  const AGENT_SCOPE_COLUMNS = `id, name, scope_type, ${resourceScopeLinksJsonSql("AGENT", "agents.id")} scope_links`
+  const agentScopeOf = (agent: AgentScopeRow): ResourceScope => resourceScopeOf({ scopeType: agent.scope_type === "ALL_TEAMS" ? "ALL_TEAMS" : "GROUPS", scopeLinks: agent.scope_links })
+  const agentUsableBy = (scopes: ManageableScopes, agent: AgentScopeRow) => agent.scope_type === "ALL_TEAMS" || canManageScope(scopes, scopedTargetOf(agentScopeOf(agent)))
   const agentFitsPerson = async (organizationId: string, agent: AgentScopeRow, personId: string) => {
     if (agent.scope_type === "ALL_TEAMS") return true
     const person = (await db.query<{ team_id: string | null; subteam_id: string | null }>(`select team_id, subteam_id from people where id = $1 and organization_id = $2`, [personId, organizationId])).rows[0]
-    return agent.scope_type === "TEAM" ? Boolean(person && agent.team_id === person.team_id) : Boolean(person && agent.subteam_id === person.subteam_id)
+    return Boolean(person && resourceScopeReaches(agentScopeOf(agent), { teamId: person.team_id, subteamId: person.subteam_id }))
   }
 
   router.get("/indicators/:indicatorId", async (request, response) => {
@@ -134,7 +140,7 @@ export function createDiagnosticStrategyRouter(db: Database) {
       byPerson.set(row.person_id, list)
     }
     const collaborators = inScope.map((row) => ({ id: row.person_id, name: row.name, measurements: byPerson.get(row.person_id) ?? [] }))
-    const agents = (await db.query<AgentScopeRow>(`select id, name, scope_type, team_id, subteam_id from agents where organization_id = $1 and active order by name`, [organizationId])).rows
+    const agents = (await db.query<AgentScopeRow>(`select ${AGENT_SCOPE_COLUMNS} from agents where organization_id = $1 and active order by name`, [organizationId])).rows
       .filter((agent) => agentUsableBy(scopes, agent))
       .map((agent) => ({ id: agent.id, name: agent.name }))
     response.json({ data: { collaborators, agents } })
@@ -145,7 +151,7 @@ export function createDiagnosticStrategyRouter(db: Database) {
     const body = simulateBodySchema.parse(request.body)
     const scopes = await scopesOf(request)
     if (!(await personInScope(organizationId, scopes, body.collaboratorId))) throw new DomainError("Colaborador não encontrado.", "NOT_FOUND", 404)
-    const agent = (await db.query<AgentScopeRow>(`select id, name, scope_type, team_id, subteam_id from agents where id = $1 and organization_id = $2`, [body.agentId, organizationId])).rows[0]
+    const agent = (await db.query<AgentScopeRow>(`select ${AGENT_SCOPE_COLUMNS} from agents where id = $1 and organization_id = $2`, [body.agentId, organizationId])).rows[0]
     if (!agent || !agentUsableBy(scopes, agent) || !(await agentFitsPerson(organizationId, agent, body.collaboratorId))) throw new DomainError("Agent não encontrado para este colaborador.", "AGENT_NOT_FOUND", 404)
     response.json({ data: await simulateDiagnosticStrategy(db, organizationId, { indicatorId: request.params.indicatorId, ...body }) })
   })

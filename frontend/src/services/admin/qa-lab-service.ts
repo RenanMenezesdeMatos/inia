@@ -68,7 +68,8 @@ export async function findQaMeasurements(params: FindMeasurementsParams): Promis
   return z.array(qaMeasurementSchema).parse(await adminGet(`${BASE}/test-data/measurements${toQuery(params)}`))
 }
 
-export type ListPeopleParams = { workflowId?: string; scopeType?: string; teamId?: string; subteamId?: string; search?: string; role?: string; limit?: number }
+/** `workflowId` = só os elegíveis do Workflow (Abrangência + Filtro) na configuração de `graphSource` (padrão: rascunho). */
+export type ListPeopleParams = { workflowId?: string; graphSource?: "DRAFT" | "PUBLISHED"; scopeType?: string; teamId?: string; subteamId?: string; search?: string; role?: string; limit?: number }
 
 export async function listQaPeople(params: ListPeopleParams): Promise<QaPersonOption[]> {
   return z.array(qaPersonOptionSchema).parse(await adminGet(`${BASE}/test-data/people${toQuery(params)}`))

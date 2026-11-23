@@ -31,7 +31,30 @@ export type KnowledgeOption = {
   products: string[]
 }
 
-export type AgentScope = { scopeType: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; teamId?: string | undefined; subteamId?: string | undefined }
+/**
+ * Alcance do agente no formulário (249): todos os Grupos, ou os vínculos (Grupo inteiro ou um Subgrupo — o Grupo-pai pode vir vazio: o
+ * servidor acha o pai real). O formato antigo de vínculo único (TEAM/SUBTEAM) continua aceito.
+ */
+export type AgentScope =
+  | { scopeType: "ALL_TEAMS" }
+  | { scopeType: "GROUPS"; links: readonly { teamId?: string | null | undefined; subteamId?: string | null | undefined }[] }
+  | { scopeType: "TEAM" | "SUBTEAM"; teamId?: string | undefined; subteamId?: string | undefined }
+
+/** Vínculos do alcance (legado → um vínculo). */
+function agentScopeLinks(scope: AgentScope): { teamId: string | null; subteamId: string | null }[] {
+  if (scope.scopeType === "ALL_TEAMS") return []
+  if (scope.scopeType === "GROUPS") return scope.links.map((link) => ({ teamId: link.teamId ?? null, subteamId: link.subteamId ?? null }))
+  if (scope.scopeType === "TEAM") return scope.teamId ? [{ teamId: scope.teamId, subteamId: null }] : []
+  return scope.subteamId ? [{ teamId: scope.teamId ?? null, subteamId: scope.subteamId }] : []
+}
+
+/** Vínculos como dois arrays paralelos (Grupo, Subgrupo) para o SQL — o Grupo-pai de um Subgrupo sem Grupo sai de `subteams`. */
+function linkArraysSql(sql: SqlFilter, scope: AgentScope): { teams: string; subteams: string; teamIds: string } {
+  const links = agentScopeLinks(scope)
+  const teams = `${sql.param(links.map((link) => link.teamId))}::uuid[]`
+  const subteams = `${sql.param(links.map((link) => link.subteamId))}::uuid[]`
+  return { teams, subteams, teamIds: `array(select coalesce(ak_u.t, (select ak_st.team_id from subteams ak_st where ak_st.id = ak_u.s)) from unnest(${teams}, ${subteams}) ak_u(t, s))` }
+}
 
 export type KnowledgeOptionsFilter = {
   search?: string | undefined
@@ -39,7 +62,7 @@ export type KnowledgeOptionsFilter = {
   agentUniverse?: string | undefined
   /** Filtro "Universo" do seletor: um universo ou PENDING (sem classificação). */
   universe?: string | undefined
-  /** Alcance do agente: Grupo/Subgrupo só aceita base global ou do mesmo Grupo (a regra do salvar). */
+  /** Alcance do agente: com vínculos, só base global ou de um dos Grupos dele (a regra do salvar). */
   agentScope?: AgentScope | undefined
   /** Filtro de Grupo/Subgrupo do seletor (vínculo da própria base). */
   scopeType?: "ALL_TEAMS" | undefined
@@ -69,8 +92,9 @@ export function knowledgeOptionsWhere(organizationId: string, scopes: Manageable
   if (filter.universe === "PENDING") sql.add(`d.operating_universe is null`)
   else if (filter.universe) sql.add(`d.operating_universe = ${sql.param(filter.universe)}`)
   const agentScope = filter.agentScope
-  if (agentScope && agentScope.scopeType !== "ALL_TEAMS") {
-    sql.add(knowledgeFitsAgentSql("d.id", { scopeType: `${sql.param(agentScope.scopeType)}::text`, teamId: `${sql.param(agentScope.teamId ?? null)}::uuid`, subteamId: `${sql.param(agentScope.subteamId ?? null)}::uuid` }))
+  // Sem vínculo ainda (formulário em branco) = sem restrição, como antes; o salvar recusa a escolha incompatível.
+  if (agentScope && agentScope.scopeType !== "ALL_TEAMS" && agentScopeLinks(agentScope).length > 0) {
+    sql.add(knowledgeFitsAgentSql("d.id", { scopeType: `'GROUPS'`, teamIds: linkArraysSql(sql, agentScope).teamIds }))
   }
   if (filter.subteamId) {
     const subteam = sql.param(filter.subteamId)
@@ -160,14 +184,19 @@ export async function knowledgeOptionIds(db: Pick<Database, "query">, organizati
 }
 
 /**
- * Bases que o Grupo do agente já traz (regra de sempre do formulário): globais e, para agente de Grupo, as vinculadas ao Grupo (inclusive
- * por Subgrupo); para agente de Subgrupo, as vinculadas ao próprio Subgrupo. Agente "todos os Grupos" não pré-seleciona nada.
+ * Bases que os Grupos do agente já trazem (regra de sempre do formulário, por vínculo): globais e, para cada Grupo inteiro, as vinculadas
+ * ao Grupo (inclusive por Subgrupo); para cada Subgrupo, as vinculadas ao próprio Subgrupo — e, dessas, só as que cabem no agente
+ * (com vários Grupos, valendo para cada um). Agente "todos os Grupos" não pré-seleciona nada.
  */
 export async function groupDefaultKnowledgeIds(db: Pick<Database, "query">, organizationId: string, scopes: ManageableScopes, agentScope: AgentScope, agentUniverse: string | undefined): Promise<{ ids: string[]; total: number; truncated: boolean }> {
-  if (agentScope.scopeType === "ALL_TEAMS") return { ids: [], total: 0, truncated: false }
+  if (agentScope.scopeType === "ALL_TEAMS" || agentScopeLinks(agentScope).length === 0) return { ids: [], total: 0, truncated: false }
   const sql = knowledgeOptionsWhere(organizationId, scopes, { agentUniverse })
-  const condition = agentScope.scopeType === "SUBTEAM" ? `os.subteam_id = ${sql.param(agentScope.subteamId ?? null)}::uuid` : `os.team_id = ${sql.param(agentScope.teamId ?? null)}::uuid`
+  const { teams, subteams, teamIds } = linkArraysSql(sql, agentScope)
+  const condition = `exists (select 1 from unnest(${teams}, ${subteams}) gd_u(t, s) where (gd_u.s is null and os.team_id = gd_u.t) or (gd_u.s is not null and os.subteam_id = gd_u.s))`
   sql.add(SCOPE_EXISTS(`os.scope_type = 'ALL_TEAMS' or ${condition}`))
+  // E só o que o agente pode usar: com vários Grupos, a base precisa valer para cada um deles (run-10 QA-01) — a pré-seleção nunca
+  // escolhe o que o salvar recusaria.
+  sql.add(knowledgeFitsAgentSql("d.id", { scopeType: "'GROUPS'", teamIds }))
   const rows = (await db.query<{ id: string; total: string }>(`select d.id, count(*) over () total ${FROM}${whereOf(sql)} order by ${TITLE_KEY_SQL}, d.id limit ${KNOWLEDGE_OPTION_IDS_CAP}`, sql.params)).rows
   const total = Number(rows[0]?.total ?? 0)
   return { ids: rows.map((row) => row.id), total, truncated: total > rows.length }

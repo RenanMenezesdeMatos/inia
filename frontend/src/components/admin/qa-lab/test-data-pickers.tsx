@@ -50,6 +50,7 @@ export function PersonPicker({
   role = "OPERATOR",
   scope,
   workflowId,
+  graphSource,
   label = "Colaborador",
   emptyHint,
 }: {
@@ -59,12 +60,14 @@ export function PersonPicker({
   scope?: { scopeType?: string; teamId?: string | null; subteamId?: string | null }
   /** Presente = só colaboradores elegíveis pra este Workflow (Abrangência + Filtro Populacional). */
   workflowId?: string
+  /** Com `workflowId`: a configuração testada (rascunho ou publicada) decide quem é elegível. */
+  graphSource?: "DRAFT" | "PUBLISHED"
   label?: string
   emptyHint?: string
 }) {
   const [search, setSearch] = useState("")
   const debounced = useDebouncedValue(search, 250)
-  const query = useQaPeopleQuery({ role, workflowId, search: debounced || undefined, scopeType: scope?.scopeType, teamId: scope?.teamId ?? undefined, subteamId: scope?.subteamId ?? undefined, limit: 100 })
+  const query = useQaPeopleQuery({ role, workflowId, graphSource, search: debounced || undefined, scopeType: scope?.scopeType, teamId: scope?.teamId ?? undefined, subteamId: scope?.subteamId ?? undefined, limit: 100 })
   return (
     <div className="space-y-1.5">
       <Label htmlFor={`qa-person-${role}`}>{label}</Label>

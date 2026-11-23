@@ -9,9 +9,9 @@ import { listInteractiveOrchestratorScopes, orchestratorForTeam, resolveOrchestr
  */
 const ORG = "00000000-0000-4000-8000-0000000000c1"
 const ORCHESTRATORS = [
-  { id: "orch-b2c-team", name: "B2C Faturamento", scope_type: "TEAM", team_id: "team-b2c", operating_universe: "B2C" },
-  { id: "orch-b2c-all", name: "B2C Geral", scope_type: "ALL_TEAMS", team_id: null, operating_universe: "B2C" },
-  { id: "orch-b2b-all", name: "B2B Geral", scope_type: "ALL_TEAMS", team_id: null, operating_universe: "B2B" },
+  { id: "orch-b2c-team", name: "B2C Faturamento", scope_type: "GROUPS", team_ids: ["team-b2c"], operating_universe: "B2C" },
+  { id: "orch-b2c-all", name: "B2C Geral", scope_type: "ALL_TEAMS", team_ids: [], operating_universe: "B2C" },
+  { id: "orch-b2b-all", name: "B2B Geral", scope_type: "ALL_TEAMS", team_ids: [], operating_universe: "B2B" },
 ]
 
 /** Dublê que aplica o predicado de universo como o SQL (`$n::text[] is null or o.operating_universe = any($n)`). */
@@ -21,7 +21,7 @@ function fakeDb() {
     const text = sql.replace(/\s+/g, " ")
     calls.push({ sql: text, params })
     const allowed = (universes: unknown, universe: string | null) => universes === null || universes === undefined || (Array.isArray(universes) && universe !== null && universes.includes(universe))
-    if (text.includes("from assistant_orchestrators o where o.organization_id = $1 and o.active")) {
+    if (text.includes("from assistant_orchestrators o where o.organization_id = $1 and o.active and o.invocation_mode in ('BOTH', 'INTERACTIVE')")) {
       const rows = ORCHESTRATORS.filter((row) => allowed(params[1], row.operating_universe))
       return { rows, rowCount: rows.length }
     }
@@ -59,7 +59,7 @@ describe("Orquestradores do chat × universo de atuação (consulta de processo 
   })
 
   it("Orquestrador do Grupo: com os universos do Grupo, o de 'Todos os grupos' de OUTRO universo não entra no lugar", () => {
-    const scopes: InteractiveOrchestratorScope[] = ORCHESTRATORS.map((row) => ({ id: row.id, name: row.name, scopeType: row.scope_type as "TEAM" | "ALL_TEAMS", teamId: row.team_id, operatingUniverse: row.operating_universe }))
+    const scopes: InteractiveOrchestratorScope[] = ORCHESTRATORS.map((row) => ({ id: row.id, name: row.name, scopeType: row.scope_type as "GROUPS" | "ALL_TEAMS", teamIds: row.team_ids, operatingUniverse: row.operating_universe }))
     // Sem filtro (antes da exigência): o mais recente de "Todos os grupos", de qualquer universo.
     expect(orchestratorForTeam(scopes, "team-b2b")?.id).toBe("orch-b2c-all")
     // Grupo B2B: o de "Todos os grupos" do B2B; Grupo B2C: o do próprio Grupo.
@@ -69,5 +69,15 @@ describe("Orquestradores do chat × universo de atuação (consulta de processo 
     expect(orchestratorForTeam(scopes, "team-b2c", ["B2X"])).toBeNull()
     // Grupo só com operadores pendentes (nenhum universo): nenhum Orquestrador.
     expect(orchestratorForTeam(scopes, "team-b2c", [])).toBeNull()
+  })
+
+  it("Orquestrador de vários Grupos (249): responde por cada Grupo inteiro vinculado; nos outros Grupos vale o de 'Todos os grupos'", () => {
+    const scopes: InteractiveOrchestratorScope[] = [
+      { id: "orch-ab", name: "A e B", scopeType: "GROUPS", teamIds: ["team-a", "team-b"], operatingUniverse: "B2C" },
+      { id: "orch-all", name: "Geral", scopeType: "ALL_TEAMS", teamIds: [], operatingUniverse: "B2C" },
+    ]
+    expect(orchestratorForTeam(scopes, "team-a")?.id).toBe("orch-ab")
+    expect(orchestratorForTeam(scopes, "team-b")?.id).toBe("orch-ab")
+    expect(orchestratorForTeam(scopes, "team-c")?.id).toBe("orch-all")
   })
 })

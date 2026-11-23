@@ -51,7 +51,14 @@ export const orchestratorSchema = z.object({
   name: z.string(),
   active: z.boolean(),
   createdAt: z.coerce.string(),
-  scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]),
+  /**
+   * Alcance (249): "Todos os Grupos e Subgrupos" do universo do orquestrador ou GROUPS + `scopeLinks` (cada um um Grupo inteiro ou UM
+   * Subgrupo). TEAM/SUBTEAM só em respostas antigas; `teamId`/`subteamId` chegam nulos.
+   */
+  scopeType: z.enum(["ALL_TEAMS", "GROUPS", "TEAM", "SUBTEAM"]),
+  scopeLinks: z
+    .array(z.object({ teamId: z.string(), teamName: z.string().nullable().catch(null), subteamId: z.string().nullable(), subteamName: z.string().nullable().catch(null) }))
+    .catch([]),
   /** Universo de atuação (nulo = pendente). Opcional: os seletores encadeiam por ele (lib/operating-universe/hierarchy.ts). */
   operatingUniverse: operatingUniverseSchema.nullable().optional().catch(null),
   teamId: z.string().nullable(),

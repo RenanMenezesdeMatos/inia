@@ -22,6 +22,7 @@ import { WaitForm } from "./node-config/wait-form"
 import { nodeKindLabel } from "./node-visuals"
 import { useWorkflowQuery } from "@/queries/admin/use-workflow-queries"
 import { withDraftConfiguration } from "@/schemas/admin/workflow.schema"
+import type { ResourceScopePayload } from "@/lib/scope-links/scope-links"
 import { WorkflowUniverseProvider } from "./workflow-universe-context"
 
 export function NodeConfigPanel({
@@ -45,7 +46,8 @@ export function NodeConfigPanel({
   workflowId: string
   /** Problemas de publicação DESTE nó (lista completa — o card só mostra a contagem). */
   issues?: string[]
-  scope?: { scopeType: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; teamId?: string; subteamId?: string }
+  /** Abrangência do rascunho (249): ALL_TEAMS ou GROUPS + `scopeLinks`. */
+  scope?: ResourceScopePayload
   /** Individual x Consolidado — controla, por exemplo, se "Performance do colaborador" é uma
    * Condition oferecida (só faz sentido em modo Individual). Ausente = Individual (padrão). */
   evaluationMode?: "INDIVIDUAL" | "CONSOLIDATED"

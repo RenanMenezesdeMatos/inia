@@ -1,6 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { canManageScope, getManageableScopes } from "../../auth/application/manageable-scopes.js"
 import type { HumanReviewBlockReason } from "../domain/execution-block.js"
+import { workflowLiveScopeLinksSql, workflowScopedTarget } from "../domain/workflow-scope.js"
 import type { WorkflowEffectSink } from "./effect-sink.js"
 
 /**
@@ -37,8 +38,8 @@ type NoticeContext = { db: Database; organizationId: string; workflowId: string;
 
 export async function notifyPublisherOfBlockedExecution(context: NoticeContext, reason: HumanReviewBlockReason): Promise<void> {
   const { db, organizationId, workflowId, nodeId, effects } = context
-  const publisher = (await db.query<{ person_id: string; account_id: string; scope_type: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; team_id: string | null; subteam_id: string | null; today: string }>(
-    `select p.id person_id, a.id account_id, w.scope_type, w.team_id, w.subteam_id,
+  const publisher = (await db.query<{ person_id: string; account_id: string; scope_type: string; scope_links: { teamId: string; subteamId: string | null }[] | null; team_id: string | null; subteam_id: string | null; today: string }>(
+    `select p.id person_id, a.id account_id, w.scope_type, ${workflowLiveScopeLinksSql("w.id")} scope_links, w.team_id, w.subteam_id,
             (now() at time zone coalesce((select o.timezone from operations o where o.organization_id = w.organization_id order by o.created_at limit 1), 'America/Fortaleza'))::date::text today
      from workflows w
      join workflow_versions v on v.id = w.active_version_id
@@ -49,7 +50,7 @@ export async function notifyPublisherOfBlockedExecution(context: NoticeContext, 
   )).rows[0]
   if (!publisher) return
   const scopes = await getManageableScopes(db, { organizationId, sub: publisher.account_id }, "workflows.manage")
-  if (!canManageScope(scopes, { scopeType: publisher.scope_type, teamId: publisher.team_id, subteamId: publisher.subteam_id })) return
+  if (!canManageScope(scopes, workflowScopedTarget({ scopeType: publisher.scope_type, scopeLinks: publisher.scope_links ?? [], teamId: publisher.team_id, subteamId: publisher.subteam_id }))) return
   await effects.dispatchAlert(db, {
     organizationId,
     caseId: null,

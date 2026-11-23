@@ -1,6 +1,7 @@
 import { EXECUTION_BLOCKED_ALERT_TYPE, executionBlockedWorkflowIdSql } from "../../workflows/application/blocked-execution-notice.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { alertOutputIdSql, CHAT_ALERT_KEY_PREFIX, recadoAlertCoveredByFollowUpSql } from "../../conversational-delivery/application/recado-follow-up-invite.js"
+import { workflowLiveScopeLinksSql } from "../../workflows/domain/workflow-scope.js"
 import { alignmentAlertOfDeletedSql } from "../../operational-alignments/application/my-alignments.js"
 
 export type AlertRow = {
@@ -20,7 +21,8 @@ export type AlertRow = {
 }
 
 /** Workflow de um aviso de execução bloqueada, com o alcance: só o que a permissão precisa, nunca o grafo. */
-export type BlockedNoticeWorkflow = { workflowId: string; scopeType: string; teamId: string | null; subteamId: string | null }
+/** Abrangência PUBLICADA do Workflow (249): ALL_TEAMS ou GROUPS + `links` (o formato do `ScopedTarget` de `canManageScope`). */
+export type BlockedNoticeWorkflow = { workflowId: string; scopeType: string; teamId: string | null; subteamId: string | null; links?: { teamId: string; subteamId: string | null }[] }
 export type BlockedNoticeDetail = { workflowId: string; nodeId: string; workflowName: string; stepLabel: string | null }
 
 /**
@@ -58,10 +60,11 @@ export class PgNotificationsRepository implements NotificationsRepository {
 
   async loadBlockedNoticeWorkflows(viewerId: string, organizationId: string): Promise<BlockedNoticeWorkflow[]> {
     const result = await this.db.query<BlockedNoticeWorkflow>(
-      `select distinct w.id "workflowId", w.scope_type "scopeType", w.team_id "teamId", w.subteam_id "subteamId"
-       from alerts a
-       join workflows w on w.id = ${executionBlockedWorkflowIdSql("a")} and w.organization_id = a.organization_id
-       where a.recipient_id = $1 and a.organization_id = $2 and a.alert_type = '${EXECUTION_BLOCKED_ALERT_TYPE}' and a.status <> 'EXPIRED'`,
+      // Cada Workflow uma vez (`in`, não `distinct`: os vínculos vêm em json, que não tem igualdade).
+      `select w.id "workflowId", w.scope_type "scopeType", w.team_id "teamId", w.subteam_id "subteamId", ${workflowLiveScopeLinksSql("w.id")} "links"
+       from workflows w
+       where w.organization_id = $2 and w.id in (select ${executionBlockedWorkflowIdSql("a")} from alerts a
+       where a.recipient_id = $1 and a.organization_id = $2 and a.alert_type = '${EXECUTION_BLOCKED_ALERT_TYPE}' and a.status <> 'EXPIRED')`,
       [viewerId, organizationId],
     )
     return result.rows

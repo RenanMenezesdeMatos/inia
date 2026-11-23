@@ -125,6 +125,19 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
+    "code": "ACCESS_PASSWORD_MANAGED_BY_NETWORK",
+    "module": "access",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A senha desta conta é gerenciada pelo Active Directory: a pessoa entra com a matrícula e a senha de rede. Para trocar ou desbloquear, procure o suporte da rede."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/account-access-service.ts"
+    ]
+  },
+  {
     "code": "ACCESS_PERSON_INACTIVE",
     "module": "access",
     "statuses": [
@@ -399,7 +412,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       422
     ],
     "messages": [
-      "Uma das bases de conhecimento selecionadas vale para outro Grupo — escolha bases globais ou do Grupo deste agente."
+      "Uma das bases de conhecimento selecionadas vale para outro Grupo — escolha bases globais ou de um dos Grupos deste agente."
     ],
     "refs": [
       "backend/src/modules/agents/application/agent-config-rules.ts"
@@ -488,11 +501,24 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "messages": [
       "Você não tem permissão para mover o agente para esse escopo.",
-      "Você não tem permissão para criar agentes nesse escopo."
+      "Seu escopo de administração não cobre o alcance escolhido para o agente."
     ],
     "refs": [
       "backend/src/modules/agents/application/agent-config-rules.ts",
-      "backend/src/modules/agents/presentation/agent-router.ts"
+      "backend/src/modules/org-structure/application/resource-scope-links.ts"
+    ]
+  },
+  {
+    "code": "AGENT_SCOPE_INVALID",
+    "module": "org-structure",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Alcance do agente inválido: Grupo ou Subgrupo inexistente, repetido, junto do próprio Grupo inteiro ou nenhum escolhido."
+    ],
+    "refs": [
+      "backend/src/modules/org-structure/application/resource-scope-links.ts"
     ]
   },
   {
@@ -4421,6 +4447,17 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
+    "code": "EMPTY",
+    "module": "org-structure",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/org-structure/application/resource-scope-links.ts"
+    ]
+  },
+  {
     "code": "ENROLLMENT_CONCURRENT_UPDATE",
     "module": "workflows",
     "statuses": [
@@ -5451,6 +5488,32 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "refs": [
       "backend/src/modules/indicator-rules/presentation/indicator-rule-router.ts"
+    ]
+  },
+  {
+    "code": "INDICATOR_SCOPE_FORBIDDEN",
+    "module": "org-structure",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Só quem administra a organização inteira escolhe “Todos os Grupos e Subgrupos” para o indicador."
+    ],
+    "refs": [
+      "backend/src/modules/org-structure/application/resource-scope-links.ts"
+    ]
+  },
+  {
+    "code": "INDICATOR_SCOPE_INVALID",
+    "module": "org-structure",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Alcance do indicador inválido: Grupo ou Subgrupo inexistente, repetido, junto do próprio Grupo inteiro ou nenhum escolhido."
+    ],
+    "refs": [
+      "backend/src/modules/org-structure/application/resource-scope-links.ts"
     ]
   },
   {
@@ -8053,6 +8116,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "Agente orquestrador não encontrado."
     ],
     "refs": [
+      "backend/src/modules/assistant/application/orchestrator-scope.ts",
       "backend/src/modules/assistant/application/orchestrator-versions.ts",
       "backend/src/modules/assistant/presentation/assistant-router.ts"
     ]
@@ -8077,10 +8141,10 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       422
     ],
     "messages": [
-      "O agente \"${agent.name}\" não está disponível para o grupo deste orquestrador."
+      "O agente \"${agent.name}\" não atende todos os Grupos deste orquestrador (precisa ser de \"Todos os Grupos\" ou ter cada Grupo dele)."
     ],
     "refs": [
-      "backend/src/modules/assistant/presentation/assistant-router.ts"
+      "backend/src/modules/assistant/application/orchestrator-scope.ts"
     ]
   },
   {
@@ -8160,16 +8224,41 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
   },
   {
     "code": "ORCHESTRATOR_SCOPE_FORBIDDEN",
-    "module": "assistant",
+    "module": "org-structure",
     "statuses": [
       403
     ],
     "messages": [
-      "Você não tem permissão para criar um orquestrador nesse escopo.",
-      "Você não tem permissão para mover o orquestrador para esse escopo."
+      "Seu escopo de administração não cobre o alcance escolhido para o Orquestrador."
     ],
     "refs": [
-      "backend/src/modules/assistant/presentation/assistant-router.ts"
+      "backend/src/modules/org-structure/application/resource-scope-links.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_SCOPE_INVALID",
+    "module": "org-structure",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Alcance do Orquestrador inválido: Grupo ou Subgrupo inexistente, repetido, junto do próprio Grupo inteiro ou nenhum escolhido."
+    ],
+    "refs": [
+      "backend/src/modules/org-structure/application/resource-scope-links.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_SCOPE_OVERLAP",
+    "module": "assistant",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Outro orquestrador ativo já atende o chat/voz nos mesmos Grupos/Subgrupos: ${list.map((entry) => "
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/orchestrator-scope.ts"
     ]
   },
   {
@@ -8179,9 +8268,11 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       409
     ],
     "messages": [
-      "Já existe um orquestrador ativo atendendo o chat/voz nesse escopo — desative-o, ou restrinja um dos dois a \\\"Somente Workflow\\\", pra evitar que os dois disputem quem responde o operador."
+      "Já existe um orquestrador ativo atendendo o chat/voz em \"Todos os Grupos e Subgrupos\" neste universo: \"${taken.map((row) => row.name).join('\", \"')}\". Desative-o, ou restrinja um dos dois a \"Só workflows\", pra evitar q…",
+      "Já existe um orquestrador ativo atendendo o chat/voz em \\\"Todos os Grupos e Subgrupos\\\" neste universo — desative-o, ou restrinja um dos dois a \\\"Só workflows\\\", pra evitar que os dois disputem quem responde o operador."
     ],
     "refs": [
+      "backend/src/modules/assistant/application/orchestrator-scope.ts",
       "backend/src/modules/assistant/presentation/assistant-router.ts"
     ]
   },
@@ -9165,6 +9256,45 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
+    "code": "PRODUCT_SCOPE_FORBIDDEN",
+    "module": "org-structure",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Só quem administra a organização inteira altera o alcance de um produto."
+    ],
+    "refs": [
+      "backend/src/modules/org-structure/application/resource-scope-links.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_SCOPE_INVALID",
+    "module": "org-structure",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Alcance do produto inválido: Grupo ou Subgrupo inexistente, repetido, junto do próprio Grupo inteiro ou nenhum escolhido."
+    ],
+    "refs": [
+      "backend/src/modules/org-structure/application/resource-scope-links.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_SCOPE_NOT_FOR_CATEGORY",
+    "module": "product-catalog",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Categoria não tem alcance próprio: o alcance é de cada produto."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
     "code": "PRODUCT_SCOPE_SOURCE_NOT_FOUND",
     "module": "product-catalog",
     "statuses": [
@@ -10113,6 +10243,45 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "refs": [
       "backend/src/modules/people/application/schedule-exception-service.ts"
+    ]
+  },
+  {
+    "code": "SCOPE_UNIT_OUTSIDE_UNIVERSE",
+    "module": "org-structure",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Fora do universo ${universe} deste cadastro: ${names.join(\", \")}. Escolha Grupos e Subgrupos do mesmo universo."
+    ],
+    "refs": [
+      "backend/src/modules/org-structure/application/scope-unit-admission.ts"
+    ]
+  },
+  {
+    "code": "SCOPE_UNIT_WITHOUT_PRODUCTION_OPERATORS",
+    "module": "org-structure",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Sem operadores em produção: ${names.join(\", \")}. Só Grupos e Subgrupos com ao menos um operador em produção podem ser escolhidos."
+    ],
+    "refs": [
+      "backend/src/modules/org-structure/application/scope-unit-admission.ts"
+    ]
+  },
+  {
+    "code": "SCOPE_UNITS_CURSOR_INVALID",
+    "module": "org-structure",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Posição da lista inválida — recarregue as opções."
+    ],
+    "refs": [
+      "backend/src/modules/org-structure/presentation/scope-unit-options-router.ts"
     ]
   },
   {
@@ -12464,18 +12633,31 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
   },
   {
     "code": "WORKFLOW_SCOPE_FORBIDDEN",
-    "module": "workflows",
+    "module": "org-structure",
     "statuses": [
       403
     ],
     "messages": [
-      "Você não tem permissão para publicar este workflow na Abrangência do rascunho.",
-      "Você não tem permissão para criar workflows nesse escopo.",
-      "Você não tem permissão para mover o workflow para esse escopo."
+      "Seu escopo de administração não cobre a Abrangência escolhida para o Workflow.",
+      "Você não tem permissão para publicar este workflow na Abrangência do rascunho."
     ],
     "refs": [
-      "backend/src/modules/workflows/application/publish-workflow.ts",
-      "backend/src/modules/workflows/presentation/workflow-router/definition-routes.ts"
+      "backend/src/modules/org-structure/application/resource-scope-links.ts",
+      "backend/src/modules/workflows/application/publish-workflow.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_SCOPE_INVALID",
+    "module": "org-structure",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Abrangência do Workflow inválida: Grupo ou Subgrupo inexistente, repetido, junto do próprio Grupo inteiro ou nenhum escolhido."
+    ],
+    "refs": [
+      "backend/src/modules/org-structure/application/resource-scope-links.ts",
+      "backend/src/modules/workflows/application/publish-workflow.ts"
     ]
   },
   {

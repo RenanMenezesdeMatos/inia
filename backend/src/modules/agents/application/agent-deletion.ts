@@ -1,6 +1,8 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { canManageScope, getManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { loadResourceScopeLinks, scopedTargetOf } from "../../org-structure/application/resource-scope-links.js"
+import { resourceScopeOf, type ResourceScope } from "../../../shared/domain/scope-links/resource-scope.js"
 
 /**
  * Exclusão lógica de agente (PEN-001, migration 177, decisão de 06/11/2026). Excluir não apaga nada, então histórico de uso não barra mais: execuções, conversas e análises continuam
@@ -38,7 +40,11 @@ export type AgentDeletionAssessment = {
   hasRestrictedReferences: boolean
 }
 
-type ScopedRow = { scope_type: string; team_id: string | null; subteam_id: string | null }
+/**
+ * Alcance do consumidor (249: ALL_TEAMS ou GROUPS + vínculos). Workflow nunca publicado vale pelo alcance do RASCUNHO (`draft_scope_type` +
+ * `draft_scope_links`); o publicado, pelo vigente (`workflow_scope_links`). Orquestrador: `assistant_orchestrator_scope_links`.
+ */
+type ScopedRow = { scope_type: string; draft_scope_type?: string | null; draft_scope_links?: { teamId?: string | null; subteamId?: string | null }[] | null }
 
 async function loadUsage(db: Queryable, organizationId: string, agentId: string): Promise<AgentUsage> {
   const result = await db.query<AgentUsage>(
@@ -67,11 +73,11 @@ async function loadWorkflowReferences(db: Queryable, organizationId: string, age
            from graphs g cross join lateral jsonb_array_elements(coalesce(g.graph->'nodes', '[]'::jsonb)) n
           where n->'config'->>'agentId' = $2
        )
-       select w.id, w.name, w.scope_type, w.team_id, w.subteam_id,
+       select w.id, w.name, w.scope_type, w.draft_scope_type, w.draft_scope_links,
               case when w.active then 'ACTIVE' when w.active_version_id is null then 'DRAFT' else 'INACTIVE' end "status",
               array_agg(distinct h.label order by h.label) "labels"
          from hits h join workflows w on w.id = h.id
-        group by w.id, w.name, w.scope_type, w.team_id, w.subteam_id, w.active, w.active_version_id
+        group by w.id, w.name, w.scope_type, w.draft_scope_type, w.draft_scope_links, w.active, w.active_version_id
         order by w.name`,
       [organizationId, agentId],
     )
@@ -81,7 +87,7 @@ async function loadWorkflowReferences(db: Queryable, organizationId: string, age
 async function loadOrchestratorReferences(db: Queryable, organizationId: string, agentId: string) {
   return (
     await db.query<ScopedRow & { id: string; name: string; active: boolean; roles: string[] }>(
-      `select o.id, o.name, o.scope_type, o.team_id, o.subteam_id, o.active,
+      `select o.id, o.name, o.scope_type, o.active,
               array_remove(array[
                 case when o.orchestrator_agent_id = $2 then 'Agente orquestrador' end,
                 case when exists (select 1 from assistant_orchestrator_specialists s where s.orchestrator_id = o.id and s.agent_id = $2) then 'Especialista' end
@@ -96,7 +102,7 @@ async function loadOrchestratorReferences(db: Queryable, organizationId: string,
 }
 
 /** Referência visível + o alcance dela (para a prévia de impacto da publicação conferir quem deixaria de ser atendido). */
-export type ScopedAgentReference = AgentReference & { scope: { scopeType: string; teamId: string | null; subteamId: string | null } }
+export type ScopedAgentReference = AgentReference & { scope: ResourceScope }
 
 /**
  * Workflows e orquestradores que usam o agente, só os que a pessoa pode consultar (com link), mais o aviso de que existem outros
@@ -107,20 +113,30 @@ export async function loadVisibleAgentReferences(db: Database, viewer: { organiz
   const [workflowScopes, agentScopes] = await Promise.all([getManageableScopes(db, viewer, "workflows.manage"), getManageableScopes(db, viewer, "agents.manage")])
   const references: ScopedAgentReference[] = []
   let hasRestrictedReferences = false
-  const scopeOf = (row: ScopedRow) => ({ scopeType: row.scope_type, teamId: row.team_id, subteamId: row.subteam_id })
+  const [workflowLinks, orchestratorLinks] = await Promise.all([
+    loadResourceScopeLinks(client, "WORKFLOW", workflows.map((row) => row.id)),
+    loadResourceScopeLinks(client, "ORCHESTRATOR", orchestrators.map((row) => row.id)),
+  ])
+  const workflowScopeOf = (row: ScopedRow & { id: string; status: AgentReferenceStatus }): ResourceScope =>
+    row.status === "DRAFT" && row.draft_scope_type
+      ? resourceScopeOf({ scopeType: row.draft_scope_type, scopeLinks: row.draft_scope_links ?? [] })
+      : resourceScopeOf({ scopeType: row.scope_type === "ALL_TEAMS" ? "ALL_TEAMS" : "GROUPS", scopeLinks: workflowLinks.get(row.id) ?? [] })
+  const orchestratorScopeOf = (row: ScopedRow & { id: string }): ResourceScope => resourceScopeOf({ scopeType: row.scope_type === "ALL_TEAMS" ? "ALL_TEAMS" : "GROUPS", scopeLinks: orchestratorLinks.get(row.id) ?? [] })
   for (const workflow of workflows) {
-    if (!canManageScope(workflowScopes, scopeOf(workflow))) {
+    const scope = workflowScopeOf(workflow)
+    if (!canManageScope(workflowScopes, scopedTargetOf(scope))) {
       hasRestrictedReferences = true
       continue
     }
-    references.push({ kind: "WORKFLOW", id: workflow.id, name: workflow.name, status: workflow.status, usages: workflow.labels, link: `/admin/workflows/${workflow.id}`, scope: scopeOf(workflow) })
+    references.push({ kind: "WORKFLOW", id: workflow.id, name: workflow.name, status: workflow.status, usages: workflow.labels, link: `/admin/workflows/${workflow.id}`, scope })
   }
   for (const orchestrator of orchestrators) {
-    if (!canManageScope(agentScopes, scopeOf(orchestrator))) {
+    const scope = orchestratorScopeOf(orchestrator)
+    if (!canManageScope(agentScopes, scopedTargetOf(scope))) {
       hasRestrictedReferences = true
       continue
     }
-    references.push({ kind: "ORCHESTRATOR", id: orchestrator.id, name: orchestrator.name, status: orchestrator.active ? "ACTIVE" : "INACTIVE", usages: orchestrator.roles, link: `/admin/assistant/${orchestrator.id}`, scope: scopeOf(orchestrator) })
+    references.push({ kind: "ORCHESTRATOR", id: orchestrator.id, name: orchestrator.name, status: orchestrator.active ? "ACTIVE" : "INACTIVE", usages: orchestrator.roles, link: `/admin/assistant/${orchestrator.id}`, scope })
   }
   return { references, hasRestrictedReferences }
 }

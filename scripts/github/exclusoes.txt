@@ -53,3 +53,8 @@ backend/scripts/feedback-engine/**/results/**
 
 # Saídas do cenário de desenvolvimento da Larissa.
 backend/scripts/dev/larissa-scenario/results/**
+
+# Avaliação de jargão da busca em escala (gabarito v4 e resultados): trazem trecho da lista confidencial local; ficam só no
+# repositório local (nenhum teste os lê; o README da busca em escala cita o gabarito pelo nome e hash).
+backend/scripts/dev/kb-scale-eval/gold-v4-jargao.json
+docs/dev/busca-em-escala/resultados/jargao-*.json

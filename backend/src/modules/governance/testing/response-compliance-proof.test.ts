@@ -53,6 +53,7 @@ const { env } = await import("../../../config/env.js")
 const { createApp } = await import("../../../main/app.js")
 const { setProofAccountPassword } = await import("../../auth/testing/proof-account-password.js")
 const { processEnrollment } = await import("../../workflows/application/engine.js")
+const { workflowLiveScopeLinksSql } = await import("../../workflows/domain/workflow-scope.js")
 const { RESPONSE_BLOCKED_TEXT, RESPONSE_CHECK_UNAVAILABLE_TEXT, SPOKEN_VIOLATION_NOTICE, SPECIALIST_BLOCKED_TEXT } = await import("../domain/response-compliance.js")
 
 const ORG = "00000000-0000-4000-8000-000000000001"
@@ -405,7 +406,7 @@ describe.skipIf(!ENABLED)("PEN-017 — conferência das respostas (banco de test
     const claimed = async (id: string) => (await pool.query<Claimed>(
       `select we.id, we.organization_id, we.workflow_id, we.version_id, we.interaction_id, we.indicator_measurement_id, we.scheduled_subject_id, we.scheduled_for, we.current_node_id,
               we.matched_flag_name, we.matched_value_boolean, we.matched_value_numeric, we.status, we.attempts, we.revision, we.node_outputs, we.variables, we.parent_enrollment_id, we.retry_of_enrollment_id,
-              w.scope_type, w.team_id workflow_team_id, w.subteam_id workflow_subteam_id, w.consolidated_structure, w.population_filter, now()::text claimed_until
+              w.scope_type, ${workflowLiveScopeLinksSql("w.id")} scope_links, w.team_id workflow_team_id, w.subteam_id workflow_subteam_id, w.consolidated_structure, w.population_filter, now()::text claimed_until
          from workflow_enrollments we join workflows w on w.id = we.workflow_id where we.id = $1`,
       [id],
     )).rows[0]!

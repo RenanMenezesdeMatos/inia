@@ -12,6 +12,7 @@ import { postgresHierarchyReader, resolveStructureRecipient } from "../../workfl
 import { runEmployeeRanking } from "../../workflows/application/select-employees-executor.js"
 import { validateWorkflowForPublish } from "../../workflows/application/validate-workflow-for-publish.js"
 import { createIndicatorDefinition, deleteIndicatorDefinition, updateIndicatorDefinition } from "../application/indicator-definition-service.js"
+import { linkWorkflowScope } from "../../workflows/testing/workflow-scope-fixtures.js"
 import { loadIndicatorOperationalDefinition } from "../application/operational-measurement-resolver.js"
 
 /**
@@ -124,10 +125,11 @@ describe.skipIf(!ENABLED)("prova arquitetural — indicador e Grupo que o códig
 
     // ---- Workflow (rascunho) só pra prévia do QA Lab e validação de publicação ----
     await db.query(
-      `insert into workflows (id, organization_id, name, scope_type, team_id, trigger_config, draft_graph)
-       values ($1, $2, 'Prova dinâmica QA', 'TEAM', $3, $4, $5)`,
-      [WORKFLOW, ORG, TEAM, JSON.stringify({ kind: "schedule", mode: "CALENDAR", intervalDays: 1, times: ["08:00"], frequency: { type: "DAILY" } }), JSON.stringify(proofGraph("TEST_DYNAMIC_RATE", "WEIGHTED_AVERAGE"))],
+      `insert into workflows (id, organization_id, name, scope_type, trigger_config, draft_graph)
+       values ($1, $2, 'Prova dinâmica QA', 'ALL_TEAMS', $3, $4)`,
+      [WORKFLOW, ORG, JSON.stringify({ kind: "schedule", mode: "CALENDAR", intervalDays: 1, times: ["08:00"], frequency: { type: "DAILY" } }), JSON.stringify(proofGraph("TEST_DYNAMIC_RATE", "WEIGHTED_AVERAGE"))],
     )
+    await linkWorkflowScope(db, WORKFLOW, [{ teamId: TEAM }])
   })
 
   afterAll(async () => {

@@ -109,7 +109,12 @@ describe.skipIf(!ENABLED)("Base de Conhecimento para vários Grupos — prova Po
     expect(await listed(org, `&teamId=${teamC}`)).toBe(0)
 
     // Agents: mesma regra de antes (Grupo do Agent; Subgrupo leva o Grupo-pai). Vincular a base a mais Grupos não liga Agent nenhum.
-    const agent = async (name: string, teamId: string) => (await client.query<{ id: string }>("insert into agents (organization_id, name, agent_type, objective, description, context_prompt, scope_type, team_id, operating_universe) values ($1, $2, 'CALL_FEEDBACK', 'o', 'd', 'c', 'TEAM', $3, 'B2C') returning id", [ORG, name, teamId])).rows[0]!.id
+    // Agente de Grupo (249): GROUPS + um vínculo com o Grupo inteiro em `agent_scope_links`.
+    const agent = async (name: string, teamId: string) => {
+      const id = (await client.query<{ id: string }>("insert into agents (organization_id, name, agent_type, objective, description, context_prompt, scope_type, operating_universe) values ($1, $2, 'CALL_FEEDBACK', 'o', 'd', 'c', 'GROUPS', 'B2C') returning id", [ORG, name])).rows[0]!.id
+      await client.query("insert into agent_scope_links (agent_id, organization_id, team_id) values ($1, $2, $3)", [id, ORG, teamId])
+      return id
+    }
     const agentA = await agent("Proof KBMG Agent A", teamA)
     const agentB = await agent("Proof KBMG Agent B", teamB)
     const agentC = await agent("Proof KBMG Agent C", teamC)

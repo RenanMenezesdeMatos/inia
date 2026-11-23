@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { UniverseSelect } from "@/components/operating-universe/universe-select"
+import { MultiOrgScopeField } from "@/components/admin/shared/multi-org-scope-field"
+import { resourceScopePayloadOf, scopeValueFromResource, scopeValueIssue, type ScopeLinksValue } from "@/lib/scope-links/scope-links"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import { useCreateProductNodeMutation, useUpdateProductNodeMutation } from "@/queries/admin/use-product-catalog-queries"
 import type { ProductNode } from "@/schemas/admin/product-catalog.schema"
@@ -46,7 +48,9 @@ export function NodeForm({ node, kind, nodes, defaultParentId = null, onDone }: 
   const category = kind === "FAMILY"
   // Universo de atuação: só PRODUTO (categoria não tem). Obrigatório no produto novo; produto classificado não volta a "sem universo".
   const [operatingUniverse, setOperatingUniverse] = useState<OperatingUniverse | null>(node?.operatingUniverse ?? null)
-  const canSubmit = name.trim().length >= 2 && newCategory === null && (category || operatingUniverse !== null || Boolean(node && !node.operatingUniverse))
+  // Alcance operacional (250): por padrão "Todos" do universo do produto; editar mostra o salvo (inclusive vínculo sem operador em produção).
+  const [scope, setScope] = useState<ScopeLinksValue>(() => scopeValueFromResource({ scopeType: node?.scopeType ?? "ALL_TEAMS", scopeLinks: node?.scopeLinks ?? [] }))
+  const canSubmit = name.trim().length >= 2 && newCategory === null && (category || operatingUniverse !== null || Boolean(node && !node.operatingUniverse)) && (category || scope.global || !scopeValueIssue(scope))
   const conflicts = universeConflictsOf(mutation.error)
 
   async function submit() {
@@ -55,6 +59,7 @@ export function NodeForm({ node, kind, nodes, defaultParentId = null, onDone }: 
       description: description.trim() || null,
       parentId: parentId === NO_CATEGORY ? null : parentId,
       ...(!category && operatingUniverse ? { operatingUniverse } : {}),
+      ...(category ? {} : resourceScopePayloadOf(scope)),
     }
     try {
       const saved = node ? await updateMutation.mutateAsync({ id: node.id, code: node.code, ...payload }) : await createMutation.mutateAsync({ kind, code: codeFromName(payload.name, nodes), ...payload })
@@ -137,6 +142,18 @@ export function NodeForm({ node, kind, nodes, defaultParentId = null, onDone }: 
           <UniverseSelect id="node-universe" value={operatingUniverse} onChange={setOperatingUniverse} aria-describedby="node-universe-help" />
           <p id="node-universe-help" className="text-xs text-muted-foreground">Universos são separados: este recurso só será usado no universo escolhido.</p>
         </div>
+      )}
+      {category ? null : (
+        <MultiOrgScopeField
+          permission="configuration.manage"
+          value={scope}
+          onChange={setScope}
+          universe={operatingUniverse}
+          allowGlobal
+          globalLabel={operatingUniverse ? `Todos os Grupos e Subgrupos do universo ${operatingUniverse}` : "Todos os Grupos e Subgrupos"}
+          label="Alcance"
+          hint="Para quais Grupos e Subgrupos o produto vale na Administração (lista e seleção de produtos). O universo continua sendo o de cima; a análise das chamadas não muda."
+        />
       )}
       <div className="space-y-1.5">
         <Label htmlFor="node-description">Como o cliente e a operação chamam</Label>

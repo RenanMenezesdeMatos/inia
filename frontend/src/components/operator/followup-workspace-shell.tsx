@@ -204,9 +204,11 @@ export function FollowupWorkspaceShell({ feed, renderChat, feedbackInvites = fal
     <ResizablePanelGroup orientation="horizontal">
       {/* O feed segue o chat: com o layout conhecido só a cópia visível existe (antes eram duas árvores completas, uma
           escondida por CSS). Sem layout (servidor e hidratação) as duas continuam, como sempre; a que fica não remonta. */}
-      <ResizablePanel defaultSize={docked ? "63%" : "58%"} minSize={docked ? "420px" : "38%"}>{layout === "mobile" ? null : feed}</ResizablePanel>
-      <ResizableHandle withHandle aria-label="Redimensionar o Acompanhamento e a INIA"/>
+      <ResizablePanel defaultSize={docked ? "63%" : "58%"} minSize={docked ? "420px" : "38%"}><div className={WORKSPACE_CARD}>{layout === "mobile" ? null : feed}</div></ResizablePanel>
+      {/* Dois cards separados por um vão: a alça fica no meio do vão, sem linha própria. */}
+      <ResizableHandle withHandle aria-label="Redimensionar o Acompanhamento e a INIA" className="w-3 bg-transparent"/>
       <ResizablePanel panelRef={chatRef} defaultSize={docked ? "37%" : "42%"} minSize={docked ? "320px" : "300px"} collapsedSize="64px" collapsible onResize={(size) => setCollapsed(size.inPixels < 120)}>
+        <div className={WORKSPACE_CARD}>
         {collapsed
           ? <div className="flex h-full justify-center pt-4"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={toggleChat} aria-label={railNotice ? `Abrir chat da INIA — ${railNotice}` : "Abrir chat da INIA"} className="relative"><Bot className="size-5 text-primary"/>{railNotice ? <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary ring-2 ring-card" aria-hidden/> : null}</Button></TooltipTrigger><TooltipContent side="left" className="inia-tooltip-genie">{railNotice ? railNotice.charAt(0).toUpperCase() + railNotice.slice(1) : "Abrir chat da INIA"}</TooltipContent></Tooltip></div>
           : null}
@@ -218,6 +220,7 @@ export function FollowupWorkspaceShell({ feed, renderChat, feedbackInvites = fal
           {/* eslint-disable-next-line react-hooks/refs */}
           {layout === "desktop" ? renderChat({ onCollapse: toggleChat, hidden: collapsed }) : null}
         </div>
+        </div>
       </ResizablePanel>
     </ResizablePanelGroup>
   )
@@ -226,7 +229,7 @@ export function FollowupWorkspaceShell({ feed, renderChat, feedbackInvites = fal
     {docked ? (
       // Sem layout decidido (servidor, primeiro render) os dois existem e o CSS escolhe; depois, só o que está em uso fica montado.
       <div ref={dockedRef} className="h-full min-h-0 w-full data-page-first:[&_[data-slot=scroll-area-viewport]]:overflow-y-hidden!">
-        {layout !== "mobile" ? <div className="hidden h-full overflow-hidden rounded-xl bg-card lg:block">{panels}</div> : null}
+        {layout !== "mobile" ? <div className="hidden h-full lg:block">{panels}</div> : null}
         {layout !== "desktop" ? (
           <Tabs value={smallScreenView} onValueChange={(value) => setSmallScreenView(value as SmallScreenView)} className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl bg-card lg:hidden">
             <TabsList aria-label="Alternar entre o Acompanhamento e a INIA" className="flex w-full shrink-0 gap-0 px-2 pt-2">
@@ -249,7 +252,7 @@ export function FollowupWorkspaceShell({ feed, renderChat, feedbackInvites = fal
       </div>
     ) : (
       <div className="w-full">
-        <div className="sticky top-[7.5rem] hidden h-[calc(100dvh-8.5rem)] overflow-hidden rounded-xl bg-card md:block">{panels}</div>
+        <div className="sticky top-[7.5rem] hidden h-[calc(100dvh-8.5rem)] md:block">{panels}</div>
         <div className="space-y-4 md:hidden">
           <div ref={mobileFeedRef} className="h-[65dvh] scroll-mt-28 overflow-hidden rounded-xl bg-card">{layout === "desktop" ? null : feed}</div>
           <div ref={mobileChatRef} className="h-[80dvh] scroll-mt-28 overflow-hidden rounded-xl bg-card">
@@ -261,4 +264,6 @@ export function FollowupWorkspaceShell({ feed, renderChat, feedbackInvites = fal
   </FeedbackWorkspaceContext.Provider>
 }
 
+/** Cada coluna (Acompanhamento e INIA) é um card próprio no computador; o vão entre eles leva a alça de redimensionar. */
+const WORKSPACE_CARD = "h-full overflow-hidden rounded-xl bg-card"
 const SMALL_SCREEN_PANEL = "absolute inset-0 mt-0 data-[state=inactive]:invisible data-[state=inactive]:translate-x-full"

@@ -16,7 +16,8 @@ import {
 } from "../../indicators/domain/indicator-definition.js"
 import { OPERATIONAL_AGGREGATION_KINDS } from "../../indicators/domain/operational-aggregation.js"
 import { loadVisibleIndicatorDependencies } from "../../indicators/application/indicator-dependencies.js"
-import { createIndicatorDefinition, deleteIndicatorDefinition, findIndicatorDefinition, updateIndicatorDefinition } from "../../indicators/application/indicator-definition-service.js"
+import { applyIndicatorScope, createIndicatorDefinition, deleteIndicatorDefinition, findIndicatorDefinition, updateIndicatorDefinition } from "../../indicators/application/indicator-definition-service.js"
+import { resourceScopeLinksJsonSql } from "../../../shared/domain/scope-links/resource-scope.js"
 import { applyIndicatorCorrection, impactForViewer, previewIndicatorCorrection } from "../../indicators/application/indicator-correction-service.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 import { applyUniverseListFilter, universeListParam } from "../../operating-universe/application/universe-list-filter.js"
@@ -61,6 +62,7 @@ const listIndicatorsSchema = orgScopeFilterSchema.extend({
 const INDICATOR_SELECT = `
   select
     d.id, d.code, d.name, d.unit, d.desired_direction "desiredDirection", d.active, d.operating_universe "operatingUniverse",
+    d.scope_type "scopeType", ${resourceScopeLinksJsonSql("INDICATOR", "d.id")} "scopeLinks",
     d.operational_aggregation "operationalAggregation", d.daily_supported "dailySupported",
     d.minimum_sample_size "minimumSampleSize", d.minimum_coverage::float "minimumCoverage", d.official_closure_supported "officialClosureSupported", d.proves_work_activity "provesWorkActivity", d.unjustified_absence_policy "unjustifiedAbsencePolicy", d.availability_policy "availabilityPolicy", d.icon_key "iconKey",
     g.description "glossaryDescription", g.interpretation, g.good_practices "goodPractices", g.feedback_guidance "feedbackGuidance",
@@ -124,12 +126,18 @@ export function createIndicatorRuleRouter(db: Database) {
     if (input.calculationPeriod?.length) {
       filter.add(`exists (select 1 from indicator_calculation_rules r where r.indicator_definition_id = q.id and r.deleted_at is null and r.calculation_period = any(${filter.param(input.calculationPeriod)}::text[]))`)
     }
+    // Grupo/Subgrupo: o ALCANCE do indicador (250) chega lá — "Todos", o Grupo inteiro, ou o próprio Subgrupo (Subgrupo não leva os
+    // irmãos) — ou alguma regra de cálculo viva é daquele Grupo/Subgrupo. Uma linha por indicador (`exists`).
     if (input.subteamId) {
-      filter.add(`exists (select 1 from indicator_calculation_rules r where r.indicator_definition_id = q.id and r.deleted_at is null and r.subteam_id = ${filter.param(input.subteamId)}::uuid)`)
+      const subteam = filter.param(input.subteamId)
+      filter.add(`(q."scopeType" = 'ALL_TEAMS' or exists (select 1 from indicator_scope_links l where l.indicator_id = q.id and (l.subteam_id = ${subteam}::uuid or (l.subteam_id is null and l.team_id = (select st.team_id from subteams st where st.id = ${subteam}::uuid))))
+        or exists (select 1 from indicator_calculation_rules r where r.indicator_definition_id = q.id and r.deleted_at is null and r.subteam_id = ${subteam}::uuid))`)
     } else if (input.teamId) {
-      filter.add(`exists (select 1 from indicator_calculation_rules r where r.indicator_definition_id = q.id and r.deleted_at is null and r.team_id = ${filter.param(input.teamId)}::uuid)`)
+      const team = filter.param(input.teamId)
+      filter.add(`(q."scopeType" = 'ALL_TEAMS' or exists (select 1 from indicator_scope_links l where l.indicator_id = q.id and l.team_id = ${team}::uuid)
+        or exists (select 1 from indicator_calculation_rules r where r.indicator_definition_id = q.id and r.deleted_at is null and r.team_id = ${team}::uuid))`)
     } else if (input.scopeType === "ALL_TEAMS") {
-      filter.add(`exists (select 1 from indicator_calculation_rules r where r.indicator_definition_id = q.id and r.deleted_at is null and r.scope_type = 'ALL_TEAMS')`)
+      filter.add(`(q."scopeType" = 'ALL_TEAMS' or exists (select 1 from indicator_calculation_rules r where r.indicator_definition_id = q.id and r.deleted_at is null and r.scope_type = 'ALL_TEAMS'))`)
     }
     if (input.dailySupported !== undefined) filter.equals('q."dailySupported"', input.dailySupported)
     applyUniverseListFilter(filter, 'q."operatingUniverse"', input.operatingUniverse)
@@ -161,13 +169,24 @@ export function createIndicatorRuleRouter(db: Database) {
 
   router.post("/definitions", organizationOnly, async (request, response) => {
     const organizationId = sessionUser(request).organizationId
-    const definition = await createIndicatorDefinition(db, organizationId, request.body)
+    const scopes = await scopesOf(request)
+    // Definição + alcance na mesma transação: alcance recusado não deixa indicador criado pela metade.
+    const definition = await inTransaction(db, async (client) => {
+      const created = await createIndicatorDefinition(client as unknown as Database, organizationId, request.body)
+      await applyIndicatorScope(client, organizationId, created.id, request.body, scopes)
+      return created
+    })
     response.status(201).json({ data: definition })
   })
 
   router.patch("/definitions/:id", organizationOnly, async (request, response) => {
     const organizationId = sessionUser(request).organizationId
-    const { definition } = await updateIndicatorDefinition(db, organizationId, String(request.params.id), request.body)
+    const scopes = await scopesOf(request)
+    const { definition } = await inTransaction(db, async (client) => {
+      const updated = await updateIndicatorDefinition(client as unknown as Database, organizationId, String(request.params.id), request.body)
+      await applyIndicatorScope(client, organizationId, updated.definition.id, request.body, scopes)
+      return updated
+    })
     response.json({ data: definition })
   })
 

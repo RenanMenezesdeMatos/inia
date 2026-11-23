@@ -40,7 +40,7 @@ import {
   type WorkflowRetryPreview,
   type WorkflowRetryResult,
 } from "@/schemas/admin/workflow-retry.schema"
-import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import type { ResourceScopePayload } from "@/lib/scope-links/scope-links"
 import type { ConsolidatedStructure } from "@/schemas/admin/consolidated-structure-schema"
 import type { PopulationFilter } from "@/schemas/admin/population-filter-schema"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
@@ -74,7 +74,7 @@ export type SchedulePreviewResult = z.infer<typeof schedulePreviewResultSchema>
 
 export async function fetchSchedulePreview(
   trigger: Extract<WorkflowTriggerInput, { kind: "schedule" }>,
-  scope?: { scopeType: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; teamId?: string },
+  scope?: ResourceScopePayload,
 ): Promise<SchedulePreviewResult> {
   return schedulePreviewResultSchema.parse(await adminSend("/api/v1/admin/workflows/schedule-preview", "POST", { trigger, scope }))
 }
@@ -138,16 +138,16 @@ export async function fetchWorkflowExecutionAgentRecords(workflowId: string, enr
   return z.array(workflowExecutionAgentRecordSchema).parse(await adminGet(`/api/v1/admin/workflows/${workflowId}/enrollments/${enrollmentId}/agent-records`))
 }
 
-export type CreateWorkflowInput = { name: string; description?: string; orgScope: OrgScopeValue; trigger: WorkflowTriggerInput; operatingUniverse?: OperatingUniverse | null }
+/** `scope` = Abrangência (249): ALL_TEAMS ou GROUPS + `scopeLinks` (`resourceScopePayloadOf` do valor do seletor). */
+export type CreateWorkflowInput = { name: string; description?: string; scope: ResourceScopePayload; trigger: WorkflowTriggerInput; operatingUniverse?: OperatingUniverse | null }
 
 export async function createWorkflow(input: CreateWorkflowInput): Promise<Workflow> {
   return workflowSchema.parse(
     await adminSend("/api/v1/admin/workflows", "POST", {
       name: input.name,
       description: input.description,
-      scopeType: input.orgScope.scopeType,
-      teamId: input.orgScope.teamId,
-      subteamId: input.orgScope.subteamId,
+      scopeType: input.scope.scopeType,
+      scopeLinks: input.scope.scopeLinks,
       trigger: input.trigger,
       operatingUniverse: input.operatingUniverse ?? null,
     }),
@@ -158,7 +158,8 @@ export type UpdateWorkflowInput = {
   id: string
   name?: string
   description?: string
-  orgScope?: OrgScopeValue
+  /** Abrangência do RASCUNHO (vale ao Publicar). */
+  scope?: ResourceScopePayload
   /** Universo de atuação: grava no RASCUNHO, vale ao Publicar. */
   operatingUniverse?: OperatingUniverse | null
   trigger?: WorkflowTriggerInput
@@ -173,9 +174,8 @@ export async function updateWorkflow(input: UpdateWorkflowInput): Promise<Workfl
     await adminSend(`/api/v1/admin/workflows/${input.id}`, "PATCH", {
       name: input.name,
       description: input.description,
-      scopeType: input.orgScope?.scopeType,
-      teamId: input.orgScope?.teamId,
-      subteamId: input.orgScope?.subteamId,
+      scopeType: input.scope?.scopeType,
+      scopeLinks: input.scope?.scopeLinks,
       operatingUniverse: input.operatingUniverse,
       trigger: input.trigger,
       active: input.active,

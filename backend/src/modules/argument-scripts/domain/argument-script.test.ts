@@ -88,7 +88,8 @@ describe("administração por área (escopo de quem administra)", () => {
   it("nem para outro grupo; para o próprio grupo, passa da checagem de escopo", async () => {
     const other = fakeDb({ "from teams": [{ id: "00000000-0000-4000-8000-0000000000b2" }] })
     await expect(createArgumentScript(other.db, actor, groupAdmin, { name: "Contas", businessDomainId: "00000000-0000-4000-8000-000000000001", scope: { scopeType: "TEAM", teamId: "00000000-0000-4000-8000-0000000000b2" } })).rejects.toMatchObject({ code: "ARGUMENT_SCRIPT_SCOPE_FORBIDDEN" })
-    const own = fakeDb({ "from teams": [{ id: "00000000-0000-4000-8000-0000000000a1" }] })
+    // A admissão (operador em produção) volta vazia = o Grupo tem gente em produção; a busca do Grupo-pai acha o Grupo.
+    const own = fakeDb({ "select 'TEAM' kind": [], "from teams": [{ id: "00000000-0000-4000-8000-0000000000a1" }] })
     const ownAdmin: ManageableScopes = { ...groupAdmin, teamIds: new Set(["00000000-0000-4000-8000-0000000000a1"]) }
     // Passou do escopo: a próxima checagem é a área responsável (domínio inexistente no banco falso).
     await expect(createArgumentScript(own.db, actor, ownAdmin, { name: "Contas", businessDomainId: "00000000-0000-4000-8000-000000000001", scope: { scopeType: "TEAM", teamId: "00000000-0000-4000-8000-0000000000a1" } })).rejects.toMatchObject({ code: "BUSINESS_DOMAIN_NOT_FOUND" })

@@ -232,19 +232,27 @@ describe("no editor: enviar o arquivo da base nova", () => {
   })
 })
 
-describe("voltar depois: envios recentes", () => {
-  it("lista os envios do último dia com o estado gravado; o concluído sem ressalva fica numa linha", async () => {
+describe("voltar depois: último envio de arquivo da base", () => {
+  it("mostra só o último envio da base; em andamento fica aberto, sem link para a própria base", async () => {
     const reading = run(
       { ...Object.fromEntries(["CHECK", "TEXT", "IMAGES", "MARKDOWN", "SAVE"].map((key) => [key, stage(key as KnowledgeUploadStage["key"], "DONE")])), OCR: stage("OCR", "PENDING", { detail: "4 páginas digitalizadas na fila de leitura." }) },
       { id: "u1", status: "DONE", documentId: "kb-1" },
     )
-    const clean = run(Object.fromEntries(KEYS.map((key) => [key, stage(key, key === "OCR" ? "SKIPPED" : "DONE")])), { id: "u2", filename: "procedimento.docx", sourceType: "DOCX", status: "DONE", finished: true, documentId: "kb-2", title: "Procedimento" })
-    knowledgeService.fetchRecentKnowledgeUploads.mockResolvedValue([reading, clean])
-    renderWithQuery(<KnowledgeRecentUploads />)
-    expect(await screen.findByText("Envios recentes")).toBeInTheDocument()
+    const older = run(Object.fromEntries(KEYS.map((key) => [key, stage(key, key === "OCR" ? "SKIPPED" : "DONE")])), { id: "u0", filename: "antigo.docx", sourceType: "DOCX", status: "DONE", finished: true, documentId: "kb-1" })
+    knowledgeService.fetchRecentKnowledgeUploads.mockResolvedValue([reading, older])
+    renderWithQuery(<KnowledgeRecentUploads documentId="kb-1" />)
+    expect(await screen.findByText("Último envio de arquivo")).toBeInTheDocument()
+    expect(knowledgeService.fetchRecentKnowledgeUploads).toHaveBeenCalledWith("kb-1")
     expect(screen.getByText("4 páginas digitalizadas na fila de leitura.")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: /Abrir “Manual de chamados”/ })).toHaveAttribute("href", "/admin/knowledge/kb-1/edit")
-    const summary = screen.getByTestId("knowledge-upload-summary")
+    expect(screen.queryByText(/antigo\.docx/)).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: /Abrir/ })).not.toBeInTheDocument()
+  })
+
+  it("o concluído sem ressalva fica numa linha, com as etapas a um clique", async () => {
+    const clean = run(Object.fromEntries(KEYS.map((key) => [key, stage(key, key === "OCR" ? "SKIPPED" : "DONE")])), { id: "u2", filename: "procedimento.docx", sourceType: "DOCX", status: "DONE", finished: true, documentId: "kb-2", title: "Procedimento" })
+    knowledgeService.fetchRecentKnowledgeUploads.mockResolvedValue([clean])
+    renderWithQuery(<KnowledgeRecentUploads documentId="kb-2" />)
+    const summary = await screen.findByTestId("knowledge-upload-summary")
     expect(within(summary).getByText("Concluído")).toBeInTheDocument()
     fireEvent.click(within(summary).getByRole("button", { name: /Ver etapas/ }))
     expect(await screen.findByRole("region", { name: "Envio de procedimento.docx" })).toBeInTheDocument()
@@ -258,7 +266,7 @@ describe("voltar depois: envios recentes", () => {
     )
     const done = { ...reading, finished: true, stages: reading.stages.map((item) => (item.key === "OCR" ? stage("OCR", "DONE", { detail: "4 páginas lidas, 3 prints recortados." }) : item)) }
     knowledgeService.fetchRecentKnowledgeUploads.mockResolvedValueOnce([reading]).mockResolvedValue([done])
-    renderWithQuery(<KnowledgeRecentUploads />)
+    renderWithQuery(<KnowledgeRecentUploads documentId="kb-1" />)
     await waitFor(() => expect(stateOf("OCR")).toBe("RUNNING"))
     await act(() => vi.advanceTimersByTimeAsync(3_100))
     await waitFor(() => expect(stateOf("OCR")).toBe("DONE"))
@@ -268,7 +276,7 @@ describe("voltar depois: envios recentes", () => {
 
   it("sem envio recente, nada aparece", async () => {
     knowledgeService.fetchRecentKnowledgeUploads.mockResolvedValue([])
-    const { container } = renderWithQuery(<KnowledgeRecentUploads />)
+    const { container } = renderWithQuery(<KnowledgeRecentUploads documentId="kb-1" />)
     await waitFor(() => expect(knowledgeService.fetchRecentKnowledgeUploads).toHaveBeenCalled())
     expect(container).toBeEmptyDOMElement()
   })

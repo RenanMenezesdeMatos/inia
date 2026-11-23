@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { UniverseBadge } from "@/components/operating-universe/universe-badge"
+import { resourceScopeLabel } from "@/lib/scope-links/scope-links"
 import { cn } from "@/lib/utils"
 import { useDeleteProductNodeMutation, useIdentificationCriteriaQuery, useProductNodesQuery, useProductScopeSourcesQuery, useSetProductNodeActiveMutation } from "@/queries/admin/use-product-catalog-queries"
 import type { IdentificationCriterionSummary, ProductNode, ProductScopeSource } from "@/schemas/admin/product-catalog.schema"
@@ -78,6 +79,9 @@ function ProductDetail({ node, nodes, criteria, sources, onSelect, onNewProduct 
               {category ? <Badge variant="outline">Categoria</Badge> : <UniverseBadge universe={node.operatingUniverse} />}
               {node.active ? null : <Badge variant="outline">Inativo</Badge>}
             </h2>
+            {category ? null : (
+              <p className="text-xs text-muted-foreground">Alcance: {resourceScopeLabel({ scopeType: node.scopeType ?? "ALL_TEAMS", scopeLinks: node.scopeLinks ?? [] }, `Todos os Grupos e Subgrupos${node.operatingUniverse ? ` do universo ${node.operatingUniverse}` : ""}`)}</p>
+            )}
             {node.description ? (
               <p className="max-w-2xl text-sm text-muted-foreground">
                 <span className="font-medium text-foreground/80">Como chamam:</span> {node.description}

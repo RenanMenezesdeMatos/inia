@@ -61,6 +61,8 @@ describe.skipIf(!ENABLED)("Rascunho incompleto: salva e reabre; publicar exige t
   it("salvar, reabrir, validar, publicar, completar e editar um fluxo publicado", async () => {
     const operation = (await client.query<{ id: string }>("select id from operations where organization_id = $1 limit 1", [ORG])).rows[0]!.id
     const team = (await client.query<{ id: string }>("insert into teams (organization_id, operation_id, name) values ($1, $2, 'Proof Rascunho Grupo') returning id", [ORG, operation])).rows[0]!.id
+    // Abrangência por vínculos (249): Grupo novo só entra com ao menos um operador em produção.
+    await client.query("insert into people (organization_id, name, role, team_id) values ($1, 'Proof Rascunho Operador', 'OPERATOR', $2)", [ORG, team])
     const personId = (await client.query<{ id: string }>("insert into people (organization_id, name, role) values ($1, 'Proof Rascunho Admin', 'OPERATOR') returning id", [ORG])).rows[0]!.id
     const email = `proof-rascunho-${Date.now()}@proof.inia.local`
     const accountId = (await client.query<{ id: string }>("insert into user_accounts (organization_id, person_id, email, password_hash) values ($1, $2, $3, $4) returning id", [ORG, personId, email, await hashPassword("Proof@12345")])).rows[0]!.id

@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { canManageScope, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
+import { workflowLiveScopeLinksSql } from "../../workflows/domain/workflow-scope.js"
 import { loadPoliciesCiting } from "../../interventions/application/policy-references.js"
 
 /**
@@ -27,7 +28,7 @@ async function queryDependencies(db: Pick<Database, "query">, organizationId: st
     [definition.id],
   )
   const workflows = await db.query<{ id: string; name: string } & ScopedTarget>(
-    `select w.id, w.name, w.scope_type "scopeType", w.team_id "teamId", w.subteam_id "subteamId" from workflows w
+    `select w.id, w.name, w.scope_type "scopeType", ${workflowLiveScopeLinksSql("w.id")} "links", w.team_id "teamId", w.subteam_id "subteamId" from workflows w
       where w.organization_id = $1 and (
         jsonb_path_exists(w.draft_graph, '$.** ? (@.indicatorCode == $code)', jsonb_build_object('code', $2::text))
         or (w.trigger_config is not null and jsonb_path_exists(w.trigger_config, '$.** ? (@.indicatorCode == $code)', jsonb_build_object('code', $2::text)))

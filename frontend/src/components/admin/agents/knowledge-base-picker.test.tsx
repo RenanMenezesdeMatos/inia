@@ -6,7 +6,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
-import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import type { ScopeLinksValue } from "@/lib/scope-links/scope-links"
 import { useKnownKnowledgeOptions } from "@/queries/admin/use-agent-knowledge-options-queries"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
@@ -37,7 +37,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: v
 beforeAll(() => installJsdomStubs())
 afterEach(cleanup)
 
-function Harness({ initial, universe = "B2C", scope = { scopeType: "TEAM", teamId: "team-a" }, onIds }: { initial: string[]; universe?: OperatingUniverse | null; scope?: OrgScopeValue; onIds?: (ids: string[]) => void }) {
+function Harness({ initial, universe = "B2C", scope = { global: false, groups: [{ teamId: "team-a", mode: "WHOLE", subteamIds: [] }] }, onIds }: { initial: string[]; universe?: OperatingUniverse | null; scope?: ScopeLinksValue; onIds?: (ids: string[]) => void }) {
   const [ids, setIds] = useState(initial)
   const known = useKnownKnowledgeOptions(ids)
   return (
@@ -53,7 +53,7 @@ function Harness({ initial, universe = "B2C", scope = { scopeType: "TEAM", teamI
         onIds?.(next)
       }}
       universe={universe}
-      orgScope={scope}
+      scope={scope}
       teams={[{ id: "team-a", name: "Grupo A", operationId: "op", subteams: [] }] as never}
       known={known}
       fallbackTitles={new Map()}
@@ -76,10 +76,26 @@ async function openAvailable() {
 }
 
 describe("regras do seletor de bases", () => {
-  it("alcance do formulário vira o do servidor; Grupo ainda não escolhido não restringe", () => {
-    expect(agentKnowledgeScopeOf({ scopeType: "ALL_TEAMS" })).toEqual({ scopeType: "ALL_TEAMS" })
-    expect(agentKnowledgeScopeOf({ scopeType: "TEAM" })).toBeUndefined()
-    expect(agentKnowledgeScopeOf({ scopeType: "SUBTEAM", teamId: "t", subteamId: "s" })).toEqual({ scopeType: "SUBTEAM", teamId: "t", subteamId: "s" })
+  it("alcance do formulário vira o do servidor (vários vínculos, 249); nenhum Grupo escolhido ainda não restringe", () => {
+    expect(agentKnowledgeScopeOf({ global: true, groups: [] })).toEqual({ scopeType: "ALL_TEAMS" })
+    expect(agentKnowledgeScopeOf({ global: false, groups: [] })).toBeUndefined()
+    expect(agentKnowledgeScopeOf({ global: false, groups: [{ teamId: "a", mode: "WHOLE", subteamIds: [] }, { teamId: "t", mode: "SUBTEAMS", subteamIds: ["s"] }] })).toEqual({
+      scopeType: "GROUPS",
+      links: [{ teamId: "a", subteamId: null }, { teamId: "t", subteamId: "s" }],
+    })
+  })
+
+  it("agente de vários Grupos: só cabe base global ou que valha para CADA Grupo dele (Subgrupo leva o Grupo-pai) — run-10 QA-01", () => {
+    const scope = { scopeType: "GROUPS" as const, links: [{ teamId: "team-a", subteamId: null }, { teamId: "team-x", subteamId: "sub-x1" }] }
+    const ofTeam = (teamId: string) => option(`kb-${teamId}`, teamId, { orgScopes: [{ scopeType: "TEAM", teamId, teamName: teamId, subteamId: null, subteamName: null }] })
+    expect(optionProblems(ofTeam("team-a"), "B2C", scope, undefined)).toEqual(["OTHER_GROUP"])
+    expect(optionProblems(ofTeam("team-x"), "B2C", scope, undefined)).toEqual(["OTHER_GROUP"])
+    expect(optionProblems(ofTeam("team-z"), "B2C", scope, undefined)).toEqual(["OTHER_GROUP"])
+    const both = option("kb-both", "both", { orgScopes: ["team-a", "team-x"].map((teamId) => ({ scopeType: "TEAM" as const, teamId, teamName: teamId, subteamId: null, subteamName: null })) })
+    expect(optionProblems(both, "B2C", scope, undefined)).toEqual([])
+    // Subgrupo sem o Grupo-pai no valor: a tela acha o pai pela lista de Grupos.
+    const teams = [{ id: "team-x", name: "X", operationId: "op", subteams: [{ id: "sub-x1", name: "X1" }] }] as never
+    expect(optionProblems(ofTeam("team-x"), "B2C", { scopeType: "GROUPS", links: [{ teamId: null, subteamId: "sub-x1" }] }, teams)).toEqual([])
   })
 
   it("aponta o que impede salvar: outro universo e outro Grupo; pendente e global cabem", () => {
@@ -118,7 +134,7 @@ describe("seletor de bases do agente", () => {
     expect(within(list).getAllByRole("checkbox")).toHaveLength(20)
     // 45 do Grupo A + portabilidade + arquivada - a ligada = 46.
     expect(screen.getByText(/46 bases disponíveis/)).toBeInTheDocument()
-    expect(fake.current!.calls.search.at(-1)).toMatchObject({ agentUniverse: "B2C", agentScope: { scopeType: "TEAM", teamId: "team-a" }, excludeIds: ["kb-00"] })
+    expect(fake.current!.calls.search.at(-1)).toMatchObject({ agentUniverse: "B2C", agentScope: { scopeType: "GROUPS", links: [{ teamId: "team-a", subteamId: null }] }, excludeIds: ["kb-00"] })
     fireEvent.click(screen.getByRole("button", { name: "Próxima página" }))
     await waitFor(() => expect(fake.current!.calls.search.at(-1)?.cursor).toBe("20"))
   })

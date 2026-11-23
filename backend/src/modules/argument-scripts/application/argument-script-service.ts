@@ -1,3 +1,4 @@
+import { assertNewScopeLinksAdmissible } from "../../org-structure/application/scope-unit-admission.js"
 import { z } from "zod"
 import { universeFromBody } from "../../operating-universe/application/universe-access.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
@@ -242,13 +243,15 @@ export async function getArgumentScript(db: Database, organizationId: string, sc
 }
 
 /** Escopo pedido: todos os Grupos (só com escopo de organização) ou vínculos válidos da organização, todos no escopo de quem administra. */
-async function resolveScope(db: Pick<Database, "query">, organizationId: string, scopes: ManageableScopes, input: z.infer<typeof scopeInputSchema>): Promise<ScriptScope> {
+async function resolveScope(db: Pick<Database, "query">, organizationId: string, scopes: ManageableScopes, input: z.infer<typeof scopeInputSchema>, admission: { previous: readonly ScopeLink[]; universe: string | null } = { previous: [], universe: null }): Promise<ScriptScope> {
   if (input.scopeType === "ALL_TEAMS") {
     if (!(scopes.unrestricted || scopes.allTeams)) throw new DomainError("Só quem administra a organização inteira pode criar um argumentário para todos os grupos.", "ARGUMENT_SCRIPT_SCOPE_FORBIDDEN", 403)
     return { scopeType: "ALL_TEAMS", links: [] }
   }
   const resolved = await resolveScopeLinksForWrite(db, organizationId, scopes, input.links)
   if (!resolved.ok) throw new DomainError(SCOPE_LINK_FAILURE_MESSAGE[resolved.reason], resolved.reason === "FORBIDDEN" ? "ARGUMENT_SCRIPT_SCOPE_FORBIDDEN" : "ARGUMENT_SCRIPT_SCOPE_INVALID", resolved.reason === "FORBIDDEN" ? 403 : 422)
+  // Vínculo novo: do universo do argumentário e com operador em produção (a regra do seletor); o já salvo continua aceito.
+  await assertNewScopeLinksAdmissible(db, organizationId, resolved.links, admission)
   return { scopeType: "GROUPS", links: resolved.links.map((link) => ({ ...link, teamName: null, subteamName: null })) }
 }
 
@@ -294,13 +297,13 @@ async function requireSourceDocument(db: Pick<Database, "query">, organizationId
 
 export async function createArgumentScript(db: Database, actor: ArgumentScriptActor, scopes: ManageableScopes, body: unknown) {
   const input = createInputSchema.parse(body)
-  const scope = await resolveScope(db, actor.organizationId, scopes, input.scope)
+  // Argumentário pertence a um universo; a área (domínio de negócio) precisa ser do mesmo universo (conferido abaixo).
+  const universe = await universeFromBody(db, actor.organizationId, body, "do argumentário")
+  const scope = await resolveScope(db, actor.organizationId, scopes, input.scope, { previous: [], universe })
   const businessDomainId = await requireBusinessDomain(db, actor.organizationId, input.businessDomainId, null)
   if (!businessDomainId) throw new DomainError("Informe a área responsável.", "ARGUMENT_SCRIPT_AREA_REQUIRED")
   const sourceDocumentId = await requireSourceDocument(db, actor.organizationId, input.sourceDocumentId)
   const content = normalizeArgumentScriptContent(input.content ?? {})
-  // Argumentário pertence a um universo; a área (domínio de negócio) precisa ser do mesmo universo (conferido abaixo).
-  const universe = await universeFromBody(db, actor.organizationId, body, "do argumentário")
   const domainUniverse = (await db.query<{ operating_universe: string | null }>(`select operating_universe from business_domains where id = $1`, [businessDomainId])).rows[0]?.operating_universe ?? null
   if (universe && domainUniverse && universe !== domainUniverse) throw new DomainError(`A área escolhida é do universo ${domainUniverse}; o argumentário é ${universe}. Universos não se misturam.`, "OPERATING_UNIVERSE_LINK_CONFLICT", 409)
   const id = await inTransaction(db, async (client) => {
@@ -327,7 +330,7 @@ export async function updateArgumentScript(db: Database, actor: ArgumentScriptAc
   const changes: Record<string, unknown> = {}
   // Vínculos novos: TODOS no escopo de quem altera (e os atuais já passaram em `requireEditable`). Mudam no RASCUNHO e valem a partir da
   // publicação dele — a versão publicada (e a quem ela valeu) nunca muda.
-  const requestedScope = input.scope ? await resolveScope(db, actor.organizationId, scopes, input.scope) : null
+  const requestedScope = input.scope ? await resolveScope(db, actor.organizationId, scopes, input.scope, { previous: [...(row.scopeLinks ?? []), ...(row.draftScope?.links ?? [])], universe: row.operatingUniverse ?? null }) : null
   const draftTarget = row.draftScope ?? { scopeType: row.scopeType, links: row.scopeLinks ?? [] }
   const scopeChanged = requestedScope !== null && !sameScope(requestedScope, draftTarget)
   if (input.name !== undefined && input.name !== row.name) {

@@ -10,7 +10,7 @@ import { scopeSummary, STATE_HINTS, STATE_LABELS, type OptionProblem } from "./p
 
 const PROBLEM_LABELS: Record<OptionProblem, { label: string; hint: string }> = {
   OTHER_UNIVERSE: { label: "De outro universo", hint: "Base de outro universo de atuação: desligue para salvar o agente." },
-  OTHER_GROUP: { label: "De outro Grupo", hint: "Base de outro Grupo: este agente só usa bases globais ou do Grupo dele. Desligue para salvar." },
+  OTHER_GROUP: { label: "Não vale para todos os Grupos", hint: "A base não vale para todos os Grupos deste agente: ele só usa bases globais ou que valham para cada Grupo dele. Desligue para salvar." },
 }
 
 /**

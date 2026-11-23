@@ -7,13 +7,16 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
-import { applyManageableScopeFilter, canManageScope, getManageableScopes, normalizeScopedTarget, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
+import { canManageScope, getManageableScopes, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { loadResourceScope, loadResourceScopeLinks, scopedTargetOf } from "../../org-structure/application/resource-scope-links.js"
+import { resourceScopeLinksJsonSql, resourceScopeOf, type ResourceScope } from "../../../shared/domain/scope-links/resource-scope.js"
+import { resourceScopeFields, resourceScopeTypeSchema } from "../../../shared/presentation/scope-links-schema.js"
 import { agentBusinessDomainJoin, agentBusinessDomainJson } from "../../business-domains/application/business-domain-lookup.js"
 import { businessDomainCodeSchema } from "../../business-domains/domain/business-domain.js"
 import { agentTextSchema } from "../domain/agent-field-limits.js"
 import type { AgentActionLimits } from "../domain/action-limits.js"
 import { legacySpecialtySchema, specialtyKindSchema } from "../domain/agent-specialty.js"
-import type { AgentConfig } from "../domain/agent-config.js"
+import { agentScopeFields, agentScopeOf, type AgentConfig } from "../domain/agent-config.js"
 import { runAgent } from "../application/run-agent.js"
 import { buildSystemPrompt } from "../application/build-system-prompt.js"
 import { withAgentSnapshots } from "../application/agent-runtime-context.js"
@@ -22,7 +25,7 @@ import { assessAgentDeletion, deleteAgentIfUnused } from "../application/agent-d
 import { computePublishImpact } from "../application/agent-publish-impact.js"
 import { loadKnowledgeLinkCandidates, loadKnowledgeLinkContext, pageKnowledgeLinkCandidates } from "../application/agent-knowledge-links.js"
 import { applyKnowledgeLinks, MAX_KNOWLEDGE_LINK_CHANGES, previewKnowledgeLinks } from "../application/agent-knowledge-link-changes.js"
-import { actionLimitsText, agentNotFound, assertActionLimits, assertKnowledge, assertNameAvailable, authorizeAgentConfig, canReadAgentConfig, lifecycleForWrite, nextConfig, rethrowNameTaken, specialtyFields, specialtyFromInput } from "../application/agent-config-rules.js"
+import { actionLimitsText, agentNotFound, assertActionLimits, assertKnowledge, assertNameAvailable, authorizeAgentConfig, canReadAgentConfig, lifecycleForWrite, manageableAgentScopeSql, nextConfig, previousAgentScope, resolveAgentScopeForWrite, rethrowNameTaken, specialtyFields, specialtyFromInput, type AgentScopeLike } from "../application/agent-config-rules.js"
 import { fieldChange, NON_CONFIG_HISTORY_FIELDS, readableHistoryEntry, recordAgentHistory, versionLabel, type StoredFieldChange } from "../application/agent-history.js"
 import { configScopeSql, readableRun, readsEveryAgentScope, type AgentRunRow } from "../application/agent-read-access.js"
 import { publishCheckedDraft, saveDraftWithHistory } from "../application/agent-draft-writes.js"
@@ -59,9 +62,9 @@ const agentSchema = z.object({
   objective: agentTextSchema("objective"),
   description: agentTextSchema("description"),
   contextPrompt: agentTextSchema("contextPrompt"),
-  scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]).default("ALL_TEAMS"),
-  teamId: z.string().uuid().optional(),
-  subteamId: z.string().uuid().optional(),
+  /** Alcance (249): ALL_TEAMS ou GROUPS + `scopeLinks` (Grupo inteiro ou Subgrupo); o legado TEAM/SUBTEAM + ids vira um vínculo. */
+  ...resourceScopeFields,
+  scopeType: resourceScopeTypeSchema.default("ALL_TEAMS"),
   knowledgeDocumentIds: z.array(z.string().uuid()).default([]),
   active: z.boolean().optional(),
   // Especialidade — forma alvo (migration 057/060, agents/domain/agent-specialty.ts): tipo +
@@ -91,9 +94,8 @@ const updateAgentSchema = z.object({
   objective: agentTextSchema("objective").optional(),
   description: agentTextSchema("description").optional(),
   contextPrompt: agentTextSchema("contextPrompt").optional(),
-  scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]).optional(),
-  teamId: z.string().uuid().optional(),
-  subteamId: z.string().uuid().optional(),
+  ...resourceScopeFields,
+  scopeType: resourceScopeTypeSchema.optional(),
   knowledgeDocumentIds: z.array(z.string().uuid()).optional(),
   /** Ativar/desativar é controle separado da publicação (PEN-002, item 8): vale na hora, sem passar pelo rascunho. */
   active: z.boolean().optional(),
@@ -134,7 +136,7 @@ const AGENT_SELECT = `
     a.recommend_support_materials "recommendSupportMaterials",
     coalesce(a.investigation_capabilities, '{}'::text[]) "investigationCapabilities",
     a.action_limits_enabled "actionLimitsEnabled", a.action_limits "actionLimits",
-    a.scope_type "scopeType", a.team_id "teamId", t.name "teamName", a.subteam_id "subteamId", st.name "subteamName",
+    a.scope_type "scopeType", ${resourceScopeLinksJsonSql("AGENT", "a.id")} "scopeLinks",
     (select count(*) from agent_runs ar where ar.agent_id = a.id)::int "usageCount",
     cp.name "createdByName",
     a.current_version_id "currentVersionId", cv.version_number "currentVersionNumber", cv.published_at "currentVersionPublishedAt",
@@ -149,8 +151,6 @@ const AGENT_SELECT = `
   from agents a
   ${agentBusinessDomainJoin("a", "bd")}
   left join agent_versions cv on cv.id = a.current_version_id
-  left join teams t on t.id = a.team_id
-  left join subteams st on st.id = a.subteam_id
   left join user_accounts ua on ua.id = a.created_by
   left join people cp on cp.id = ua.person_id
   where a.organization_id = $1
@@ -184,7 +184,7 @@ const knowledgeLinksSchema = z.object({
   })).min(1).max(MAX_KNOWLEDGE_LINK_CHANGES).refine((changes) => new Set(changes.map((change) => change.agentId)).size === changes.length, { message: "Cada agente só pode aparecer uma vez." }),
 })
 
-type AgentAccess = { scope: ScopedTarget; active: boolean; scopes: ManageableScopes; canManageInactive: boolean }
+type AgentAccess = { scope: ResourceScope; active: boolean; scopes: ManageableScopes; canManageInactive: boolean; operatingUniverse: string | null }
 
 /**
  * Autorização de toda rota de um agente: fora do alcance de quem administra agentes = "não encontrado" (RN-051); agente inativo
@@ -192,17 +192,18 @@ type AgentAccess = { scope: ScopedTarget; active: boolean; scopes: ManageableSco
  */
 async function authorizeAgent(db: Database, request: Request, agentId: string): Promise<AgentAccess> {
   const user = sessionUser(request)
-  const row = (await db.query<{ scopeType: string; teamId: string | null; subteamId: string | null; active: boolean }>(
-    `select scope_type "scopeType", team_id "teamId", subteam_id "subteamId", active from agents where id = $1 and organization_id = $2`,
+  const row = (await db.query<{ scopeType: string; active: boolean; operatingUniverse: string | null }>(
+    `select scope_type "scopeType", active, operating_universe "operatingUniverse" from agents where id = $1 and organization_id = $2`,
     [agentId, user.organizationId],
   )).rows[0]
   if (!row) throw agentNotFound()
   const scopes = await getManageableScopes(db, user, "agents.manage")
-  const scope = { scopeType: row.scopeType, teamId: row.teamId, subteamId: row.subteamId }
-  if (!canManageScope(scopes, scope)) throw agentNotFound()
-  const canManageInactive = canManageScope(await getManageableScopes(db, user, "agents.inactive.manage"), scope)
+  // Vários vínculos (249): administrar o agente exige TODOS no alcance de quem pede (`canManageScope` com GROUPS).
+  const scope = await loadResourceScope(db, "AGENT", agentId, row.scopeType)
+  if (!canManageScope(scopes, scopedTargetOf(scope))) throw agentNotFound()
+  const canManageInactive = canManageScope(await getManageableScopes(db, user, "agents.inactive.manage"), scopedTargetOf(scope))
   if (!row.active && !canManageInactive) throw inactiveRestricted()
-  return { scope, active: row.active, scopes, canManageInactive }
+  return { scope, active: row.active, scopes, canManageInactive, operatingUniverse: row.operatingUniverse }
 }
 
 function actorOf(request: Request): AgentActor {
@@ -235,19 +236,21 @@ export function createAgentRouter(db: Database) {
       .search(input.search, ["q.name", "q.objective", "q.description"])
       .in('q."agentType"', input.agentType)
       .equals("q.active", input.active)
-      .orgScope("q", input)
       .dateRange('q."createdAt"', input.createdFrom, input.createdTo)
     applyUniverseListFilter(filter, 'q."operatingUniverse"', input.operatingUniverse)
     if (input.knowledgeDocumentId) {
       filter.add(`exists (select 1 from agent_knowledge_documents akd where akd.agent_id = q.id and akd.knowledge_document_id = ${filter.param(input.knowledgeDocumentId)}::uuid)`)
     }
-    applyManageableScopeFilter(scopes, filter)
+    // Filtro de Grupo/Subgrupo (249): algum vínculo naquele Subgrupo / Grupo (inteiro ou Subgrupo dele), uma linha por agente (`exists`).
+    // Como antes, o filtro de Grupo não traz os de "todos os Grupos" (que têm filtro próprio).
+    if (input.subteamId) filter.add(`exists (select 1 from agent_scope_links fl where fl.agent_id = q.id and fl.subteam_id = ${filter.param(input.subteamId)}::uuid)`)
+    else if (input.teamId) filter.add(`exists (select 1 from agent_scope_links fl where fl.agent_id = q.id and fl.team_id = ${filter.param(input.teamId)}::uuid)`)
+    else if (input.scopeType === "ALL_TEAMS") filter.add(`q."scopeType" = 'ALL_TEAMS'`)
+    const manageable = manageableAgentScopeSql(scopes, (value) => filter.param(value))
+    if (manageable) filter.add(manageable)
     // Inativos só aparecem para quem os administra, e só no alcance em que administra (PEN-001; servidor, não só a tela).
-    if (!(inactiveScopes.unrestricted || inactiveScopes.allTeams)) {
-      const teamIds = filter.param(inactiveScopes.unrestricted ? [] : [...inactiveScopes.teamIds])
-      const subteamIds = filter.param(inactiveScopes.unrestricted ? [] : [...inactiveScopes.subteamIds])
-      filter.add(`(q.active or (q."scopeType" = 'TEAM' and q."teamId" = any(${teamIds}::uuid[])) or (q."scopeType" = 'SUBTEAM' and q."subteamId" = any(${subteamIds}::uuid[])))`)
-    }
+    const inactiveManageable = manageableAgentScopeSql(inactiveScopes, (value) => filter.param(value))
+    if (inactiveManageable) filter.add(`(q.active or ${inactiveManageable})`)
     const data = await respondList(db, request.query, { select: AGENT_SELECT, filter, orderBy: 'q."usageCount" desc, q."createdAt" desc, q.id' })
     response.json({ data })
   })
@@ -296,15 +299,17 @@ export function createAgentRouter(db: Database) {
     const ids = (referencesSchema.parse(request.query).ids ?? "").split(",").map((id) => id.trim()).filter((id) => z.string().uuid().safeParse(id).success).slice(0, 200)
     if (ids.length === 0) return response.json({ data: [] })
     const scopes = await getManageableScopes(db, user, "agents.manage")
-    const rows = (await db.query<{ id: string; name: string; agentType: string; active: boolean; published: boolean; currentVersionId: string | null; currentVersionNumber: number | null; scopeType: string; teamId: string | null; subteamId: string | null; versions: { id: string; number: number; publishedAt: string }[] }>(
+    const rows = (await db.query<{ id: string; name: string; agentType: string; active: boolean; published: boolean; currentVersionId: string | null; currentVersionNumber: number | null; scopeType: string; versions: { id: string; number: number; publishedAt: string }[] }>(
       `select a.id, a.name, a.agent_type "agentType", a.active, (a.current_version_id is not null) "published", a.current_version_id "currentVersionId", cv.version_number "currentVersionNumber",
-              a.scope_type "scopeType", a.team_id "teamId", a.subteam_id "subteamId",
+              a.scope_type "scopeType",
               coalesce((select json_agg(json_build_object('id', v.id, 'number', v.version_number, 'publishedAt', v.published_at) order by v.version_number desc) from agent_versions v where v.agent_id = a.id), '[]') "versions"
          from agents a left join agent_versions cv on cv.id = a.current_version_id
         where a.organization_id = $1 and a.id = any($2::uuid[])`,
       [user.organizationId, ids],
     )).rows
-    response.json({ data: rows.filter((row) => canManageScope(scopes, row)).map((row) => ({ id: row.id, name: row.name, agentType: row.agentType, active: row.active, published: row.published, currentVersionId: row.currentVersionId, currentVersionNumber: row.currentVersionNumber, versions: row.versions })) })
+    const links = await loadResourceScopeLinks(db, "AGENT", rows.map((row) => row.id))
+    const managed = (row: (typeof rows)[number]) => canManageScope(scopes, scopedTargetOf(resourceScopeOf({ scopeType: row.scopeType === "ALL_TEAMS" ? "ALL_TEAMS" : "GROUPS", scopeLinks: links.get(row.id) ?? [] })))
+    response.json({ data: rows.filter(managed).map((row) => ({ id: row.id, name: row.name, agentType: row.agentType, active: row.active, published: row.published, currentVersionId: row.currentVersionId, currentVersionNumber: row.currentVersionNumber, versions: row.versions })) })
   })
 
   router.get("/:id", async (request, response) => {
@@ -356,7 +361,7 @@ export function createAgentRouter(db: Database) {
   /** Uma execução com o conteúdo efetivamente testado (PEN-049: o teste do rascunho guarda o que foi testado) — se for do alcance de quem lê. */
   router.get("/:id/runs/:runId", async (request, response) => {
     const access = await authorizeAgent(db, request, request.params.id!)
-    const row = (await db.query<{ testedConfig: (ScopedTarget & Record<string, unknown>) | null } & Record<string, unknown>>(
+    const row = (await db.query<{ testedConfig: (NonNullable<AgentScopeLike> & Record<string, unknown>) | null } & Record<string, unknown>>(
       `select r.id, r.source, r.status, r.created_at "createdAt", r.completed_at "completedAt", r.run_target "runTarget",
               r.agent_version_id "agentVersionId", v.version_number "agentVersionNumber", coalesce(r.tested_config, v.config) "testedConfig"
        from agent_runs r left join agent_versions v on v.id = r.agent_version_id
@@ -439,10 +444,8 @@ export function createAgentRouter(db: Database) {
     const input = agentSchema.parse(request.body)
 
     const scopes = await getManageableScopes(db, user, "agents.manage")
-    const scope = await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })
-    if (!scope || !canManageScope(scopes, scope)) {
-      throw new DomainError("Você não tem permissão para criar agentes nesse escopo.", "AGENT_SCOPE_FORBIDDEN", 403)
-    }
+    // Alcance novo: todos os vínculos no alcance de quem cria, do universo do agente e com operador em produção (249).
+    const scope = await resolveAgentScopeForWrite(db, organizationId, scopes, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null, scopeLinks: input.scopeLinks ?? [] }, { previous: null, universe: input.operatingUniverse ?? null })
 
     const specialty = (await specialtyFromInput(db, organizationId, input)) ?? { kind: null, domain: null, capability: null, acceptsConsolidated: false }
     const actionLimits: AgentActionLimits = { enabled: input.actionLimitsEnabled, text: actionLimitsText(input.actionLimits) }
@@ -453,9 +456,7 @@ export function createAgentRouter(db: Database) {
       objective: input.objective,
       description: input.description,
       contextPrompt: input.contextPrompt,
-      scopeType: scope.scopeType as AgentConfig["scopeType"],
-      teamId: scope.teamId,
-      subteamId: scope.subteamId,
+      ...agentScopeFields(scope),
       ...specialtyFields(specialty),
       recommendSupportMaterials: input.recommendSupportMaterials ?? false,
       investigationCapabilities: normalizeCapabilities(input.investigationCapabilities),
@@ -469,7 +470,7 @@ export function createAgentRouter(db: Database) {
       const created = await client.query<{ id: string }>(
         `insert into agents(organization_id, name, agent_type, objective, description, context_prompt, scope_type, team_id, subteam_id, created_by, draft_config, draft_revision, draft_updated_at, draft_updated_by_name)
          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,1,now(),$12) returning id`,
-        [organizationId, config.name, config.agentType, config.objective, config.description, config.contextPrompt, config.scopeType, config.teamId, config.subteamId, request.user?.sub ?? null, JSON.stringify(config), actorOf(request).name],
+        [organizationId, config.name, config.agentType, config.objective, config.description, config.contextPrompt, config.scopeType, null, null, request.user?.sub ?? null, JSON.stringify(config), actorOf(request).name],
       )
       const id = created.rows[0]!.id
       await client.query(`update agents set operating_universe = $2 where id = $1`, [id, input.operatingUniverse ?? null])
@@ -501,7 +502,8 @@ export function createAgentRouter(db: Database) {
         if (!base) throw agentNotFound()
         // Sobrescrever o rascunho é agir sobre ele (como descartá-lo); `nextConfig` confere o alcance resultante.
         authorizeAgentConfig(access.scopes, base)
-        const config = await nextConfig(client, organizationId, access.scopes, base, changes)
+        // Vínculos já salvos (vigente ou rascunho) continuam aceitos; os novos, do universo do agente e com operador em produção (249).
+        const config = await nextConfig(client, organizationId, access.scopes, base, changes, { previous: previousAgentScope(lifecycle.scope, agentScopeOf(base)), universe: access.operatingUniverse })
         await assertNameAvailable(client, organizationId, config.name, agentId)
         await saveDraftWithHistory(client, lifecycle, base, config, actorOf(request))
       }

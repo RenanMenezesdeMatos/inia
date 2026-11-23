@@ -194,17 +194,22 @@ export const WORKFLOW_CONFIGURATION_CHANGE_LABELS: Record<WorkflowConfigurationC
 }
 
 /**
+ * Abrangência do Workflow (migration 249): ALL_TEAMS ou GROUPS + vínculos. TEAM/SUBTEAM só em respostas antigas (o backend sempre
+ * devolve ALL_TEAMS/GROUPS); a tela converte com `scopeValueFromResource`.
+ */
+export const workflowScopeTypeSchema = z.enum(["ALL_TEAMS", "GROUPS", "TEAM", "SUBTEAM"])
+export const workflowScopeLinkSchema = z.object({ teamId: z.string(), teamName: z.string().nullable().optional(), subteamId: z.string().nullable(), subteamName: z.string().nullable().optional() })
+export type WorkflowScopeLink = z.infer<typeof workflowScopeLinkSchema>
+
+/**
  * Configuração do RASCUNHO (Gatilho, Abrangência, Modo de avaliação) — o que o editor edita. Só passa a valer no
  * runtime ao Publicar; até lá os campos de topo do Workflow (`trigger`, `scopeType`…) continuam sendo a configuração
  * PUBLICADA, que é a que o agendador, a ingestão e o "Executar agora" usam (incidente de 2026-10-05).
  */
 export const workflowDraftConfigurationSchema = z.object({
   trigger: workflowTriggerSchema,
-  scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]),
-  teamId: z.string().nullable(),
-  teamName: z.string().nullable(),
-  subteamId: z.string().nullable(),
-  subteamName: z.string().nullable(),
+  scopeType: workflowScopeTypeSchema,
+  scopeLinks: z.array(workflowScopeLinkSchema).catch([]).default([]),
   consolidatedStructure: consolidatedStructureSchema.nullable().optional(),
   populationFilter: populationFilterSchema.nullable().optional(),
   /** "Somente quem tem acesso ativo à INIA" do RASCUNHO (ausente = desligada). */
@@ -218,11 +223,10 @@ export const workflowSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().nullable(),
-  scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]),
-  teamId: z.string().nullable(),
-  teamName: z.string().nullable(),
-  subteamId: z.string().nullable(),
-  subteamName: z.string().nullable(),
+  /** Abrangência PUBLICADA (249): ALL_TEAMS ("Todos os Grupos e Subgrupos" do universo) ou GROUPS + `scopeLinks`. */
+  scopeType: workflowScopeTypeSchema,
+  /** Vínculos (Grupo inteiro = `subteamId` nulo, ou um Subgrupo daquele Grupo), com os nomes. Vazio em ALL_TEAMS. */
+  scopeLinks: z.array(workflowScopeLinkSchema).catch([]).default([]),
   /** Universo de atuação PUBLICADO (o que a execução usa); null = pendente. */
   operatingUniverse: operatingUniverseSchema.nullable().default(null),
   active: z.boolean(),
@@ -258,10 +262,7 @@ export function withDraftConfiguration<T extends Workflow>(workflow: T): T {
     ...workflow,
     trigger: draft.trigger,
     scopeType: draft.scopeType,
-    teamId: draft.teamId,
-    teamName: draft.teamName,
-    subteamId: draft.subteamId,
-    subteamName: draft.subteamName,
+    scopeLinks: draft.scopeLinks,
     consolidatedStructure: draft.consolidatedStructure ?? null,
     populationFilter: draft.populationFilter ?? null,
     requireActiveAccess: draft.requireActiveAccess === true,

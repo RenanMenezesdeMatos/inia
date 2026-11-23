@@ -16,6 +16,7 @@ import { env } from "../../../config/env.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { getManageableScopes } from "../../auth/application/manageable-scopes.js"
 import { loadIndicatorDependencies, loadVisibleIndicatorDependencies } from "../../indicators/application/indicator-dependencies.js"
+import { linkWorkflowScope } from "../../workflows/testing/workflow-scope-fixtures.js"
 import { loadBusinessDomainDependencies, loadVisibleBusinessDomainDependencies } from "../application/business-domain-service.js"
 
 const ENABLED = process.env.INIA_DB_PROOF === "1"
@@ -54,22 +55,26 @@ async function account(name: string, teamId: string | null, role?: { code: strin
   return id
 }
 
+/** Agente de Grupo (249): GROUPS + um vínculo com o Grupo inteiro em `agent_scope_links`. */
 async function agent(name: string, teamId: string | null, options: { domain?: boolean; agentType?: string } = {}): Promise<string> {
-  return (
+  const id = (
     await pool.query<{ id: string }>(
-      `insert into agents (organization_id, name, agent_type, objective, description, context_prompt, scope_type, team_id, specialty_kind, domain, specialty, business_domain_id)
-       values ($1, $2, $3, 'Prova', 'Prova', 'Prova', $4, $5, $6, $7, $7, $8) returning id`,
-      [ORG, name, options.agentType ?? "CUSTOM", teamId ? "TEAM" : "ALL_TEAMS", teamId, options.domain ? "DOMAIN" : null, options.domain ? CODE : null, options.domain ? domain.id : null],
+      `insert into agents (organization_id, name, agent_type, objective, description, context_prompt, scope_type, specialty_kind, domain, specialty, business_domain_id)
+       values ($1, $2, $3, 'Prova', 'Prova', 'Prova', $4, $5, $6, $6, $7) returning id`,
+      [ORG, name, options.agentType ?? "CUSTOM", teamId ? "GROUPS" : "ALL_TEAMS", options.domain ? "DOMAIN" : null, options.domain ? CODE : null, options.domain ? domain.id : null],
     )
   ).rows[0]!.id
+  if (teamId) await pool.query(`insert into agent_scope_links (agent_id, organization_id, team_id) values ($1, $2, $3)`, [id, ORG, teamId])
+  return id
 }
 
 async function workflow(name: string, teamId: string | null) {
-  const scope = teamId ? "TEAM" : "ALL_TEAMS"
-  await pool.query(
-    `insert into workflows (organization_id, name, scope_type, team_id, draft_scope_type, draft_team_id, draft_graph) values ($1, $2, $3, $4, $3, $4, $5)`,
-    [ORG, name, scope, teamId, JSON.stringify({ nodes: [{ id: "n1", type: "condition", config: { indicatorCode: indicator.code } }], edges: [] })],
-  )
+  const id = (await pool.query<{ id: string }>(
+    `insert into workflows (organization_id, name, scope_type, draft_scope_type, draft_graph) values ($1, $2, 'ALL_TEAMS', 'ALL_TEAMS', $3) returning id`,
+    [ORG, name, JSON.stringify({ nodes: [{ id: "n1", type: "condition", config: { indicatorCode: indicator.code } }], edges: [] })],
+  )).rows[0]!.id
+  // Abrangência de um Grupo (249): GROUPS + vínculo.
+  if (teamId) await linkWorkflowScope(pool, id, [{ teamId }])
 }
 
 const scopesOf = (accountId: string, permission: "agents.manage" | "workflows.manage") => getManageableScopes(db, { organizationId: ORG, sub: accountId }, permission)
@@ -91,10 +96,12 @@ describe.skipIf(!ENABLED)("Catálogos — dependências mostram pelo nome só o 
     await agent("Agent do Grupo A", teamA, { domain: true })
     await agent("Agent do Grupo B", teamB, { domain: true })
     const coordinator = await agent("Coordenador do Grupo B", teamB, { agentType: "ORCHESTRATOR" })
-    await pool.query(
-      `insert into assistant_orchestrators (organization_id, name, orchestrator_agent_id, scope_type, team_id, active, routing_policy, routing_domains) values ($1, 'Orquestrador do Grupo B', $2, 'TEAM', $3, false, 'DOMAINS', $4)`,
-      [ORG, coordinator, teamB, [CODE]],
-    )
+    // Alcance por vínculos (249): GROUPS + o Grupo B inteiro.
+    const orchestratorB = (await pool.query<{ id: string }>(
+      `insert into assistant_orchestrators (organization_id, name, orchestrator_agent_id, scope_type, active, routing_policy, routing_domains) values ($1, 'Orquestrador do Grupo B', $2, 'GROUPS', false, 'DOMAINS', $3) returning id`,
+      [ORG, coordinator, [CODE]],
+    )).rows[0]!.id
+    await pool.query(`insert into assistant_orchestrator_scope_links (orchestrator_id, organization_id, team_id) values ($1, $2, $3)`, [orchestratorB, ORG, teamB])
 
     indicator = { id: (await pool.query<{ id: string }>(`insert into indicator_definitions (organization_id, code, name, unit, desired_direction) values ($1, $2, 'Indicador dependências QA', 'PERCENT', 'HIGHER') returning id`, [ORG, indicator.code])).rows[0]!.id, code: indicator.code }
     await workflow("Workflow do Grupo A", teamA)

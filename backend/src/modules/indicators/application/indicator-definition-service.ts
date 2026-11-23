@@ -11,6 +11,10 @@ import {
   type IndicatorDefinitionInput,
   type IndicatorDefinitionRecord,
 } from "../domain/indicator-definition.js"
+import { z } from "zod"
+import type { ManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { loadResourceScope, replaceResourceScopeLinks, resolveResourceScopeForWrite } from "../../org-structure/application/resource-scope-links.js"
+import { resourceScopeFields } from "../../../shared/presentation/scope-links-schema.js"
 import { describeDependencies, describeDeletionBlockers, loadIndicatorDeletionBlockers, loadIndicatorDependencies, type IndicatorDependencies } from "./indicator-dependencies.js"
 
 /**
@@ -160,4 +164,23 @@ export async function deleteIndicatorDefinition(db: Database, organizationId: st
     await client.query(`insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'INDICATOR_DELETED', 'indicator_definition', $3, $4)`, [organizationId, actorPersonId, id, JSON.stringify({ code: current.code, name: current.name })])
   })
   return dependencies
+}
+
+const indicatorScopeInputSchema = z.object({ scopeType: resourceScopeFields.scopeType.optional(), scopeLinks: resourceScopeFields.scopeLinks }).passthrough()
+
+/**
+ * ALCANCE OPERACIONAL do indicador (migration 250): "Todos os Grupos e Subgrupos" do universo dele (padrão, dinâmico) ou Grupos/Subgrupos
+ * específicos. Gravado, validado e usado na Administração (lista, filtros, seleção); os cálculos e o motor de feedback não o leem
+ * (decisão de 23/11/2026). Corpo sem `scopeType` = alcance inalterado. Vínculo novo: do universo do indicador e com operador em produção;
+ * o já salvo continua aceito.
+ */
+export async function applyIndicatorScope(db: Pick<Database, "query">, organizationId: string, indicatorId: string, rawInput: unknown, scopes: ManageableScopes): Promise<void> {
+  const input = indicatorScopeInputSchema.parse(rawInput ?? {})
+  if (!input.scopeType) return
+  const current = (await db.query<{ scope_type: string; operating_universe: string | null }>(`select scope_type, operating_universe from indicator_definitions_all where id = $1 and organization_id = $2`, [indicatorId, organizationId])).rows[0]
+  if (!current) throw new DomainError("Indicador não encontrado.", "INDICATOR_NOT_FOUND", 404)
+  const previous = await loadResourceScope(db, "INDICATOR", indicatorId, current.scope_type)
+  const scope = await resolveResourceScopeForWrite(db, organizationId, scopes, { scopeType: input.scopeType, scopeLinks: input.scopeLinks ?? [] }, { codePrefix: "INDICATOR", previous, universe: current.operating_universe })
+  await db.query(`update indicator_definitions_all set scope_type = $3 where id = $1 and organization_id = $2`, [indicatorId, organizationId, scope.scopeType])
+  await replaceResourceScopeLinks(db, "INDICATOR", organizationId, indicatorId, scope)
 }

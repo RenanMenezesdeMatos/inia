@@ -14,6 +14,7 @@ import type { Team } from "@/schemas/admin/org-structure.schema"
 import type { Orchestrator } from "@/schemas/admin/assistant.schema"
 import { useOrchestratorVersionsQuery } from "@/queries/admin/use-assistant-queries"
 import { PROCESS_ASSESSMENT_HINT, SPECIALIST_OUTPUT_CONTRACT_LABELS, type SpecialistOutputContract, type FlowNode } from "@/schemas/admin/workflow-graph.schema"
+import type { ResourceScopePayload } from "@/lib/scope-links/scope-links"
 import { triggerDataOrigin, type WorkflowTrigger } from "@/schemas/admin/workflow.schema"
 
 /**
@@ -58,7 +59,8 @@ export function OrchestratorForm({
   node: Extract<FlowNode, { type: "orchestrator" }>
   orchestrators: Orchestrator[]
   teams: Team[]
-  scope?: { scopeType: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; teamId?: string; subteamId?: string }
+  /** Abrangência do rascunho (249): ALL_TEAMS ou GROUPS + `scopeLinks`. */
+  scope?: ResourceScopePayload
   trigger?: WorkflowTrigger
   onChange: (next: FlowNode) => void
 }) {

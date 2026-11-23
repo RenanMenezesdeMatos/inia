@@ -1,11 +1,14 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { workflowLiveScopeLinksSql } from "../domain/workflow-scope.js"
 
 export type WorkflowCitationStatus = "ACTIVE" | "INACTIVE" | "DRAFT"
 
 export type WorkflowCitation = {
   id: string
   name: string
+  /** Abrangência PUBLICADA (249): ALL_TEAMS ou GROUPS + `scope_links` — gestão: `canManageScope(scopes, workflowScopedTarget(...))`. */
   scope_type: string
+  scope_links: { teamId: string; subteamId: string | null }[]
   team_id: string | null
   subteam_id: string | null
   status: WorkflowCitationStatus
@@ -37,7 +40,7 @@ export async function loadWorkflowsCitingNode(
            from graphs g cross join lateral jsonb_array_elements(coalesce(g.graph->'nodes', '[]'::jsonb)) n
           where n->'config'->>($3::text) = $2
        )
-       select w.id, w.name, w.scope_type, w.team_id, w.subteam_id,
+       select w.id, w.name, w.scope_type, ${workflowLiveScopeLinksSql("w.id")} scope_links, w.team_id, w.subteam_id,
               case when w.active then 'ACTIVE' when w.active_version_id is null then 'DRAFT' else 'INACTIVE' end "status",
               array_agg(distinct h.label order by h.label) "labels"
          from hits h join workflows w on w.id = h.id

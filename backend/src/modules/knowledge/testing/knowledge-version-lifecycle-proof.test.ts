@@ -59,6 +59,7 @@ const { withKnowledgeConsultation } = await import("../application/knowledge-con
 const { appendConversationMessage } = await import("../../assistant/application/assistant-conversations.js")
 const { productionEffects } = await import("../../workflows/application/effect-sink.js")
 const { processEnrollment } = await import("../../workflows/application/engine.js")
+const { workflowLiveScopeLinksSql } = await import("../../workflows/domain/workflow-scope.js")
 const { loadProductCatalogAt } = await import("../../product-catalog/infrastructure/product-catalog-loaders.js")
 
 const ORG = "00000000-0000-4000-8000-000000000001"
@@ -481,7 +482,7 @@ describe.skipIf(!ENABLED)("PEN-008 — bases de conhecimento: atualização auto
     const claimed = async (enrollmentId: string) => (await pool.query<Claimed>(
       `select we.id, we.organization_id, we.workflow_id, we.version_id, we.interaction_id, we.indicator_measurement_id, we.scheduled_subject_id, we.scheduled_for, we.current_node_id,
               we.matched_flag_name, we.matched_value_boolean, we.matched_value_numeric, we.status, we.attempts, we.revision, we.node_outputs, we.variables, we.parent_enrollment_id, we.retry_of_enrollment_id,
-              w.scope_type, w.team_id workflow_team_id, w.subteam_id workflow_subteam_id, w.consolidated_structure, w.population_filter, now()::text claimed_until
+              w.scope_type, ${workflowLiveScopeLinksSql("w.id")} scope_links, w.team_id workflow_team_id, w.subteam_id workflow_subteam_id, w.consolidated_structure, w.population_filter, now()::text claimed_until
          from workflow_enrollments we join workflows w on w.id = we.workflow_id where we.id = $1`,
       [enrollmentId],
     )).rows[0]!

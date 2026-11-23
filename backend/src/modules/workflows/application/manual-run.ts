@@ -7,6 +7,7 @@ import { flowGraphSchema } from "../domain/graph-schema.js"
 import { MANUAL_TRIGGER_CONTEXT_LABELS, triggerConfigSchema, type ManualTrigger, type ManualTriggerContext } from "../domain/trigger-config-schema.js"
 import { isOperatorEligibleForWorkflow, loadEligibleOperator, resolveEligibleOperatorIds, type WorkflowPopulation } from "./workflow-eligibility.js"
 import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
+import { workflowLiveScopeLinksSql, workflowScopedTarget } from "../domain/workflow-scope.js"
 import { enrollmentSubjectScopeParams, personInScopeSql, type EnrollmentSubjectScope } from "./enrollment-visibility.js"
 
 /**
@@ -31,9 +32,11 @@ export type ManualRunTarget = {
   name: string
   active: boolean
   versionId: string | null
+  /** Abrangência PUBLICADA (249): ALL_TEAMS ou GROUPS + `scopeLinks` (legado TEAM/SUBTEAM só em dublês de teste). */
   scopeType: string
-  teamId: string | null
-  subteamId: string | null
+  scopeLinks?: { teamId: string; subteamId: string | null }[]
+  teamId?: string | null
+  subteamId?: string | null
   populationFilter: unknown
   operatingUniverse?: string | null
   /** "Somente quem tem acesso ativo à INIA" (publicado): só quem tem conta de acesso ativa pode ser escolhido. */
@@ -87,6 +90,7 @@ export async function loadManualRunTarget(db: Database, organizationId: string, 
     active: boolean
     active_version_id: string | null
     scope_type: string
+    scope_links: { teamId: string; subteamId: string | null }[] | null
     team_id: string | null
     subteam_id: string | null
     population_filter: unknown
@@ -97,7 +101,7 @@ export async function loadManualRunTarget(db: Database, organizationId: string, 
     operating_universe: string | null
     require_active_access: boolean | null
   }>(
-    `select w.id, w.name, w.active, w.active_version_id, w.scope_type, w.team_id, w.subteam_id, w.population_filter, w.consolidated_structure, w.operating_universe, w.require_active_access,
+    `select w.id, w.name, w.active, w.active_version_id, w.scope_type, ${workflowLiveScopeLinksSql("w.id")} scope_links, w.team_id, w.subteam_id, w.population_filter, w.consolidated_structure, w.operating_universe, w.require_active_access,
             w.trigger_config, idef.name indicator_name, idef.unit indicator_unit
        from workflows w
        left join indicator_definitions idef on idef.organization_id = w.organization_id and idef.code = w.trigger_config ->> 'indicatorCode'
@@ -114,6 +118,7 @@ export async function loadManualRunTarget(db: Database, organizationId: string, 
     active: row.active,
     versionId: row.active_version_id,
     scopeType: row.scope_type,
+    scopeLinks: row.scope_links ?? [],
     teamId: row.team_id,
     subteamId: row.subteam_id,
     populationFilter: row.population_filter,
@@ -138,7 +143,7 @@ export async function loadUnavailableReferences(db: Database, organizationId: st
   const agentNodes = graph.data.nodes.flatMap((node) => (node.type === "action" && node.config.actionType === "CALL_AGENT" ? [{ label: node.label, id: node.config.agentId }] : []))
   const orchestratorNodes = graph.data.nodes.flatMap((node) => (node.type === "orchestrator" ? [{ label: node.label, id: node.config.orchestratorId }] : []))
   const agents = new Map((await db.query<{ id: string; name: string; active: boolean; current_version_id: string | null }>(`select id, name, active, current_version_id from agents where organization_id = $1 and id = any($2::uuid[])`, [organizationId, agentNodes.map((node) => node.id)])).rows.map((row) => [row.id, row]))
-  const workflowScope = (await db.query<{ scope_type: string; team_id: string | null; subteam_id: string | null }>(`select w.scope_type, w.team_id, w.subteam_id from workflow_versions v join workflows_all w on w.id = v.workflow_id where v.id = $1`, [versionId])).rows[0]
+  const workflowScope = (await db.query<{ scope_type: string; scope_links: { teamId: string; subteamId: string | null }[] | null; team_id: string | null; subteam_id: string | null }>(`select w.scope_type, ${workflowLiveScopeLinksSql("w.id")} scope_links, w.team_id, w.subteam_id from workflow_versions v join workflows_all w on w.id = v.workflow_id where v.id = $1`, [versionId])).rows[0]
   const orchestrators = new Map((await db.query<{ id: string; name: string; active: boolean; invocation_mode: string }>(`select id, name, active, invocation_mode from assistant_orchestrators where organization_id = $1 and id = any($2::uuid[])`, [organizationId, orchestratorNodes.map((node) => node.id)])).rows.map((row) => [row.id, row]))
   const blockers: ManualRunBlocker[] = []
   for (const node of agentNodes) {
@@ -149,7 +154,7 @@ export async function loadUnavailableReferences(db: Database, organizationId: st
     else if (workflowScope) {
       // A versão VIGENTE do agente precisa estar autorizada para o alcance do Workflow (revisão de 03/11/2026) — a mesma conferência da execução.
       const snapshot = await resolveAgentVersionForRun(db, organizationId, agent.id)
-      const denial = await executionDenialFor(db, snapshot, { scopeType: workflowScope.scope_type, teamId: workflowScope.team_id, subteamId: workflowScope.subteam_id })
+      const denial = await executionDenialFor(db, snapshot, workflowScopedTarget({ scopeType: workflowScope.scope_type, scopeLinks: workflowScope.scope_links ?? [], teamId: workflowScope.team_id, subteamId: workflowScope.subteam_id }))
       if (denial) blockers.push({ code: "WORKFLOW_AGENT_NOT_AUTHORIZED", message: `O nó "${node.label}" usa o agente "${agent.name}", cuja versão vigente não está autorizada para este Workflow (alcance ou bases do agente). Ajuste o agente antes de executar.` })
     }
   }
@@ -163,7 +168,7 @@ export async function loadUnavailableReferences(db: Database, organizationId: st
 }
 
 function populationOf(target: ManualRunTarget): WorkflowPopulation {
-  return { scopeType: target.scopeType, teamId: target.teamId, subteamId: target.subteamId, populationFilter: target.populationFilter, operatingUniverse: target.operatingUniverse ?? null, requireActiveAccess: target.requireActiveAccess === true }
+  return { scopeType: target.scopeType, scopeLinks: target.scopeLinks ?? [], teamId: target.teamId ?? null, subteamId: target.subteamId ?? null, populationFilter: target.populationFilter, operatingUniverse: target.operatingUniverse ?? null, requireActiveAccess: target.requireActiveAccess === true }
 }
 
 export type ManualRunCollaborator = { id: string; name: string; matricula: string | null; jobTitle: string | null; teamName: string | null; subteamName: string | null }

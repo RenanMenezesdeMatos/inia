@@ -392,6 +392,10 @@ export const listOperatorsSchema = z.object({
   /** Presente = só colaboradores elegíveis pra este Workflow (Abrangência + Filtro Populacional) —
    * o seletor de colaborador nunca oferece alguém fora da população do Workflow (Parte 24/25). */
   workflowId: z.string().uuid().optional(),
+  /** Com `workflowId`: qual configuração vale — a do rascunho (padrão, o que está sendo editado) ou a publicada (249: a Abrangência
+   * com vários Grupos é resolvida pela configuração testada, nunca reconstruída no navegador). */
+  graphSource: z.enum(["DRAFT", "PUBLISHED"]).optional(),
+  /** Recorte por um Grupo/Subgrupo de pessoas (seletores de unidade), não a Abrangência do Workflow. */
   scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]).optional(),
   teamId: z.string().uuid().optional(),
   subteamId: z.string().uuid().optional(),
@@ -409,7 +413,7 @@ export async function listPeople(db: Database, organizationId: string, input: Li
   if (input.workflowId) {
     const workflow = await loadWorkflowForSimulation(db, organizationId, input.workflowId)
     if (!workflow) throw new DomainError("Workflow não encontrado.", "WORKFLOW_NOT_FOUND", 404)
-    params.push(await resolveEligibleOperatorIds(db, organizationId, workflow))
+    params.push(await resolveEligibleOperatorIds(db, organizationId, withSimulationConfiguration(workflow, input.graphSource ?? "DRAFT")))
     where.push(`p.id = any($${params.length}::uuid[])`)
   }
   if (input.scopeType === "TEAM" && input.teamId) {

@@ -1,10 +1,11 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { offeredScopeUnits, pickScopeUnit, scopeUnitsServiceFrom } from "@/components/admin/shared/testing/scope-units-fake"
 import type { ArgumentScript, ArgumentScriptContent, ArgumentScriptDetail, ArgumentScriptVersion } from "@/schemas/admin/argument-script.schema"
 
 import { ArgumentScriptsPage } from "./argument-scripts-page"
@@ -30,6 +31,8 @@ const fixtures = vi.hoisted(() => ({
 }))
 
 vi.mock("@/services/admin/argument-script-service", () => service)
+const scopeUnits = vi.hoisted(() => ({ fetchScopeUnits: vi.fn(), fetchScopeUnitsByIds: vi.fn() }))
+vi.mock("@/services/scope-units/scope-units-service", () => scopeUnits)
 vi.mock("@/services/admin/org-structure-service", () => ({
   fetchTeams: vi.fn(async () => fixtures.teams),
   fetchManageableTeams: vi.fn(),
@@ -120,6 +123,11 @@ const detail = (overrides: Partial<ArgumentScriptDetail> = {}): ArgumentScriptDe
 }
 
 beforeAll(installJsdomStubs)
+beforeEach(() => {
+  const fake = scopeUnitsServiceFrom(fixtures.teams)
+  scopeUnits.fetchScopeUnits.mockImplementation(fake.fetchScopeUnits)
+  scopeUnits.fetchScopeUnitsByIds.mockImplementation(fake.fetchScopeUnitsByIds)
+})
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -175,13 +183,15 @@ describe("Argumentários", () => {
     renderWithQuery(<ArgumentScriptsPage />)
     fireEvent.click(screen.getAllByRole("button", { name: /Novo argumentário/ })[0]!)
 
+    // O servidor só devolve o que a conta administra (aqui, o Grupo Atendimento).
+    const fake = scopeUnitsServiceFrom(fixtures.teams)
+    scopeUnits.fetchScopeUnits.mockImplementation(async (search: Parameters<typeof fake.fetchScopeUnits>[0]) => ({ ...(await fake.fetchScopeUnits(search)), items: (await fake.fetchScopeUnits(search)).items.filter((unit) => unit.id === "t1" || unit.teamId === "t1") }))
     const scope = await screen.findByTestId("argument-script-scope")
-    expect(within(scope).queryByRole("radio", { name: "Todos os grupos" })).toBeNull()
+    expect(within(scope).queryByRole("radio", { name: /Todos os grupos/i })).toBeNull()
     expect(within(scope).queryByText("Todos os grupos")).toBeNull()
-    fireEvent.click(within(scope).getByRole("combobox", { name: "Adicionar Grupo" }))
-    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Atendimento"])
-    fireEvent.click(screen.getByRole("option", { name: "Atendimento" }))
-    expect(within(scope).getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Atendimento (Grupo inteiro)")
+    expect(await offeredScopeUnits()).toEqual(["Atendimento"])
+    await pickScopeUnit("Atendimento")
+    await waitFor(() => expect(within(scope).getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Atendimento (Grupo inteiro)"))
   })
 
   it("com pendências de publicação, mostra as mensagens e o botão Publicar fica desabilitado", async () => {
@@ -245,14 +255,10 @@ describe("Argumentários", () => {
 
     const scope = await screen.findByTestId("argument-script-scope")
     expect(within(scope).getByText(/vale a partir da publicação dele/)).toBeInTheDocument()
-    fireEvent.click(within(scope).getByRole("radio", { name: "Grupos específicos" }))
-    for (const name of ["Atendimento", "Vendas"]) {
-      fireEvent.click(within(scope).getByRole("combobox", { name: "Adicionar Grupo" }))
-      fireEvent.click(await screen.findByRole("option", { name }))
-    }
-    fireEvent.click(within(within(scope).getByTestId("scope-group-t2")).getByRole("radio", { name: "Só alguns Subgrupos" }))
-    fireEvent.click(within(scope).getByRole("checkbox", { name: "Ativo" }))
-    expect(within(scope).getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Atendimento (Grupo inteiro) · Vendas: só Ativo")
+    fireEvent.click(within(scope).getByRole("radio", { name: /Grupos e Subgrupos específicos/ }))
+    await pickScopeUnit("Atendimento")
+    await pickScopeUnit("Vendas › Ativo", "SUBTEAM")
+    await waitFor(() => expect(within(scope).getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Atendimento (Grupo inteiro) · Vendas › Ativo"))
 
     fireEvent.click(screen.getByRole("button", { name: "Salvar rascunho" }))
     await waitFor(() => expect(service.updateArgumentScript).toHaveBeenCalledTimes(1))

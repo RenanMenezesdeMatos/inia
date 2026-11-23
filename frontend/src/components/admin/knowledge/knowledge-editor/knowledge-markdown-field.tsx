@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useRef, useState, type ReactNode } from "react"
 import { Bold, Eye, Heading2, Heading3, List, ListOrdered, PenLine, Quote, Table } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -67,7 +67,17 @@ export function contentStats(text: string) {
  * marcação e a aba "Visualizar" com a leitura formatada exatamente como a base é exibida (`KnowledgeArticleContent`). Nada é convertido:
  * o que fica salvo é o texto com as marcações.
  */
-export function KnowledgeMarkdownField({ id, label, value, onChange, readOnly, title, placeholder }: { id: string; label: string; value: string; onChange: (value: string) => void; readOnly?: boolean; title: string; placeholder?: string }) {
+export function KnowledgeMarkdownField({ id, label, value, onChange, readOnly, title, placeholder, preview }: {
+  id: string
+  label: string
+  value: string
+  onChange: (value: string) => void
+  readOnly?: boolean
+  title: string
+  placeholder?: string
+  /** Leitura própria para "Visualizar" (ex.: PDF convertido, com os prints no lugar); sem ela, o texto formatado. */
+  preview?: ReactNode
+}) {
   const [mode, setMode] = useState<"write" | "preview">("write")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const stats = contentStats(value)
@@ -119,7 +129,7 @@ export function KnowledgeMarkdownField({ id, label, value, onChange, readOnly, t
         </div>
       ) : (
         <div className={cn("min-h-80 rounded-xl border border-border px-4 py-5 sm:px-6")} data-testid="knowledge-markdown-preview">
-          {value.trim() ? <KnowledgeArticleContent text={value} omitLeadingHeading={title.trim() || undefined} /> : <p className="text-sm italic text-muted-foreground">Nada escrito ainda.</p>}
+          {value.trim() ? (preview ?? <KnowledgeArticleContent text={value} omitLeadingHeading={title.trim() || undefined} />) : <p className="text-sm italic text-muted-foreground">Nada escrito ainda.</p>}
         </div>
       )}
 

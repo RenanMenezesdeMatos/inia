@@ -43,7 +43,8 @@ import {
 } from "@/components/admin/shared/list/list-filters"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
-import { formatScopeLabel } from "@/lib/admin/scope-compatibility"
+import { resourceScopeLabel } from "@/lib/scope-links/scope-links"
+import { agentFitsListScope } from "./orchestrator-editor/agent-scope-fit"
 import { useAgentsQuery } from "@/queries/admin/use-agent-queries"
 import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import type { OrgScopeFilter } from "@/lib/admin/list-query"
@@ -62,7 +63,8 @@ import { ORCHESTRATOR_POLICY_KIND_SHORT_LABELS, POLICY_REQUIRED_MESSAGE, resolve
 import { cn } from "@/lib/utils"
 import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
-const groupLabel = formatScopeLabel
+/** Alcance (249): "Todos os Grupos" ou os Grupos/Subgrupos vinculados ("Grupo A · Grupo B › B1"). */
+const groupLabel = (orchestrator: Orchestrator) => resourceScopeLabel(orchestrator)
 const NEW_HREF = "/admin/assistant/new"
 
 /** Rótulo curto da política no card/tabela — "Sem política" é o aviso do legado (migration 054). */
@@ -264,7 +266,7 @@ export function AssistantPage() {
   const universeChoice = universeChoiceOf(list.filters.operatingUniverse)
   const currentScope: OrgScopeFilter = { scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }
   const agentsFor = (universe: OperatingUniverse | undefined, scope: OrgScopeFilter, orchestrator: boolean) =>
-    filterByUniverse(agentsQuery.data ?? [], universe).filter((agent) => (agent.agentType === "ORCHESTRATOR") === orchestrator && scopesFitOrgScope([agent], scope, teamsQuery.data))
+    filterByUniverse(agentsQuery.data ?? [], universe).filter((agent) => (agent.agentType === "ORCHESTRATOR") === orchestrator && agentFitsListScope(agent, scope, teamsQuery.data ?? [], () => scopesFitOrgScope([agent], scope, teamsQuery.data)))
   const keepAgent = (id: string | undefined, universe: OperatingUniverse | undefined, scope: OrgScopeFilter, orchestrator: boolean) =>
     id && agentsFor(universe, scope, orchestrator).some((agent) => agent.id === id) ? id : undefined
   const dependentAgents = (universe: OperatingUniverse | undefined, scope: OrgScopeFilter) => ({

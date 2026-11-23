@@ -139,7 +139,16 @@ function UserRow({ user, canManage, onOpenRoles, onAction }: { user: IdentifiedU
         ) : null}
         {canManage && !user.self && enabled ? (
           <>
-            <Button size="sm" variant="outline" onClick={() => onAction("regenerate")}><RotateCcw aria-hidden />Nova senha temporária</Button>
+            {user.canIssueTemporaryPassword ? (
+              <Button size="sm" variant="outline" onClick={() => onAction("regenerate")}><RotateCcw aria-hidden />Nova senha temporária</Button>
+            ) : (
+              <span className="flex flex-col items-start gap-1 sm:items-end">
+                <Button size="sm" variant="outline" disabled aria-describedby={`network-password-${user.personId}`}><RotateCcw aria-hidden />Nova senha temporária</Button>
+                <span id={`network-password-${user.personId}`} className="max-w-64 text-xs text-muted-foreground sm:text-right">
+                  Senha gerenciada pelo Active Directory: a pessoa entra com a matrícula e a senha de rede.
+                </span>
+              </span>
+            )}
             <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => onAction("disable")}><UserX aria-hidden />Desabilitar</Button>
           </>
         ) : null}

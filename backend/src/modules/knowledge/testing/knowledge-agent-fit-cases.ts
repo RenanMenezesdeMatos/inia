@@ -10,7 +10,16 @@ export type FitSubteam = "a1" | "a2" | "b1"
 export const FIT_SUBTEAM_PARENT: Record<FitSubteam, FitTeam> = { a1: "A", a2: "A", b1: "B" }
 
 export type FitDocumentScope = { scopeType: "ALL_TEAMS" } | { scopeType: "TEAM"; team: FitTeam } | { scopeType: "SUBTEAM"; subteam: FitSubteam }
-export type FitAgentScope = { scopeType: "ALL_TEAMS" } | { scopeType: "TEAM"; team: FitTeam } | { scopeType: "SUBTEAM"; subteam: FitSubteam }
+/** Alcance do agente: o legado de vínculo único (TEAM/SUBTEAM) ou os vários vínculos da 249 (`GROUPS`: Grupo inteiro ou Subgrupo). */
+export type FitAgentScope = { scopeType: "ALL_TEAMS" } | { scopeType: "TEAM"; team: FitTeam } | { scopeType: "SUBTEAM"; subteam: FitSubteam } | { scopeType: "GROUPS"; links: (FitTeam | FitSubteam)[] }
+
+/** Grupos efetivos do agente (Subgrupo → Grupo-pai): o que a SQL recebe em `teamIds`. */
+export function fitAgentTeams(scope: FitAgentScope): FitTeam[] {
+  if (scope.scopeType === "ALL_TEAMS") return []
+  if (scope.scopeType === "TEAM") return [scope.team]
+  if (scope.scopeType === "SUBTEAM") return [FIT_SUBTEAM_PARENT[scope.subteam]]
+  return [...new Set(scope.links.map((link) => (link === "A" || link === "B" ? link : FIT_SUBTEAM_PARENT[link])))]
+}
 export type FitCase = { name: string; document: FitDocumentScope[]; agent: FitAgentScope; fits: boolean }
 
 const GLOBAL: FitDocumentScope = { scopeType: "ALL_TEAMS" }
@@ -30,4 +39,14 @@ export const KNOWLEDGE_AGENT_FIT_CASES: readonly FitCase[] = [
   { name: "agente de Subgrupo aceita base de Subgrupo irmão", document: [subteam("a2")], agent: subteam("a1"), fits: true },
   { name: "agente de Subgrupo aceita base global", document: [GLOBAL], agent: subteam("a1"), fits: true },
   { name: "agente de Subgrupo recusa base de outro Grupo", document: [team("B")], agent: subteam("a1"), fits: false },
+  // Vários vínculos (249): a base cabe se for global ou valer para CADA Grupo efetivo do agente (Subgrupo leva o Grupo-pai) — run-10 QA-01.
+  { name: "agente de vários Grupos recusa base de só um deles", document: [team("B")], agent: { scopeType: "GROUPS", links: ["A", "b1"] }, fits: false },
+  { name: "agente de vários Grupos recusa base de Subgrupo de só um deles", document: [subteam("a2")], agent: { scopeType: "GROUPS", links: ["a1", "b1"] }, fits: false },
+  { name: "agente de vários Grupos aceita base de todos eles", document: [team("A"), team("B")], agent: { scopeType: "GROUPS", links: ["A", "b1"] }, fits: true },
+  { name: "agente de vários Grupos aceita base de Subgrupos que cobrem cada Grupo dele", document: [subteam("a2"), subteam("b1")], agent: { scopeType: "GROUPS", links: ["a1", "B"] }, fits: true },
+  { name: "agente de vários Subgrupos do mesmo Grupo aceita base desse Grupo", document: [team("A")], agent: { scopeType: "GROUPS", links: ["a1", "a2"] }, fits: true },
+  { name: "agente de vários Subgrupos do mesmo Grupo recusa base de outro Grupo", document: [subteam("b1")], agent: { scopeType: "GROUPS", links: ["a1", "a2"] }, fits: false },
+  { name: "agente de vários Grupos aceita base global", document: [GLOBAL], agent: { scopeType: "GROUPS", links: ["A", "B"] }, fits: true },
+  { name: "agente sem vínculo nenhum nunca vira global: só base global", document: [team("A")], agent: { scopeType: "GROUPS", links: [] }, fits: false },
+  { name: "agente sem vínculo nenhum aceita base global", document: [GLOBAL], agent: { scopeType: "GROUPS", links: [] }, fits: true },
 ]

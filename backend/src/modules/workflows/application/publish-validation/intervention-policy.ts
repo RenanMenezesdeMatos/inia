@@ -1,5 +1,6 @@
 import { DomainError } from "../../../../shared/domain/domain-error.js"
 import { findAncestorNodeIds, type FlowNode } from "../../domain/graph-schema.js"
+import { workflowResourceScope } from "../../domain/workflow-scope.js"
 import type { PublishCatalogContext, PublishGraphContext } from "./context.js"
 
 // Família POLÍTICA DE ACOMPANHAMENTO: o nó "Avaliar política de acompanhamento". O que o editor checa sem banco (referências
@@ -39,10 +40,19 @@ export async function validateInterventionPolicyReferences(context: PublishCatal
     if (!policy.active) throw new DomainError(`O nó "${node.label}" usa a política "${policy.name}", que está inativa.`, "WORKFLOW_INTERVENTION_POLICY_INACTIVE", 422, { nodeId: node.id })
     if (policy.published === 0) throw new DomainError(`A política "${policy.name}" ainda não tem versão publicada: publique a política antes do Workflow.`, "WORKFLOW_INTERVENTION_POLICY_UNPUBLISHED", 422, { nodeId: node.id })
     // Abrangência do Workflow × escopo da política: se NINGUÉM do Workflow pode estar no escopo, a política nunca se aplicaria.
-    const { scopeType, teamId, subteamId } = context.row
-    const disjoint =
-      (policy.scope_type === "GROUP" && ((scopeType === "TEAM" && teamId !== policy.team_id) || (scopeType === "SUBTEAM" && teamId !== null && teamId !== policy.team_id))) ||
-      (policy.scope_type === "SUBGROUP" && ((scopeType === "TEAM" && teamId !== policy.subteam_team_id) || (scopeType === "SUBTEAM" && subteamId !== policy.subteam_id)))
+    // Com vários Grupos (249): disjunta quando NENHUM vínculo do Workflow cruza o escopo da política (Grupo inteiro cruza os Subgrupos dele).
+    const disjoint = workflowDisjointFromPolicy(context.row, policy)
     if (disjoint) throw new DomainError(`A política "${policy.name}" vale para outro Grupo/Subgrupo: nenhum colaborador deste Workflow estaria no escopo dela.`, "WORKFLOW_INTERVENTION_POLICY_SCOPE_MISMATCH", 422, { nodeId: node.id })
   }
+}
+
+/** Nenhum colaborador da Abrangência do Workflow pode estar no escopo da política? ALL_TEAMS nunca é disjunta (a política decide). */
+function workflowDisjointFromPolicy(row: PublishCatalogContext["row"], policy: { scope_type: string; team_id: string | null; subteam_id: string | null; subteam_team_id: string | null }): boolean {
+  if (row.scopeType === "ALL_TEAMS") return false
+  // SUBTEAM legado sem Grupo-pai conhecido: o Grupo é desconhecido, só o próprio Subgrupo é comparável (regra anterior à 249).
+  if (row.scopeType === "SUBTEAM" && !row.teamId) return policy.scope_type === "SUBGROUP" && row.subteamId !== policy.subteam_id
+  const links = workflowResourceScope(row).links
+  if (policy.scope_type === "GROUP") return !links.some((link) => link.teamId === policy.team_id)
+  if (policy.scope_type === "SUBGROUP") return !links.some((link) => (link.subteamId === null ? link.teamId === policy.subteam_team_id : link.subteamId === policy.subteam_id))
+  return false
 }

@@ -3,6 +3,7 @@ import request from "supertest"
 import { env } from "../../../config/env.js"
 import { createApp } from "../../../main/app.js"
 import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
+import { linkWorkflowScope } from "./workflow-scope-fixtures.js"
 import { processEnrollment } from "../application/engine.js"
 
 /**
@@ -86,13 +87,17 @@ type WorkflowOptions = { publisherId?: string | null; teamId?: string | null; su
 /** Workflow com versão já no ar, inserido direto: é assim que uma versão antiga, publicada antes da regra nova, chega ao motor. */
 export async function insertLiveWorkflow(client: ProofClient, name: string, graph: unknown, options: WorkflowOptions = {}): Promise<{ workflowId: string; versionId: string }> {
   const { publisherId = null, teamId = null, subteamId = null, active = true, organizationId = ORG } = options
-  const scope = subteamId ? "SUBTEAM" : teamId ? "TEAM" : "ALL_TEAMS"
+  // Abrangência (249): Grupo/Subgrupo = GROUPS + vínculo (o Subgrupo leva o Grupo-pai real); a versão guarda o snapshot em `scope_links`.
   const trigger = JSON.stringify({ kind: "manual", context: "COLLABORATOR" })
   const workflowId = (await client.query<{ id: string }>(
-    "insert into workflows (organization_id, name, trigger_config, draft_trigger_config, draft_graph, active, scope_type, team_id, subteam_id, draft_scope_type, draft_team_id, draft_subteam_id) values ($1, $2, $3, $3, $4, $5, $6, $7, $8, $6, $7, $8) returning id",
-    [organizationId, name, trigger, JSON.stringify(graph), active, scope, teamId, subteamId],
+    "insert into workflows (organization_id, name, trigger_config, draft_trigger_config, draft_graph, active, scope_type, draft_scope_type) values ($1, $2, $3, $3, $4, $5, 'ALL_TEAMS', 'ALL_TEAMS') returning id",
+    [organizationId, name, trigger, JSON.stringify(graph), active],
   )).rows[0]!.id
-  const versionId = (await client.query<{ id: string }>("insert into workflow_versions (workflow_id, graph, created_by, trigger_config, scope_type, team_id, subteam_id) values ($1, $2, $3, $4, $5, $6, $7) returning id", [workflowId, JSON.stringify(graph), publisherId, trigger, scope, teamId, subteamId])).rows[0]!.id
+  if (teamId || subteamId) await linkWorkflowScope(client, workflowId, [{ teamId, subteamId }])
+  const versionId = (await client.query<{ id: string }>(
+    "insert into workflow_versions (workflow_id, graph, created_by, trigger_config, scope_type, scope_links) select $1, $2, $3, $4, w.scope_type, w.draft_scope_links from workflows_all w where w.id = $1 returning id",
+    [workflowId, JSON.stringify(graph), publisherId, trigger],
+  )).rows[0]!.id
   await client.query("update workflows set active_version_id = $2 where id = $1", [workflowId, versionId])
   return { workflowId, versionId }
 }

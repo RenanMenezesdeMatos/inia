@@ -32,6 +32,7 @@ import {
 } from "../domain/indicator-definition.js"
 import { zeroContributionSupported } from "../domain/operational-aggregation.js"
 import { findIndicatorDefinition } from "./indicator-definition-service.js"
+import { workflowLiveScopeLinksSql } from "../../workflows/domain/workflow-scope.js"
 import { loadIndicatorDependencies } from "./indicator-dependencies.js"
 
 /**
@@ -120,7 +121,7 @@ async function scanClosures(db: Queryable, organizationId: string, indicatorId: 
 
 async function loadWorkflowsCiting(db: Queryable, organizationId: string, code: string): Promise<WorkflowRow[]> {
   const result = await db.query<WorkflowRow>(
-    `select w.id, w.name, w.active, w.scope_type "scopeType", w.team_id "teamId", w.subteam_id "subteamId", w.draft_graph "draftGraph", v.graph "publishedGraph",
+    `select w.id, w.name, w.active, w.scope_type "scopeType", ${workflowLiveScopeLinksSql("w.id")} "links", w.team_id "teamId", w.subteam_id "subteamId", w.draft_graph "draftGraph", v.graph "publishedGraph",
             (select count(*) from workflow_enrollments e where e.workflow_id = w.id and e.status in ('active', 'waiting'))::int "inFlightEnrollments"
        from workflows w
        left join workflow_versions v on v.id = w.active_version_id
@@ -142,6 +143,7 @@ function classifyWorkflows(rows: readonly WorkflowRow[], code: string, next: Cor
     scopeType: row.scopeType,
     teamId: row.teamId,
     subteamId: row.subteamId,
+    links: row.links ?? [],
     inFlightEnrollments: row.inFlightEnrollments,
     uses: problems.map(({ nodeLabel, problem, aggregationLabel, message }) => ({ nodeLabel, problem, aggregationLabel, message })),
   })

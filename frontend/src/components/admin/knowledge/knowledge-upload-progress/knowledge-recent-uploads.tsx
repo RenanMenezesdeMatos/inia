@@ -37,25 +37,20 @@ function RecentUpload({ run, showDocumentLink }: { run: KnowledgeUploadRun; show
 }
 
 /**
- * "ENVIOS RECENTES": os arquivos que a pessoa enviou no último dia, com o estado que o servidor gravou. É por aqui que ela volta depois de sair
- * da tela durante o processamento. Com `documentId`, só os daquela base (no editor, o último). Sem envio, não aparece.
+ * "ÚLTIMO ENVIO DE ARQUIVO" da base, com o estado que o servidor gravou: é por aqui que a pessoa volta depois de sair da tela durante o
+ * processamento. Sem envio no último dia, não aparece. (A lista de vários envios no topo das bases saiu a pedido: atrapalhava a lista.)
  */
-export function KnowledgeRecentUploads({ documentId, latestOnly = false }: { documentId?: string; latestOnly?: boolean }) {
-  const query = useRecentKnowledgeUploadsQuery(documentId ?? null)
-  const runs = query.data ?? []
-  const shown = latestOnly ? runs.slice(0, 1) : runs
-  if (shown.length === 0) return null
+export function KnowledgeRecentUploads({ documentId }: { documentId: string }) {
+  const query = useRecentKnowledgeUploadsQuery(documentId)
+  const latest = query.data?.[0]
+  if (!latest) return null
   return (
-    <section className="space-y-2" aria-label="Envios recentes" data-testid="knowledge-recent-uploads">
+    <section className="space-y-2" aria-label="Último envio de arquivo" data-testid="knowledge-recent-uploads">
       <SectionLabel className="flex items-center gap-1.5">
         <UploadCloud aria-hidden className="size-3.5" />
-        {latestOnly ? "Último envio de arquivo" : "Envios recentes"}
+        Último envio de arquivo
       </SectionLabel>
-      <div className="space-y-2">
-        {shown.map((run) => (
-          <RecentUpload key={run.id} run={run} showDocumentLink={!documentId} />
-        ))}
-      </div>
+      <RecentUpload key={latest.id} run={latest} showDocumentLink={false} />
     </section>
   )
 }

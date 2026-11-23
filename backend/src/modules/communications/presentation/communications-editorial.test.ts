@@ -180,6 +180,27 @@ describe("público por recorte (SEGMENT)", () => {
     expect(await received(store, P.op1)).toEqual(["Ouvidoria"])
   })
 
+  it("vínculo NOVO sem operador em produção é recusado; o já salvo continua aceito ao editar (e removido não volta)", async () => {
+    const store = new InMemoryCommunicationStore(people, rights, { ...catalog, withoutProduction: [T_VEN] })
+    const director = appAs(user(P.director), store)
+    const refused = await request(director).post("/communications").send({ title: "Vendas", contentHtml: "<p>x</p>", tags: ["Aviso"], audience: "SEGMENT", mode: "DRAFT", segment: { links: [{ teamId: T_VEN, subteamId: null }] } })
+    expect(refused.status).toBe(422)
+    expect(refused.body.error.code).toBe("SCOPE_UNIT_WITHOUT_PRODUCTION_OPERATORS")
+    // Rascunho salvo quando Vendas ainda tinha gente em produção; depois perdeu: editar o texto mantendo o vínculo é aceito.
+    const draft = await request(appAs(user(P.director), new InMemoryCommunicationStore(people, rights, catalog))).post("/communications").send({ title: "Ouvidoria", contentHtml: "<p>x</p>", tags: ["Aviso"], audience: "SEGMENT", mode: "DRAFT", segment: { links: [{ teamId: T_OUV, subteamId: null }] } })
+    expect(draft.status).toBe(201)
+    const sameStore = new InMemoryCommunicationStore(people, rights, catalog)
+    const own = appAs(user(P.director), sameStore)
+    const saved = await request(own).post("/communications").send({ title: "Mantém", contentHtml: "<p>x</p>", tags: ["Aviso"], audience: "SEGMENT", mode: "DRAFT", segment: { links: [{ teamId: T_VEN, subteamId: null }, { teamId: T_OUV, subteamId: null }] } })
+    ;(sameStore as unknown as { catalog: { withoutProduction?: string[] } }).catalog.withoutProduction = [T_VEN]
+    const kept = await request(own).patch(`/communications/${saved.body.data.id}`).send({ title: "Mantém (editado)", segment: { links: [{ teamId: T_VEN, subteamId: null }, { teamId: T_OUV, subteamId: null }] } })
+    expect(kept.status).toBe(200)
+    const removed = await request(own).patch(`/communications/${saved.body.data.id}`).send({ segment: { links: [{ teamId: T_OUV, subteamId: null }] } })
+    expect(removed.status).toBe(200)
+    const readded = await request(own).patch(`/communications/${saved.body.data.id}`).send({ segment: { links: [{ teamId: T_VEN, subteamId: null }, { teamId: T_OUV, subteamId: null }] } })
+    expect(readded.body.error.code).toBe("SCOPE_UNIT_WITHOUT_PRODUCTION_OPERATORS")
+  })
+
   it("recorte vazio ou de outra organização é recusado", async () => {
     const director = appAs(user(P.director), newStore())
     expect((await request(director).post("/communications").send({ title: "Vazio", contentHtml: "<p>x</p>", tags: ["Aviso"], audience: "SEGMENT", segment: {} })).body.error.code).toBe("COMMUNICATION_SEGMENT_EMPTY")

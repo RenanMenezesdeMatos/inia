@@ -34,7 +34,8 @@ import { AgentPicker } from "@/components/admin/workflows/agent-picker"
 import { checkSpecialistAgainstRouting, describeRoutingProblem, POLICY_REQUIRED_MESSAGE, resolveAgentSpecialty, resolveRoutingPolicy, routingDomainPayload, type RoutingPolicy } from "@/schemas/admin/orchestrator-policy"
 import { useBusinessDomainsQuery } from "@/queries/admin/use-business-domain-queries"
 import { OrchestratorPolicyFields } from "./orchestrator-policy-fields"
-import { OrgScopeSelect, orgScopeValueAfterUniverseChange, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { MultiOrgScopeField } from "@/components/admin/shared/multi-org-scope-field"
+import { resourceScopePayloadOf, scopeValueFromResource, scopeValueIssue, type ScopeLinksValue } from "@/lib/scope-links/scope-links"
 import { fitsUniverse } from "@/lib/operating-universe/hierarchy"
 import type { Agent } from "@/schemas/admin/agent.schema"
 import { ORCHESTRATOR_INVOCATION_MODE_LABELS, type Orchestrator, type OrchestratorInvocationMode } from "@/schemas/admin/assistant.schema"
@@ -49,7 +50,8 @@ import { OrchestratorVersionsPopover } from "./orchestrator-editor/orchestrator-
 import { ReappliedNotice, VersionConflictNotice } from "./orchestrator-editor/version-conflict-notice"
 import { useAgentsQuery } from "@/queries/admin/use-agent-queries"
 import { useManageableTeamsQuery } from "@/queries/admin/use-org-structure-queries"
-import { scopesAreCompatible } from "@/lib/admin/scope-compatibility"
+import { agentServesOrchestratorScope } from "./orchestrator-editor/agent-scope-fit"
+import { ScopeOverlapNotice, scopeConflictOf } from "./orchestrator-editor/scope-overlap-notice"
 import {
   useCreateOrchestratorMutation,
   useDeleteOrchestratorMutation,
@@ -73,7 +75,7 @@ const unpublishedReason = (agent: Agent): string | null => (agent.published ? nu
 type OrchestratorFormSnapshot = {
   name: string
   orchestratorAgentId: string
-  orgScope: OrgScopeValue
+  scope: ScopeLinksValue
   specialistAgentIds: string[]
   invocationMode: OrchestratorInvocationMode
   recommendSupportMaterials: boolean
@@ -86,7 +88,7 @@ function snapshotOf(orchestrator: Orchestrator): OrchestratorFormSnapshot {
   return {
     name: orchestrator.name,
     orchestratorAgentId: orchestrator.orchestratorAgentId,
-    orgScope: { scopeType: orchestrator.scopeType, teamId: orchestrator.teamId ?? undefined, subteamId: orchestrator.subteamId ?? undefined },
+    scope: scopeValueFromResource(orchestrator),
     specialistAgentIds: orchestrator.specialists.map((specialist) => specialist.agentId),
     invocationMode: orchestrator.invocationMode,
     recommendSupportMaterials: orchestrator.recommendSupportMaterials,
@@ -121,9 +123,8 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
   // Universo de atuação: escolhido só na criação (o orquestrador existente muda pela classificação do universo).
   const [operatingUniverse, setOperatingUniverse] = useState<OperatingUniverse | null>(null)
   const [orchestratorAgentId, setOrchestratorAgentId] = useState(orchestrator?.orchestratorAgentId ?? "")
-  const [orgScope, setOrgScope] = useState<OrgScopeValue>(
-    orchestrator ? { scopeType: orchestrator.scopeType, teamId: orchestrator.teamId ?? undefined, subteamId: orchestrator.subteamId ?? undefined } : { scopeType: "ALL_TEAMS" },
-  )
+  // Alcance (249): "Todos os Grupos e Subgrupos" do universo ou vários Grupos/Subgrupos (cada um inteiro ou só alguns Subgrupos).
+  const [scope, setScope] = useState<ScopeLinksValue>(orchestrator ? scopeValueFromResource(orchestrator) : { global: true, groups: [] })
   const [specialistAgentIds, setSpecialistAgentIds] = useState<string[]>(orchestrator?.specialists.map((specialist) => specialist.agentId) ?? [])
   // Escolhido já na criação: só pode existir UM orquestrador ativo atendendo o chat/voz por escopo —
   // um orquestrador de domínio para Workflows ("Só workflows") precisa nascer com esse acionamento,
@@ -158,19 +159,19 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
   const [scopeCheckedFor, setScopeCheckedFor] = useState<typeof manageableTeamsQuery.data>(undefined)
   if (scopeCheckedFor !== manageableTeamsQuery.data) {
     setScopeCheckedFor(manageableTeamsQuery.data)
-    if (!orchestrator && manageableTeamsQuery.data && !manageableTeamsQuery.data.unrestricted && orgScope.scopeType === "ALL_TEAMS") {
-      setOrgScope({ scopeType: "TEAM" })
+    if (!orchestrator && manageableTeamsQuery.data && !manageableTeamsQuery.data.unrestricted && scope.global) {
+      setScope({ global: false, groups: [] })
     }
   }
 
   function currentSnapshot(): OrchestratorFormSnapshot {
-    return { name, orchestratorAgentId, orgScope, specialistAgentIds, invocationMode, recommendSupportMaterials, routing, structuredEnabled, structuredDefinition }
+    return { name, orchestratorAgentId, scope, specialistAgentIds, invocationMode, recommendSupportMaterials, routing, structuredEnabled, structuredDefinition }
   }
 
   function applySnapshot(snapshot: OrchestratorFormSnapshot) {
     setName(snapshot.name)
     setOrchestratorAgentId(snapshot.orchestratorAgentId)
-    setOrgScope(snapshot.orgScope)
+    setScope(snapshot.scope)
     setSpecialistAgentIds(snapshot.specialistAgentIds)
     setInvocationMode(snapshot.invocationMode)
     setRecommendSupportMaterials(snapshot.recommendSupportMaterials)
@@ -228,14 +229,15 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
   // Nunca oferecer um Agent exclusivo de outro grupo (Parte 6/24 do pedido) — o backend também
   // valida na gravação (validateAgentsCompatibleWithScope em assistant-router.ts), isto é só o
   // picker já vindo correto.
+  // Com vários Grupos: o Agent serve se for de "Todos os Grupos" ou se os Grupos dele cobrirem todos os do Orquestrador.
   const teamsForCompatibility = useMemo(() => manageableTeamsQuery.data?.teams ?? [], [manageableTeamsQuery.data])
   const orchestratorAgents = useMemo(
-    () => (agentsQuery.data ?? []).filter((agent) => agent.agentType === "ORCHESTRATOR" && scopesAreCompatible(teamsForCompatibility, orgScope, agent) && agentFits(agent)),
-    [agentsQuery.data, teamsForCompatibility, orgScope, agentFits],
+    () => (agentsQuery.data ?? []).filter((agent) => agent.agentType === "ORCHESTRATOR" && agentServesOrchestratorScope(scope, agent, teamsForCompatibility) && agentFits(agent)),
+    [agentsQuery.data, teamsForCompatibility, scope, agentFits],
   )
   const specialistAgents = useMemo(
-    () => (agentsQuery.data ?? []).filter((agent) => agent.agentType !== "ORCHESTRATOR" && scopesAreCompatible(teamsForCompatibility, orgScope, agent) && agentFits(agent)),
-    [agentsQuery.data, teamsForCompatibility, orgScope, agentFits],
+    () => (agentsQuery.data ?? []).filter((agent) => agent.agentType !== "ORCHESTRATOR" && agentServesOrchestratorScope(scope, agent, teamsForCompatibility) && agentFits(agent)),
+    [agentsQuery.data, teamsForCompatibility, scope, agentFits],
   )
   // Política de especialistas (orchestrator-policy.ts): quem não pode entrar aparece desabilitado
   // com o motivo — o backend aplica a mesma regra na gravação (422), isto é só a antecipação.
@@ -285,10 +287,10 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
   const structuredOutputPayload: StructuredOutputDefinition | null = structuredEnabled && structuredDefinition && structuredDefinition.nodes.length > 0 ? structuredDefinition : null
   const structuredBlocking = structuredEnabled && structuredIssues.length > 0
 
-  // Trocar o universo (só na criação) limpa o que deixou de caber: Grupo/Subgrupo, agente orquestrador, especialistas e domínios.
+  // Trocar o universo (só na criação) limpa o que deixou de caber: agente orquestrador, especialistas e domínios. Os Grupos/Subgrupos de
+  // outro universo continuam marcados no campo de alcance, com aviso e "Remover os que não cabem" (o servidor recusa os que não cabem).
   function handleUniverseChange(next: OperatingUniverse | null) {
     setOperatingUniverse(next)
-    setOrgScope((current) => orgScopeValueAfterUniverseChange(current, manageableTeamsQuery.data?.teams, next))
     const fits = (agentId: string) => fitsUniverse(agentsById.get(agentId)?.operatingUniverse, next)
     if (orchestratorAgentId && !fits(orchestratorAgentId)) setOrchestratorAgentId("")
     setSpecialistAgentIds((current) => current.filter((agentId) => agentId.length === 0 || fits(agentId)))
@@ -307,7 +309,7 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
     const finalSpecialistIds = specialistAgentIds.filter((id) => id.length > 0)
     const input = {
       name,
-      orgScope,
+      scope: resourceScopePayloadOf(scope),
       orchestratorAgentId,
       specialistAgentIds: finalSpecialistIds,
       invocationMode,
@@ -375,6 +377,7 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
     name.trim().length > 1 ? null : "Informe o nome.",
     isEditing || operatingUniverse ? null : "Escolha o universo de atuação.",
     orchestratorAgentId ? null : "Escolha o agente orquestrador.",
+    scopeValueIssue(scope),
     policyProblem,
     structuredBlocking ? `Corrija o resultado estruturado: ${structuredIssues[0]!.message}` : null,
   ]
@@ -382,7 +385,9 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
     .join(" ")
   const saveLabel = isEditing ? "Salvar alterações" : "Criar orquestrador"
   // O conflito de versão tem aviso próprio (com a ação de atualizar); a mensagem genérica de erro não o repete.
-  const showMutationError = mutation.isError && !(mutation.error instanceof AdminApiError && mutation.error.code === "ORCHESTRATOR_VERSION_CONFLICT")
+  // Sobreposição no chat/voz (409): aviso próprio no campo de alcance, com os orquestradores e os Grupos/Subgrupos em conflito.
+  const scopeConflict = mutation.isError ? scopeConflictOf(mutation.error) : null
+  const showMutationError = mutation.isError && !scopeConflict && !(mutation.error instanceof AdminApiError && mutation.error.code === "ORCHESTRATOR_VERSION_CONFLICT")
 
   return (
     <div className="space-y-5">
@@ -509,12 +514,22 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
                 {orchestratorAgentVersionState ? <AgentCurrentVersion state={orchestratorAgentVersionState} /> : null}
               </div>
               <div className="space-y-1.5">
-                <Label>Grupo</Label>
                 {manageableTeamsQuery.data ? (
-                  <OrgScopeSelect teams={manageableTeamsQuery.data.teams} value={orgScope} onChange={setOrgScope} allowAllTeams={manageableTeamsQuery.data.unrestricted} universe={universe} />
+                  <MultiOrgScopeField
+                    permission="agents.manage"
+                    value={scope}
+                    onChange={setScope}
+                    // "Todos" só para quem administra a organização (ou quando o registro já é de "Todos" — o servidor mantém).
+                    allowGlobal={manageableTeamsQuery.data.unrestricted || Boolean(orchestrator && orchestrator.scopeType === "ALL_TEAMS")}
+                    globalLabel={universe ? `Todos os Grupos e Subgrupos do universo ${universe}` : "Todos os Grupos e Subgrupos"}
+                    universe={universe ?? undefined}
+                    label="Alcance"
+                    hint="Quem este orquestrador atende no chat/voz e para quais Grupos ele pode ser usado. Onde dois orquestradores alcançam a mesma pessoa, vale o vínculo mais específico (Subgrupo antes do Grupo inteiro, Grupo antes de “Todos”)."
+                  />
                 ) : (
                   <Skeleton className="h-10 w-full" />
                 )}
+                {scopeConflict ? <ScopeOverlapNotice conflict={scopeConflict} /> : null}
               </div>
               <div className="space-y-1.5">
                 <Label>Onde pode ser acionado</Label>

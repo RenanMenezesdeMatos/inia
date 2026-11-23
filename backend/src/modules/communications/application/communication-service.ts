@@ -98,6 +98,11 @@ export type CommunicationStore = {
    * `null` = algum Grupo, Subgrupo ou o produto não existe nela.
    */
   resolveReferences(organizationId: string, input: { links: { teamId: string | null; subteamId: string | null }[]; productNodeId: string | null }): Promise<{ links: ScopeLink[] } | null>
+  /**
+   * Vínculos NOVOS (fora de `previous`) admissíveis: do universo escolhido (quando há) e com ao menos um operador em produção — a mesma
+   * regra do seletor (`assertNewScopeLinksAdmissible`); lança 422 com a lista. O que já estava salvo continua aceito.
+   */
+  admitNewLinks(organizationId: string, links: readonly ScopeLink[], options: { previous: readonly ScopeLink[]; universe: string | null }): Promise<void>
 }
 
 const notFound = () => new DomainError("Comunicado não encontrado.", "COMMUNICATION_NOT_FOUND", 404)
@@ -125,7 +130,7 @@ const segmentKey = (segment: Pick<CommunicationSegment, "universe" | "links">) =
  * Recorte validado no servidor (223): fora de SEGMENT, vazio; universo ou ao menos um vínculo; cada vínculo com o Grupo-pai real; sem
  * vínculo repetido nem Subgrupo junto do próprio Grupo inteiro. O produto relacionado é conferido junto.
  */
-async function resolveSegment(store: CommunicationStore, organizationId: string, audience: CommunicationAudience, segment: CommunicationSegmentInput | CommunicationSegment | null | undefined, productNodeId: string | null): Promise<CommunicationSegment> {
+async function resolveSegment(store: CommunicationStore, organizationId: string, audience: CommunicationAudience, segment: CommunicationSegmentInput | CommunicationSegment | null | undefined, productNodeId: string | null, admission: { previous: readonly ScopeLink[] } | null = { previous: [] }): Promise<CommunicationSegment> {
   const value = audience === "SEGMENT" ? (segment ?? EMPTY_SEGMENT) : EMPTY_SEGMENT
   if (audience === "SEGMENT" && !value.universe && value.links.length === 0) {
     throw new DomainError("Escolha o universo, ao menos um Grupo ou ao menos um Subgrupo para o público.", "COMMUNICATION_SEGMENT_EMPTY", 422)
@@ -135,7 +140,9 @@ async function resolveSegment(store: CommunicationStore, organizationId: string,
   if (!resolved) throw new DomainError("Um Grupo, Subgrupo ou produto escolhido não existe nesta organização (o Subgrupo precisa ser do Grupo informado).", "COMMUNICATION_REFERENCE_INVALID", 422)
   const problems = scopeLinkProblems(resolved.links)
   if (problems.length > 0) throw new DomainError(problems[0]!.code === "DUPLICATE" ? "O mesmo Grupo/Subgrupo foi escolhido mais de uma vez." : "Um Subgrupo foi escolhido junto com o Grupo inteiro dele: escolha o Grupo inteiro OU os Subgrupos.", "COMMUNICATION_SEGMENT_INVALID", 422)
-  return { universe: value.universe ?? null, links: sortLinks(resolved.links) }
+  const links = sortLinks(resolved.links)
+  if (admission) await store.admitNewLinks(organizationId, links, { previous: admission.previous, universe: value.universe ?? null })
+  return { universe: value.universe ?? null, links }
 }
 
 /** Instante da publicação: ausente = agora; um pouco no passado (relógio do navegador) = agora; até um ano à frente. */
@@ -224,7 +231,7 @@ export async function editCommunication(store: CommunicationStore, user: AuthTok
   const requestedAudience = input.audience ?? current.audience
   const productNodeId = input.productNodeId === undefined ? current.productNodeId : input.productNodeId
   const requestedSegment = input.segment !== undefined || input.audience !== undefined
-    ? await resolveSegment(store, user.organizationId, requestedAudience, input.segment ?? (requestedAudience === current.audience ? current.segment : null), productNodeId)
+    ? await resolveSegment(store, user.organizationId, requestedAudience, input.segment ?? (requestedAudience === current.audience ? current.segment : null), productNodeId, { previous: current.audience === "SEGMENT" ? current.segment.links : [] })
     : current.segment
   const audienceChanged = requestedAudience !== current.audience || (input.segment !== undefined && segmentKey(requestedSegment) !== segmentKey(current.segment))
   if (wentOut && audienceChanged) throw new DomainError("O público não muda depois que o comunicado saiu. Arquive e crie outro, se precisar.", "COMMUNICATION_AUDIENCE_LOCKED", 409)
@@ -321,7 +328,8 @@ export async function previewCommunicationAudience(store: CommunicationStore, us
   const allowed = await requirePublisher(store, user)
   const input = audiencePreviewSchema.parse(body)
   if (!allowed.includes(input.audience)) throw new DomainError("Você não tem permissão para publicar para este público.", "COMMUNICATION_AUDIENCE_FORBIDDEN", 403)
-  const segment = await resolveSegment(store, user.organizationId, input.audience, input.segment, null)
+  // Prévia: só a contagem do recorte (a admissão dos vínculos novos é conferida ao salvar/publicar).
+  const segment = await resolveSegment(store, user.organizationId, input.audience, input.segment, null, null)
   return { recipientCount: await store.countAudience({ organizationId: user.organizationId, authorPersonId: user.personId, audience: input.audience, segment }) }
 }
 

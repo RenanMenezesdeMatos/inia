@@ -1,11 +1,14 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
-import { canManageScope, normalizeScopedTarget, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
+import { canManageScope, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { resolveResourceScopeForWrite, scopedTargetOf, type ResourceScopeInput } from "../../org-structure/application/resource-scope-links.js"
+import type { ResourceScope } from "../../../shared/domain/scope-links/resource-scope.js"
+import { linkKey, sortLinks } from "../../../shared/domain/scope-links/scope-links.js"
 import { assertBusinessDomainsSelectable, resolveBusinessDomainRefs } from "../../business-domains/application/business-domain-lookup.js"
 import { normalizeCapabilities } from "../../investigation/domain/capabilities.js"
-import { knowledgeFitsAgentSql } from "../../knowledge/application/knowledge-agent-fit.js"
+import { agentTeamIdsOf, knowledgeFitsAgentSql } from "../../knowledge/application/knowledge-agent-fit.js"
 import { actionLimitsProblem, type AgentActionLimits } from "../domain/action-limits.js"
-import type { AgentConfig } from "../domain/agent-config.js"
+import { agentScopeFields, agentScopeOf, type AgentConfig } from "../domain/agent-config.js"
 import { describeSpecialtyProblem, legacySpecialtyFor, resolveAgentSpecialty, type AgentSpecialty } from "../domain/agent-specialty.js"
 import { loadAgentLifecycle, type AgentLifecycleRow } from "./agent-versions.js"
 
@@ -38,17 +41,37 @@ export async function lifecycleForWrite(client: Queryable, organizationId: strin
  * PRÓPRIO alcance, que pode ser maior que o da linha viva: quem lê o agente pelo alcance da linha viva não lê, só por isso, o rascunho,
  * uma versão ou o conteúdo testado de outro alcance. Sem configuração (null) não há o que esconder.
  */
-export function canReadAgentConfig(scopes: ManageableScopes, config: ScopedTarget | null | undefined): boolean {
-  return !config || canManageScope(scopes, config)
+export function canReadAgentConfig(scopes: ManageableScopes, config: AgentScopeLike | null | undefined): boolean {
+  return !config || canManageScope(scopes, scopedTargetOf(agentScopeOf(config)))
 }
+
+/**
+ * Alcance em qualquer formato guardado: configuração (rascunho/versão, legado ou 249), alcance de configuração guardado no histórico
+ * ou numa execução, ou `{ scopeType, links }`. Com vários vínculos, ler/agir exige TODOS no alcance de quem administra (`canManageScope`).
+ */
+export type AgentScopeLike = Parameters<typeof agentScopeOf>[0]
 
 /**
  * Quem age sobre uma configuração — prévia das instruções, teste, prévia da publicação, publicar, reverter, salvar ou descartar o
  * rascunho — precisa alcançar também o alcance DELA, a mesma regra de mover o agente. Sem isso, quem administra um Grupo montava o
  * prompt (com as bases) de uma versão de todos os Grupos, a testava ou a publicava de novo.
  */
-export function authorizeAgentConfig(scopes: ManageableScopes, config: ScopedTarget | null | undefined): void {
+export function authorizeAgentConfig(scopes: ManageableScopes, config: AgentScopeLike | null | undefined): void {
   if (!canReadAgentConfig(scopes, config)) throw agentScopeForbidden()
+}
+
+/**
+ * Mesma regra de `canManageScope` (vários vínculos: TODOS no alcance; "todos os Grupos" só com escopo de organização) no WHERE da lista
+ * de agentes — total e páginas batem. `alias` é a linha com `id` e `"scopeType"` do agente; null = sem restrição.
+ */
+export function manageableAgentScopeSql(scopes: ManageableScopes, param: (value: unknown) => string, alias = "q"): string | null {
+  if (scopes.unrestricted || scopes.allTeams) return null
+  const teamIds = param([...scopes.teamIds])
+  const subteamIds = param([...scopes.subteamIds])
+  return `(${alias}."scopeType" = 'GROUPS'
+    and exists (select 1 from agent_scope_links mas_l where mas_l.agent_id = ${alias}.id)
+    and not exists (select 1 from agent_scope_links mas_l where mas_l.agent_id = ${alias}.id
+                     and not ((mas_l.subteam_id is null and mas_l.team_id = any(${teamIds}::uuid[])) or (mas_l.subteam_id is not null and mas_l.subteam_id = any(${subteamIds}::uuid[])))))`
 }
 
 /** Texto vazio dos limites vira null (o interruptor desligado guarda o texto que houver). */
@@ -120,13 +143,14 @@ export function specialtyFields(specialty: AgentSpecialty): Pick<AgentConfig, "s
 export async function assertKnowledge(client: Queryable, organizationId: string, config: AgentConfig): Promise<void> {
   const ids = [...new Set(config.knowledgeDocumentIds)]
   if (ids.length === 0) return
+  const scope = agentScopeOf(config)
   const rows = (await client.query<{ id: string; fits: boolean }>(
-    `select d.id, ${knowledgeFitsAgentSql("d.id", { scopeType: "$3::text", teamId: "$4::uuid", subteamId: "$5::uuid" })} fits
+    `select d.id, ${knowledgeFitsAgentSql("d.id", { scopeType: "$3::text", teamIds: "$4::uuid[]" })} fits
        from knowledge_documents d where d.id = any($1::uuid[]) and d.organization_id = $2 and d.deleted_at is null`,
-    [ids, organizationId, config.scopeType, config.teamId, config.subteamId],
+    [ids, organizationId, scope.scopeType, agentTeamIdsOf(scope)],
   )).rows
   if (rows.length !== ids.length) throw new DomainError("Uma das bases de conhecimento selecionadas não existe ou foi excluída.", "AGENT_KNOWLEDGE_NOT_FOUND", 422)
-  if (rows.some((row) => !row.fits)) throw new DomainError("Uma das bases de conhecimento selecionadas vale para outro Grupo — escolha bases globais ou do Grupo deste agente.", "AGENT_KNOWLEDGE_SCOPE_FORBIDDEN", 422)
+  if (rows.some((row) => !row.fits)) throw new DomainError("Uma das bases de conhecimento selecionadas vale para outro Grupo — escolha bases globais ou de um dos Grupos deste agente.", "AGENT_KNOWLEDGE_SCOPE_FORBIDDEN", 422)
 }
 
 /** Outro agente da organização já usa o nome (a unicidade vale para a linha viva; conferida também no rascunho). */
@@ -142,9 +166,11 @@ export type AgentConfigChanges = SpecialtyInput & {
   objective?: string | undefined
   description?: string | undefined
   contextPrompt?: string | undefined
-  scopeType?: AgentConfig["scopeType"] | undefined
-  teamId?: string | undefined
-  subteamId?: string | undefined
+  /** Alcance (249): ALL_TEAMS ou GROUPS + `scopeLinks`; o legado TEAM/SUBTEAM + ids continua aceito e vira um vínculo. */
+  scopeType?: ResourceScopeInput["scopeType"]
+  teamId?: string | null | undefined
+  subteamId?: string | null | undefined
+  scopeLinks?: ResourceScopeInput["scopeLinks"]
   knowledgeDocumentIds?: string[] | undefined
   recommendSupportMaterials?: boolean | undefined
   investigationCapabilities?: string[] | undefined
@@ -152,13 +178,44 @@ export type AgentConfigChanges = SpecialtyInput & {
   actionLimits?: string | null | undefined
 }
 
+/**
+ * O que a escrita do alcance preserva (249): vínculos já salvos — na versão vigente OU no rascunho — continuam aceitos mesmo sem operador
+ * em produção ou depois de uma reclassificação; só os NOVOS passam pela admissão (universo do agente + operador em produção). "Todos"
+ * já salvo (num dos dois) pode ser mantido.
+ */
+export function previousAgentScope(...scopes: (ResourceScope | null | undefined)[]): ResourceScope {
+  const present = scopes.filter((scope): scope is ResourceScope => Boolean(scope))
+  if (present.some((scope) => scope.scopeType === "ALL_TEAMS")) return { scopeType: "ALL_TEAMS", links: [] }
+  const byKey = new Map(present.flatMap((scope) => scope.links).map((link) => [linkKey(link), link]))
+  return { scopeType: "GROUPS", links: sortLinks([...byKey.values()]) }
+}
+
+/**
+ * Alcance pedido numa escrita do agente, pronto para gravar: ALL_TEAMS só com escopo de organização (ou mantido); GROUPS com o Grupo-pai
+ * real de cada Subgrupo, todos os vínculos no alcance de quem edita e os NOVOS do universo do agente e com operador em produção.
+ */
+export async function resolveAgentScopeForWrite(client: Queryable, organizationId: string, scopes: ManageableScopes, input: ResourceScopeInput, context: { previous: ResourceScope | null; universe: string | null }): Promise<ResourceScope> {
+  return resolveResourceScopeForWrite(client, organizationId, scopes, input, {
+    codePrefix: "AGENT",
+    previous: context.previous,
+    universe: context.universe,
+    allTeamsMessage: "Só quem administra agentes da organização inteira escolhe “Todos os Grupos e Subgrupos”.",
+  })
+}
+
 /** Configuração seguinte = a editável + o que veio no pedido, validada como um cadastro inteiro (inclusive o alcance resultante). */
-export async function nextConfig(client: Queryable, organizationId: string, scopes: ManageableScopes, base: AgentConfig, input: AgentConfigChanges): Promise<AgentConfig> {
-  let scope: ScopedTarget = { scopeType: base.scopeType, teamId: base.teamId, subteamId: base.subteamId }
+export async function nextConfig(
+  client: Queryable,
+  organizationId: string,
+  scopes: ManageableScopes,
+  base: AgentConfig,
+  input: AgentConfigChanges,
+  /** Para mudar o alcance: o que já estava salvo (vigente + rascunho) e o universo do agente. Sem ele, só o alcance de `base` é preservado. */
+  scopeContext: { previous: ResourceScope | null; universe: string | null } = { previous: agentScopeOf(base), universe: null },
+): Promise<AgentConfig> {
+  let scope = agentScopeOf(base)
   if (input.scopeType !== undefined) {
-    const normalized = await normalizeScopedTarget(client, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })
-    if (!normalized) throw agentScopeForbidden()
-    scope = normalized
+    scope = await resolveAgentScopeForWrite(client, organizationId, scopes, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null, scopeLinks: input.scopeLinks ?? [] }, scopeContext)
   }
   authorizeAgentConfig(scopes, scope)
   const specialty = await specialtyFromInput(client, organizationId, input, await specialtyOfConfig(client, base))
@@ -174,9 +231,7 @@ export async function nextConfig(client: Queryable, organizationId: string, scop
     objective: input.objective ?? base.objective,
     description: input.description ?? base.description,
     contextPrompt: input.contextPrompt ?? base.contextPrompt,
-    scopeType: scope.scopeType as AgentConfig["scopeType"],
-    teamId: scope.teamId,
-    subteamId: scope.subteamId,
+    ...agentScopeFields(scope),
     ...(specialty ? specialtyFields(specialty) : {}),
     recommendSupportMaterials: input.recommendSupportMaterials ?? base.recommendSupportMaterials,
     investigationCapabilities: input.investigationCapabilities ? normalizeCapabilities(input.investigationCapabilities) : base.investigationCapabilities,

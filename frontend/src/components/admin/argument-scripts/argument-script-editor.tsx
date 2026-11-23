@@ -96,7 +96,7 @@ function ScopeField({ value, onChange, teams, scopeOptions, universe, published 
   return (
     <div className="space-y-1.5" data-testid="argument-script-scope">
       <MultiOrgScopeField
-        teams={teamsForScope(teams, scopeOptions)}
+        permission="configuration.manage"
         value={value}
         onChange={onChange}
         allowGlobal={scopeOptions.allTeams || value.global}

@@ -32,8 +32,15 @@ export const knowledgeOptionFacetsSchema = z.object({
 })
 export type KnowledgeOptionFacets = z.infer<typeof knowledgeOptionFacetsSchema>
 
-/** Alcance do agente que o seletor respeita (o salvar recusa base de outro Grupo). */
-export type AgentKnowledgeScope = { scopeType: "ALL_TEAMS" } | { scopeType: "TEAM"; teamId: string } | { scopeType: "SUBTEAM"; subteamId: string; teamId?: string }
+/**
+ * Alcance do agente que o seletor respeita (o salvar recusa base que não é de nenhum Grupo dele): todos os Grupos, os vínculos (249:
+ * Grupo inteiro ou um Subgrupo — o Grupo-pai pode vir vazio, o servidor o acha) ou o formato antigo de vínculo único.
+ */
+export type AgentKnowledgeScope =
+  | { scopeType: "ALL_TEAMS" }
+  | { scopeType: "GROUPS"; links: { teamId: string | null; subteamId: string | null }[] }
+  | { scopeType: "TEAM"; teamId: string }
+  | { scopeType: "SUBTEAM"; subteamId: string; teamId?: string }
 
 /** Filtros do seletor (os mesmos no servidor para a lista e para "selecionar as filtradas"). */
 export type KnowledgeOptionsFilter = {
