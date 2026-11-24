@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 import jwt from "jsonwebtoken"
 import { env } from "../../../config/env.js"
 
-export type PlatformRole = "OPERATOR" | "ADMIN" | "COORDINATOR" | "SUPERVISOR" | "MANAGER" | "SENIOR_MANAGER" | "DIRECTOR"
+export type PlatformRole = "OPERATOR" | "ADMIN" | "COORDINATOR" | "SUPERVISOR" | "MANAGER" | "SENIOR_MANAGER" | "DIRECTOR" | "STAFF"
 
 export type AuthTokenPayload = {
   sub: string

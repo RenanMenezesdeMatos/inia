@@ -38,6 +38,8 @@ export type OrganizationalPerson = {
   reportsToId: string | null
   /** Apresentação (aba Estrutura do perfil): cargo e avatar — nunca entram na decisão de destinatário. */
   jobTitle: string | null
+  /** Cargo do cadastro da organização (migration 252) — só rótulo. */
+  jobPositionName?: string | null
   avatarUrl: string | null
 }
 
@@ -136,13 +138,13 @@ export async function requireStructureRecipient(reader: OrganizationalHierarchyR
 // Implementação Postgres
 // ---------------------------------------------------------------------------------------------
 
-type PersonRow = { id: string; name: string; role: string; reports_to_id: string | null; job_title: string | null; avatar_url: string | null }
+type PersonRow = { id: string; name: string; role: string; reports_to_id: string | null; job_title: string | null; avatar_url: string | null; job_position_name?: string | null }
 
 function toPerson(row: PersonRow): OrganizationalPerson {
-  return { id: row.id, name: row.name, role: row.role, reportsToId: row.reports_to_id, jobTitle: row.job_title, avatarUrl: row.avatar_url }
+  return { id: row.id, name: row.name, role: row.role, reportsToId: row.reports_to_id, jobTitle: row.job_title, avatarUrl: row.avatar_url, jobPositionName: row.job_position_name ?? null }
 }
 
-const PERSON_COLUMNS = "id, name, role, reports_to_id, job_title, avatar_url"
+const PERSON_COLUMNS = "id, name, role, reports_to_id, job_title, avatar_url, (select jp.name from job_positions jp where jp.id = job_position_id) job_position_name"
 
 /** Leitor real sobre `people` — só pessoas ativas contam como destinatário/membro. Cada consulta
  * resolve a cadeia/subárvore inteira em UMA ida ao banco; a cadeia acima carrega o caminho
@@ -156,9 +158,9 @@ export function postgresHierarchyReader(db: Database): OrganizationalHierarchyRe
     async loadAncestors(personId) {
       const result = await db.query<PersonRow & { depth: number }>(
         `with recursive chain as (
-           select p.id, p.name, p.role, p.reports_to_id, p.job_title, p.avatar_url, p.active, 0 depth, array[p.id] path from people p where p.id = (select reports_to_id from people where id = $1)
+           select p.id, p.name, p.role, p.reports_to_id, p.job_title, p.avatar_url, p.job_position_id, p.active, 0 depth, array[p.id] path from people p where p.id = (select reports_to_id from people where id = $1)
            union all
-           select p.id, p.name, p.role, p.reports_to_id, p.job_title, p.avatar_url, p.active, c.depth + 1, c.path || p.id from people p join chain c on p.id = c.reports_to_id where not (p.id = any(c.path))
+           select p.id, p.name, p.role, p.reports_to_id, p.job_title, p.avatar_url, p.job_position_id, p.active, c.depth + 1, c.path || p.id from people p join chain c on p.id = c.reports_to_id where not (p.id = any(c.path))
          )
          select ${PERSON_COLUMNS}, depth from chain where active order by depth`,
         [personId],
@@ -168,9 +170,9 @@ export function postgresHierarchyReader(db: Database): OrganizationalHierarchyRe
     async loadDescendants(personId) {
       const result = await db.query<PersonRow>(
         `with recursive subtree as (
-           select p.id, p.name, p.role, p.reports_to_id, p.job_title, p.avatar_url, p.active from people p where p.reports_to_id = $1
+           select p.id, p.name, p.role, p.reports_to_id, p.job_title, p.avatar_url, p.job_position_id, p.active from people p where p.reports_to_id = $1
            union
-           select p.id, p.name, p.role, p.reports_to_id, p.job_title, p.avatar_url, p.active from people p join subtree s on p.reports_to_id = s.id
+           select p.id, p.name, p.role, p.reports_to_id, p.job_title, p.avatar_url, p.job_position_id, p.active from people p join subtree s on p.reports_to_id = s.id
          )
          select ${PERSON_COLUMNS} from subtree where active order by name, id`,
         [personId],

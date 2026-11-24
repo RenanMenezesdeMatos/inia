@@ -97,6 +97,8 @@ export async function configureOrganization(client: Client, input: OrganizationI
   if (!isValidTimeZone(input.timeZone)) throw new Error(`Fuso horário inválido: ${input.timeZone} (use um nome IANA, ex.: America/Sao_Paulo).`)
   const updated = await client.query(`update organizations set name = $2, slug = $3, holiday_fallback_policy = 'IGNORE' where id = $1`, [INSTALLATION_ORGANIZATION_ID, input.name.trim(), slugify(input.name)])
   if (!updated.rowCount) await client.query(`insert into organizations (id, name, slug) values ($1, $2, $3)`, [INSTALLATION_ORGANIZATION_ID, input.name.trim(), slugify(input.name)])
+  // Cargos iniciais (editáveis em Central de Dados › Cargos); idempotente.
+  await client.query(`select seed_default_job_positions($1)`, [INSTALLATION_ORGANIZATION_ID])
   const operation = await client.query<{ id: string }>(`select id from operations where organization_id = $1 order by created_at limit 1`, [INSTALLATION_ORGANIZATION_ID])
   if (operation.rows[0]) await client.query(`update operations set timezone = $2 where id = $1`, [operation.rows[0].id, input.timeZone])
   else await client.query(`insert into operations (organization_id, name, timezone) values ($1, 'Operação principal', $2)`, [INSTALLATION_ORGANIZATION_ID, input.timeZone])

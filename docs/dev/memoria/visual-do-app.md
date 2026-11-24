@@ -19,6 +19,8 @@ primária. Aplicado primeiro ao módulo Anjo (`docs/dev/memoria/apoio-com-anjo.m
   mesmo virou cinza e os campos ficaram "cinza sobre cinza" (correção de 10/11).
 - Campos com fundo branco explícito no claro: `Input`, `Textarea`, gatilho do `Select` e `Button` contornado usam `bg-card` (o
   escuro mantém `dark:bg-input/30`). Leitura com contraste em qualquer superfície (cartão, `muted`, página).
+- `Select` cujo gatilho não tem `SelectValue` (botão de ação, ex.: "+ Adicionar" do mapeamento da Central) usa `SelectContent position="popper"`:
+  no padrão (`item-aligned`) o Radix só posiciona a lista com o `SelectValue`, e ela abre fora da tela com a página travada (24/11/2026).
 - `Card`: raio `rounded-2xl` (16 px).
 - `Button`: todos em pílula (`rounded-full`), com um pouco mais de respiro lateral; dentro de `button-group` os cantos continuam
   retos entre si. Quem precisa de outro formato passa a classe (o `cn` mantém a da tela).

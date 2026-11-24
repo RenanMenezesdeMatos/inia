@@ -10,7 +10,7 @@ export const REPORT_TOOLS = ["INDICATOR_QUERY", "WORKFORCE", "INDICATOR_DIAGNOSI
 export const isRecordTool = (tool: string) => (RECORD_REPORT_TOOLS as readonly string[]).includes(tool)
 export const VISUALIZATION_TYPES = ["TABLE", "KPI", "BAR", "LINE", "AREA", "DISTRIBUTION"] as const
 export const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const
-export const PLATFORM_LEVELS = ["OPERATOR", "SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER", "DIRECTOR"] as const
+export const PLATFORM_LEVELS = ["OPERATOR", "SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER", "DIRECTOR", "STAFF"] as const
 
 export const reportStructureSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("RECIPIENT") }),

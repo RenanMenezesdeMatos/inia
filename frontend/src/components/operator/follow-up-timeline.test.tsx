@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
-import { act, cleanup, fireEvent, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, screen, within, waitFor } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
@@ -181,7 +181,8 @@ describe("Acompanhamento do colaborador — comunicados da liderança", () => {
     expect(screen.getByText(/com imagem/)).toBeInTheDocument()
     expect(communications.fetchCommunication).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole("button", { name: "Ler comunicado completo" }))
-    expect(await screen.findByText("o resto inteiro")).toBeInTheDocument()
+    // O corpo é redesenhado quando o comunicado completo chega: o elemento achado antes pode já ter sido trocado (o teste falhava 1 em 3).
+    await waitFor(() => expect(screen.getByText("o resto inteiro")).toBeInTheDocument())
     expect(communications.fetchCommunication).toHaveBeenCalledWith("aviso")
   })
 })

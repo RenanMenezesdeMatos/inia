@@ -95,6 +95,7 @@ export const adminQueryKeys = {
   dataHubSource: (id: string) => [...adminQueryKeys.dataHub(), "sources", id] as const,
   dataHubFeed: (id: string) => [...adminQueryKeys.dataHub(), "feeds", id] as const,
   dataHubCadencePreview: (cadence: unknown) => [...adminQueryKeys.dataHub(), "cadence-preview", cadence] as const,
+  dataHubJobPositions: () => [...adminQueryKeys.dataHub(), "job-positions"] as const,
   dataHubRuns: () => [...adminQueryKeys.dataHub(), "runs"] as const,
   dataHubRunsList: (params: ListKeyParams) => [...adminQueryKeys.dataHubRuns(), "list", params] as const,
   dataHubRun: (id: string) => [...adminQueryKeys.dataHubRuns(), id] as const,

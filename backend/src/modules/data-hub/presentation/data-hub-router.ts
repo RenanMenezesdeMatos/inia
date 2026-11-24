@@ -24,6 +24,8 @@ import { DataRunError } from "../domain/error-codes.js"
 import { suggestMapping } from "../domain/mapping.js"
 import { buildPushOpenApi, type PushOpenApiFeed } from "../domain/push-openapi.js"
 import { multerLimits } from "../../../shared/infrastructure/zip-guard.js"
+import { createJobPosition, listJobPositions, listUnknownJobPositions, loadJobPositionCatalog, updateJobPosition } from "../../people/application/job-position-service.js"
+import { jobPositionKey } from "../../people/domain/job-position.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { maskConfigsInResponse } from "../domain/config-mask.js"
@@ -179,6 +181,21 @@ export function createDataHubRouter(db: Database, contextOverrides: Partial<Omit
     const created = await createSource(ctx, org(request), actor(request), request.body, sessionOf(request))
     await grantCreatorUnlock(ctx, created, sessionOf(request))
     response.status(201).json({ data: created })
+  })
+
+  // Cargos (migration 252): o nome que a base usa → cargo e perfil. Lista inteira (cadastro pequeno) + os que chegaram e ninguém cadastrou.
+  router.get("/job-positions", async (request, response) => {
+    const [positions, catalog] = await Promise.all([listJobPositions(db, org(request)), loadJobPositionCatalog(db, org(request))])
+    const unknown = await listUnknownJobPositions(db, org(request), catalog, jobPositionKey)
+    response.json({ data: { positions, unknown } })
+  })
+
+  router.post("/job-positions", async (request, response) => {
+    response.status(201).json({ data: await createJobPosition(db, { organizationId: org(request), personId: actor(request) }, request.body) })
+  })
+
+  router.patch("/job-positions/:id", async (request, response) => {
+    response.json({ data: await updateJobPosition(db, { organizationId: org(request), personId: actor(request) }, z.string().uuid().parse(request.params.id), request.body) })
   })
 
   router.get("/sources/:id", async (request, response) => {

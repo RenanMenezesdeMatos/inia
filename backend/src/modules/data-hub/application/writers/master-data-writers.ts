@@ -4,6 +4,8 @@ import { applyEmployeeStatusSnapshot, cancelEmployeeStatusPeriod, type SnapshotO
 import { BRAZILIAN_CAPITAL_CODES, normalizeCapitalCode } from "../../../people/domain/brazilian-capitals.js"
 import { EMPLOYMENT_STATUS_LABELS, normalizeEmploymentStatus, type EmploymentStatus, type StatusPeriod } from "../../../people/domain/employment-status.js"
 import { normalizeScheduleExceptionCode, SCHEDULE_EXCEPTION_EFFECT_BY_CODE, SCHEDULE_EXCEPTION_LABELS, type ScheduleExceptionCode } from "../../../people/domain/schedule-exception.js"
+import { loadJobPositionCatalog, lockJobPositionsForWrite } from "../../../people/application/job-position-service.js"
+import { JOB_POSITION_LEVEL_LABELS, jobPositionKey, resolveJobPosition, unknownJobPositionMessage, type JobPositionCatalog, type ResolvedJobPosition } from "../../../people/domain/job-position.js"
 import { normalizeScheduleType, type ScheduleType } from "../../../people/domain/work-schedule.js"
 import { recordAudit } from "../records.js"
 import { resolveEmployees, resolveIndicators, resolveOperations, resolveSubteams, resolveTeams } from "../reference-resolver.js"
@@ -126,6 +128,8 @@ type PreparedEmployee = ValidRecord & {
   matricula: string
   name: string
   role: string
+  jobPositionId: string | null
+  jobPositionName: string | null
   jobTitle: string | null
   teamId: string | null
   subteamId: string | null
@@ -164,8 +168,38 @@ function resolveGroupPair(record: ValidRecord, refs: Awaited<ReturnType<typeof r
   return { teamId: team?.id ?? subteam?.teamId ?? null, subteamId: subteam?.id ?? null, rejection: null }
 }
 
+/** Cargo desativado não recebe gente nova, mas quem já o tem continua sendo atualizado pela carga (inclusive desligado): a linha não para na quarentena. */
+async function peopleKeepingInactivePosition(context: WriteContext, records: readonly ValidRecord[], positions: JobPositionCatalog): Promise<Map<string, ResolvedJobPosition>> {
+  const inactive = new Map<string, ResolvedJobPosition>()
+  for (const record of records) {
+    const entry = positions.get(jobPositionKey(str(record.record, "role") ?? ""))
+    if (entry && !entry.active) inactive.set(str(record.record, "externalEmployeeId")!, { id: entry.id, name: entry.name, level: entry.level })
+  }
+  if (inactive.size === 0) return inactive
+  const holders = await context.ctx.db.query<{ matricula: string; job_position_id: string }>(`select matricula, job_position_id from people where organization_id = $1 and matricula = any($2::text[]) and job_position_id is not null`, [context.organizationId, [...inactive.keys()]])
+  return new Map(holders.rows.flatMap((row) => (inactive.get(row.matricula)?.id === row.job_position_id ? [[row.matricula, inactive.get(row.matricula)!] as const] : [])))
+}
+
+function pushTo<T>(map: Map<string, T[]>, key: string, value: T): void {
+  const list = map.get(key)
+  if (list) list.push(value)
+  else map.set(key, [value])
+}
+
 export const employeesWriter: DomainWriter<PreparedEmployee> = {
   contractKey: "EMPLOYEES",
+  async previewNormalizers(context) {
+    const positions = await loadJobPositionCatalog(context.ctx.db, context.organizationId)
+    return {
+      role: (value) => {
+        const resolution = resolveJobPosition(positions, String(value))
+        if (!resolution.ok) return null
+        const { name, level } = resolution.position
+        const levelLabel = JOB_POSITION_LEVEL_LABELS[level]
+        return name === null || name === levelLabel ? levelLabel : `${name} (perfil ${levelLabel})`
+      },
+    }
+  },
   async prepare(context, records) {
     const { unique, duplicates } = dedupeByKey(records, (record) => String(record.record.externalEmployeeId))
     const refs = await resolveStructureRefs(context, unique)
@@ -174,6 +208,8 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
     // nem Grupo/Subgrupo com universo, e o que já existe quando a carga muda o lugar (Grupo/Subgrupo), o nível ou tira a exceção dele e
     // o resultado fica sem universo (o cadastro atual dele continua). Operador já pendente cuja linha não muda nada disso segue passando
     // (regulariza-se classificando o Grupo ou em Pessoas).
+    const positions = await loadJobPositionCatalog(context.ctx.db, context.organizationId)
+    const keptInactive = await peopleKeepingInactivePosition(context, unique, positions)
     const universeEnforced = await isUniverseEnforced(context.ctx.db, context.organizationId)
     const universeMapped = employeeUniverseMapped(context)
     const known = universeEnforced ? await loadKnownPlacement(context.ctx.db, context.organizationId, unique.map((record) => str(record.record, "externalEmployeeId"))) : new Map<string, KnownPlacement>()
@@ -186,6 +222,14 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
       const pair = resolveGroupPair(record, refs)
       if (pair.rejection) {
         rejections.push(pair.rejection)
+        continue
+      }
+      // Cargo: nome da base (cadastro de Cargos) ou código do nível. Desconhecido ou desativado = quarentena, nunca "operador por palpite".
+      const rawPosition = str(record.record, "role")!
+      const resolvedPosition = resolveJobPosition(positions, rawPosition)
+      const position = resolvedPosition.ok ? resolvedPosition.position : keptInactive.get(matricula)
+      if (!position) {
+        rejections.push(reject(record, "DATA_JOB_POSITION_UNKNOWN", "role", unknownJobPositionMessage(rawPosition, resolvedPosition.ok ? "UNKNOWN" : resolvedPosition.reason)))
         continue
       }
       const reportsTo = str(record.record, "reportsToExternalId")
@@ -222,7 +266,7 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
       }
       // Universo resolvido depois da carga = exceção → Subgrupo → Grupo (mesmo cálculo do banco, com o lugar que o upsert vai gravar).
       // Liderança não precisa de universo (vê a própria estrutura).
-      if (universeEnforced && unitUniverses && str(record.record, "role") === "OPERATOR") {
+      if (universeEnforced && unitUniverses && position.level === "OPERATOR") {
         const existing = known.get(matricula)
         const nextOverride = existing && !universeMapped ? existing.override : universe
         const nextTeamId = pair.teamId ?? existing?.teamId ?? null
@@ -241,7 +285,9 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
         ...record,
         matricula,
         name: str(record.record, "name")!,
-        role: str(record.record, "role")!,
+        role: position.level,
+        jobPositionId: position.id,
+        jobPositionName: position.name,
         jobTitle: str(record.record, "jobTitle"),
         teamId: pair.teamId,
         subteamId: pair.subteamId,
@@ -255,11 +301,33 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
         operatingUniverseEffectiveFrom: str(record.record, "operatingUniverseEffectiveFrom"),
       })
     }
-    return { ready, rejections }
+    // Gestor que viria nesta carga mas foi recusado (cargo, Grupo, situação…): sem esta passada o subordinado entraria sem gestor, calado.
+    // Recusar alguém recusa quem está abaixo dele; cada pessoa é visitada uma vez (a carga pode ter centenas de milhares de linhas).
+    const arriving = new Set(ready.map((row) => row.matricula))
+    const teamOf = new Map<string, PreparedEmployee[]>()
+    for (const row of ready) if (row.reportsTo && !managers.has(row.reportsTo)) pushTo(teamOf, row.reportsTo, row)
+    const refused = new Set<PreparedEmployee>()
+    const pending = [...teamOf.keys()].filter((manager) => !arriving.has(manager))
+    for (let manager = pending.pop(); manager !== undefined; manager = pending.pop()) {
+      for (const row of teamOf.get(manager) ?? []) {
+        refused.add(row)
+        rejections.push(reject(row, "DATA_EMPLOYEE_NOT_FOUND", "reportsToExternalId", `Gestor "${manager}" foi recusado nesta carga (veja o motivo na linha dele) e não existe na INIA.`))
+        pending.push(row.matricula)
+      }
+      teamOf.delete(manager)
+    }
+    const accepted = ready.filter((row) => !refused.has(row))
+    return { ready: accepted, rejections }
   },
-  async apply(context, client, batch) {
-    if (batch.length === 0) return emptyApply()
+  async apply(context, client, prepared) {
+    if (prepared.length === 0) return emptyApply()
     const org = context.organizationId
+    // O cargo pode ter mudado desde a validação: vale o de agora, e ele não muda até esta gravação terminar.
+    const positionsNow = await lockJobPositionsForWrite(client, org, prepared.map((row) => row.jobPositionId))
+    const batch = prepared.map((row) => {
+      const current = row.jobPositionId ? positionsNow.get(row.jobPositionId) : undefined
+      return current ? { ...row, role: current.level, jobPositionName: current.name } : row
+    })
     // Passo 0: identidade — matrícula nova com o e-mail da conta de uma pessoa cadastrada à mão (sem matrícula) é gravada nela,
     // e o upsert abaixo passa a ATUALIZAR essa pessoa em vez de criar outra (ver person-identity.ts).
     const linked = await linkByAccountEmail(context, client, batch)
@@ -273,15 +341,24 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
     // Passo 1: dados do próprio colaborador (grupo/subgrupo/cargo/admissão só sobrescrevem quando informados).
     const upsert = await client.query<{ id: string; matricula: string; inserted: boolean }>(
       `with input as (
-         select * from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::uuid[], $7::uuid[], $8::date[], $9::boolean[], $10::text[], $11::text[], $12::date[])
-           as t(matricula, name, role, job_title, team_id, subteam_id, hired_at, active, operational_capital_code, operating_universe_override, universe_effective_from)
+         -- Cargo: a base mandou só o código do nível → o cargo já conhecido continua enquanto for do mesmo nível.
+         -- Cargo exibido: o da base; sem ele, o nome do cargo cadastrado preenche o que estava vazio ou o que já tinha vindo do cadastro.
+         select t.matricula, t.name, t.role, t.team_id, t.subteam_id, t.hired_at, t.active, t.operational_capital_code, t.operating_universe_override, t.universe_effective_from,
+                case when t.job_position_id is null and known.role = t.role then known.job_position_id else t.job_position_id end job_position_id,
+                coalesce(t.job_title, case when known.id is null or known.job_title is null or known.job_title = old.name
+                  then coalesce(t.position_name, case when known.role = t.role then known.job_title end) else known.job_title end) job_title
+           from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::uuid[], $7::uuid[], $8::date[], $9::boolean[], $10::text[], $11::text[], $12::date[], $14::uuid[], $15::text[])
+             as t(matricula, name, role, job_title, team_id, subteam_id, hired_at, active, operational_capital_code, operating_universe_override, universe_effective_from, job_position_id, position_name)
+           left join people known on known.organization_id = $1 and known.matricula = t.matricula
+           left join job_positions old on old.id = known.job_position_id
        )
-       insert into people (organization_id, matricula, name, role, job_title, team_id, subteam_id, hired_at, active, operational_capital_code, operating_universe_override, operating_universe_effective_from)
-       select $1, matricula, name, role, job_title, team_id, subteam_id, hired_at, coalesce(active, true), operational_capital_code, case when $13::boolean then operating_universe_override end, universe_effective_from from input
+       insert into people (organization_id, matricula, name, role, job_title, team_id, subteam_id, hired_at, active, operational_capital_code, operating_universe_override, operating_universe_effective_from, job_position_id)
+       select $1, matricula, name, role, job_title, team_id, subteam_id, hired_at, coalesce(active, true), operational_capital_code, case when $13::boolean then operating_universe_override end, universe_effective_from, job_position_id from input
        on conflict (organization_id, matricula) do update set
          name = excluded.name,
          role = excluded.role,
-         job_title = coalesce(excluded.job_title, people.job_title),
+         job_position_id = excluded.job_position_id,
+         job_title = excluded.job_title,
          team_id = coalesce(excluded.team_id, people.team_id),
          subteam_id = case when excluded.team_id is not null then excluded.subteam_id else coalesce(excluded.subteam_id, people.subteam_id) end,
          hired_at = coalesce(excluded.hired_at, people.hired_at),
@@ -292,7 +369,8 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
          operating_universe_effective_from = case when $13::boolean and excluded.operating_universe_override is distinct from people.operating_universe_override then excluded.operating_universe_effective_from else people.operating_universe_effective_from end
        where people.name is distinct from excluded.name
           or people.role is distinct from excluded.role
-          or people.job_title is distinct from coalesce(excluded.job_title, people.job_title)
+          or people.job_position_id is distinct from excluded.job_position_id
+          or people.job_title is distinct from excluded.job_title
           or people.team_id is distinct from coalesce(excluded.team_id, people.team_id)
           or people.subteam_id is distinct from (case when excluded.team_id is not null then excluded.subteam_id else coalesce(excluded.subteam_id, people.subteam_id) end)
           or people.hired_at is distinct from coalesce(excluded.hired_at, people.hired_at)
@@ -300,7 +378,7 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
           or people.operational_capital_code is distinct from coalesce(excluded.operational_capital_code, people.operational_capital_code)
           or ($13::boolean and people.operating_universe_override is distinct from excluded.operating_universe_override)
        returning id, matricula, (xmax = 0) inserted`,
-      [org, batch.map((r) => r.matricula), batch.map((r) => r.name), batch.map((r) => r.role), batch.map((r) => r.jobTitle), batch.map((r) => r.teamId), batch.map((r) => r.subteamId), batch.map((r) => r.hiredAt), batch.map((r) => r.active), batch.map((r) => r.operationalCapitalCode), batch.map((r) => r.operatingUniverse), batch.map((r) => r.operatingUniverseEffectiveFrom), employeeUniverseMapped(context)],
+      [org, batch.map((r) => r.matricula), batch.map((r) => r.name), batch.map((r) => r.role), batch.map((r) => r.jobTitle), batch.map((r) => r.teamId), batch.map((r) => r.subteamId), batch.map((r) => r.hiredAt), batch.map((r) => r.active), batch.map((r) => r.operationalCapitalCode), batch.map((r) => r.operatingUniverse), batch.map((r) => r.operatingUniverseEffectiveFrom), employeeUniverseMapped(context), batch.map((r) => r.jobPositionId), batch.map((r) => r.jobPositionName)],
     )
     // Passo 1b: credencial. Desligada pela base = conta desabilitada (reativar não devolve a senha nem os tokens antigos — achado
     // AUTH-7); pessoa cadastrada à mão (ligada pelo e-mail ou pré-cadastrada com a matrícula) que a base pôs em outro Grupo/nível

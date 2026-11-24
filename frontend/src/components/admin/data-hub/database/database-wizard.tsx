@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, ArrowRight, Check, Database, Loader2, Plug } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,7 +15,7 @@ import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, Table
 import { AdminApiError } from "@/lib/admin/admin-api"
 import { cn } from "@/lib/utils"
 import { useCreateSourceMutation, useDataContractsQuery, useUpdateSourceMutation } from "@/queries/admin/use-data-hub-queries"
-import { createFeed, fetchSourceSample, previewSourceMapping, setFeedStatus, syncFeedNow, testDatabaseConnection } from "@/services/admin/data-hub-service"
+import { fetchSourceSample, previewSourceMapping, setFeedStatus, syncFeedNow, testDatabaseConnection, updateFeed } from "@/services/admin/data-hub-service"
 import {
   CONTRACT_CATEGORY_LABELS,
   DATABASE_ENGINE_HINTS,
@@ -35,6 +36,7 @@ import {
   type SourceDetail,
 } from "@/schemas/admin/data-hub.schema"
 
+import { createFeedWithFreeKey } from "../create-feed-free-key"
 import { CadenceSelect } from "../cadence-select"
 import { ConfigAccessPanel, isConfigLocked } from "../config-access/config-access-panel"
 import { useConfigUnlockPrompt } from "../config-access/use-config-unlock-prompt"
@@ -117,6 +119,8 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ feedId: string; runId: string | null } | null>(null)
+  // Criado e ainda não ativado: se a ativação falhar, tentar de novo continua com ele em vez de criar outro conjunto igual.
+  const [createdFeed, setCreatedFeed] = useState<{ id: string; contractKey: string } | null>(null)
 
   const contracts = contractsQuery.data?.contracts ?? []
   const contract: DataContract | undefined = contracts.find((entry) => entry.key === contractKey)
@@ -156,7 +160,8 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
       setDraft((current) => ({ ...current, password: "" }))
       setTest(null)
       return saved
-    } catch {
+    } catch (err) {
+      setError(message(err, "Não foi possível salvar a conexão."))
       return null
     }
   }
@@ -198,19 +203,19 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
     try {
       // Chave técnica derivada do nome; se já existir nesta conexão, tenta "-2", "-3"…
       const input = { name: datasetName.trim(), contractKey: contract.key, connectorConfig, mapping, cadence, availabilityPolicy, authoritative, loadMode: "DELTA" as const }
-      let feed = null
-      for (let attempt = 1; !feed; attempt += 1) {
-        try {
-          const feedKey = attempt === 1 ? base : `${base}-${attempt}`
-          feed = await prompt.guarded(() => createFeed(source.id, { ...input, feedKey }))
-        } catch (err) {
-          if (!(err instanceof AdminApiError && err.code === "DATA_FEED_KEY_CONFLICT") || attempt >= 20) throw err
-        }
+      let feedId = createdFeed?.contractKey === contract.key ? createdFeed.id : null
+      if (feedId) {
+        const existingId = feedId
+        await prompt.guarded(() => updateFeed(existingId, { name: input.name, connectorConfig, mapping, cadence, availabilityPolicy, authoritative }))
+      } else {
+        feedId = (await createFeedWithFreeKey(source.id, base, input, prompt.guarded)).id
+        setCreatedFeed({ id: feedId, contractKey: contract.key })
       }
-      const createdId = feed.id
-      await prompt.guarded(() => setFeedStatus(createdId, "ACTIVATE"))
-      const run = importNow ? await syncFeedNow(feed.id) : null
-      setResult({ feedId: feed.id, runId: run?.id ?? null })
+      const activeId = feedId
+      await prompt.guarded(() => setFeedStatus(activeId, "ACTIVATE"))
+      // Ativado: se só a primeira importação falhar, o conjunto existe e a importação se pede por ele.
+      const run = importNow ? await syncFeedNow(activeId).catch((err: unknown) => { toast.error(message(err, "O conjunto foi ativado, mas a primeira importação não pôde ser pedida. Use Sincronizar agora.")); return null }) : null
+      setResult({ feedId: activeId, runId: run?.id ?? null })
     } catch (err) {
       setError(message(err, "Não foi possível ativar o conjunto de dados."))
     } finally {
@@ -452,7 +457,11 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
                 Ler a amostra de novo
               </Button>
             </div>
-          ) : null
+          ) : (
+            <Button variant="outline" size="sm" onClick={loadSample}>
+              Ler a amostra de novo
+            </Button>
+          )
         ) : null}
 
         {step === 5 && contract ? (
@@ -462,8 +471,12 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
                 <Loader2 className="size-4 animate-spin" aria-hidden /> Validando a amostra…
               </p>
             ) : preview ? (
-              <PreviewTable preview={preview} contract={contract} />
-            ) : null}
+              <PreviewTable preview={preview} contract={contract} mapping={mapping} />
+            ) : (
+              <Button variant="outline" size="sm" onClick={runPreview}>
+                Validar de novo
+              </Button>
+            )}
             <div className="space-y-3 rounded-lg border border-border p-3">
               <CadenceSelect value={cadence} onChange={setCadence} />
               <AvailabilityPolicyField value={availabilityPolicy} onChange={setAvailabilityPolicy} contractKey={contract.key} />

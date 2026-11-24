@@ -26,6 +26,7 @@ const users = vi.hoisted(() => ({
   updateUserOperationalCapital: vi.fn(),
   fetchCreationPolicy: vi.fn(),
   linkUserToSourcePerson: vi.fn(),
+  fetchJobPositionOptions: vi.fn(),
 }))
 vi.mock("@/services/admin/user-account-service", () => users)
 vi.mock("@/services/admin/org-structure-service", () => ({ fetchTeams: vi.fn(async () => [{ id: "t-atd", name: "Atendimento" }, { id: "t-ret", name: "Retenção" }]), fetchManageableTeams: vi.fn(), fetchSubjects: vi.fn() }))
@@ -57,6 +58,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); window.localStorage.clear() })
 const FROM_BASE = userAccountSchema.parse({ id: "p-base", name: "Pessoa Manual da Base", role: "OPERATOR", matricula: "OP-55555", active: true, teamId: "t-atd", teamName: "Atendimento", accountId: null, email: null, lastLoginAt: null })
 
 function setup(props: { canManageAccess?: boolean; onOpenAccess?: (focus: { search: string; personId: string | null }) => void } = {}) {
+  users.fetchJobPositionOptions.mockResolvedValue([{ id: "pos-op", name: "Operador", level: "OPERATOR", levelLabel: "Operador" }, { id: "pos-ar", name: "Assistente de Relacionamento", level: "OPERATOR", levelLabel: "Operador" }])
   users.fetchUserAccountsPage.mockImplementation(async (params: { hasMatricula?: boolean }) => (params.hasMatricula ? { items: [FROM_BASE], total: 1, page: 1, pageSize: 8 } : { items: [MARIANA, MANUAL], total: 2, page: 1, pageSize: 10 }))
   users.fetchCreationPolicy.mockResolvedValue({ hierarchyRequiresMatricula: false, sources: [] })
   users.fetchUserDetail.mockImplementation(async (id: string) => detailOf(id === MARIANA.id ? MARIANA : MANUAL))
@@ -75,10 +77,10 @@ async function openEdit(name: string) {
 describe("Pessoas — campos que vêm da base do cliente", () => {
   it("na lista, nível hierárquico e ativo da base ficam desabilitados com a origem; os da pessoa manual seguem editáveis", async () => {
     setup()
-    const mariana = await screen.findByLabelText("Nível hierárquico de Mariana Alves")
+    const mariana = await screen.findByLabelText("Cargo de Mariana Alves")
     expect(mariana).toBeDisabled()
     expect(mariana.closest("[title]")).toHaveAttribute("title", NOTICE)
-    expect(screen.getByLabelText("Nível hierárquico de Pessoa Manual")).toBeEnabled()
+    expect(screen.getByLabelText("Cargo de Pessoa Manual")).toBeEnabled()
     const [marianaActive, manualActive] = screen.getAllByRole("button", { name: "Desativar usuário" })
     expect(marianaActive).toBeDisabled()
     expect(manualActive).toBeEnabled()
@@ -90,7 +92,7 @@ describe("Pessoas — campos que vêm da base do cliente", () => {
     const name = screen.getByLabelText("Nome")
     expect(name).toBeDisabled()
     expect(name).toHaveAccessibleDescription(NOTICE)
-    expect(screen.getByRole("combobox", { name: "Nível hierárquico" })).toBeDisabled()
+    expect(screen.getByRole("combobox", { name: "Cargo" })).toBeDisabled()
     const email = screen.getByLabelText("E-mail")
     expect(email).toBeEnabled()
     expect(email).not.toHaveAccessibleDescription()
@@ -124,7 +126,7 @@ describe("Pessoas — campos que vêm da base do cliente", () => {
     setup()
     await openEdit("Pessoa Manual")
     expect(screen.getByLabelText("Nome")).toBeEnabled()
-    expect(screen.getByRole("combobox", { name: "Nível hierárquico" })).toBeEnabled()
+    expect(screen.getByRole("combobox", { name: "Cargo" })).toBeEnabled()
     expect(screen.getByRole("combobox", { name: "Grupo" })).toBeEnabled()
     await screen.findByText("Premium")
     expect(screen.queryByTestId("source-managed-notice")).not.toBeInTheDocument()
@@ -151,12 +153,12 @@ describe("Novo usuário — sem pessoa duplicada entre o cadastro e a base", () 
     users.createUserAccount.mockResolvedValue(ISSUED)
     await fillNewUser()
     expect(await screen.findByTestId("hierarchy-requires-source")).toHaveTextContent("RH Corporativo · Colaboradores")
-    expect(screen.getByRole("combobox", { name: "Nível hierárquico" })).toHaveTextContent("Fora da hierarquia")
+    expect(screen.getByRole("combobox", { name: "Cargo" })).toHaveTextContent("Fora da hierarquia")
     fireEvent.change(screen.getByLabelText("Matrícula (opcional)"), { target: { value: " OP-99999 " } })
-    expect(screen.getByRole("combobox", { name: "Nível hierárquico" })).toHaveTextContent("Operador")
+    expect(screen.getByRole("combobox", { name: "Cargo" })).toHaveTextContent("Operador")
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }))
     await waitFor(() => expect(users.createUserAccount).toHaveBeenCalledTimes(1))
-    expect(users.createUserAccount.mock.calls[0]![0]).toEqual({ name: "Nova Pessoa", email: "nova@empresa.com", role: "OPERATOR", teamId: undefined, matricula: "OP-99999", operatingUniverse: null })
+    expect(users.createUserAccount.mock.calls[0]![0]).toEqual({ name: "Nova Pessoa", email: "nova@empresa.com", role: "OPERATOR", jobPositionId: undefined, teamId: undefined, matricula: "OP-99999", operatingUniverse: null })
   })
 
   it("a senha provisória não é digitada: a INIA gera e mostra uma vez depois de criar (auditoria 17/10/2026, AUTH-6)", async () => {

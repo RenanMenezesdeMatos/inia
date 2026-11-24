@@ -104,7 +104,7 @@ export const CLIENT_TABLES: ClientTable[] = [
     columns: [
       matricula("Matrícula do colaborador. É a identidade da pessoa: não deve mudar e nunca é o nome."),
       { name: "nome", sqlType: "nvarchar(160)", required: true, field: "name", description: "Nome cadastral.", example: "Mariana Alves" },
-      { name: "nivel", sqlType: "varchar(20)", required: true, field: "role", description: "Nível na hierarquia: OPERATOR, SUPERVISOR, COORDINATOR, MANAGER, SENIOR_MANAGER ou DIRECTOR.", example: "OPERATOR" },
+      { name: "nivel", sqlType: "nvarchar(120)", required: true, field: "role", description: "Cargo como a base escreve (cadastrado em Central de Dados › Cargos) ou o código do nível: OPERATOR, SUPERVISOR, COORDINATOR, MANAGER, SENIOR_MANAGER, DIRECTOR ou STAFF.", example: "OPERADOR" },
       { name: "cargo", sqlType: "nvarchar(120)", required: false, field: "jobTitle", description: "Cargo descritivo, em texto livre.", example: "Analista de Atendimento I" },
       { name: "grupo", sqlType: "varchar(64)", required: false, field: "groupExternalCode", description: "Código do grupo da pessoa.", example: "B2C_RETENCAO" },
       subgrupo("Código do subgrupo da pessoa. Precisa pertencer ao grupo informado."),

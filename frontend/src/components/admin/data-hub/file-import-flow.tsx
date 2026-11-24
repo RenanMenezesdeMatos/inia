@@ -11,10 +11,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AdminApiError } from "@/lib/admin/admin-api"
-import { useCreateFeedMutation, useCreateSourceMutation, useDataContractsQuery, useDataRunQuery, useDataSourcesQuery, useImportFileMutation, useUpdateFeedMutation } from "@/queries/admin/use-data-hub-queries"
+import { useCreateSourceMutation, useDataContractsQuery, useDataRunQuery, useDataSourcesQuery, useImportFileMutation, useUpdateFeedMutation } from "@/queries/admin/use-data-hub-queries"
 import { fetchSourceSample, previewSourceMapping, uploadFile } from "@/services/admin/data-hub-service"
 import { CONTRACT_CATEGORY_LABELS, type DataContract, type FeedMapping, type FeedSummary, type Preview, type Sample, type SourceSummary, type UploadResult } from "@/schemas/admin/data-hub.schema"
 import { cn } from "@/lib/utils"
+import { createFeedWithFreeKey } from "./create-feed-free-key"
 
 import { formatCount, formatDuration } from "./data-hub-format"
 import { FileOptionsFields, emptyConnectorDraft, toConnectorConfig, type ConnectorDraft } from "./feed-connector-form"
@@ -35,7 +36,6 @@ export function FileImportFlow() {
   const contractsQuery = useDataContractsQuery()
   const sourcesQuery = useDataSourcesQuery()
   const createSource = useCreateSourceMutation()
-  const createFeed = useCreateFeedMutation()
   const updateFeed = useUpdateFeedMutation()
   const importFile = useImportFileMutation()
 
@@ -53,6 +53,8 @@ export function FileImportFlow() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
+  // Conjunto novo já criado: se só a importação falhar, tentar de novo usa o mesmo.
+  const [createdFeed, setCreatedFeed] = useState<{ id: string; contractKey: string } | null>(null)
   const runQuery = useDataRunQuery(runId ?? "")
 
   const fileSources: SourceSummary[] = useMemo(() => (sourcesQuery.data ?? []).filter((source) => source.kind === "FILE_UPLOAD"), [sourcesQuery.data])
@@ -92,6 +94,7 @@ export function FileImportFlow() {
     setPreview(null)
     setError(null)
     setRunId(null)
+    setCreatedFeed(null)
   }
 
   async function doUpload(selected: File) {
@@ -160,13 +163,15 @@ export function FileImportFlow() {
     setBusy(true)
     setError(null)
     try {
-      let feedId = chosen?.feed.id ?? null
+      let feedId = chosen?.feed.id ?? (createdFeed?.contractKey === contract.key ? createdFeed.id : null)
       const connectorConfig = toConnectorConfig("FILE_UPLOAD", connector)
       if (feedId) {
-        await updateFeed.mutateAsync({ id: feedId, input: { contractVersion: contract.version, mapping: effectiveMapping, connectorConfig } })
+        await updateFeed.mutateAsync({ id: feedId, input: { contractVersion: contract.version, mapping: effectiveMapping, connectorConfig, ...(chosen ? {} : { name: newFeedName || contract.label }) } })
       } else {
-        const created = await createFeed.mutateAsync({ sourceId: source.id, input: { feedKey: slug(newFeedName || contract.label), name: newFeedName || contract.label, contractKey: contract.key, connectorConfig, mapping: effectiveMapping } })
+        // Já existe um conjunto com este nome? A chave técnica ganha "-2" (a pessoa não a escolhe aqui).
+        const created = await createFeedWithFreeKey(source.id, slug(newFeedName || contract.label), { name: newFeedName || contract.label, contractKey: contract.key, connectorConfig, mapping: effectiveMapping })
         feedId = created.id
+        setCreatedFeed({ id: created.id, contractKey: contract.key })
       }
       const run = await importFile.mutateAsync({ feedId, rawObjectId: upload.rawObjectId })
       setRunId(run.id)
@@ -324,22 +329,30 @@ export function FileImportFlow() {
         {step === 2 && upload ? <FileOptionsFields draft={connector} onChange={setConnector} sheets={upload.sheets} /> : null}
 
         {step === 3 && contract ? (
-          busy || !sample ? (
+          busy ? (
             <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" aria-hidden /> Lendo a amostra…
             </p>
+          ) : !sample ? (
+            <Button variant="outline" size="sm" onClick={loadSample}>
+              Ler a amostra de novo
+            </Button>
           ) : (
             <MappingEditor contract={contract} columns={sample.columns} value={effectiveMapping} onChange={setMapping} suggestion={sample.suggestedMapping} />
           )
         ) : null}
 
         {step === 4 && contract ? (
-          busy || !preview ? (
+          busy ? (
             <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" aria-hidden /> Validando a amostra…
             </p>
+          ) : !preview ? (
+            <Button variant="outline" size="sm" onClick={runPreview}>
+              Validar de novo
+            </Button>
           ) : (
-            <PreviewTable preview={preview} contract={contract} />
+            <PreviewTable preview={preview} contract={contract} mapping={effectiveMapping} />
           )
         ) : null}
 

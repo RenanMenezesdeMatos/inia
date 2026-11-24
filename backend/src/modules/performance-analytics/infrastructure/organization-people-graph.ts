@@ -24,8 +24,8 @@ export type OrganizationPeopleGraph = {
 
 export const PERSON_NODE_SELECT = `p.id, p.name, p.role, p.reports_to_id "reportsToId", p.team_id "teamId", t.name "teamName",
        p.subteam_id "subteamId", st.name "subteamName", p.avatar_url "avatarUrl", p.job_title "jobTitle", p.operational_capital_code "operationalCapitalCode", p.active,
-       p.operating_universe "operatingUniverse"`
-export const PERSON_NODE_JOINS = `left join teams t on t.id = p.team_id left join subteams st on st.id = p.subteam_id`
+       p.operating_universe "operatingUniverse", jpos.name "jobPositionName"`
+export const PERSON_NODE_JOINS = `left join teams t on t.id = p.team_id left join subteams st on st.id = p.subteam_id left join job_positions jpos on jpos.id = p.job_position_id`
 
 async function loadGraph(db: Pick<Database, "query">, organizationId: string, version: string): Promise<OrganizationPeopleGraph> {
   const result = await db.query<PersonNode>(`select ${PERSON_NODE_SELECT} from people p ${PERSON_NODE_JOINS} where p.organization_id = $1 order by p.name, p.id`, [organizationId])

@@ -5847,6 +5847,18 @@
       "family": "FAMILIA-DEPENDENCIA"
     },
     {
+      "code": "DATA_JOB_POSITION_UNKNOWN",
+      "module": "data-hub",
+      "statuses": [],
+      "messages": [
+        "Cargo não cadastrado ou desativado — cadastre em Central de Dados › Cargos e reprocesse a carga."
+      ],
+      "refs": [
+        "backend/src/modules/data-hub/domain/error-codes.ts"
+      ],
+      "family": "FAMILIA-DEPENDENCIA"
+    },
+    {
       "code": "DATA_MAPPING_INVALID",
       "module": "data-hub",
       "statuses": [
@@ -9085,6 +9097,105 @@
         "backend/src/modules/investigation/application/tool-context.ts"
       ],
       "family": "FAMILIA-NAO-ENCONTRADO"
+    },
+    {
+      "code": "JOB_POSITION_CHANGED",
+      "module": "users",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "O cargo \"${position.name}\" mudou enquanto você editava. Escolha de novo."
+      ],
+      "refs": [
+        "backend/src/modules/users/presentation/user-account-router.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "JOB_POSITION_INACTIVE",
+      "module": "people",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "O cargo \"${row.name}\" está desativado."
+      ],
+      "refs": [
+        "backend/src/modules/people/application/job-position-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "JOB_POSITION_LEVEL_LOCKED",
+      "module": "people",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "${inUse === 1 ? \"1 pessoa tem\" : "
+      ],
+      "refs": [
+        "backend/src/modules/people/application/job-position-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "JOB_POSITION_NOT_FOUND",
+      "module": "people",
+      "statuses": [
+        404,
+        422
+      ],
+      "messages": [
+        "Cargo não encontrado."
+      ],
+      "refs": [
+        "backend/src/modules/people/application/job-position-service.ts"
+      ],
+      "family": "FAMILIA-NAO-ENCONTRADO"
+    },
+    {
+      "code": "JOB_POSITION_TERM_RESERVED",
+      "module": "people",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "\"${reserved.term}\" é o código do nível ${JOB_POSITION_LEVEL_LABELS[reservedLevelOf(reserved.key)!]} e só pode ser de um cargo com esse perfil."
+      ],
+      "refs": [
+        "backend/src/modules/people/application/job-position-service.ts"
+      ],
+      "family": "FAMILIA-REGRA-DE-NEGOCIO"
+    },
+    {
+      "code": "JOB_POSITION_TERM_TAKEN",
+      "module": "people",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "\"${taken.rows[0].term}\" já pertence ao cargo \"${taken.rows[0].name}\"."
+      ],
+      "refs": [
+        "backend/src/modules/people/application/job-position-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
+    },
+    {
+      "code": "JOB_POSITION_UNIVERSE_REQUIRED",
+      "module": "people",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "${pending === 1 ? \"1 pessoa deste cargo está\" : "
+      ],
+      "refs": [
+        "backend/src/modules/people/application/job-position-service.ts"
+      ],
+      "family": "FAMILIA-CONFLITO"
     },
     {
       "code": "JSON_INVALID",

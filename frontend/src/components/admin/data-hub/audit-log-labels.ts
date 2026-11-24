@@ -1,4 +1,4 @@
-import { DATABASE_ENGINE_LABELS, DATABASE_TLS_LABELS, type AuditEvent, type DatabaseEngine, type DatabaseTlsMode } from "@/schemas/admin/data-hub.schema"
+import { DATABASE_ENGINE_LABELS, DATABASE_TLS_LABELS, JOB_POSITION_LEVEL_LABELS, type AuditEvent, type DatabaseEngine, type DatabaseTlsMode, type JobPositionLevel } from "@/schemas/admin/data-hub.schema"
 
 import { formatDateTime } from "./data-hub-format"
 
@@ -38,6 +38,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   DATA_HUB_FILE_IMPORTED: "Arquivo importado",
   DATA_HUB_PUSH_TOKEN_CREATED: "Token de push criado",
   DATA_HUB_PUSH_TOKEN_REVOKED: "Token de push revogado",
+  DATA_HUB_JOB_POSITION_CREATED: "Cargo cadastrado",
+  DATA_HUB_JOB_POSITION_UPDATED: "Cargo alterado",
   DATA_HUB_EXPLORER_QUERY: "Consulta de dados",
   DATA_HUB_EXPLORER_COUNT: "Contagem de dados",
   DATA_HUB_EXPLORER_EXPORT_STARTED: "Exportação iniciada",
@@ -105,6 +107,7 @@ function fieldValue(field: string, value: unknown): string {
   if (field === "engine") return DATABASE_ENGINE_LABELS[value as DatabaseEngine] ?? text(value)
   return text(value)
 }
+const positionLevel = (value: unknown): string => JOB_POSITION_LEVEL_LABELS[value as JobPositionLevel] ?? text(value)
 const list = (value: unknown): string[] => (Array.isArray(value) ? value.map(String) : [])
 const count = (value: unknown, one: string, many: string) => `${text(value)} ${value === 1 ? one : many}`
 
@@ -136,6 +139,19 @@ export function describeAuditEvent(event: AuditEvent): string[] {
       const changedFields = list(payload.changedFields)
       if (changedFields.length > 0) lines.push(`Também mudou: ${changedFields.map(fieldLabel).join(", ")}`)
       if (list(payload.secretsRotated).length > 0) lines.push("Senha trocada, depois de testada")
+      break
+    }
+    case "DATA_HUB_JOB_POSITION_CREATED":
+      lines.push(`${text(payload.name)}: perfil ${positionLevel(payload.level)}`)
+      break
+    case "DATA_HUB_JOB_POSITION_UPDATED": {
+      const before = (payload.before ?? {}) as Record<string, unknown>
+      const after = (payload.after ?? {}) as Record<string, unknown>
+      lines.push(text(payload.name))
+      if (before.name !== after.name) lines.push(`Nome: ${text(before.name)} → ${text(after.name)}`)
+      if (before.level !== after.level) lines.push(`Perfil: ${positionLevel(before.level)} → ${positionLevel(after.level)}${typeof payload.peopleChanged === "number" ? ` (${count(payload.peopleChanged, "pessoa", "pessoas")})` : ""}`)
+      if (before.active !== after.active) lines.push(after.active ? "Ativado" : "Desativado")
+      if (list(before.terms).join("|") !== list(after.terms).join("|")) lines.push(`Nomes na base: ${list(after.terms).join(", ")}`)
       break
     }
     case "DATA_HUB_FEED_UPDATED": {

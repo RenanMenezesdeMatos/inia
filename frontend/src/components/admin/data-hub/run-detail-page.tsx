@@ -2,7 +2,9 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Download, RotateCcw, XCircle } from "lucide-react"
+import { toast } from "sonner"
 
 import { useAdminListState } from "@/hooks/use-admin-list-state"
 import { BackLink } from "@/components/ui/back-link"
@@ -13,7 +15,7 @@ import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, Table
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
 import { ListMultiSelectFilter, ListSearchInput, ListToolbar } from "@/components/admin/shared/list/list-filters"
 import { ListErrorState } from "@/components/admin/shared/list/list-states"
-import { useCancelRunMutation, useDataRejectionsPageQuery, useDataRunQuery, useReprocessRunMutation } from "@/queries/admin/use-data-hub-queries"
+import { useCancelRunMutation, useDataContractsQuery, useDataRejectionsPageQuery, useDataRunQuery, useReprocessRunMutation } from "@/queries/admin/use-data-hub-queries"
 import { downloadRejectionsCsv } from "@/services/admin/data-hub-service"
 import { RUN_STATUS_LABELS, RUN_TRIGGER_LABELS, type Rejection, type RunDetail } from "@/schemas/admin/data-hub.schema"
 import { cn } from "@/lib/utils"
@@ -43,7 +45,7 @@ function Timeline({ run }: { run: RunDetail }) {
   )
 }
 
-function RejectionsTable({ rows }: { rows: Rejection[] }) {
+function RejectionsTable({ rows, fieldLabels }: { rows: Rejection[]; fieldLabels: ReadonlyMap<string, string> }) {
   return (
     <div className={TABLE_FRAME}>
       <Table>
@@ -62,7 +64,7 @@ function RejectionsTable({ rows }: { rows: Rejection[] }) {
               <TableCell className="text-right tabular-nums">{row.recordNumber}</TableCell>
               <TableCell className="font-mono text-xs">{row.sourceRecordKey ?? "—"}</TableCell>
               <TableCell className="font-mono text-xs">{row.errorCode}</TableCell>
-              <TableCell className="font-mono text-xs">{row.field ?? "—"}</TableCell>
+              <TableCell className="text-xs" title={row.field ?? undefined}>{row.field ? (fieldLabels.get(row.field) ?? row.field) : "—"}</TableCell>
               <TableCell className="max-w-lg whitespace-normal text-xs">{row.message}</TableCell>
             </TableRow>
           ))}
@@ -76,6 +78,8 @@ function RejectionsSection({ run }: { run: RunDetail }) {
   const list = useAdminListState<{ search: string; errorCode: string[] }>({ storageKey: `data-hub-rejections-${run.id}`, defaultFilters: { search: "", errorCode: [] }, defaultPageSize: 20 })
   const query = useDataRejectionsPageQuery(run.id, list.params)
   const [downloading, setDownloading] = useState(false)
+  const contract = useDataContractsQuery().data?.contracts.find((entry) => entry.key === run.contractKey)
+  const fieldLabels = new Map(contract?.fields.map((field) => [field.key, field.label]))
   const options = run.rejectionSummary.map((entry) => ({ value: entry.code, label: `${entry.code} (${entry.count})` }))
   return (
     <Card>
@@ -102,6 +106,8 @@ function RejectionsSection({ run }: { run: RunDetail }) {
                   anchor.download = filename ?? `rejeicoes-${run.id.slice(0, 8)}.csv`
                   anchor.click()
                   URL.revokeObjectURL(url)
+                } catch {
+                  toast.error("Não foi possível exportar a quarentena. Tente de novo.")
                 } finally {
                   setDownloading(false)
                 }
@@ -122,12 +128,17 @@ function RejectionsSection({ run }: { run: RunDetail }) {
             ))}
           </ul>
         ) : null}
+        {run.rejectionSummary.some((entry) => entry.code === "DATA_JOB_POSITION_UNKNOWN") ? (
+          <Button asChild size="sm" variant="outline">
+            <Link href="/admin/data-hub?tab=positions">Cadastrar os cargos que faltam</Link>
+          </Button>
+        ) : null}
         {run.errorCount > 0 || run.warningCount > 0 ? (
           <>
             <ListToolbar search={<ListSearchInput value={list.filters.search} onChange={(value) => list.setFilter("search", value)} placeholder="Buscar por chave, campo ou mensagem" ariaLabel="Buscar rejeição" pending={list.isSearchPending} />} hasActiveFilters={list.hasActiveFilters} onClearFilters={list.resetFilters}>
               <ListMultiSelectFilter label="Código" values={list.filters.errorCode} onChange={(values) => list.setFilter("errorCode", values)} options={options} />
             </ListToolbar>
-            <AdminListView state={list} query={query} errorMessage="Não foi possível carregar a quarentena." empty={{ icon: XCircle, title: "Nenhuma rejeição" }} noResultsTitle="Nenhuma rejeição corresponde aos filtros" itemLabel={["rejeição", "rejeições"]} renderList={(rows) => <RejectionsTable rows={rows} />} renderCards={(rows) => <RejectionsTable rows={rows} />} />
+            <AdminListView state={list} query={query} errorMessage="Não foi possível carregar a quarentena." empty={{ icon: XCircle, title: "Nenhuma rejeição" }} noResultsTitle="Nenhuma rejeição corresponde aos filtros" itemLabel={["rejeição", "rejeições"]} renderList={(rows) => <RejectionsTable rows={rows} fieldLabels={fieldLabels} />} renderCards={(rows) => <RejectionsTable rows={rows} fieldLabels={fieldLabels} />} />
           </>
         ) : (
           <p className="text-sm text-muted-foreground">Nenhum registro rejeitado nesta carga.</p>
@@ -139,6 +150,7 @@ function RejectionsSection({ run }: { run: RunDetail }) {
 
 export function RunDetailPage({ runId }: { runId: string }) {
   const query = useDataRunQuery(runId)
+  const router = useRouter()
   const reprocess = useReprocessRunMutation()
   const cancel = useCancelRunMutation()
   if (query.isLoading) return <Skeleton className="h-96 rounded-xl" aria-hidden />
@@ -181,7 +193,7 @@ export function RunDetailPage({ runId }: { runId: string }) {
             </Button>
           ) : null}
           {run.rawAvailable && ["COMPLETED", "PARTIAL", "FAILED"].includes(run.status) ? (
-            <Button variant="outline" onClick={() => reprocess.mutate(run.id)} disabled={reprocess.isPending}>
+            <Button variant="outline" onClick={() => reprocess.mutate(run.id, { onSuccess: (next) => router.push(`/admin/data-hub/runs/${next.id}`) })} disabled={reprocess.isPending}>
               <RotateCcw /> Reprocessar
             </Button>
           ) : null}

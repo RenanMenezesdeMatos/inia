@@ -4,7 +4,7 @@ import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 import { resolveWorkdaysBySubject } from "../../indicators/application/operational-measurement-resolver.js"
 import type { AnalyticsReadRepository, PersonNode } from "../../performance-analytics/application/analytics-read-repository.js"
 import { accessCovers, accessDenied, directOperatorsOf, loadViewerScope, operatorsBelow, type ViewerScope } from "../../performance-analytics/application/viewer-scope.js"
-import { ROLE_LABELS } from "../../performance-analytics/domain/hierarchy-levels.js"
+import { personLevelLabel } from "../../performance-analytics/domain/hierarchy-levels.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { localDateOf, startOfLocalDate } from "../../workflows/application/time-window.js"
 import { EMPLOYMENT_STATUS_LABELS, type EmploymentStatus } from "../domain/employment-status.js"
@@ -251,8 +251,8 @@ export async function buildTeamCalendar(db: Database, analytics: AnalyticsReadRe
   })
   const filtered = applyCalendarFilters(resolvedPeople, input.filters ?? {}, input.filters?.scheduledToday === undefined ? undefined : await eligibleTodayBySubject(db, ids, resolvedPeople, today, timeZone, now))
   return {
-    anchor: { personId: anchor.id, name: anchor.name, role: anchor.role, roleLabel: ROLE_LABELS[anchor.role as keyof typeof ROLE_LABELS] ?? anchor.role },
-    availableAnchors: anchorsWithTeams(scope).map((node) => ({ personId: node.id, name: node.name, roleLabel: ROLE_LABELS[node.role as keyof typeof ROLE_LABELS] ?? node.role, teamName: node.teamName })),
+    anchor: { personId: anchor.id, name: anchor.name, role: anchor.role, roleLabel: personLevelLabel(anchor) },
+    availableAnchors: anchorsWithTeams(scope).map((node) => ({ personId: node.id, name: node.name, roleLabel: personLevelLabel(node), teamName: node.teamName })),
     range: { from: input.from, to: input.to },
     today,
     timeZone,

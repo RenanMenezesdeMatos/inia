@@ -3,6 +3,7 @@ import "@testing-library/jest-dom/vitest"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { DataContract, Preview } from "@/schemas/admin/data-hub.schema"
 
@@ -100,6 +101,35 @@ describe("editor de mapeamento", () => {
     expect(screen.getAllByText("obrigatório")).toHaveLength(3)
     expect(screen.getByText("identidade")).toBeInTheDocument()
   })
+
+  it("'+ Adicionar' abre a lista ancorada no botão e a escolha vira transformação", async () => {
+    Element.prototype.hasPointerCapture = () => false
+    Element.prototype.scrollIntoView = () => {}
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    const changes: { fields: { target: string; transforms: unknown[] }[] }[] = []
+    render(<MappingEditor contract={CONTRACT} columns={["nivel"]} value={{ fields: [{ target: "role", source: "nivel", transforms: [] }] }} onChange={(next) => changes.push(next as never)} />)
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Adicionar transformação em Papel" }), { key: "Enter" })
+    const option = await screen.findByRole("option", { name: "Mapear códigos" })
+    // Sem SelectValue no gatilho, o Radix só posiciona a lista no modo "popper": no padrão ela abria fora da tela, como se o botão não funcionasse.
+    expect(document.querySelector("[data-slot=select-content]")).toHaveAttribute("data-align-trigger", "false")
+    fireEvent.keyDown(option, { key: "Enter" })
+    expect(changes[0]!.fields[0]).toEqual({ target: "role", source: "nivel", transforms: [{ kind: "CODE_MAP", map: {}, otherwise: "KEEP" }] })
+  })
+})
+
+describe("Mapear códigos", () => {
+  it("grava enquanto a pessoa digita (Esc não perde nada) e avisa a linha sem '='", () => {
+    const changes: { fields: { transforms: unknown[] }[] }[] = []
+    render(<MappingEditor contract={CONTRACT} columns={["nivel"]} value={{ fields: [{ target: "role", source: "nivel", transforms: [{ kind: "CODE_MAP", map: {}, otherwise: "KEEP" }] }] }} onChange={(next) => changes.push(next as never)} />)
+    fireEvent.click(screen.getByRole("button", { name: "Códigos (0)" }))
+    fireEvent.change(screen.getByLabelText("Mapa de códigos"), { target: { value: "OPERADOR = OPERATOR\nsem igual\nA=B=C" } })
+    expect(changes.at(-1)!.fields[0]!.transforms[0]).toEqual({ kind: "CODE_MAP", map: { OPERADOR: "OPERATOR", A: "B=C" }, otherwise: "KEEP" })
+    expect(screen.getByText(/esta linha não vale: sem igual/)).toBeInTheDocument()
+  })
 })
 
 describe("preview ✓/✕ por registro", () => {
@@ -118,9 +148,11 @@ describe("preview ✓/✕ por registro", () => {
       errorSummary: [{ code: "DATA_REQUIRED_FIELD_MISSING", count: 1 }],
     }
     render(
-      <TooltipProvider>
-        <PreviewTable preview={preview} contract={CONTRACT} />
-      </TooltipProvider>,
+      <QueryClientProvider client={new QueryClient()}>
+        <TooltipProvider>
+          <PreviewTable preview={preview} contract={CONTRACT} mapping={{ fields: [] }} />
+        </TooltipProvider>
+      </QueryClientProvider>,
     )
     expect(screen.getByText("1 válido(s)")).toBeInTheDocument()
     expect(screen.getByText("1 com erro")).toBeInTheDocument()

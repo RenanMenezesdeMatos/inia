@@ -1624,7 +1624,7 @@ já diz a regra; a família do status diz como investigar.
 
 **Recuperação:** Restabelecer a dependência; repetir a ação. **Escalar para:** Infraestrutura da VM (servidor, IIS, PostgreSQL). Sem solução em 30 min: equipe de desenvolvimento da INIA com a referência, o horário UTC e as linhas do log.
 
-## Códigos dos módulos (995)
+## Códigos dos módulos (1003)
 
 ### Módulo `access`
 
@@ -2109,6 +2109,12 @@ já diz a regra; a família do status diz como investigar.
 | `EMPLOYMENT_STATUS_OVERLAP` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A correção sobreporia períodos de situação da mesma pessoa. | `backend/src/modules/people/application/employment-status-service.ts` |
 | `EMPLOYMENT_STATUS_UNKNOWN` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Situação funcional não reconhecida: "${snapshot.rawStatus ?? ""}". | `backend/src/modules/people/application/employment-status-service.ts` |
 | `HOLIDAY_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Feriado não encontrado. | `backend/src/modules/people/presentation/operational-calendar-router.ts` |
+| `JOB_POSITION_INACTIVE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O cargo "${row.name}" está desativado. | `backend/src/modules/people/application/job-position-service.ts` |
+| `JOB_POSITION_LEVEL_LOCKED` | 409 | FAMILIA-CONFLITO | ${inUse === 1 ? "1 pessoa tem" :  | `backend/src/modules/people/application/job-position-service.ts` |
+| `JOB_POSITION_NOT_FOUND` | 404, 422 | FAMILIA-NAO-ENCONTRADO | Cargo não encontrado. | `backend/src/modules/people/application/job-position-service.ts` |
+| `JOB_POSITION_TERM_RESERVED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | "${reserved.term}" é o código do nível ${JOB_POSITION_LEVEL_LABELS[reservedLevelOf(reserved.key)!]} e só pode ser de um cargo com esse perfil. | `backend/src/modules/people/application/job-position-service.ts` |
+| `JOB_POSITION_TERM_TAKEN` | 409 | FAMILIA-CONFLITO | "${taken.rows[0].term}" já pertence ao cargo "${taken.rows[0].name}". | `backend/src/modules/people/application/job-position-service.ts` |
+| `JOB_POSITION_UNIVERSE_REQUIRED` | 409 | FAMILIA-CONFLITO | ${pending === 1 ? "1 pessoa deste cargo está" :  | `backend/src/modules/people/application/job-position-service.ts` |
 | `PENDING_ACTION_NOT_ACTIONABLE` | 409 | FAMILIA-CONFLITO | Este registro é informativo e não exige decisão. | `backend/src/modules/people/application/workday-reconciliation-service.ts` |
 | `PERSON_ALREADY_LINKED` | 409 | FAMILIA-CONFLITO | Esta pessoa já foi vinculada a uma pessoa da base. | `backend/src/modules/people/application/person-source-link.ts` |
 | `PERSON_LINK_SAME_PERSON` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escolha outra pessoa: não dá para vincular alguém a si mesmo. | `backend/src/modules/people/application/person-source-link.ts` |
@@ -2398,6 +2404,7 @@ já diz a regra; a família do status diz como investigar.
 | `DATA_INVALID_DATE` | — | FAMILIA-DEPENDENCIA | Data inválida. | `backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_INVALID_ENUM` | — | FAMILIA-DEPENDENCIA | Valor fora das opções permitidas. | `backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_INVALID_NUMBER` | — | FAMILIA-DEPENDENCIA | Número inválido. | `backend/src/modules/data-hub/domain/error-codes.ts` |
+| `DATA_JOB_POSITION_UNKNOWN` | — | FAMILIA-DEPENDENCIA | Cargo não cadastrado ou desativado — cadastre em Central de Dados › Cargos e reprocesse a carga. | `backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_MAPPING_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O mapeamento está incompleto: ${problems.join(" ")} | `backend/src/modules/data-hub/application/feed-service.ts`<br>`backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_NO_VALID_RECORDS` | — | FAMILIA-DEPENDENCIA | Nenhum registro da carga é válido. | `backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_OPERATING_UNIVERSE_REQUIRED` | — | FAMILIA-DEPENDENCIA | Colaborador novo sem universo de atuação (B2B, B2C ou B2X) depois que a organização ativou a exigência — mapeie o campo na carga. | `backend/src/modules/data-hub/domain/error-codes.ts` |
@@ -2513,6 +2520,7 @@ já diz a regra; a família do status diz como investigar.
 | --- | --- | --- | --- | --- |
 | `EMAIL_ALREADY_IN_USE` | 409 | FAMILIA-CONFLITO | Já existe uma conta com este e-mail. | `backend/src/modules/access/application/account-access-service.ts`<br>`backend/src/modules/users/presentation/user-account-router.ts` |
 | `EMPLOYMENT_STATUS_CONFLICT` | 409 | FAMILIA-CONFLITO | Já existe um período ${EMPLOYMENT_STATUS_LABELS[outcome.conflict!.existing.status]} de ${outcome.conflict!.existing.effectiveFrom}${outcome.conflict!.existing.effectiveTo ?  | `backend/src/modules/users/presentation/user-account-router.ts` |
+| `JOB_POSITION_CHANGED` | 409 | FAMILIA-CONFLITO | O cargo "${position.name}" mudou enquanto você editava. Escolha de novo. | `backend/src/modules/users/presentation/user-account-router.ts` |
 | `PEOPLE_ROLE_REQUIRES_ORGANIZATION_SCOPE` | 403 | FAMILIA-ACESSO | Definir ou mudar um nível de liderança (Supervisor, Coordenador, Gerente…) exige administrar pessoas na organização inteira. | `backend/src/modules/users/presentation/user-account-router.ts` |
 | `PEOPLE_SELF_CHANGE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não pode alterar o seu próprio nível, Grupo, universo, e-mail ou situação — outra pessoa autorizada precisa fazer isso. | `backend/src/modules/users/presentation/user-account-router.ts` |
 | `PERSON_FIELD_MANAGED_BY_SOURCE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/users/presentation/user-account-router.ts` |

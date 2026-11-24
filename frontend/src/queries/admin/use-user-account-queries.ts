@@ -5,6 +5,7 @@ import {
   createUserAccount,
   fetchUserAccounts,
   fetchCreationPolicy,
+  fetchJobPositionOptions,
   fetchUserAccountsPage,
   fetchUserDetail,
   linkUserToSourcePerson,
@@ -33,6 +34,10 @@ export function useUserDetailQuery(personId: string | null) {
 
 export function useCreationPolicyQuery(enabled: boolean) {
   return useQuery({ queryKey: [...adminQueryKeys.users(), "creation-policy"] as const, queryFn: fetchCreationPolicy, enabled })
+}
+
+export function useJobPositionOptionsQuery(enabled = true) {
+  return useQuery({ queryKey: [...adminQueryKeys.users(), "job-positions"] as const, queryFn: fetchJobPositionOptions, enabled, staleTime: 0 })
 }
 
 export function useCreateUserAccountMutation() {
@@ -66,9 +71,9 @@ export function useUpdateUserDetailsMutation() {
 
 export function useUpdateUserRoleMutation() {
   return useAdminMutation({
-    mutationFn: ({ personId, role }: { personId: string; role: PlatformRole }) => updateUserRole(personId, role),
+    mutationFn: ({ personId, ...position }: { personId: string; role: PlatformRole; jobPositionId: string | null }) => updateUserRole(personId, position),
     invalidateKey: adminQueryKeys.users(),
-    successMessage: "Perfil atualizado.",
+    successMessage: "Cargo atualizado.",
   })
 }
 

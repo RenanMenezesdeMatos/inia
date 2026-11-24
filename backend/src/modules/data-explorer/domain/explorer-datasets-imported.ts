@@ -1,4 +1,5 @@
 import { SENSITIVE_LEAVE_STATUSES } from "../../org-structure/domain/management-metrics.js"
+import { OPERATING_UNIVERSE_LABELS, OPERATING_UNIVERSES } from "../../operating-universe/domain/operating-universe.js"
 import { EMPLOYMENT_STATUS_LABELS, LEGACY_EMPLOYMENT_STATUS_MAP, type EmploymentStatus } from "../../people/domain/employment-status.js"
 import { SCHEDULE_ACTIVITY_TYPE_LABELS, SCHEDULE_ACTIVITY_TYPES } from "../../people/domain/schedule-activity.js"
 import { SCHEDULE_EXCEPTION_CODES, type ScheduleExceptionCode } from "../../people/domain/schedule-exception.js"
@@ -64,6 +65,7 @@ const LEVEL_OPTIONS = [
   { value: "MANAGER", label: "Gerente" },
   { value: "SENIOR_MANAGER", label: "Gerente sênior" },
   { value: "DIRECTOR", label: "Diretor" },
+  { value: "STAFF", label: "Apoio" },
   { value: "ADMIN", label: "Fora da hierarquia" },
 ]
 const QUARTILE_OPTIONS = ["Q1", "Q2", "Q3", "Q4"].map((value) => ({ value, label: value }))
@@ -86,6 +88,10 @@ const GOAL_SUBJECT_OPTIONS = [
   { value: "SUBTEAM", label: "Subgrupo" },
 ]
 
+const UNIVERSE_OPTIONS = OPERATING_UNIVERSES.map((universe) => ({ value: universe, label: OPERATING_UNIVERSE_LABELS[universe] }))
+/** Universo de atuação (migration 204). Vazio = pendente: o Grupo/Subgrupo não aparece nos seletores quando há universo escolhido. */
+const universe = (key: string, label: string, description: string, sql: string, extra: Partial<ExplorerColumn> = {}): ExplorerColumn => ({ key, label, description, type: "ENUM", sql, nullable: true, filterable: true, sortable: true, options: UNIVERSE_OPTIONS, ...extra })
+
 const person = (alias: string, column: string) => `left join people ${alias} on ${alias}.id = t.${column} and ${alias}.organization_id = t.organization_id`
 const team = (alias: string, column: string) => `left join teams ${alias} on ${alias}.id = t.${column} and ${alias}.organization_id = t.organization_id`
 const subteam = (alias: string, column: string) => `left join subteams ${alias} on ${alias}.id = t.${column} and ${alias}.organization_id = t.organization_id`
@@ -103,16 +109,19 @@ export const IMPORTED_DATASETS: readonly ExplorerDataset[] = [
     description: "Cadastro de pessoas vindo das cargas de Colaboradores e Estrutura. Sem conta de acesso, e-mail, foto ou dados pessoais do perfil.",
     origin: "IMPORTED",
     volume: "SMALL",
-    from: `people t ${team("tm", "team_id")} ${subteam("st", "subteam_id")} ${person("mgr", "reports_to_id")}`,
+    from: `people t ${team("tm", "team_id")} ${subteam("st", "subteam_id")} ${person("mgr", "reports_to_id")} left join job_positions jpos on jpos.id = t.job_position_id and jpos.organization_id = t.organization_id`,
     key: { sql: "t.id", cast: "uuid" },
     defaultSort: { column: "name", direction: "ASC" },
     columns: [
       matricula("matricula", "Matrícula", "t.matricula", { sortable: true }),
       { key: "name", label: "Nome", type: "TEXT", sql: "t.name", nullable: false, personal: true, filterable: true, sortable: true, search: "CONTAINS" },
       { key: "level", label: "Nível hierárquico", type: "ENUM", sql: "t.role", nullable: false, filterable: true, sortable: true, options: LEVEL_OPTIONS },
+      { key: "job_position", label: "Cargo cadastrado", description: "Cargo de Central de Dados › Cargos, resolvido na carga. Vazio = a base mandou só o código do nível.", type: "TEXT", sql: "jpos.name", nullable: true, filterable: true, sortable: true, search: "CONTAINS", hiddenByDefault: true },
       { key: "job_title", label: "Cargo", type: "TEXT", sql: "t.job_title", nullable: true, filterable: true, sortable: true, search: "CONTAINS" },
       { key: "group", label: "Grupo", type: "TEXT", sql: "tm.name", nullable: true, filterable: true, sortable: true },
       { key: "subgroup", label: "Subgrupo", type: "TEXT", sql: "st.name", nullable: true, filterable: true, sortable: true },
+      universe("operating_universe", "Universo de atuação", "O que vale para a pessoa: a exceção dela ou, sem exceção, o do Subgrupo ou do Grupo. Vazio = pendente.", "t.operating_universe"),
+      universe("operating_universe_override", "Universo — exceção", "Só quando a pessoa atende um universo diferente do Grupo/Subgrupo dela. Vazio = herda.", "t.operating_universe_override", { hiddenByDefault: true }),
       matricula("manager_matricula", "Matrícula do gestor", "mgr.matricula"),
       { key: "employment_status", label: "Situação funcional", description: "Afastamentos sensíveis aparecem como protegidos.", type: "ENUM", sql: maskedEmploymentStatusSql("t.current_employment_status"), nullable: false, personal: true, filterable: true, sortable: true, options: EMPLOYMENT_STATUS_OPTIONS },
       { key: "active", label: "Ativo", type: "BOOLEAN", sql: "t.active", nullable: false, filterable: true, sortable: true },
@@ -134,6 +143,7 @@ export const IMPORTED_DATASETS: readonly ExplorerDataset[] = [
       { key: "name", label: "Grupo", type: "TEXT", sql: "t.name", nullable: false, filterable: true, sortable: true, search: "CONTAINS" },
       { key: "external_code", label: "Código externo", type: "TEXT", sql: "t.external_code", nullable: true, filterable: true, sortable: true, search: "EXACT" },
       { key: "operation", label: "Operação", type: "TEXT", sql: "op.name", nullable: true, filterable: true, sortable: true },
+      universe("operating_universe", "Universo de atuação", "Vem da carga de Grupos ou da tela Universo de atuação. Vazio = pendente.", "t.operating_universe"),
       createdAt(false),
     ],
   },
@@ -150,6 +160,8 @@ export const IMPORTED_DATASETS: readonly ExplorerDataset[] = [
       { key: "name", label: "Subgrupo", type: "TEXT", sql: "t.name", nullable: false, filterable: true, sortable: true, search: "CONTAINS" },
       { key: "group", label: "Grupo", type: "TEXT", sql: "tm.name", nullable: true, filterable: true, sortable: true, search: "CONTAINS" },
       { key: "external_code", label: "Código externo", type: "TEXT", sql: "t.external_code", nullable: true, filterable: true, sortable: true, search: "EXACT" },
+      universe("operating_universe", "Universo de atuação", "O que vale para o Subgrupo: o dele ou, sem ele, o do Grupo. Vazio = pendente.", "coalesce(t.operating_universe, tm.operating_universe)"),
+      universe("operating_universe_own", "Universo próprio", "Só quando o Subgrupo difere do Grupo. Vazio = herda do Grupo.", "t.operating_universe", { hiddenByDefault: true }),
       createdAt(false),
     ],
   },

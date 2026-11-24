@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { useAdminMutation } from "@/lib/admin/use-admin-mutation"
 import { RUN_ACTIVE_STATUSES, type Cadence } from "@/schemas/admin/data-hub.schema"
@@ -34,7 +34,10 @@ import {
   syncFeedNow,
   testSourceConnection,
   unlockSourceConfiguration,
+  createJobPosition,
+  fetchJobPositions,
   updateFeed,
+  updateJobPosition,
   fetchCadencePreview,
   updateSource,
   type AuditEventListParams,
@@ -202,4 +205,19 @@ export function useResetFeedCheckpointMutation() {
 
 export function useCancelRunMutation() {
   return useAdminMutation({ mutationFn: (id: string) => cancelRun(id), invalidateKey: adminQueryKeys.dataHub(), successMessage: "Carga cancelada." })
+}
+
+export function useJobPositionsQuery() {
+  return useQuery({ queryKey: adminQueryKeys.dataHubJobPositions(), queryFn: fetchJobPositions })
+}
+
+/** O erro de termo já usado, perfil travado etc. aparece no próprio formulário. O seletor de cargos de Pessoas acompanha a mudança. */
+export function useCreateJobPositionMutation() {
+  const queryClient = useQueryClient()
+  return useAdminMutation({ mutationFn: createJobPosition, invalidateKey: adminQueryKeys.dataHub(), successMessage: "Cargo cadastrado. Reprocesse a carga para aplicar a quem ficou na quarentena.", silentErrors: true, onSuccess: () => void queryClient.invalidateQueries({ queryKey: adminQueryKeys.users() }) })
+}
+
+export function useUpdateJobPositionMutation(options: { errorsInline?: boolean } = {}) {
+  const queryClient = useQueryClient()
+  return useAdminMutation({ mutationFn: updateJobPosition, invalidateKey: adminQueryKeys.dataHub(), successMessage: "Cargo atualizado.", silentErrors: options.errorsInline, onSuccess: () => void queryClient.invalidateQueries({ queryKey: adminQueryKeys.users() }) })
 }

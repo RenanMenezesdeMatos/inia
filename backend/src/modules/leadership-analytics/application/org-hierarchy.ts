@@ -1,7 +1,7 @@
 import type { FunctionDeclaration } from "../../assistant/infrastructure/gemini-function-calling-client.js"
 import type { PlatformRole } from "../../auth/infrastructure/jwt.js"
 import type { AnalyticsReadRepository, PersonNode } from "../../performance-analytics/application/analytics-read-repository.js"
-import { ROLE_LABELS } from "../../performance-analytics/domain/hierarchy-levels.js"
+import { personLevelLabel, ROLE_LABELS } from "../../performance-analytics/domain/hierarchy-levels.js"
 import { isSensitiveLeave } from "../../org-structure/domain/management-metrics.js"
 import { EMPLOYMENT_STATUS_LABELS, toCanonicalEmploymentStatus } from "../../people/domain/employment-status.js"
 import { matchesAllTokens, normalizeForMatch } from "../domain/analytic-rules.js"
@@ -40,6 +40,7 @@ const ROLE_ARGS: Record<string, PlatformRole> = {
   GERENTE: "MANAGER",
   GERENTE_SENIOR: "SENIOR_MANAGER",
   DIRETOR: "DIRECTOR",
+  APOIO: "STAFF",
   ADMINISTRADOR: "ADMIN",
 }
 const LEADER_GROUPINGS: Record<string, PlatformRole> = { SUPERVISOR: "SUPERVISOR", COORDENADOR: "COORDINATOR", GERENTE: "MANAGER", GERENTE_SENIOR: "SENIOR_MANAGER", DIRETOR: "DIRECTOR" }
@@ -174,7 +175,12 @@ const median = (values: readonly number[]) => {
   const middle = Math.floor(sorted.length / 2)
   return sorted.length % 2 === 1 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2
 }
-const describe = (person: PersonNode) => [roleLabel(person.role), person.teamName, person.subteamName].filter(Boolean).join(", ")
+/** Na contagem por cargo, o perfil vai junto quando o nome não é o do nível: o filtro de cargos é por perfil e os dois números precisam conversar. */
+const positionGroupLabel = (person: PersonNode) => {
+  const label = personLevelLabel(person)
+  return label === roleLabel(person.role) ? label : `${label} (perfil ${roleLabel(person.role)})`
+}
+const describe = (person: PersonNode) => [personLevelLabel(person), person.teamName, person.subteamName].filter(Boolean).join(", ")
 /**
  * Nome na cadeia e nas linhas por líder. Sem marca de inativo (run-8, SL-03): a hierarquia é aberta a todos e nunca mostra situação
  * funcional — a marca deixava qualquer operador listar os líderes inativos (sinal próximo de desligamento). O líder inativo continua na
@@ -294,7 +300,7 @@ export function runHierarchyQuery(input: HierarchyInput): LeadershipToolResult {
   const leadCells = (person: PersonNode): Record<string, string> => (lead ? { registry: person.active ? "Ativo" : "Inativo", status: statusOf(person) } : {})
   const personRow = (person: PersonNode): Record<string, string> => {
     const leader = person.reportsToId ? graph.byId.get(person.reportsToId) : null
-    return { name: person.name, role: roleLabel(person.role), team: person.teamName ?? "—", subteam: person.subteamName ?? "—", leader: leader ? nameOf(leader) : "—", ...leadCells(person) }
+    return { name: person.name, role: personLevelLabel(person), team: person.teamName ?? "—", subteam: person.subteamName ?? "—", leader: leader ? nameOf(leader) : "—", ...leadCells(person) }
   }
   /** Só na visão da liderança e com o padrão ATIVOS: quantos inativos ficaram fora, para a IA oferecer `cadastro`. */
   const inactiveNote = (list: readonly PersonNode[]) => {
@@ -305,8 +311,8 @@ export function runHierarchyQuery(input: HierarchyInput): LeadershipToolResult {
   const byName = (a: PersonNode, b: PersonNode) => a.name.localeCompare(b.name, "pt-BR")
   const roleBreakdown = (list: readonly PersonNode[]) => {
     const counts = new Map<string, number>()
-    for (const person of list) counts.set(person.role, (counts.get(person.role) ?? 0) + 1)
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([role, count]) => `${roleLabel(role)}: ${count}`).join(", ")
+    for (const person of list) counts.set(positionGroupLabel(person), (counts.get(positionGroupLabel(person)) ?? 0) + 1)
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([label, count]) => `${label}: ${count}`).join(", ")
   }
 
   if (query === "CONTAGEM") {
@@ -317,7 +323,7 @@ export function runHierarchyQuery(input: HierarchyInput): LeadershipToolResult {
       const anchor = resolvePerson(people, viewerNode, anchorText, !!lead)
       if (anchor.kind !== "OK") return issueResult(anchor, "pessoa")
       base = descendants(graph, anchor.value)
-      scopeNote = `Estrutura abaixo de ${nameOf(anchor.value)} (${roleLabel(anchor.value.role)})`
+      scopeNote = `Estrutura abaixo de ${nameOf(anchor.value)} (${personLevelLabel(anchor.value)})`
     } else {
       base = [...people]
       scopeNote = "Organização inteira"
@@ -340,7 +346,7 @@ export function runHierarchyQuery(input: HierarchyInput): LeadershipToolResult {
     const highlights = [
       `${who}: ${describe(person)}.`,
       ...(lead ? [`Cadastro: ${person.active ? "ativo" : "inativo"} · situação funcional em ${lead.dateLabel}: ${statusOf(person)}.`] : []),
-      chain.length > 0 ? `Líder direto: ${nameOf(chain[0]!)} (${roleLabel(chain[0]!.role)}).` : "Não responde a ninguém no cadastro (topo da hierarquia ou líder não informado).",
+      chain.length > 0 ? `Líder direto: ${nameOf(chain[0]!)} (${personLevelLabel(chain[0]!)}).` : "Não responde a ninguém no cadastro (topo da hierarquia ou líder não informado).",
       `Respondem diretamente: ${direct.length}${direct.length > 0 ? ` (${roleBreakdown(direct)})` : ""}.`,
       `Abaixo, em todos os níveis: ${below.length}${below.length > 0 ? ` (${roleBreakdown(below)})` : ""}.`,
       ...(person.reportsToId ? [`Pares (mesmo líder direto): ${peers.length}.`] : []),
@@ -394,7 +400,7 @@ export function runHierarchyQuery(input: HierarchyInput): LeadershipToolResult {
   }
 
   // ABAIXO
-  return done(groupedCount(descendants(graph, person), `Estrutura abaixo de ${nameOf(person)} (${roleLabel(person.role)})`))
+  return done(groupedCount(descendants(graph, person), `Estrutura abaixo de ${nameOf(person)} (${personLevelLabel(person)})`))
 
   function groupedCount(candidates: readonly PersonNode[], scopeNote: string): QueryTableCard {
     const base = candidates.filter(passes)
@@ -421,7 +427,7 @@ export function runHierarchyQuery(input: HierarchyInput): LeadershipToolResult {
     if (leaderRole && !teamId && !subteamId) for (const leader of candidates) if (inRegistry(leader) && leader.role === leaderRole) add(leader.id, nameOf(leader), 0)
     let withoutGroup = 0
     for (const node of base) {
-      if (grouping === "CARGO") add(node.role, roleLabel(node.role), 1)
+      if (grouping === "CARGO") add(positionGroupLabel(node), positionGroupLabel(node), 1)
       else if (grouping === "SITUACAO") add(statusOf(node), statusOf(node), 1)
       else if (grouping === "GRUPO" || grouping === "SUBGRUPO") {
         const unitId = grouping === "GRUPO" ? node.teamId : node.subteamId

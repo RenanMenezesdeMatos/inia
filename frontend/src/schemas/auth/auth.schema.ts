@@ -8,6 +8,7 @@ export const platformRoleSchema = z.enum([
   "MANAGER",
   "SENIOR_MANAGER",
   "DIRECTOR",
+  "STAFF",
 ])
 export type PlatformRole = z.infer<typeof platformRoleSchema>
 
@@ -23,6 +24,7 @@ export const ROLE_LABELS: Record<PlatformRole, string> = {
   MANAGER: "Gerente",
   SENIOR_MANAGER: "Gerente Sênior",
   DIRECTOR: "Diretor",
+  STAFF: "Apoio",
 }
 
 export const loginInputSchema = z.object({

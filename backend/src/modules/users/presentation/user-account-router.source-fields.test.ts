@@ -19,6 +19,8 @@ const FROM_SOURCE = { person: "10000000-0000-4000-8000-000000000002", account: "
 const MANUAL = { person: "10000000-0000-4000-8000-000000000003", account: null }
 const MANAGER = "10000000-0000-4000-8000-000000000009"
 
+const POSITION = "50000000-0000-4000-8000-000000000001"
+const OTHER_POSITION = "50000000-0000-4000-8000-000000000002"
 type PersonRow = { name: string; role: string; team_id: string | null; active: boolean; operational_capital_code: string | null; email: string | null; account: string | null }
 const feedMapping = { fields: ["externalEmployeeId", "name", "role", "groupExternalCode", "reportsToExternalId", "active"].map((target) => ({ target, source: target, transforms: [] })) }
 
@@ -33,6 +35,7 @@ function fakeDatabase() {
     [FROM_SOURCE.person]: [{ feed_id: "feed-1", feed_name: "Colaboradores", source_name: "RH Corporativo", contract_key: "EMPLOYEES", authoritative: true, mapping: feedMapping, last_applied_at: new Date("2026-10-14T09:00:00Z") }],
   }
   const updates: unknown[][] = []
+  const audits: string[] = []
   const listRow = (id: string) => ({ id, name: people[id]!.name, role: people[id]!.role, jobTitle: null, active: people[id]!.active, teamId: people[id]!.team_id, teamName: "Atendimento", subteamId: null, employmentStatus: "EM_PRODUCAO", operationalCapitalCode: null, accountId: people[id]!.account, email: people[id]!.email, lastLoginAt: null })
   const query = async (sql: string, params: unknown[] = []) => {
     const rows = (list: unknown[]) => ({ rows: list, rowCount: list.length })
@@ -54,6 +57,9 @@ function fakeDatabase() {
       return rows(entry ? [{ id, name: entry.name, role: entry.role, jobTitle: "Analista", matricula: "OP-1", hiredAt: "2024-03-11", active: entry.active, employmentStatus: "EM_PRODUCAO", operationalCapitalCode: null, team_id: TEAM_A, team_name: "Atendimento", subteam_id: null, subteam_name: null, manager_id: MANAGER, manager_name: "Carlos Menezes", accountId: entry.account, email: entry.email, lastLoginAt: null }] : [])
     }
     if (sql.includes("ua.last_login_at \"lastLoginAt\"")) return rows([FROM_SOURCE.person, MANUAL.person].map(listRow))
+    if (sql.includes("select role, job_position_id, job_title from people")) return rows([{ role: people[String(params[0])]?.role, job_position_id: String(params[0]) === FROM_SOURCE.person ? POSITION : null, job_title: "Analista" }])
+    if (sql.includes("select id, name, level, active from job_positions")) return rows(String(params[1]) === OTHER_POSITION ? [{ id: OTHER_POSITION, name: "Assistente de Relacionamento", level: "OPERATOR", active: true }] : [])
+    if (sql.includes("insert into audit_logs")) audits.push(sql)
     if (sql.includes("select role from people")) return rows([{ role: people[String(params[0])]?.role }])
     if (sql.trim().startsWith("update people")) {
       updates.push(params)
@@ -61,11 +67,11 @@ function fakeDatabase() {
     }
     return rows([])
   }
-  return { database: { query, connect: async () => ({ query, release: () => undefined }) } as unknown as Database, updates }
+  return { database: { query, connect: async () => ({ query, release: () => undefined }) } as unknown as Database, updates, audits }
 }
 
 function app() {
-  const { database, updates } = fakeDatabase()
+  const { database, updates, audits } = fakeDatabase()
   const server = express()
   server.use(express.json())
   server.use((req, _res, next) => {
@@ -77,8 +83,28 @@ function app() {
     void next
     res.status(error instanceof DomainError ? error.statusCode : error?.name === "ZodError" ? 400 : 500).json({ error: { code: error instanceof DomainError ? error.code : String(error), message: error?.message, details: error instanceof DomainError ? error.details : undefined } })
   }) as ErrorRequestHandler)
-  return { server, updates }
+  return { server, updates, audits }
 }
+
+describe("cargo da pessoa no cadastro manual", () => {
+  it("reenviar o mesmo cargo de quem vem da base não regrava nada por cima dela; outro cargo é recusado", async () => {
+    const { server, updates } = app()
+    expect((await request(server).patch(`/${FROM_SOURCE.person}`).send({ jobPositionId: POSITION })).status).toBe(200)
+    // Parâmetros 12 a 14: cargo enviado, cargo e nome do cargo — nada a gravar.
+    expect(updates[0]!.slice(11, 14)).toEqual([false, null, null])
+    const other = await request(server).patch(`/${FROM_SOURCE.person}`).send({ jobPositionId: OTHER_POSITION })
+    expect([other.status, other.body.error.code]).toEqual([422, "PERSON_FIELD_MANAGED_BY_SOURCE"])
+    expect(updates).toHaveLength(1)
+  })
+
+  it("pessoa manual: o perfil do cargo manda no nível enviado e a mudança é auditada", async () => {
+    const { server, updates, audits } = app()
+    expect((await request(server).patch(`/${MANUAL.person}`).send({ jobPositionId: OTHER_POSITION, role: "DIRECTOR" })).status).toBe(200)
+    expect(updates[0]![1]).toBe("OPERATOR")
+    expect(updates[0]!.slice(11, 14)).toEqual([true, OTHER_POSITION, "Assistente de Relacionamento"])
+    expect(audits.some((sql) => sql.includes("PERSON_POSITION_CHANGED"))).toBe(true)
+  })
+})
 
 describe("campos de colaborador controlados pela base do cliente", () => {
   it("campo controlado é recusado com 422, a lista de campos e de fontes — e nada é gravado", async () => {

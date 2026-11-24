@@ -299,8 +299,11 @@ export async function previewMapping(ctx: DataHubContext, organizationId: string
   const mapped = mapAll(contract, mapping, records, timeZone, keyField)
   const feed = input.feed ?? draftFeed(input.source, { connector: "FILE_UPLOAD", file: { format: "CSV", csv: { encoding: "utf-8", delimiter: "auto", hasHeader: true, skipRows: 0 }, excel: { hasHeader: true, skipRows: 0 } } }, contract.key)
   let prepared: { rejections: Rejection[] } = { rejections: [] }
+  const writer = requireWriter(contract.key)
+  const previewContext = { ctx, organizationId, timeZone, feed, runId: "preview", sourceNamespace: feed.sourceNamespace ?? input.source.publicId }
+  const normalizers = { ...contract.displayNormalizers, ...(await writer.previewNormalizers?.(previewContext)) }
   try {
-    prepared = await requireWriter(contract.key).prepare({ ctx, organizationId, timeZone, feed, runId: "preview", sourceNamespace: feed.sourceNamespace ?? input.source.publicId }, mapped.valid)
+    prepared = await writer.prepare(previewContext, mapped.valid)
   } catch (error) {
     if (!(error instanceof DataRunError)) throw error
     mappingProblems.push(error.message)
@@ -322,7 +325,7 @@ export async function previewMapping(ctx: DataHubContext, organizationId: string
     const record = mappingByNumber.get(recordNumber) ?? remapForDisplay(contract, mapping, source, timeZone)
     // Valor de origem × valor normalizado (situação funcional, regime): a normalização é a mesma do writer.
     const normalized: Record<string, string | null> = {}
-    for (const [field, normalize] of Object.entries(contract.displayNormalizers ?? {})) {
+    for (const [field, normalize] of Object.entries(normalizers)) {
       const value = record[field]
       if (value !== null && value !== undefined && value !== "") normalized[field] = normalize(value)
     }

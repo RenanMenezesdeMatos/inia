@@ -360,6 +360,24 @@ describe.skipIf(!ENABLED)("Consulta de dados da Central — prova Postgres", () 
       expect((await geral.post(`${API}/query`).send({ dataset: "collaborators", columns: ["name"], search: "Conta Dados 2" })).body.data.rows).toEqual([["Conta Dados 2"]])
     })
 
+    it("universo de atuação: o do Grupo aparece no Grupo, herdado no Subgrupo e na pessoa; pendente sai vazio e é filtrável", async () => {
+      const read = async (dataset: string, columns: string[], filter?: unknown) => (await geral.post(`${API}/query`).send({ dataset, columns, pageSize: 100, ...(filter ? { filter } : {}) })).body.data.rows as unknown[][]
+      expect(await read("groups", ["name", "operating_universe"])).toEqual([["Grupo A", null]])
+      const people = await read("collaborators", ["matricula"], where(condition("group", "EQ", { value: "Grupo A" })))
+      expect(people.length).toBeGreaterThan(0)
+      try {
+        await pool.query(`update teams set operating_universe = 'B2C' where organization_id = $1`, [ORG_A])
+        expect(await read("groups", ["name", "operating_universe"], where(condition("operating_universe", "EQ", { value: "B2C" })))).toEqual([["Grupo A", "B2C"]])
+        expect(await read("subgroups", ["name", "operating_universe", "operating_universe_own"])).toEqual([["Subgrupo A", "B2C", null]])
+        const inherited = await read("collaborators", ["matricula", "operating_universe", "operating_universe_override"], where(condition("operating_universe", "EQ", { value: "B2C" })))
+        expect(inherited.map((row) => row[0]).sort()).toEqual(people.map((row) => row[0]).sort())
+        expect(inherited.every((row) => row[1] === "B2C" && row[2] === null)).toBe(true)
+      } finally {
+        await pool.query(`update teams set operating_universe = null where organization_id = $1`, [ORG_A])
+      }
+      expect(await read("groups", ["name"], where(condition("operating_universe", "IS_EMPTY")))).toEqual([["Grupo A"]])
+    })
+
     it("ordenação, identificadores e direção recusam qualquer coisa fora dos metadados", async () => {
       const bodies = [
         { dataset: "interactions", sort: { column: "started_at, (select pg_sleep(30))", direction: "ASC" } },

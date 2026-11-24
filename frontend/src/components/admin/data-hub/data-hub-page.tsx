@@ -13,6 +13,7 @@ import { AuditLogTab } from "./audit-log-tab"
 import { ContractsTab } from "./contracts-tab"
 import { DataExplorerTab } from "./explorer/data-explorer-tab"
 import { FeedsTab } from "./feeds-tab"
+import { JobPositionsTab } from "./job-positions-tab"
 import { OverviewTab } from "./overview-tab"
 import { QualityTab } from "./quality-tab"
 import { RunsTab } from "./runs-tab"
@@ -24,6 +25,7 @@ const TABS = [
   { value: "feeds", label: "Feeds e mapeamentos" },
   { value: "runs", label: "Cargas" },
   { value: "quality", label: "Qualidade dos dados" },
+  { value: "positions", label: "Cargos" },
   { value: "contracts", label: "Contratos de dados" },
   { value: "explore", label: "Consultar dados" },
   { value: "audit", label: "Registro" },
@@ -104,6 +106,9 @@ export function DataHubPage() {
         </TabsContent>
         <TabsContent value="quality" className="mt-4">
           <QualityTab />
+        </TabsContent>
+        <TabsContent value="positions" className="mt-4">
+          <JobPositionsTab />
         </TabsContent>
         <TabsContent value="contracts" className="mt-4">
           <ContractsTab />

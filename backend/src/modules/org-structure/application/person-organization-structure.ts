@@ -1,7 +1,7 @@
-import type { AuthTokenPayload, PlatformRole } from "../../auth/infrastructure/jwt.js"
+import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 import type { AnalyticsReadRepository, PersonNode } from "../../performance-analytics/application/analytics-read-repository.js"
 import { accessDenied, activeDirectReportsOf, canFocusStructure, canOpenEmployeeProfile, canViewManagementMetrics, loadViewerScope, structureSubjectInScope, type StructureAccess } from "../../performance-analytics/application/viewer-scope.js"
-import { HIERARCHY_ROLES, ROLE_LABELS } from "../../performance-analytics/domain/hierarchy-levels.js"
+import { HIERARCHY_ROLES, personLevelLabel } from "../../performance-analytics/domain/hierarchy-levels.js"
 import type { EmploymentStatusFreshness } from "../../people/application/employment-status-freshness.js"
 import { findBrazilianCapital } from "../../people/domain/brazilian-capitals.js"
 import { presentedAvatar, type PersonAvatarLoader } from "../../profile-preferences/application/person-presentation-loader.js"
@@ -155,10 +155,6 @@ export type PersonOrganizationStructureDeps = {
   now?: () => Date
 }
 
-function roleLabelOf(role: string): string {
-  return ROLE_LABELS[role as PlatformRole] ?? role
-}
-
 /** Rótulo da estrutura imediata — o mesmo vocabulário das sete âncoras (Equipe de Supervisor × Estrutura de …). */
 export function describeImmediateStructure(leader: Pick<OrganizationalPerson, "name" | "role">): string {
   return leader.role === "SUPERVISOR" ? `Equipe de ${leader.name}` : `Estrutura de ${leader.name}`
@@ -205,7 +201,7 @@ function fromNode(access: StructureAccess, node: PersonNode, lookups: PersonLook
     personId: node.id,
     name: node.name,
     role: node.role,
-    roleLabel: roleLabelOf(node.role),
+    roleLabel: personLevelLabel(node),
     jobTitle: node.jobTitle,
     avatarUrl: presentedAvatar(lookups.avatars, node.id, node.avatarUrl),
     email: lookups.emails.get(node.id) ?? null,
@@ -227,7 +223,7 @@ function fromAncestor(access: StructureAccess, person: OrganizationalPerson, lev
         personId: person.id,
         name: person.name,
         role: person.role,
-        roleLabel: roleLabelOf(person.role),
+        roleLabel: personLevelLabel(person),
         jobTitle: person.jobTitle,
         avatarUrl: presentedAvatar(lookups.avatars, person.id, person.avatarUrl),
         email: lookups.emails.get(person.id) ?? null,
@@ -256,7 +252,7 @@ export function sortDirectReports<T extends { role: string; name: string }>(repo
  */
 export function buildStructureBreadcrumb(access: StructureAccess, subject: PersonNode, ancestors: OrganizationalPerson[], viewerAncestors: OrganizationalPerson[]): PersonOrganizationStructure["breadcrumb"] {
   const { scope } = access
-  const entry = (person: Pick<OrganizationalPerson, "id" | "name" | "role">) => ({ personId: person.id, name: person.name, roleLabel: roleLabelOf(person.role), isViewer: person.id === scope.viewer.id })
+  const entry = (person: Pick<OrganizationalPerson, "id" | "name" | "role"> & { jobPositionName?: string | null }) => ({ personId: person.id, name: person.name, roleLabel: personLevelLabel(person), isViewer: person.id === scope.viewer.id })
   if (subject.id === scope.viewer.id) return [entry(scope.viewer)]
   const subjectAbove = viewerAncestors.findIndex((person) => person.id === subject.id)
   if (subjectAbove >= 0) return [entry(scope.viewer), ...viewerAncestors.slice(0, subjectAbove).map(entry), entry(subject)]
@@ -322,7 +318,7 @@ export async function buildPersonOrganizationStructure(deps: PersonOrganizationS
     },
     managementChain,
     directReports: directReports.map((node) => withMetrics(fromNode(access, node, lookups, knownCount(node)))),
-    viewerOrganizationPath: [...[...viewerAncestors].reverse(), scope.viewer].map((person) => ({ personId: person.id, name: person.name, roleLabel: roleLabelOf(person.role) })),
+    viewerOrganizationPath: [...[...viewerAncestors].reverse(), scope.viewer].map((person) => ({ personId: person.id, name: person.name, roleLabel: personLevelLabel(person) })),
     sourceMetadata: describeStructureSource(freshness),
   }
 }

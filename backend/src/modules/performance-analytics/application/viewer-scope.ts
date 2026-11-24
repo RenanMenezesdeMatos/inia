@@ -3,7 +3,7 @@ import { personAllowedByUniverse, type PersonUniverseRule } from "../../operatin
 import type { AuthTokenPayload, PlatformRole } from "../../auth/infrastructure/jwt.js"
 import { structureAnchorGroupRef, structureAnchorPersonId } from "../../workflows/domain/structure-anchor-schema.js"
 import { analyticsSubjectId, buildAnalyticsSubject, type AnalyticsSubject } from "../domain/analytics-subject.js"
-import { isHierarchyRole, ROLE_LABELS, STRUCTURE_KIND_BY_ROLE } from "../domain/hierarchy-levels.js"
+import { isHierarchyRole, personLevelLabel, ROLE_LABELS, STRUCTURE_KIND_BY_ROLE } from "../domain/hierarchy-levels.js"
 import type { BreadcrumbEntry, SubjectDescriptor } from "../domain/view-models.js"
 import type { AnalyticsReadRepository, PersonNode } from "./analytics-read-repository.js"
 import type { VisibilityFilter } from "../../access/application/access-repository.js"
@@ -235,7 +235,7 @@ export function resolveSubject(scope: ViewerScope, subject: AnalyticsSubject): R
 export function describeSubject(scope: ViewerScope, subject: AnalyticsSubject): SubjectDescriptor {
   if (subject.kind === "EMPLOYEE") {
     const person = personInScope(scope, subject.employeeId)
-    return { subject, label: person?.name ?? "Colaborador", description: person?.jobTitle ?? (person ? ROLE_LABELS[person.role as PlatformRole] ?? person.role : null) }
+    return { subject, label: person?.name ?? "Colaborador", description: person?.jobTitle ?? (person ? personLevelLabel(person) : null) }
   }
   const anchorId = structureAnchorPersonId(subject)
   if (anchorId) {

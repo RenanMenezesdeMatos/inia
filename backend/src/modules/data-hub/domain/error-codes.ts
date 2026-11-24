@@ -36,6 +36,7 @@ export const DATA_RECORD_ERROR_CODES = {
   DATA_INVALID_DATE: "Data inválida.",
   DATA_INVALID_NUMBER: "Número inválido.",
   DATA_INVALID_ENUM: "Valor fora das opções permitidas.",
+  DATA_JOB_POSITION_UNKNOWN: "Cargo não cadastrado ou desativado — cadastre em Central de Dados › Cargos e reprocesse a carga.",
   DATA_REFERENCE_NOT_FOUND: "Referência não encontrada na INIA.",
   DATA_EMPLOYEE_NOT_FOUND: "Colaborador não encontrado.",
   DATA_INDICATOR_NOT_FOUND: "Indicador não encontrado ou inativo.",

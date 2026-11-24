@@ -64,6 +64,9 @@ export const userAccountSchema = z.object({
   id: z.string(),
   name: z.string(),
   role: platformRoleSchema,
+  /** Cargo do cadastro (Central de Dados › Cargos); null = só o nível. */
+  jobPositionId: z.string().nullable().default(null),
+  jobPositionName: z.string().nullable().default(null),
   /** Matrícula da base do cliente; null = cadastrada à mão na INIA. */
   matricula: z.string().nullable().default(null),
   active: z.boolean(),
@@ -92,6 +95,8 @@ export const userDetailSchema = z.object({
   name: z.string(),
   role: platformRoleSchema,
   jobTitle: z.string().nullable(),
+  jobPositionId: z.string().nullable().default(null),
+  jobPositionName: z.string().nullable().default(null),
   matricula: z.string().nullable(),
   hiredAt: z.string().nullable(),
   active: z.boolean(),
@@ -114,6 +119,10 @@ export type UserDetail = z.infer<typeof userDetailSchema>
  * Política do "Novo usuário": com Colaboradores vigente na Central, quem é da hierarquia vem pela base — sem matrícula, o
  * cadastro manual só aceita "Fora da hierarquia".
  */
+/** Cargo ativo oferecido no cadastro manual. */
+export const jobPositionOptionSchema = z.object({ id: z.string(), name: z.string(), level: platformRoleSchema, levelLabel: z.string() })
+export type JobPositionOption = z.infer<typeof jobPositionOptionSchema>
+
 export const creationPolicySchema = z.object({ hierarchyRequiresMatricula: z.boolean(), sources: z.array(sourceManagerSchema) })
 export type CreationPolicy = z.infer<typeof creationPolicySchema>
 

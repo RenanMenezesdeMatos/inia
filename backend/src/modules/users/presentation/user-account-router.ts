@@ -17,6 +17,7 @@ import { applyEmployeeStatusSnapshot, loadEmploymentStatusHistory } from "../../
 import { EMPLOYMENT_STATUS_LABELS, EMPLOYMENT_STATUSES, LEGACY_EMPLOYMENT_STATUSES, toCanonicalEmploymentStatus } from "../../people/domain/employment-status.js"
 import { loadWorkScheduleSummary } from "../../people/application/work-schedule-service.js"
 import { capitalLabel, findBrazilianCapital, isBrazilianCapitalCode } from "../../people/domain/brazilian-capitals.js"
+import { listJobPositions, requireActiveJobPosition } from "../../people/application/job-position-service.js"
 import { loadLivePersonFeeds, loadPersonFieldControl } from "../../data-hub/application/person-field-control.js"
 import { ORGANIZATIONAL_LEVELS } from "../../data-hub/domain/contracts/master-data-contracts.js"
 import { linkPersonToSourcePerson, loadPersonLink } from "../../people/application/person-source-link.js"
@@ -33,7 +34,7 @@ import { assertUniverseRequiredFor } from "../../operating-universe/application/
  * — acesso ao INIA só por papel atribuído a uma conta (`/api/v1/admin/access`). Os antigos "papéis extras"
  * (`/:id/role-assignments`, tabela user_role_assignments) foram substituídos por esse modelo e removidos daqui.
  */
-const ROLES = ["OPERATOR", "ADMIN", "COORDINATOR", "SUPERVISOR", "MANAGER", "SENIOR_MANAGER", "DIRECTOR"] as const
+const ROLES = ["OPERATOR", "ADMIN", "COORDINATOR", "SUPERVISOR", "MANAGER", "SENIOR_MANAGER", "DIRECTOR", "STAFF"] as const
 
 const listUsersSchema = z.object({
   search: searchParam,
@@ -51,7 +52,7 @@ const listUsersSchema = z.object({
 
 const SELECT_USERS = `
   select
-    p.id, p.name, p.role, p.job_title "jobTitle", p.matricula, p.active, p.team_id "teamId", t.name "teamName", p.subteam_id "subteamId",
+    p.id, p.name, p.role, p.job_title "jobTitle", p.job_position_id "jobPositionId", jpos.name "jobPositionName", p.matricula, p.active, p.team_id "teamId", t.name "teamName", p.subteam_id "subteamId",
     p.current_employment_status "employmentStatus",
     p.operational_capital_code "operationalCapitalCode",
     p.operating_universe "operatingUniverse",
@@ -60,6 +61,7 @@ const SELECT_USERS = `
     ua.id "accountId", ua.email, ua.last_login_at "lastLoginAt"
   from people p
   left join teams t on t.id = p.team_id
+  left join job_positions jpos on jpos.id = p.job_position_id
   left join user_accounts ua on ua.person_id = p.id
   where p.organization_id = $1
 `
@@ -67,6 +69,8 @@ const SELECT_USERS = `
 const createUserSchema = z.object({
   name: z.string().trim().min(2),
   role: z.enum(ROLES),
+  /** Cargo do cadastro (Central de Dados › Cargos): o perfil dele manda no nível enviado. */
+  jobPositionId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
   /** Matrícula exatamente como a base do cliente vai mandar: quando a carga chegar, ela ATUALIZA esta pessoa (nunca cria outra). */
   matricula: z.string().trim().max(64).optional().transform((value) => value || undefined),
@@ -86,6 +90,8 @@ const updateUserSchema = z.object({
   name: z.string().trim().min(2).optional(),
   email: z.string().trim().email().optional(),
   role: z.enum(ROLES).optional(),
+  /** Cargo do cadastro; o perfil dele manda no nível. null = sem cargo (só o nível). */
+  jobPositionId: z.string().uuid().nullable().optional(),
   teamId: z.string().uuid().nullable().optional(),
   active: z.boolean().optional(),
   /** Capital operacional (jurisdição de feriados) — só códigos do catálogo das 27; null limpa. */
@@ -120,11 +126,11 @@ const employmentStatusSchema = z.object({
  * Campos da pessoa que esta edição MUDA de verdade (valor diferente do atual) — reenviar o mesmo valor não conta como
  * alteração, então um formulário que manda tudo de novo não esbarra num campo da base que ninguém tocou.
  */
-type CurrentPerson = { name: string; role: string; team_id: string | null; active: boolean; operational_capital_code: string | null; operating_universe: string | null; email: string | null }
+type CurrentPerson = { name: string; role: string; job_position_id: string | null; team_id: string | null; active: boolean; operational_capital_code: string | null; operating_universe: string | null; email: string | null }
 function changedPersonFields(input: z.infer<typeof updateUserSchema>, teamIdSent: boolean, current: CurrentPerson): PersonSourceField[] {
   const changed: PersonSourceField[] = []
   if (input.name !== undefined && input.name !== current.name) changed.push("name")
-  if (input.role !== undefined && input.role !== current.role) changed.push("role")
+  if ((input.role !== undefined && input.role !== current.role) || (input.jobPositionId !== undefined && input.jobPositionId !== current.job_position_id)) changed.push("role")
   if (teamIdSent && (input.teamId ?? null) !== current.team_id) changed.push("teamId")
   if (input.active !== undefined && input.active !== current.active) changed.push("active")
   if (input.email !== undefined && input.email.toLowerCase() !== (current.email ?? "").toLowerCase()) changed.push("email")
@@ -135,7 +141,7 @@ function changedPersonFields(input: z.infer<typeof updateUserSchema>, teamIdSent
 
 /** Campos que o PATCH pode receber, no vocabulário de `person-field-control`. */
 function editedFieldsOf(input: z.infer<typeof updateUserSchema>, teamIdSent: boolean): PersonSourceField[] {
-  const fields: PersonSourceField[] = (["name", "role", "active", "email", "operationalCapitalCode", "operatingUniverse"] as const).filter((field) => input[field] !== undefined)
+  const fields: PersonSourceField[] = (["name", "role", "active", "email", "operationalCapitalCode", "operatingUniverse"] as const).filter((field) => input[field] !== undefined || (field === "role" && input.jobPositionId !== undefined))
   return teamIdSent ? [...fields, "teamId"] : fields
 }
 
@@ -183,6 +189,12 @@ export function createUserAccountRouter(db: Database) {
   router.get("/creation-policy", async (request, response) => {
     const sources = await loadLivePersonFeeds(db, sessionUser(request).organizationId, "EMPLOYEES")
     response.json({ data: { hierarchyRequiresMatricula: sources.length > 0, sources } })
+  })
+
+  /** Cargos ativos para o cadastro manual (o cadastro em si fica em Central de Dados › Cargos). */
+  router.get("/job-positions", async (request, response) => {
+    const positions = await listJobPositions(db, sessionUser(request).organizationId)
+    response.json({ data: positions.filter((position) => position.active).map(({ id, name, level, levelLabel }) => ({ id, name, level, levelLabel })) })
   })
 
   router.use("/:id", async (request, response, next) => {
@@ -275,17 +287,18 @@ export function createUserAccountRouter(db: Database) {
   router.get("/:id", async (request, response) => {
     const organizationId = sessionUser(request).organizationId
     const result = await db.query<{
-      id: string; name: string; role: string; jobTitle: string | null; matricula: string | null; hiredAt: string | null; active: boolean; employmentStatus: string | null; operationalCapitalCode: string | null; operatingUniverse: string | null; operatingUniverseOverride: string | null; operatingUniverseSource: string | null
+      id: string; name: string; role: string; jobTitle: string | null; jobPositionId: string | null; jobPositionName: string | null; matricula: string | null; hiredAt: string | null; active: boolean; employmentStatus: string | null; operationalCapitalCode: string | null; operatingUniverse: string | null; operatingUniverseOverride: string | null; operatingUniverseSource: string | null
       team_id: string | null; team_name: string | null; subteam_id: string | null; subteam_name: string | null; manager_id: string | null; manager_name: string | null
       accountId: string | null; email: string | null; lastLoginAt: Date | null
     }>(
-      `select p.id, p.name, p.role, p.job_title "jobTitle", p.matricula, to_char(p.hired_at, 'YYYY-MM-DD') "hiredAt", p.active,
+      `select p.id, p.name, p.role, p.job_title "jobTitle", p.job_position_id "jobPositionId", jpos.name "jobPositionName", p.matricula, to_char(p.hired_at, 'YYYY-MM-DD') "hiredAt", p.active,
               p.current_employment_status "employmentStatus", p.operational_capital_code "operationalCapitalCode", p.operating_universe "operatingUniverse",
               p.operating_universe_override "operatingUniverseOverride", case when p.operating_universe_override is not null then 'PERSON' when (select st.operating_universe from subteams st where st.id = p.subteam_id) is not null then 'SUBGROUP' when t.operating_universe is not null then 'GROUP' end "operatingUniverseSource",
               t.id team_id, t.name team_name, st.id subteam_id, st.name subteam_name, m.id manager_id, m.name manager_name,
               account.id "accountId", account.email, account.last_login_at "lastLoginAt"
          from people p
          left join teams t on t.id = p.team_id
+         left join job_positions jpos on jpos.id = p.job_position_id
          left join subteams st on st.id = p.subteam_id
          left join people m on m.id = p.reports_to_id
          left join user_accounts account on account.person_id = p.id
@@ -311,7 +324,9 @@ export function createUserAccountRouter(db: Database) {
 
   router.post("/", async (request, response) => {
     const organizationId = sessionUser(request).organizationId
-    const input = createUserSchema.parse(request.body)
+    const parsed = createUserSchema.parse(request.body)
+    const position = parsed.jobPositionId ? await requireActiveJobPosition(db, organizationId, parsed.jobPositionId) : null
+    const input = position ? { ...parsed, role: position.level } : parsed
     const scopes = await scopesOf(request)
     if (!scopes.unrestricted && !scopes.allTeams && !(input.teamId && scopes.teamIds.has(input.teamId))) {
       throw new DomainError("Você só pode cadastrar pessoas nos Grupos do seu escopo.", "FORBIDDEN", 403)
@@ -347,8 +362,8 @@ export function createUserAccountRouter(db: Database) {
     try {
       const { personId, account, expiresAt } = await inTransaction(db, async (client) => {
         const person = await client.query<{ id: string }>(
-          `insert into people(organization_id, team_id, name, role, matricula, operating_universe_override) values ($1,$2,$3,$4,$5,$6) returning id`,
-          [organizationId, input.teamId ?? null, input.name, input.role, input.matricula ?? null, input.operatingUniverse],
+          `insert into people(organization_id, team_id, name, role, matricula, operating_universe_override, job_position_id, job_title) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
+          [organizationId, input.teamId ?? null, input.name, input.role, input.matricula ?? null, input.operatingUniverse, position?.id ?? null, position?.name ?? null],
         )
         const personId = person.rows[0]!.id
         const passwordHash = await hashPassword(temporaryPassword)
@@ -383,15 +398,21 @@ export function createUserAccountRouter(db: Database) {
 
   router.patch("/:id", async (request, response) => {
     const organizationId = sessionUser(request).organizationId
-    const input = updateUserSchema.parse(request.body)
+    const sent = updateUserSchema.parse(request.body)
     const personId = request.params.id!
+    // Cargo ou nível enviado: o que a pessoa tem hoje (para não regravar o mesmo cargo por cima do que veio da base, e para auditar a mudança).
+    const placementBefore = sent.jobPositionId !== undefined || sent.role !== undefined ? (await db.query<{ role: string; job_position_id: string | null; job_title: string | null }>(`select role, job_position_id, job_title from people where id = $1 and organization_id = $2`, [personId, organizationId])).rows[0] : undefined
+    const parsed: z.infer<typeof updateUserSchema> = sent.jobPositionId === (placementBefore?.job_position_id ?? null) ? { ...sent, jobPositionId: undefined } : sent
+    const position = parsed.jobPositionId ? await requireActiveJobPosition(db, organizationId, parsed.jobPositionId) : null
+    // O perfil do cargo manda no nível enviado.
+    const input: z.infer<typeof updateUserSchema> = position ? { ...parsed, role: position.level } : parsed
     const teamIdSent = "teamId" in request.body
     // O que vem da base do cliente vale sempre: campo controlado por um feed da Central não é editado aqui (a próxima carga
     // sobrescreveria em silêncio). Só recusa o que MUDA — o mesmo valor reenviado passa.
     const control = (await loadPersonFieldControl(db, organizationId, [personId])).get(personId) ?? emptyPersonFieldControl()
     if (editedFieldsOf(input, teamIdSent).some((field) => control[field])) {
       const current = await db.query<CurrentPerson>(
-        `select person.name, person.role, person.team_id, person.active, person.operational_capital_code, person.operating_universe_override operating_universe, account.email
+        `select person.name, person.role, person.job_position_id, person.team_id, person.active, person.operational_capital_code, person.operating_universe_override operating_universe, account.email
            from people person left join user_accounts account on account.person_id = person.id
           where person.id = $1 and person.organization_id = $2`,
         [personId, organizationId],
@@ -404,7 +425,7 @@ export function createUserAccountRouter(db: Database) {
       }
     }
     // O universo também decide o que a pessoa consulta: ninguém muda o próprio.
-    const changesAccess = input.role !== undefined || input.active !== undefined || input.email !== undefined || input.teamId !== undefined || input.operatingUniverse !== undefined
+    const changesAccess = input.role !== undefined || input.jobPositionId !== undefined || input.active !== undefined || input.email !== undefined || input.teamId !== undefined || input.operatingUniverse !== undefined
     // Ninguém altera o próprio nível, Grupo, e-mail de login ou situação de acesso — outra pessoa autorizada precisa fazer isso.
     if (changesAccess && personId === sessionUser(request).personId) {
       throw new DomainError("Você não pode alterar o seu próprio nível, Grupo, universo, e-mail ou situação — outra pessoa autorizada precisa fazer isso.", "PEOPLE_SELF_CHANGE_FORBIDDEN", 403)
@@ -452,6 +473,11 @@ export function createUserAccountRouter(db: Database) {
         `update people set
            name = coalesce($1, name),
            role = coalesce($2, role),
+           -- Cargo escolhido vale; só o nível mudou: o cargo antigo não combina mais e sai. O cargo exibido acompanha enquanto for o do cadastro.
+           job_position_id = case when $12::boolean then $13::uuid when $2::text is distinct from role and $2::text is not null then null else job_position_id end,
+           job_title = case when $12::boolean and $14::text is not null then $14
+                            when job_title = (select jp.name from job_positions jp where jp.id = job_position_id) and ($12::boolean or ($2::text is not null and $2::text is distinct from role)) then null
+                            else job_title end,
            team_id = case when $3::boolean then $4 else team_id end,
            -- Mudou de Grupo: o Subgrupo do Grupo antigo sai junto — senão a pessoa seguia no escopo de quem administra o Grupo
            -- antigo pelo Subgrupo (achado AUTH-4 da auditoria de 17/10/2026).
@@ -460,10 +486,22 @@ export function createUserAccountRouter(db: Database) {
            operational_capital_code = case when $8::boolean then $9 else operational_capital_code end,
            operating_universe_override = case when $10::boolean then $11 else operating_universe_override end
          where id = $6 and organization_id = $7
+           -- O perfil do cargo é o que foi conferido acima (liderança exige a organização inteira): se mudou no meio, não grava.
+           and ($13::uuid is null or exists (select 1 from job_positions jp where jp.id = $13::uuid and jp.organization_id = $7 and jp.active and jp.level = $2))
          returning id, name, role, active, team_id "teamId", operational_capital_code "operationalCapitalCode", operating_universe "operatingUniverse"`,
-        [input.name ?? null, input.role ?? null, teamIdSent, input.teamId ?? null, input.active ?? null, request.params.id, organizationId, input.operationalCapitalCode !== undefined, input.operationalCapitalCode ?? null, input.operatingUniverse !== undefined, input.operatingUniverse ?? null],
+        [input.name ?? null, input.role ?? null, teamIdSent, input.teamId ?? null, input.active ?? null, request.params.id, organizationId, input.operationalCapitalCode !== undefined, input.operationalCapitalCode ?? null, input.operatingUniverse !== undefined, input.operatingUniverse ?? null, input.jobPositionId !== undefined, input.jobPositionId ?? null, position?.name ?? null],
       )
-      if (!person.rows[0]) return response.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Usuário não encontrado." } })
+      if (!person.rows[0]) {
+        if (position) throw new DomainError(`O cargo "${position.name}" mudou enquanto você editava. Escolha de novo.`, "JOB_POSITION_CHANGED", 409)
+        return response.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Usuário não encontrado." } })
+      }
+      const roleAfter = (person.rows[0] as { role: string }).role
+      if (placementBefore && (roleAfter !== placementBefore.role || (input.jobPositionId !== undefined && input.jobPositionId !== placementBefore.job_position_id))) {
+        await db.query(
+          `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'PERSON_POSITION_CHANGED', 'people', $3, $4::jsonb)`,
+          [organizationId, sessionUser(request).personId, personId, JSON.stringify({ roleFrom: placementBefore.role, roleTo: roleAfter, jobPositionFrom: placementBefore.job_position_id, jobPositionTo: input.jobPositionId === undefined ? (roleAfter === placementBefore.role ? placementBefore.job_position_id : null) : input.jobPositionId, source: "PEOPLE_REGISTRY", actorAccountId: sessionUser(request).sub })],
+        )
+      }
       if (input.operatingUniverse !== undefined && universeBefore !== (input.operatingUniverse ?? null)) {
         // A vigência (person_operating_universe_history) é gravada pelo banco; aqui fica quem mudou.
         await db.query(

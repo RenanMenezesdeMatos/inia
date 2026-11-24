@@ -23,6 +23,7 @@ const TOC: WikiTocEntry[] = [
   { id: "validacao", label: "Validação e referências" },
   { id: "writer", label: "Domain Writer e efeitos" },
   { id: "master-event", label: "Dado mestre × dado de evento" },
+  { id: "cargos", label: "Cargos" },
   { id: "situacao-funcional", label: "Situação funcional" },
   { id: "escalas", label: "Escalas de trabalho" },
   { id: "cargas", label: "Cargas (Runs)" },
@@ -347,6 +348,24 @@ export default function DataHubPage() {
         </p>
       </WikiSection>
 
+      <WikiSection id="cargos" title="Cargos" eyebrow="O nome da base é cadastro, nunca código">
+        <p>
+          Em <strong>Central de Dados › Cargos</strong> ficam os cargos da organização: o nome que aparece na INIA, como a base escreve esse cargo e o{" "}
+          <strong>perfil</strong> (Operador, Supervisor, Coordenador, Gerente, Gerente Sênior, Diretor ou Apoio). O campo <strong>Nível hierárquico</strong> da carga de
+          Colaboradores aceita o nome do cargo (&quot;ASSISTENTE RELACIONAMENTO&quot;, &quot;GERENTE SR&quot;) ou o código do nível; maiúsculas, acentos e pontuação não fazem diferença.
+        </p>
+        <ul className="list-inside list-disc space-y-1">
+          <li>Vários cargos podem ter o mesmo perfil: Assistente de Relacionamento tem o perfil Operador e aparece com o próprio nome.</li>
+          <li><strong>Apoio</strong> é quem não atende nem lidera (estagiário, analista, consultor, assistente administrativo): não entra em indicadores, comparações nem populações de Workflow.</li>
+          <li>Cargo não cadastrado ou desativado vai para a quarentena com <code>DATA_JOB_POSITION_UNKNOWN</code> e aparece no aviso da tela, com o botão para cadastrar. Depois, reprocesse a carga.</li>
+          <li>Se a base também manda o campo Cargo, é ele que aparece; sem ele, aparece o nome do cargo cadastrado.</li>
+          <li>Cargo não é excluído: é desativado. Mudar o perfil de um cargo em uso só é possível entre Operador e Apoio e vale na hora para as pessoas dele.</li>
+        </ul>
+        <WarningCallout kind="tip" title="Já usa Mapear códigos para o nível?">
+          Se o feed traduz o cargo para o código do nível, o nome do cargo se perde antes de chegar ao cadastro. Remova essa tradução para o cargo aparecer.
+        </WarningCallout>
+      </WikiSection>
+
       <WikiSection id="situacao-funcional" title="Situação funcional: Colaboradores + Ausências" eyebrow="Uma camada canônica, duas portas de entrada">
         <p>
           <strong>Colaboradores</strong> traz um <em>snapshot</em>: &quot;hoje esta pessoa está EM PRODUÇÃO / de FÉRIAS / em INSS / TRANSFERIDA…&quot;, com uma data de vigência opcional.{" "}
@@ -581,6 +600,7 @@ export default function DataHubPage() {
         <ul className="list-inside list-disc space-y-1">
           <li>Só aparecem conjuntos e colunas de uma lista aprovada. Senha, e-mail, sessão, segredo e token não fazem parte de nenhum conjunto.</li>
           <li>O nome da pessoa só aparece em Colaboradores. Nos outros conjuntos, a matrícula.</li>
+          <li>Colaboradores, Grupos e Subgrupos mostram o universo de atuação (B2B, B2C ou B2X). Vazio quer dizer pendente: o Grupo sem universo não é oferecido quando a tela já tem um universo escolhido.</li>
           <li>Afastamento sensível e atestado aparecem como protegidos, inclusive em filtros e no CSV. O texto das transcrições, dos feedbacks, dos casos, das rejeições e das execuções de IA nunca aparece.</li>
           <li>Datas nos filtros seguem o fuso da organização, e o último dia do intervalo entra inteiro.</li>
           <li>A contagem só roda quando você pede e para em 10.000 registros.</li>

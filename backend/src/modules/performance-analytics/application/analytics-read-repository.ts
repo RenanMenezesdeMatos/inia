@@ -57,6 +57,8 @@ export type PersonNode = {
   active: boolean
   /** Universo de atuação ATUAL do cadastro (B2B/B2C/B2X; null = pendente) — decide quem a conta pode consultar. */
   operatingUniverse?: string | null
+  /** Nome do cargo no cadastro da organização (migration 252); null = a base mandou só o nível. */
+  jobPositionName?: string | null
 }
 
 /** Capacidades do catálogo (migration 055) — a UI descreve QUALQUER indicador por unidade, direção

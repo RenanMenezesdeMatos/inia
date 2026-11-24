@@ -57,6 +57,39 @@ function defaultTransform(kind: TransformKind): Transform {
   }
 }
 
+function parseCodeMap(text: string): { map: Record<string, string>; ignored: string[] } {
+  const map: Record<string, string> = {}
+  const ignored: string[] = []
+  for (const line of text.split("\n")) {
+    const [from, ...rest] = line.split("=")
+    if (from?.trim() && rest.length) map[from.trim()] = rest.join("=").trim()
+    else if (line.trim()) ignored.push(line.trim())
+  }
+  return { map, ignored }
+}
+
+/** Grava a cada tecla: fechar o popover com Esc não pode perder o que foi digitado. */
+function CodeMapEditor({ map, onChange }: { map: Record<string, string>; onChange: (map: Record<string, string>) => void }) {
+  const [text, setText] = useState(() => Object.entries(map).map(([from, to]) => `${from}=${to}`).join("\n"))
+  const { ignored } = parseCodeMap(text)
+  return (
+    <div className="space-y-1">
+      <textarea
+        aria-label="Mapa de códigos"
+        className="min-h-20 w-full rounded-md border border-input bg-transparent px-2 py-1 font-mono text-xs"
+        value={text}
+        placeholder={"Atendente=OPERATOR\nSupervisor=SUPERVISOR"}
+        onChange={(event) => {
+          setText(event.target.value)
+          onChange(parseCodeMap(event.target.value).map)
+        }}
+      />
+      <p className="text-xs text-muted-foreground">Uma por linha: valor da base = valor da INIA.</p>
+      {ignored.length > 0 ? <p className="text-xs text-amber-700 dark:text-amber-300">Sem &quot;=&quot;, {ignored.length === 1 ? "esta linha não vale" : "estas linhas não valem"}: {ignored.slice(0, 3).join(" · ")}</p> : null}
+    </div>
+  )
+}
+
 function TransformEditor({ transform, onChange }: { transform: Transform; onChange: (next: Transform) => void }) {
   switch (transform.kind) {
     case "PARSE_DATE":
@@ -96,28 +129,8 @@ function TransformEditor({ transform, onChange }: { transform: Transform; onChan
     case "DEFAULT":
     case "CONSTANT":
       return <Input aria-label="Valor" value={String(transform.value ?? "")} onChange={(event) => onChange({ ...transform, value: event.target.value })} placeholder="Valor" />
-    case "CODE_MAP": {
-      const map = (transform.map as Record<string, string>) ?? {}
-      const text = Object.entries(map)
-        .map(([from, to]) => `${from}=${to}`)
-        .join("\n")
-      return (
-        <textarea
-          aria-label="Mapa de códigos"
-          className="min-h-20 w-full rounded-md border border-input bg-transparent px-2 py-1 font-mono text-xs"
-          defaultValue={text}
-          placeholder={"Atendente=OPERATOR\nSupervisor=SUPERVISOR"}
-          onBlur={(event) => {
-            const next: Record<string, string> = {}
-            for (const line of event.target.value.split("\n")) {
-              const [from, ...rest] = line.split("=")
-              if (from?.trim() && rest.length) next[from.trim()] = rest.join("=").trim()
-            }
-            onChange({ ...transform, map: next })
-          }}
-        />
-      )
-    }
+    case "CODE_MAP":
+      return <CodeMapEditor map={(transform.map as Record<string, string>) ?? {}} onChange={(map) => onChange({ ...transform, map })} />
     default:
       return null
   }
@@ -202,7 +215,8 @@ function FieldRow({ field, mapping, columns, onChange }: { field: DataContract["
                 <Plus className="size-3" />
                 <span>Adicionar</span>
               </SelectTrigger>
-              <SelectContent>
+              {/* O gatilho não tem SelectValue: na posição padrão do Radix a lista abriria fora da tela. */}
+              <SelectContent position="popper" align="start">
                 {TRANSFORM_KINDS.map((kind) => (
                   <SelectItem key={kind} value={kind}>
                     {TRANSFORM_LABELS[kind]}

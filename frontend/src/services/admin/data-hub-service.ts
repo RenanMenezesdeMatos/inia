@@ -12,6 +12,8 @@ import {
   databaseObjectListSchema,
   feedSchema,
   feedSummarySchema,
+  jobPositionCatalogSchema,
+  jobPositionSchema,
   lineageEntrySchema,
   overviewSchema,
   previewSchema,
@@ -28,6 +30,9 @@ import {
   sourceSchema,
   sourceSummarySchema,
   uploadResultSchema,
+  type JobPosition,
+  type JobPositionCatalog,
+  type JobPositionLevel,
   type AuditEvent,
   type AvailabilityPolicy,
   type Cadence,
@@ -277,4 +282,18 @@ export async function cancelRun(id: string): Promise<Run> {
 
 export async function fetchLineage(entityType: string, entityId: string): Promise<LineageEntry[]> {
   return z.array(lineageEntrySchema).parse(await adminGet(`${BASE}/lineage${toQueryString({ entityType, entityId })}`))
+}
+
+export type JobPositionInput = { name: string; level: JobPositionLevel; terms: string[]; active?: boolean }
+
+export async function fetchJobPositions(): Promise<JobPositionCatalog> {
+  return jobPositionCatalogSchema.parse(await adminGet(`${BASE}/job-positions`))
+}
+
+export async function createJobPosition(input: JobPositionInput): Promise<JobPosition> {
+  return jobPositionSchema.parse(await adminSend(`${BASE}/job-positions`, "POST", input))
+}
+
+export async function updateJobPosition({ id, ...input }: Partial<JobPositionInput> & { id: string }): Promise<JobPosition> {
+  return jobPositionSchema.parse(await adminSend(`${BASE}/job-positions/${id}`, "PATCH", input))
 }

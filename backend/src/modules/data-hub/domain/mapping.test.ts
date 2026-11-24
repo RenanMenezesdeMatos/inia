@@ -1,3 +1,4 @@
+import { resolveJobPosition } from "../../people/domain/job-position.js"
 import { describe, expect, it } from "vitest"
 import { EMPLOYEES_CONTRACT } from "./contracts/master-data-contracts.js"
 import { INDICATOR_MEASUREMENTS_CONTRACT } from "./contracts/performance-contracts.js"
@@ -63,16 +64,17 @@ describe("mapping — mapRecord contra o contrato", () => {
     const bad = mapRecord(EMPLOYEES_CONTRACT, mapping, { matricula: "", nome_colaborador: "Ana", perfil: "Gerente Geral", admissao: "2024-13-99", ativo: "talvez" }, { timeZone: TZ })
     const codes = bad.errors.map((error) => `${error.field}:${error.code}`)
     expect(codes).toContain("externalEmployeeId:DATA_REQUIRED_FIELD_MISSING")
-    expect(codes).toContain("role:DATA_INVALID_ENUM")
+    // O cargo é conferido no cadastro de Cargos, na carga (job-position.ts) — o mapeamento só leva o texto.
+    expect(codes).not.toContain("role:DATA_INVALID_ENUM")
+    expect(bad.record.role).toBe("Gerente Geral")
     expect(codes).toContain("hiredAt:DATA_INVALID_DATE")
     expect(codes).toContain("active:DATA_TYPE_INVALID")
   })
 
-  it("V1.5.7 — a carga de colaboradores traz NÍVEL hierárquico, nunca acesso: 'ADMIN' não é aceito (vai para a quarentena)", () => {
-    const mapping = { fields: [{ target: "externalEmployeeId", source: "m", transforms: [] }, { target: "name", source: "n", transforms: [] }, { target: "role", source: "r", transforms: [] }] }
-    expect(mapRecord(EMPLOYEES_CONTRACT, mapping, { m: "OP-1", n: "Ana", r: "ADMIN" }, { timeZone: TZ }).errors.map((error) => `${error.field}:${error.code}`)).toEqual(["role:DATA_INVALID_ENUM"])
-    expect(mapRecord(EMPLOYEES_CONTRACT, mapping, { m: "OP-1", n: "Ana", r: "SUPERVISOR" }, { timeZone: TZ }).errors).toEqual([])
-    expect(EMPLOYEES_CONTRACT.fields.find((field) => field.key === "role")).toMatchObject({ label: "Nível hierárquico" })
+  it("V1.5.7 — a carga de colaboradores traz NÍVEL hierárquico, nunca acesso: 'ADMIN' não resolve para cargo nem nível (vai para a quarentena)", () => {
+    expect(resolveJobPosition(new Map(), "ADMIN")).toEqual({ ok: false, reason: "UNKNOWN" })
+    expect(resolveJobPosition(new Map(), "SUPERVISOR")).toMatchObject({ ok: true, position: { level: "SUPERVISOR" } })
+    expect(EMPLOYEES_CONTRACT.fields.find((field) => field.key === "role")).toMatchObject({ label: "Nível hierárquico", type: "STRING", required: true })
   })
 
   it("exige ao menos um de date/periodStart nas medições e valida coerência do período", () => {

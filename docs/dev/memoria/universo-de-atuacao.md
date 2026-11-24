@@ -108,6 +108,14 @@ passa a exigir e filtrar). 4. Com zero pendentes, mover `migrations/pending/208_
 (renumerada para depois da última aplicada; ela mesma recusa se houver operador ativo pendente) — obrigatório no banco, só para
 OPERADOR (`people_active_operator_requires_universe`; liderança fica nula de propósito).
 
+## Universo em Consultar dados (24/11/2026)
+
+Colaboradores, Grupos e Subgrupos passaram a ter a coluna "Universo de atuação" (o que vale; vazio = pendente; filtrável) e, escondidas por
+padrão, a exceção da pessoa e o universo próprio do Subgrupo. Motivo: depois da carga na VM, Grupos não apareciam nos seletores e não
+havia como conferir o universo. Grupo/Subgrupo só é oferecido com operador ATIVO, nível OPERATOR, "Em produção" e, havendo universo
+escolhido, com o universo do **próprio Grupo/Subgrupo** preenchido: universo mandado só em Colaboradores vira exceção da pessoa e **não**
+classifica o Grupo. Prova: `data-explorer-proof`.
+
 ## Limitações conhecidas
 
 - A classificação de agentes, Orquestradores, indicadores, domínios e argumentários continua pela tela de regularização (as listas só

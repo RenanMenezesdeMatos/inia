@@ -2,8 +2,7 @@ import type { PersonNode } from "../../performance-analytics/application/analyti
 import type { ViewerScope } from "../../performance-analytics/application/viewer-scope.js"
 import { isSensitiveLeave, leaveTypeVisible, MINIMUM_SENSITIVE_AGGREGATE_POPULATION, sensitiveBreakdownAllowed, SENSITIVE_LEAVE_STATUSES } from "../../org-structure/domain/management-metrics.js"
 import { EMPLOYMENT_STATUS_LABELS, toCanonicalEmploymentStatus, type EmploymentStatus } from "../../people/domain/employment-status.js"
-import { ROLE_LABELS } from "../../performance-analytics/domain/hierarchy-levels.js"
-import type { PlatformRole } from "../../auth/infrastructure/jwt.js"
+import { personLevelLabel } from "../../performance-analytics/domain/hierarchy-levels.js"
 import type { QueryTableCard, QueryTableColumn } from "../domain/view-models.js"
 import { buildCard, finish, groupCell, groupsFor, share, type QueryGrouping, type SortableRow } from "./query-common.js"
 import type { ResolvedStructure } from "./references.js"
@@ -77,7 +76,7 @@ export async function buildWorkforce(
       const status = statusOf(person)
       if (wanted && !wanted.has(status)) continue
       rows.push({
-        cells: { person: person.name, role: ROLE_LABELS[person.role as PlatformRole] ?? person.role, unit: unitOf.get(person.id) ?? "—", status: isSensitive(status) ? "Afastamento (motivo protegido)" : labelOf(status) },
+        cells: { person: person.name, role: personLevelLabel(person), unit: unitOf.get(person.id) ?? "—", status: isSensitive(status) ? "Afastamento (motivo protegido)" : labelOf(status) },
         subject: null,
         personId: person.role === "OPERATOR" ? person.id : null,
         sortKeys: { NAME: person.name },

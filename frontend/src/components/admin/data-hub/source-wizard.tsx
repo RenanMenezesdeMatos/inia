@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import { ListErrorState } from "@/components/admin/shared/list/list-states"
-import { useCreateFeedMutation, useCreatePushTokenMutation, useCreateSourceMutation, useDataContractsQuery, useDataSourceQuery, useSetFeedStatusMutation, useTestConnectionMutation, useUpdateSourceMutation } from "@/queries/admin/use-data-hub-queries"
+import { useCreateFeedMutation, useCreatePushTokenMutation, useCreateSourceMutation, useDataContractsQuery, useDataSourceQuery, useSetFeedStatusMutation, useTestConnectionMutation, useUpdateFeedMutation, useUpdateSourceMutation } from "@/queries/admin/use-data-hub-queries"
 import { fetchSourceSample, previewSourceMapping, uploadFile } from "@/services/admin/data-hub-service"
 import { CONTRACT_CATEGORY_LABELS, LOAD_MODE_LABELS, SOURCE_KIND_DESCRIPTIONS, SOURCE_KIND_LABELS, SOURCE_KINDS, availabilityPolicyLabel, cadenceLabel, cadenceProblem, type AvailabilityPolicy, type Cadence, type ConnectionTest, type DataContract, type FeedMapping, type Preview, type Sample, type Source, type SourceDetail, type SourceKind } from "@/schemas/admin/data-hub.schema"
 import { cn } from "@/lib/utils"
@@ -91,6 +91,7 @@ function Wizard({ existing = null, presetContractKey }: { existing?: SourceDetai
   const updateSource = useUpdateSourceMutation()
   const testConnection = useTestConnectionMutation()
   const createFeed = useCreateFeedMutation()
+  const updateFeed = useUpdateFeedMutation()
   const setFeedStatus = useSetFeedStatusMutation()
   const createToken = useCreatePushTokenMutation()
 
@@ -121,6 +122,8 @@ function Wizard({ existing = null, presetContractKey }: { existing?: SourceDetai
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ feedId: string; token: string | null } | null>(null)
+  // Criado e ainda não ativado: tentar de novo continua com ele em vez de esbarrar na própria chave.
+  const [createdFeed, setCreatedFeed] = useState<{ id: string; feedKey: string; contractKey: string } | null>(null)
 
   const contracts = contractsQuery.data?.contracts ?? []
   const contract: DataContract | undefined = contracts.find((entry) => entry.key === contractKey)
@@ -139,7 +142,8 @@ function Wizard({ existing = null, presetContractKey }: { existing?: SourceDetai
       const saved = current ? await prompt.guarded(() => updateSource.mutateAsync({ id: current.id, input: payload })) : await createSource.mutateAsync(payload)
       setSource(saved)
       return saved
-    } catch {
+    } catch (err) {
+      fail(err, "Não foi possível salvar a fonte.")
       return null
     }
   }
@@ -159,8 +163,7 @@ function Wizard({ existing = null, presetContractKey }: { existing?: SourceDetai
     setError(null)
     try {
       if (kind === "API_PUSH") {
-        const records = pushExample.trim() ? (JSON.parse(pushExample) as { records?: unknown[] }).records ?? JSON.parse(pushExample) : contract.examples
-        const list = (Array.isArray(records) ? records : []) as Record<string, unknown>[]
+        const list = pushExample.trim() ? pushExampleRecords(pushExample) : (contract.examples as Record<string, unknown>[])
         const columns = [...new Set(list.flatMap((record) => Object.keys(record)))]
         setSample({ columns, records: list, totalRecords: list.length, detail: pushExample.trim() ? "Payload de exemplo informado" : "Exemplo do contrato", suggestedMapping: { fields: contract.fields.filter((field) => columns.includes(field.key)).map((field) => ({ target: field.key, source: field.key, transforms: [] })) } })
         setMapping((current) => (current.fields.length ? current : { fields: contract.fields.filter((field) => columns.includes(field.key)).map((field) => ({ target: field.key, source: field.key, transforms: [] })) }))
@@ -196,7 +199,15 @@ function Wizard({ existing = null, presetContractKey }: { existing?: SourceDetai
     setBusy(true)
     setError(null)
     try {
-      const feed = await prompt.guarded(() => createFeed.mutateAsync({ sourceId: source.id, input: { feedKey, name: feedName, contractKey: contract.key, connectorConfig, mapping, loadMode, cadence, authoritative, failOnAnyRejection, availabilityPolicy, sourceNamespace: sourceNamespace.trim() || undefined } }))
+      let feedId = createdFeed && createdFeed.feedKey === feedKey && createdFeed.contractKey === contract.key ? createdFeed.id : null
+      if (feedId) {
+        const existingId = feedId
+        await prompt.guarded(() => updateFeed.mutateAsync({ id: existingId, input: { name: feedName, connectorConfig, mapping, cadence, authoritative, failOnAnyRejection, availabilityPolicy, loadMode, sourceNamespace: sourceNamespace.trim() || undefined } }))
+      } else {
+        feedId = (await prompt.guarded(() => createFeed.mutateAsync({ sourceId: source.id, input: { feedKey, name: feedName, contractKey: contract.key, connectorConfig, mapping, loadMode, cadence, authoritative, failOnAnyRejection, availabilityPolicy, sourceNamespace: sourceNamespace.trim() || undefined } }))).id
+        setCreatedFeed({ id: feedId, feedKey, contractKey: contract.key })
+      }
+      const feed = { id: feedId }
       await prompt.guarded(() => setFeedStatus.mutateAsync({ id: feed.id, action: "ACTIVATE" }))
       let token: string | null = null
       if (kind === "API_PUSH") token = (await createToken.mutateAsync({ sourceId: source.id, label: `Token ${feedName}`, feedId: feed.id })).token ?? null
@@ -254,6 +265,21 @@ function Wizard({ existing = null, presetContractKey }: { existing?: SourceDetai
         return true
     }
   })()
+
+  // Por que o "Continuar" está apagado.
+  const missing: string[] =
+    step === 0 && !kind
+      ? ["escolher o tipo da conexão"]
+      : step === 3 && kind && !needsPassword
+        ? [
+            feedName.trim().length < 2 ? "nome do feed" : null,
+            /^[a-z0-9][a-z0-9-_]{1,63}$/.test(feedKey) ? null : "chave do feed (minúsculas, números e hífen)",
+            contract ? null : "contrato de dados",
+            connectorDraftValid(kind, connector) ? null : "dados do conector",
+          ].filter((item): item is string => item !== null)
+        : step === 5 && contract
+          ? contract.fields.filter((field) => field.required && !mapping.fields.some((entry) => entry.target === field.key)).map((field) => `mapear ${field.label}`)
+          : []
 
   if (result) {
     const endpoint = source && kind === "API_PUSH" ? `${API_URL}/api/v1/data-ingestion/${source.publicId}/${feedKey}` : null
@@ -489,13 +515,17 @@ function Wizard({ existing = null, presetContractKey }: { existing?: SourceDetai
         {step === 5 && contract && sample ? <MappingEditor contract={contract} columns={sample.columns} value={mapping} onChange={setMapping} suggestion={sample.suggestedMapping} /> : null}
 
         {step === 6 && contract ? (
-          busy || !preview ? (
+          busy ? (
             <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" aria-hidden /> Validando a amostra…
             </p>
+          ) : !preview ? (
+            <Button variant="outline" size="sm" onClick={runPreview}>
+              Validar de novo
+            </Button>
           ) : (
             <div className="space-y-3">
-              <PreviewTable preview={preview} contract={contract} />
+              <PreviewTable preview={preview} contract={contract} mapping={mapping} />
               <Button variant="outline" size="sm" onClick={() => setStep(5)}>
                 Ajustar mapeamento
               </Button>
@@ -590,14 +620,30 @@ function Wizard({ existing = null, presetContractKey }: { existing?: SourceDetai
             </Button>
           )}
           {step < 9 ? (
+            <div className="flex items-center gap-3">
+              {missing.length > 0 ? <span className="text-xs text-muted-foreground">Falta: {missing.join(", ")}.</span> : null}
             <Button onClick={next} disabled={!canContinue || busy || createSource.isPending || updateSource.isPending}>
               {createSource.isPending || updateSource.isPending ? <Loader2 className="animate-spin" /> : null} Continuar <ArrowRight />
             </Button>
+            </div>
           ) : null}
         </div>
       </CardContent>
     </Card>
   )
+}
+
+/** Payload de exemplo colado: `{ "records": [...] }` ou a lista direto. */
+function pushExampleRecords(text: string): Record<string, unknown>[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw new Error("O payload de exemplo não é um JSON válido. Confira aspas, vírgulas e chaves.")
+  }
+  const list = Array.isArray(parsed) ? parsed : (parsed as { records?: unknown } | null)?.records
+  if (!Array.isArray(list) || list.length === 0 || list.some((item) => typeof item !== "object" || item === null || Array.isArray(item))) throw new Error('O payload de exemplo precisa ter ao menos um registro: uma lista, ou um objeto com "records".')
+  return list as Record<string, unknown>[]
 }
 
 function slug(value: string): string {

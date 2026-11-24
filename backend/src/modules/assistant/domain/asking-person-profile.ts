@@ -2,7 +2,7 @@ import type { OperatorIdentity } from "../application/build-operator-context.js"
 
 const UNIVERSE_AUDIENCE: Record<string, string> = { B2B: "B2B (atende empresas)", B2C: "B2C (atende consumidores)", B2X: "B2X (universo próprio, separado de B2B e B2C)" }
 
-const LEVEL_LABELS: Record<string, string> = { OPERATOR: "Operador", SUPERVISOR: "Supervisor", COORDINATOR: "Coordenador", MANAGER: "Gerente", SENIOR_MANAGER: "Gerente Sênior", DIRECTOR: "Diretor" }
+const LEVEL_LABELS: Record<string, string> = { OPERATOR: "Operador", SUPERVISOR: "Supervisor", COORDINATOR: "Coordenador", MANAGER: "Gerente", SENIOR_MANAGER: "Gerente Sênior", DIRECTOR: "Diretor", STAFF: "Apoio" }
 
 /**
  * Perfil de quem pergunta, para o especialista ADAPTAR a resposta (operador × liderança). Só contexto: o que cada um pode
@@ -24,6 +24,8 @@ export function renderAskingPersonProfile(identity: Pick<OperatorIdentity, "name
     ? "Perfil de LIDERANÇA: pode perguntar sobre a equipe/estrutura, indicadores, pessoas, pendências e prioridades (use as ferramentas leadership_*, que respeitam o escopo de acesso dele) e sobre processos e políticas para orientar a equipe. Os indicadores e feedbacks individuais enviados aos especialistas são os da PRÓPRIA pessoa."
     : leads
       ? "Perfil de LIDERANÇA: pode perguntar sobre processos e políticas para orientar a equipe e sobre gestão de pessoas. Os indicadores e feedbacks enviados aqui são os da PRÓPRIA pessoa (individuais): se a pergunta for sobre a equipe ou um liderado, diga que por voz você ainda não traz os dados da equipe e indique a conversa por texto com a INIA ou as abas Indicadores e Equipe do perfil — nunca invente números da equipe."
+      : identity.level === "STAFF"
+      ? "Perfil de APOIO: a pessoa não atende clientes nem lidera equipe. Responda sobre processos, conhecimento das bases e os dados da própria pessoa, sem tratá-la como atendente (a hierarquia da organização — quem lidera quem — é aberta a todos e vem da ferramenta de hierarquia)."
       : "Perfil de OPERADOR: responda sobre o trabalho, os processos e os dados da própria pessoa (a hierarquia da organização — quem lidera quem — é aberta a todos e vem da ferramenta de hierarquia)."
   // Universo de atuação (dado do cadastro): o público que a pessoa atende. Universos são separados — a resposta nunca usa regra,
   // produto ou procedimento de outro universo. Sem universo (pendente), a INIA sabe que o cadastro está incompleto.

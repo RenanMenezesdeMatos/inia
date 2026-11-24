@@ -121,7 +121,7 @@ describe("Novo usuário — uma porta só para a hierarquia", () => {
   it("matrícula nova: a pessoa nasce com ela — e o nível da hierarquia é aceito porque a base vai assumir", async () => {
     const { server, statements } = app({ feeds: [LIVE_FEED] })
     expect((await request(server).post("/").send(newUser({ matricula: "  OP-99999 " }))).status).toBe(201)
-    expect(inserted(statements)!.params).toEqual([ORG, TEAM_A, "Pessoa Nova", "OPERATOR", "OP-99999", null])
+    expect(inserted(statements)!.params).toEqual([ORG, TEAM_A, "Pessoa Nova", "OPERATOR", "OP-99999", null, null, null])
   })
 
   it("matrícula que já existe: 409 com a pessoa, para a tela levar a \"Habilitar acesso\" dela", async () => {

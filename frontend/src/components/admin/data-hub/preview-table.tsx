@@ -4,12 +4,17 @@ import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react"
 
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { DataContract, Preview } from "@/schemas/admin/data-hub.schema"
+import { useDataContractsQuery } from "@/queries/admin/use-data-hub-queries"
+import type { DataContract, FeedMapping, Preview } from "@/schemas/admin/data-hub.schema"
 import { cn } from "@/lib/utils"
 
 /** Preview ✓/✕ por registro, com erro por campo. Zero efeito operacional: só leitura e cálculo. */
-export function PreviewTable({ preview, contract }: { preview: Preview; contract: DataContract }) {
-  const fields = contract.fields
+export function PreviewTable({ preview, contract, mapping }: { preview: Preview; contract: DataContract; mapping: FeedMapping }) {
+  const codeLabels = new Map(useDataContractsQuery().data?.errorCodes.record.map((entry) => [entry.code, entry.label.replace(/\.$/, "")]))
+  // Só os campos mapeados (mesmo vazios na amostra) e os que têm erro: campo não mapeado só empurrava o que importa para fora da tela.
+  const mapped = new Set(mapping.fields.map((field) => field.target))
+  const fields = contract.fields.filter((field) => field.required || mapped.has(field.key) || preview.rows.some((row) => (row.record[field.key] ?? "") !== "" || row.errors.some((error) => error.field === field.key)))
+  const hidden = contract.fields.length - fields.length
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -41,8 +46,8 @@ export function PreviewTable({ preview, contract }: { preview: Preview; contract
       {preview.errorSummary.length > 0 ? (
         <div className="flex flex-wrap gap-2 text-xs">
           {preview.errorSummary.map((entry) => (
-            <span key={entry.code} className="rounded-md bg-muted px-2 py-0.5 font-mono">
-              {entry.count} × {entry.code}
+            <span key={entry.code} className="rounded-md bg-muted px-2 py-0.5" title={entry.code}>
+              {entry.count} × {codeLabels.get(entry.code) ?? entry.code}
             </span>
           ))}
         </div>
@@ -54,8 +59,8 @@ export function PreviewTable({ preview, contract }: { preview: Preview; contract
               <TableHead className="w-12">#</TableHead>
               <TableHead className="w-16">OK?</TableHead>
               {fields.map((field) => (
-                <TableHead key={field.key} className="whitespace-nowrap font-mono text-xs">
-                  {field.key}
+                <TableHead key={field.key} className="whitespace-nowrap text-xs" title={field.key}>
+                  {field.label}
                 </TableHead>
               ))}
             </TableRow>
@@ -81,7 +86,7 @@ export function PreviewTable({ preview, contract }: { preview: Preview; contract
                           <ul className="list-inside list-disc">
                             {row.errors.map((error, index) => (
                               <li key={index}>
-                                {error.field ? <span className="font-mono">{error.field}: </span> : null}
+                                {error.field ? <span>{fields.find((field) => field.key === error.field)?.label ?? error.field}: </span> : null}
                                 {error.message}
                               </li>
                             ))}
@@ -95,7 +100,7 @@ export function PreviewTable({ preview, contract }: { preview: Preview; contract
                     const value = row.record[field.key]
                     const normalized = field.key in row.normalized ? row.normalized[field.key] : undefined
                     return (
-                      <TableCell key={field.key} className={cn("max-w-48 truncate text-xs", error && "text-red-700 underline decoration-red-400 decoration-wavy dark:text-red-300")} title={error ? `${error.code}: ${error.message}` : normalized !== undefined ? `Valor de origem: ${String(value)} · normalizado: ${normalized ?? "não reconhecido"}` : undefined}>
+                      <TableCell key={field.key} className={cn("max-w-72 text-xs whitespace-normal wrap-anywhere", error && "text-red-700 underline decoration-red-400 decoration-wavy dark:text-red-300")} title={error ? `${error.code}: ${error.message}` : normalized !== undefined ? `Valor de origem: ${String(value)} · normalizado: ${normalized ?? "não reconhecido"}` : undefined}>
                         {value === null || value === undefined || value === "" ? <span className="text-muted-foreground">∅</span> : String(value)}
                         {/* Origem × normalizado (situação funcional, regime): "FER → FÉRIAS"; desconhecido fica explícito. */}
                         {normalized !== undefined && String(value) !== normalized ? <span className={cn("ml-1", normalized ? "text-muted-foreground" : "text-red-700 dark:text-red-300")} data-testid="preview-normalized">→ {normalized ?? "não reconhecido"}</span> : null}
@@ -109,6 +114,7 @@ export function PreviewTable({ preview, contract }: { preview: Preview; contract
           </TableBody>
         </Table>
       </div>
+      {hidden > 0 ? <p className="text-xs text-muted-foreground">{hidden === 1 ? "1 campo não mapeado não é mostrado." : `${hidden} campos não mapeados não são mostrados.`}</p> : null}
     </div>
   )
 }

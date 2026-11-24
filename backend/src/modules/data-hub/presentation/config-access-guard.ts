@@ -43,6 +43,10 @@ export const DATA_HUB_FREE_ROUTES: readonly string[] = [
   "DELETE /feeds/:id",
   "POST /feeds/:id/sync",
   "POST /feeds/:id/import",
+  // Cadastro de cargos: regra da organização, não de uma fonte.
+  "GET /job-positions",
+  "POST /job-positions",
+  "PATCH /job-positions/:id",
   "GET /runs",
   "GET /runs/:id",
   "GET /runs/:id/rejections",

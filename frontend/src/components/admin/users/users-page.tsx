@@ -3,6 +3,7 @@
 import { UniverseBadge } from "@/components/operating-universe/universe-badge"
 import { UniverseSelect } from "@/components/operating-universe/universe-select"
 import { teamsForUniverse } from "@/lib/operating-universe/hierarchy"
+import { PositionSelect, type PersonPosition } from "./position-select"
 import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import { OPERATING_UNIVERSES, type OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import { useEffect, useId, useState, type ReactNode } from "react"
@@ -49,7 +50,6 @@ import {
 } from "@/queries/admin/use-user-account-queries"
 import type { UpdateUserDetailsInput, UserListParams } from "@/services/admin/user-account-service"
 import type { IssuedTemporaryPassword } from "@/schemas/access/access.schema"
-import type { PlatformRole } from "@/schemas/auth/auth.schema"
 import { EMPLOYMENT_STATUS_LABELS, ROLE_LABELS, employmentStatusLabel, type EmploymentStatus, type SourceManager, type UserAccount } from "@/schemas/admin/user-account.schema"
 import { LineageButton } from "@/components/admin/data-hub/lineage-sheet"
 import { useCapitalsQuery } from "@/queries/admin/use-operational-calendar-queries"
@@ -296,18 +296,14 @@ function RoleSelect({ user }: { user: UserAccount }) {
   const managedBy = user.managedBy.role
   return (
     <SourceManagedTitle manager={managedBy}>
-      <Select value={user.role} onValueChange={(value) => updateRoleMutation.mutate({ personId: user.id, role: value as PlatformRole })} disabled={managedBy !== null}>
-        <SelectTrigger className="w-44" aria-label={`Nível hierárquico de ${user.name}`}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {Object.entries(ROLE_LABELS).map(([value, label]) => (
-            <SelectItem key={value} value={value}>
-              {label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <PositionSelect
+        value={{ role: user.role, jobPositionId: user.jobPositionId }}
+        currentName={user.jobPositionName}
+        onChange={(position) => updateRoleMutation.mutate({ personId: user.id, ...position })}
+        disabled={managedBy !== null || updateRoleMutation.isPending}
+        ariaLabel={`Cargo de ${user.name}`}
+        className="w-56"
+      />
     </SourceManagedTitle>
   )
 }
@@ -324,7 +320,7 @@ function UserCard({ user, onEdit }: { user: UserAccount; onEdit: (user: UserAcco
       icon={<EntityCardIcon icon={UserRound} className="bg-violet-100 text-violet-600 dark:bg-violet-950 dark:text-violet-300" />}
       kicker={
         <>
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{ROLE_LABELS[user.role]}</span>
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{user.jobPositionName ?? ROLE_LABELS[user.role]}</span>
           <span aria-hidden>·</span>
           <span>{user.teamName ?? "Sem grupo"}</span>
         </>
@@ -362,7 +358,7 @@ function UsersTable({ users, onEdit }: { users: UserAccount[]; onEdit: (user: Us
         <TableHeader>
           <TableRow>
             <TableHead>Usuário</TableHead>
-            <TableHead>Nível hierárquico</TableHead>
+            <TableHead>Cargo</TableHead>
             <TableHead>Grupo</TableHead>
             <TableHead>Universo</TableHead>
             <TableHead>Último acesso</TableHead>
@@ -453,7 +449,7 @@ export function UsersPage({
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [issued, setIssued] = useState<IssuedTemporaryPassword | null>(null)
-  const [role, setRole] = useState<PlatformRole>("OPERATOR")
+  const [position, setPosition] = useState<PersonPosition>({ role: "OPERATOR", jobPositionId: null })
   const [teamId, setTeamId] = useState<string>("")
   const [matricula, setMatricula] = useState("")
   const [universe, setUniverse] = useState<OperatingUniverse | null>(null)
@@ -461,8 +457,7 @@ export function UsersPage({
   const creationPolicy = useCreationPolicyQuery(tab === "form" && editingUser === null)
   // Com Colaboradores vigente, sem matrícula só dá para cadastrar "Fora da hierarquia"; com matrícula, a base vai assumir.
   const hierarchyLocked = editingUser === null && creationPolicy.data?.hierarchyRequiresMatricula === true && matricula.trim() === ""
-  const effectiveRole: PlatformRole = hierarchyLocked ? "ADMIN" : role
-  const roleOptions = (Object.entries(ROLE_LABELS) as [PlatformRole, string][]).filter(([value]) => !hierarchyLocked || value === "ADMIN")
+  const effectivePosition: PersonPosition = hierarchyLocked ? { role: "ADMIN", jobPositionId: null } : position
   const detailQuery = useUserDetailQuery(editingUser?.id ?? null)
   // Campos que a base controla para a pessoa em edição (null = editável); no cadastro novo, tudo é editável.
   const managedBy = editingUser?.managedBy ?? null
@@ -473,7 +468,7 @@ export function UsersPage({
     setEditingUser(null)
     setName("")
     setEmail("")
-    setRole("OPERATOR")
+    setPosition({ role: "OPERATOR", jobPositionId: null })
     setTeamId("")
     setMatricula("")
     setUniverse(null)
@@ -497,7 +492,7 @@ export function UsersPage({
     setEditingUser(user)
     setName(user.name)
     setEmail(user.email ?? "")
-    setRole(user.role)
+    setPosition({ role: user.role, jobPositionId: user.jobPositionId })
     setTeamId(user.teamId ?? "")
     setUniverse(user.operatingUniverseOverride)
     updateDetailsMutation.reset()
@@ -511,7 +506,8 @@ export function UsersPage({
       const fields: UpdateUserDetailsInput = { personId: editingUser.id }
       if (!managedBy?.name && name !== editingUser.name) fields.name = name
       if (emailEditable && email !== (editingUser.email ?? "")) fields.email = email
-      if (!managedBy?.role && role !== editingUser.role) fields.role = role
+      if (!managedBy?.role && position.role !== editingUser.role) fields.role = position.role
+      if (!managedBy?.role && position.jobPositionId !== editingUser.jobPositionId) fields.jobPositionId = position.jobPositionId
       if (!managedBy?.teamId && (teamId || null) !== editingUser.teamId) fields.teamId = teamId || null
       if (!managedBy?.operatingUniverse && universe !== editingUser.operatingUniverseOverride) fields.operatingUniverse = universe
       try {
@@ -521,7 +517,7 @@ export function UsersPage({
       }
     } else {
       try {
-        setIssued(await createMutation.mutateAsync({ name, email, role: effectiveRole, teamId: teamId || undefined, matricula: matricula.trim() || undefined, operatingUniverse: universe }))
+        setIssued(await createMutation.mutateAsync({ name, email, role: effectivePosition.role, jobPositionId: effectivePosition.jobPositionId ?? undefined, teamId: teamId || undefined, matricula: matricula.trim() || undefined, operatingUniverse: universe }))
       } catch {
         return
       }
@@ -542,7 +538,7 @@ export function UsersPage({
         <div className="flex items-start justify-between gap-3">
           <div>
             <CardTitle>Usuários e perfis</CardTitle>
-            <CardDescription>Perfis disponíveis: operador, supervisor, gerente, gerente sênior, diretor e administrador.</CardDescription>
+            <CardDescription>O cargo diz o perfil da pessoa na estrutura. Os cargos são cadastrados em Central de Dados › Cargos.</CardDescription>
           </div>
           {tab === "list" ? (
             <Button onClick={openCreateForm}>
@@ -648,19 +644,16 @@ export function UsersPage({
             )}
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="user-role">Nível hierárquico</Label>
-                <Select value={effectiveRole} onValueChange={(value) => setRole(value as PlatformRole)} disabled={Boolean(managedBy?.role)}>
-                  <SelectTrigger id="user-role" className="w-full" aria-describedby={managedBy?.role ? "user-role-source" : undefined}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {roleOptions.map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="user-role">Cargo</Label>
+                <PositionSelect
+                  id="user-role"
+                  value={effectivePosition}
+                  currentName={editingUser?.jobPositionName}
+                  onChange={setPosition}
+                  disabled={Boolean(managedBy?.role)}
+                  onlyOutsideHierarchy={hierarchyLocked}
+                  describedBy={managedBy?.role ? "user-role-source" : undefined}
+                />
                 <SourceManagedNotice id="user-role-source" manager={managedBy?.role ?? null} />
               </div>
               {editingUser ? null : (

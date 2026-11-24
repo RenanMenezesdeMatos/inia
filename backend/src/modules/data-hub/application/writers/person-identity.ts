@@ -81,7 +81,7 @@ export async function preRegisteredByMatricula<T extends IdentityRow>(context: W
 export function credentialNeedsNewCustody(prior: ManualPlacement, incoming: { teamId: string | null; role: string | null }): boolean {
   if (!prior.teamId) return false
   if (incoming.teamId && incoming.teamId !== prior.teamId) return true
-  return Boolean(incoming.role && incoming.role !== prior.role && incoming.role !== "OPERATOR")
+  return Boolean(incoming.role && incoming.role !== prior.role && incoming.role !== "OPERATOR" && incoming.role !== "STAFF")
 }
 
 /**
@@ -174,7 +174,8 @@ export async function markFirstApplicationCustody(context: WriteContext, client:
   )
 }
 
-const becomesLeader = (role: string, previous: string | null) => role !== "OPERATOR" && role !== previous
+// Apoio (STAFF) não lidera nem alcança mais que um operador: não é "virou liderança".
+const becomesLeader = (role: string, previous: string | null) => role !== "OPERATOR" && role !== "STAFF" && role !== previous
 
 /**
  * CUSTÓDIA DEPOIS DE UMA CARGA QUE MEXE NO LUGAR DAS PESSOAS (Colaboradores e Estrutura organizacional; item h19 da 4ª auditoria).

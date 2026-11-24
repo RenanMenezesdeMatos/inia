@@ -187,14 +187,14 @@ export const reportScheduleSchema = z
   })
 export type ReportSchedule = z.infer<typeof reportScheduleSchema>
 
-export const PLATFORM_LEVELS = ["OPERATOR", "SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER", "DIRECTOR"] as const
+export const PLATFORM_LEVELS = ["OPERATOR", "SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER", "DIRECTOR", "STAFF"] as const
 export const reportAudienceSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("SELF") }),
   z
     .object({
       mode: z.literal("DISTRIBUTION"),
       everyone: z.boolean().default(false),
-      levels: z.array(z.enum(PLATFORM_LEVELS)).max(6).default([]),
+      levels: z.array(z.enum(PLATFORM_LEVELS)).max(PLATFORM_LEVELS.length).default([]),
       jobTitles: z.array(z.string().min(1).max(120)).max(50).default([]),
       teamIds: z.array(z.string().uuid()).max(100).default([]),
       subteamIds: z.array(z.string().uuid()).max(200).default([]),

@@ -168,6 +168,19 @@ export const API_AUTH_KINDS = ["NONE", "BEARER", "API_KEY", "BASIC", "OAUTH2_CLI
 export type ApiAuthKind = (typeof API_AUTH_KINDS)[number]
 export const API_AUTH_LABELS: Record<ApiAuthKind, string> = { NONE: "Sem autenticação", BEARER: "Bearer Token", API_KEY: "API Key (header)", BASIC: "Basic Auth", OAUTH2_CLIENT_CREDENTIALS: "OAuth2 Client Credentials" }
 
+/** Perfil de um cargo = nível da hierarquia que ele representa. */
+export const JOB_POSITION_LEVELS = ["OPERATOR", "SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER", "DIRECTOR", "STAFF"] as const
+export type JobPositionLevel = (typeof JOB_POSITION_LEVELS)[number]
+export const JOB_POSITION_LEVEL_LABELS: Record<JobPositionLevel, string> = { OPERATOR: "Operador", SUPERVISOR: "Supervisor", COORDINATOR: "Coordenador", MANAGER: "Gerente", SENIOR_MANAGER: "Gerente Sênior", DIRECTOR: "Diretor", STAFF: "Apoio" }
+export const jobPositionSchema = z.object({ id: z.string(), name: z.string(), level: z.enum(JOB_POSITION_LEVELS), levelLabel: z.string(), terms: z.array(z.string()), active: z.boolean(), peopleCount: z.number(), peopleTotal: z.number().default(0) })
+export type JobPosition = z.infer<typeof jobPositionSchema>
+export const jobPositionCatalogSchema = z.object({
+  positions: z.array(jobPositionSchema),
+  /** Cargos que chegaram nas cargas dos últimos 30 dias e ainda não têm cadastro ativo. */
+  unknown: z.array(z.object({ term: z.string(), records: z.number(), lastSeenAt: z.string(), /** O cargo existe, desativado: a saída é ativar. */ inactivePositionId: z.string().nullable().default(null) })),
+})
+export type JobPositionCatalog = z.infer<typeof jobPositionCatalogSchema>
+
 export const TRANSFORM_KINDS = ["TRIM", "UPPERCASE", "LOWERCASE", "PARSE_DATE", "PARSE_DECIMAL", "BOOLEAN_MAP", "DEFAULT", "CONSTANT", "CODE_MAP"] as const
 export type TransformKind = (typeof TRANSFORM_KINDS)[number]
 export const TRANSFORM_LABELS: Record<TransformKind, string> = {

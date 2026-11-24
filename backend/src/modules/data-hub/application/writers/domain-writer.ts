@@ -39,6 +39,8 @@ export interface DomainWriter<TPrepared = unknown> {
   readonly contractKey: string
   prepare(context: WriteContext, records: ValidRecord[]): Promise<{ ready: TPrepared[]; rejections: Rejection[] }>
   apply(context: WriteContext, client: pg.PoolClient, batch: TPrepared[]): Promise<ApplyResult>
+  /** Como a validação da amostra mostra valores que dependem de um cadastro da organização (ex.: cargo); soma aos `displayNormalizers` do contrato. */
+  previewNormalizers?(context: WriteContext): Promise<Readonly<Record<string, (value: unknown) => string | null>>>
 }
 
 export function reject(record: ValidRecord, code: RecordError["code"], field: string | null, message: string): Rejection {

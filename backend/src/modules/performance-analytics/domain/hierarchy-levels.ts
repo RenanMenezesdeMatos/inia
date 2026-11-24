@@ -18,6 +18,12 @@ export const ROLE_LABELS: Record<PlatformRole, string> = {
   MANAGER: "Gerente",
   SENIOR_MANAGER: "Gerente Sênior",
   DIRECTOR: "Diretor",
+  STAFF: "Apoio",
+}
+
+/** Como a pessoa aparece onde se mostra o nível: o cargo do cadastro ("Assistente de Relacionamento") ou, sem ele, o nível ("Operador"). */
+export function personLevelLabel(person: { role: string; jobPositionName?: string | null }): string {
+  return person.jobPositionName ?? ROLE_LABELS[person.role as PlatformRole] ?? person.role
 }
 
 export function isHierarchyRole(role: string): role is HierarchyRole {

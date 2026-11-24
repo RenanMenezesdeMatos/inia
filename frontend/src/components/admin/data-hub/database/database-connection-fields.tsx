@@ -159,7 +159,7 @@ export function DatabaseConnectionFields({ draft, onChange, passwordMode }: { dr
           </span>
         </CollapsibleTrigger>
         <CollapsibleContent className="space-y-4 border-t border-border px-3 py-3">
-          <Field id="db-tls" label="Criptografia da conexão (TLS)" hint={draft.engine === "SQLSERVER" ? "Padrão do SQL Server: cifrar sem validar o certificado (o SQL Server usa certificado próprio). Para validar, escolha a última opção." : "Padrão: usar TLS quando o servidor oferecer, como os clientes nativos do banco."}>
+          <Field id="db-tls" label="Criptografia da conexão (TLS)" hint={draft.engine === "SQLSERVER" ? "Padrão: cifrar e validar o certificado. Se o SQL Server usa o certificado próprio dele, escolha \"Obrigatória (sem validar certificado)\" ou informe a CA abaixo." : "Padrão: cifrar e validar o certificado. Se o banco não tem certificado, escolha \"Usar quando o servidor oferecer\" ou informe a CA abaixo."}>
             <Select value={draft.tlsMode} onValueChange={(value) => set("tlsMode", value as DatabaseTlsMode)}>
               <SelectTrigger id="db-tls" className="w-full">
                 <SelectValue />

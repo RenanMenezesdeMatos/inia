@@ -39,9 +39,11 @@ export const OPERATIONAL_CAPITAL_HELP = `Capital brasileira cuja jurisdição de
  * alterar um colaborador NUNCA concede privilégio no INIA (acesso = atribuição explícita de papel a uma conta, modules/access).
  * "ADMIN" não é nível organizacional e não é aceito pela carga (a linha vai para a quarentena).
  */
+import { JOB_POSITION_LEVELS } from "../../../people/domain/job-position.js"
 import { OPERATING_UNIVERSES } from "../../../operating-universe/domain/operating-universe.js"
 
-export const ORGANIZATIONAL_LEVELS = ["OPERATOR", "SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER", "DIRECTOR"] as const
+/** Os níveis que a base pode mandar = os perfis de cargo (`people/domain/job-position.ts`). */
+export const ORGANIZATIONAL_LEVELS = JOB_POSITION_LEVELS
 
 export const EMPLOYEES_CONTRACT: DataContract = {
   key: "EMPLOYEES",
@@ -53,7 +55,7 @@ export const EMPLOYEES_CONTRACT: DataContract = {
   fields: [
     { key: "externalEmployeeId", label: "Matrícula / ID externo", type: "STRING", required: true, identity: true, maxLength: 64, description: "Identificador corporativo estável do colaborador (matrícula). É a identidade — nunca o nome.", example: "OP-10234" },
     { key: "name", label: "Nome", type: "STRING", required: true, maxLength: 160, description: "Nome cadastral do colaborador. Não altera o nome pelo qual a pessoa escolheu ser chamada, nem a foto e a capa do perfil — preferências pessoais não são dados de carga.", example: "Mariana Alves" },
-    { key: "role", label: "Nível hierárquico", type: "ENUM", required: true, enumValues: ORGANIZATIONAL_LEVELS, description: "Nível da pessoa na estrutura (operador, supervisor, coordenador, gerente…). Dado organizacional: define a posição na hierarquia, nunca acesso ao INIA.", example: "OPERATOR" },
+    { key: "role", label: "Nível hierárquico", type: "STRING", required: true, maxLength: 120, description: `Cargo como a base escreve ("OPERADOR", "ASSISTENTE RELACIONAMENTO", "GERENTE SR"…), cadastrado em Central de Dados › Cargos, ou o código do nível (${ORGANIZATIONAL_LEVELS.join(", ")}). O cargo diz o perfil da pessoa na estrutura; nunca concede acesso ao INIA. Cargo não cadastrado vai para a quarentena.`, example: "OPERADOR" },
     { key: "jobTitle", label: "Cargo", type: "STRING", required: false, maxLength: 120, description: "Cargo/função descritiva (texto livre).", example: "Analista de Atendimento I" },
     { key: "groupExternalCode", label: "Código do Grupo", type: "STRING", required: false, maxLength: 64, description: "Código externo do Grupo (precisa existir na INIA).", example: "B2C_RETENCAO" },
     { key: "subgroupExternalCode", label: "Código do Subgrupo", type: "STRING", required: false, maxLength: 128, description: "Código externo do Subgrupo (precisa existir e pertencer ao Grupo informado).", example: "B2C_RETENCAO/PREMIUM" },

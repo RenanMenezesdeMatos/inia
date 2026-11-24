@@ -32,6 +32,7 @@ import { RunsTab } from "./runs-tab"
 import { FeedStatusBadge, FreshnessBadge } from "./status-badges"
 import { DatabaseCheckpointSummary, DatabaseFeedConnector, configFromSyncDraft, syncDraftFromConfig } from "./database/database-feed-settings"
 import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
+import { cn } from "@/lib/utils"
 
 export function FeedDetailPage({ feedId }: { feedId: string }) {
   const query = useDataFeedQuery(feedId)
@@ -211,7 +212,7 @@ function FeedEditor({ feed, onHold, tab, onTabChange }: { feed: LoadedFeed; onHo
               <fieldset disabled={locked} className="m-0 min-w-0 border-0 p-0" data-testid="feed-mapping-fields">
                 <MappingEditor contract={contract} columns={columns} value={mapping} onChange={(next) => { setMapping(next); setPreview(null) }} suggestion={sample?.suggestedMapping ?? null} />
               </fieldset>
-              {preview ? <PreviewTable preview={preview} contract={contract} /> : null}
+              {preview ? <PreviewTable preview={preview} contract={contract} mapping={mapping} /> : null}
             </>
           ) : (
             <Skeleton className="h-40" aria-hidden />
@@ -274,7 +275,7 @@ function FeedEditor({ feed, onHold, tab, onTabChange }: { feed: LoadedFeed; onHo
           {error}
         </p>
       ) : null}
-      <div className="flex justify-end border-t pt-4">
+      <div className={cn("flex justify-end border-t pt-4", tab === "runs" && "hidden")}>
         <Button onClick={save} disabled={update.isPending || locked || cadenceSaveProblem(cadence, feed.cadence) !== null}>
           {update.isPending ? <Loader2 className="animate-spin" /> : <Save />} Salvar feed
         </Button>

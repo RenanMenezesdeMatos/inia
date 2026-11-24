@@ -1101,3 +1101,23 @@ cabia; com o acerto pelo `usageMetadata` de cada resposta (a sobra volta, o teto
 US$ 0,0137 e US$ 0,0149 confirmados (4 chamadas cada). "Segunda via da fatura" — que nenhuma base do Grupo cobre — recebeu "não
 encontrei nas bases, procure sua liderança"; "contestação de cobrança" recebeu o passo a passo da base do Grupo. Tela conferida numa pilha isolada (API com IA simulada): seletor com "Todos do universo" explícito,
 pré-seleção de bases só com as que valem para todos os Grupos, troca de universo marcando "Fora do universo" e travando "Criar agente".
+
+## Décima quarta rodada (24/11/2026, run-11: skill da Cloudflare só no que mudou, QA funcional, Arquitetura, varredura AppSec)
+
+Recorte: commit dos Cargos (migration 252) e da usabilidade da Central de Dados. Relatórios em `~/security-audit-skill/inia/run-11/agents/{appsec,qa,arquitetura}/relatorio.md`. Varredura AppSec (Semgrep, Gitleaks, OSV): 0 novos. Nenhum achado de isolamento entre organizações, elevação de acesso pelo perfil Apoio, contorno de custódia, XSS ou CSRF.
+
+| Id | Sev. | Achado | Correção |
+|---|---|---|---|
+| A11-01 | Média | Passada do gestor recusado era O(n²): carga com cadeia longa travava o worker | Propagação por mapa, cada pessoa visitada uma vez (40 mil em menos de 5 s na prova) |
+| A11-02, QA-04, QA-05, ARQ-05 | Baixa/Média | Cargo podia tomar o código de um nível; cargo desativado voltava pelo código | Código reservado ao próprio nível (`JOB_POSITION_TERM_RESERVED`); desativado vale para o código também |
+| A11-03 | Baixa | Reenviar o mesmo cargo regravava o cargo exibido vindo da base | Cargo igual ao atual é descartado antes de tudo |
+| A11-04, QA-15 | Baixa | Aviso de cargos lia 30 dias de quarentena sem teto e cortava antes de filtrar | 20 mil recusas mais recentes; corte depois do filtro |
+| A11-05, QA-16 | Baixa | Mudança de cargo/nível na ficha sem auditoria; contagem só de ativos | `PERSON_POSITION_CHANGED`; contagem inclui inativos |
+| A11-06, ARQ-02, ARQ-03 | Info/Média | Catálogo lido antes e gravado depois | Trava compartilhada na gravação, perfil relido; PATCH confere o perfil na escrita (`JOB_POSITION_CHANGED`) |
+| A11-08 | Info | Termo que cresce ao normalizar estourava o banco (500) | Limite conferido na chave |
+| QA-01 | Alta | Renomear o cargo pela tela apagava o nome antigo: a base inteira desse cargo iria para a quarentena | O nome antigo continua como nome da base |
+| QA-02, QA-07, ARQ-01 | Média | Linha sem Cargo sobrescrevia o cargo exibido da base | O cadastro só preenche o vazio ou o que já veio dele |
+| QA-03 | Média | Desativar cargo barrava quem já o tinha, inclusive o desligamento | Quem já tem segue atualizado; confirmação ao desativar em uso |
+| QA-06, QA-08, QA-09, QA-11 a QA-14, QA-17, QA-18, ARQ-04, ARQ-09, ARQ-10 | Baixa | Detalhes de tela, rótulos do Apoio, invariante cargo × nível | Corrigidos (migration 253 para o invariante) |
+
+Aceitos: R-52 (A11-07, ARQ-07, ARQ-08). QA-10: renomear cargo avisa sobre Reports por cargo. ARQ-11: contrato Colaboradores continua na versão 1 (só aceita mais valores).

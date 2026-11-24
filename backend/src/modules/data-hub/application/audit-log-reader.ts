@@ -31,7 +31,7 @@ const SELECT_AUDIT_EVENTS = `
       f.source_id,
       run.source_id,
       case when a.payload->>'sourceId' ~ '${UUID_PATTERN}' then (a.payload->>'sourceId')::uuid end)
-   where a.organization_id = $1 and a.action like 'DATA_HUB_%' and a.entity_type in ('data_source', 'data_feed', 'data_push_token', 'data_ingestion_run', 'data_explorer')`
+   where a.organization_id = $1 and a.action like 'DATA_HUB_%' and a.entity_type in ('data_source', 'data_feed', 'data_push_token', 'data_ingestion_run', 'data_explorer', 'job_position')`
 
 /** Consultas somam muitas linhas a cada sessão de uso: ficam fora da lista padrão e aparecem quando a pessoa filtra por essa ação. Exportação e tentativa negada sempre aparecem. */
 const EXPLORER_READ_ACTIONS = ["DATA_HUB_EXPLORER_QUERY", "DATA_HUB_EXPLORER_COUNT", "DATA_HUB_EXPLORER_EXPORT_STARTED", "DATA_HUB_RECORDS_CANCEL_PREVIEW", "DATA_HUB_RECORDS_CANCEL_LIST", "DATA_HUB_DELETED_ITEMS_LIST", "DATA_HUB_DELETED_ITEM_RESTORE_PREVIEW", "DATA_HUB_RECORDS_REACTIVATION_PREVIEW"]

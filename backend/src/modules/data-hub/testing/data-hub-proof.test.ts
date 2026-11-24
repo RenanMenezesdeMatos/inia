@@ -205,7 +205,7 @@ describe.skipIf(!ENABLED)("Central de Dados — prova de contrato contra o banco
     const row = (matricula: string, perfil: string) => [matricula, `Pessoa ${matricula}`, perfil, "TC_RETENCAO", "", "TC-SUP-01", "11/03/2024", "sim"]
     const withAdmin = await uploadAndRun(employeesFeed, csv([header, row("TC-OP-02", "Supervisor"), row("TC-ADM-01", "ADMIN")]), "tc-acesso-1.csv")
     expect(withAdmin.recordsRejected).toBe(1)
-    expect(await rejectionsOf(withAdmin.id)).toEqual([{ code: "DATA_INVALID_ENUM", field: "role", key: "TC-ADM-01" }])
+    expect(await rejectionsOf(withAdmin.id)).toEqual([{ code: "DATA_JOB_POSITION_UNKNOWN", field: "role", key: "TC-ADM-01" }])
     expect((await db.query(`select role from people where organization_id = $1 and matricula = 'TC-OP-02'`, [ORG])).rows[0]).toEqual({ role: "SUPERVISOR" })
     expect(await accessRows()).toEqual([{ role_code: "QA_DE_FEEDBACK", scope_type: "MY_STRUCTURE", active: true }])
     await uploadAndRun(employeesFeed, csv([header, row("TC-OP-02", "Atendente")]), "tc-acesso-2.csv")

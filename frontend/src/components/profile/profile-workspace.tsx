@@ -110,7 +110,7 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
                   pode ocupar espaço: margem + respiro vazios somavam 48 px à faixa em branco no fim da página. */}
               <TabsContent value="followup" className={cn("mt-4", context.defaultSubject ? "pb-5" : "pb-8", operatorSurface && "hidden")}>
                 {activeTab !== "followup" || operatorSurface ? null : !context.defaultSubject ? (
-                  <NoStructureState />
+                  <NoStructureState support={context?.viewer.role === "STAFF"} />
                 ) : (
                   // Mesmo formato do Acompanhamento do operador (18/11/2026): área que para logo abaixo das abas, chat recolhível ao lado.
                   <div className="h-[calc(100dvh-8.75rem)] min-h-[28rem]">
@@ -131,12 +131,12 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
                 {context.defaultSubject ? (
                   <IndicatorsView context={context} state={{ subject: state.subject, period: state.period, comparison: state.comparison, indicator: state.indicator, groupBy: state.groupBy }} onStateChange={update} employeeHref={(personId) => employeeProfileHref(personId, "indicators")} canSeeLineage={links.canSeeLineage} />
                 ) : (
-                  <NoStructureState />
+                  <NoStructureState support={context?.viewer.role === "STAFF"} />
                 )}
               </TabsContent>
               {context.capabilities.tabs.includes("PEOPLE") ? (
                 <TabsContent value="people" className="mt-4 pb-8">
-                  {context.defaultSubject ? <TeamView context={context} state={{ subject: state.subject, period: state.period, situation: state.situation, attention: state.attention }} onStateChange={update} employeeHref={(personId) => employeeProfileHref(personId, "indicators")} /> : <NoStructureState />}
+                  {context.defaultSubject ? <TeamView context={context} state={{ subject: state.subject, period: state.period, situation: state.situation, attention: state.attention }} onStateChange={update} employeeHref={(personId) => employeeProfileHref(personId, "indicators")} /> : <NoStructureState support={context?.viewer.role === "STAFF"} />}
                 </TabsContent>
               ) : null}
               {context.capabilities.tabs.includes("JOURNEY") ? (
@@ -185,10 +185,15 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
   )
 }
 
-function NoStructureState() {
+/** Apoio (estagiário, analista…) não acompanha indicadores nem lidera equipe: não é cadastro incompleto. */
+function NoStructureState({ support }: { support: boolean }) {
   return (
     <section className="rounded-xl bg-card p-6">
-      <AnalyticsEmptyState icon={Building2} title="Seu perfil não possui estrutura vinculada" description="Indicadores e Equipe dependem de um vínculo na hierarquia (quem reporta a quem). Seu perfil e suas preferências continuam disponíveis; para aparecer na estrutura, o vínculo precisa ser ajustado no cadastro." />
+      <AnalyticsEmptyState
+        icon={Building2}
+        title={support ? "Seu cargo não acompanha indicadores" : "Seu perfil não possui estrutura vinculada"}
+        description={support ? "Indicadores e Equipe são de quem atende clientes ou lidera uma equipe. Seu perfil, suas preferências e o Organograma continuam disponíveis." : "Indicadores e Equipe dependem de um vínculo na hierarquia (quem reporta a quem). Seu perfil e suas preferências continuam disponíveis; para aparecer na estrutura, o vínculo precisa ser ajustado no cadastro."}
+      />
     </section>
   )
 }

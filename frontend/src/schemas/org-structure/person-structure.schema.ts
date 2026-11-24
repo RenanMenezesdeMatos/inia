@@ -66,6 +66,7 @@ export const ROLE_PLURAL_LABELS: Record<string, [singular: string, plural: strin
   COORDINATOR: ["Coordenador", "Coordenadores"],
   SUPERVISOR: ["Supervisor", "Supervisores"],
   OPERATOR: ["Operador", "Operadores"],
+  STAFF: ["Apoio", "Apoio"],
   ADMIN: ["Administrador", "Administradores"],
 }
 
@@ -77,6 +78,7 @@ export const ROLE_UNIT_LABELS: Record<string, string> = {
   COORDINATOR: "coordenação",
   SUPERVISOR: "supervisão",
   OPERATOR: "operador",
+  STAFF: "apoio",
   ADMIN: "administração",
 }
 

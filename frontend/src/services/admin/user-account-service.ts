@@ -5,11 +5,13 @@ import { adminGet, adminSend } from "@/lib/admin/admin-api"
 import { pageResultSchema, toQueryString, type DateRangeFilter, type ListParams, type PageResult } from "@/lib/admin/list-query"
 import {
   creationPolicySchema,
+  jobPositionOptionSchema,
   employmentStatusDetailSchema,
   personLinkResultSchema,
   userAccountSchema,
   userDetailSchema,
   type CreationPolicy,
+  type JobPositionOption,
   type EmploymentStatus,
   type EmploymentStatusDetail,
   type PersonLinkResult,
@@ -51,9 +53,16 @@ export async function fetchCreationPolicy(): Promise<CreationPolicy> {
   return creationPolicySchema.parse(await adminGet("/api/v1/admin/users/creation-policy"))
 }
 
+/** Cargos ativos do cadastro (Central de Dados › Cargos). */
+export async function fetchJobPositionOptions(): Promise<JobPositionOption[]> {
+  return z.array(jobPositionOptionSchema).parse(await adminGet("/api/v1/admin/users/job-positions"))
+}
+
 export type CreateUserInput = {
   name: string
   role: PlatformRole
+  /** Cargo do cadastro: o perfil dele manda no nível (o backend confere). */
+  jobPositionId?: string
   teamId?: string
   /** Matrícula como a base vai mandar: a carga atualiza esta pessoa em vez de criar outra. */
   matricula?: string
@@ -75,6 +84,7 @@ export type UpdateUserDetailsInput = {
   name?: string
   email?: string
   role?: PlatformRole
+  jobPositionId?: string | null
   teamId?: string | null
   operatingUniverse?: OperatingUniverse | null
 }
@@ -88,8 +98,8 @@ export async function linkUserToSourcePerson(personId: string, targetPersonId: s
   return personLinkResultSchema.parse(await adminSend(`/api/v1/admin/users/${personId}/link`, "POST", { targetPersonId }))
 }
 
-export async function updateUserRole(personId: string, role: PlatformRole): Promise<void> {
-  await adminSend(`/api/v1/admin/users/${personId}`, "PATCH", { role })
+export async function updateUserRole(personId: string, position: { role: PlatformRole; jobPositionId: string | null }): Promise<void> {
+  await adminSend(`/api/v1/admin/users/${personId}`, "PATCH", position)
 }
 
 export async function updateUserActive(personId: string, active: boolean): Promise<void> {

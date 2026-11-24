@@ -408,7 +408,8 @@ export const WIKI_ROLES: Record<PlatformRole, RoleDoc> = {
   MANAGER: { role: "MANAGER", label: "Gerente", sees: "A estrutura abaixo dele (Coordenadores ou Supervisores diretos, conforme a cadeia real): consolidado, agrupamentos, drill-down.", peopleTab: "Estrutura", pendingTab: "Sim." },
   SENIOR_MANAGER: { role: "SENIOR_MANAGER", label: "Gerente Sênior", sees: "A estrutura abaixo dele (Gerentes → …): consolidado, agrupamentos, drill-down.", peopleTab: "Estrutura", pendingTab: "Sim." },
   DIRECTOR: { role: "DIRECTOR", label: "Diretor", sees: "Toda a estrutura abaixo dele (Gerentes Sêniores → …): consolidado, agrupamentos, drill-down.", peopleTab: "Estrutura", pendingTab: "Sim." },
+  STAFF: { role: "STAFF", label: "Apoio", sees: "A si mesma. É quem está na base mas não atende nem lidera (estagiário, analista, consultor, assistente administrativo): não entra em indicadores, comparações, populações de Workflow nem precisa de universo.", peopleTab: null, pendingTab: "Só enquanto houver uma pendência endereçada a ela." },
   ADMIN: { role: "ADMIN", label: "Fora da hierarquia", sees: "Pessoa fora da hierarquia operacional (ex.: conta de administração). Não concede nada por si: o que ela administra vem dos papéis de acesso da conta (Administrador geral, Administrador, Administrador de acessos, QA de feedback), cada um com escopo. Não amplia Indicadores, Estrutura nem Calendário.", peopleTab: null, pendingTab: "Só enquanto houver uma pendência endereçada a ela." },
 }
 
-export const WIKI_ROLE_ORDER: PlatformRole[] = ["OPERATOR", "SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER", "DIRECTOR", "ADMIN"]
+export const WIKI_ROLE_ORDER: PlatformRole[] = ["OPERATOR", "SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER", "DIRECTOR", "STAFF", "ADMIN"]
