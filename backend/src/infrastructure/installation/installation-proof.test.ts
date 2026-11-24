@@ -74,11 +74,11 @@ describe.skipIf(!enabled)("instalação — banco vazio até o primeiro administ
     // `analytics_versions` e `analytics_operational_dirty` são controle técnico do read model do analytics (migrations 128 e
     // 136): os gatilhos de `people` anotam a versão da estrutura da organização e a pessoa a recalcular, que o processamento
     // periódico consome. `person_operating_universe_history` (197) é o histórico de universo que o gatilho de `people` abre para
-    // o administrador criado (universo nulo = pendente). Nenhum dado de negócio nem de demonstração.
+    // o administrador criado (universo nulo = pendente). `job_positions`/`job_position_terms` (252) são os cargos iniciais, editáveis. Nenhum dado de negócio nem de demonstração.
     expect(Object.keys(nonEmpty).sort()).toEqual(
-      [...KEEP_TABLES, "access_role_assignments", "analytics_operational_dirty", "analytics_versions", "audit_logs", "installation_info", "operations", "people", "person_operating_universe_history", "user_accounts"].sort(),
+      [...KEEP_TABLES, "access_role_assignments", "analytics_operational_dirty", "analytics_versions", "audit_logs", "installation_info", "job_position_terms", "job_positions", "operations", "people", "person_operating_universe_history", "user_accounts"].sort(),
     )
-    expect(nonEmpty).toMatchObject({ organizations: 1, people: 1, person_operating_universe_history: 1, user_accounts: 1, access_role_assignments: 1, operations: 1, installation_info: 1, brazilian_capitals: 27 })
+    expect(nonEmpty).toMatchObject({ job_positions: 11, organizations: 1, people: 1, person_operating_universe_history: 1, user_accounts: 1, access_role_assignments: 1, operations: 1, installation_info: 1, brazilian_capitals: 27 })
 
     // Organização, fuso e administrador com senha TEMPORÁRIA (só hash; troca obrigatória no primeiro acesso).
     const organization = await client.query<{ name: string; slug: string }>("select name, slug from organizations")
