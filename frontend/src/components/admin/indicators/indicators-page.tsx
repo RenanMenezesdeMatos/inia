@@ -37,24 +37,23 @@ import { EntityCard, EntityCardIcon, EntityCardTag } from "@/components/admin/sh
 import {
   ListBooleanFilter,
   ListMultiSelectFilter,
-  ListOrgScopeFilter,
   ListUniverseFilter,
   universeChoiceOf,
   ListSearchInput,
   ListToolbar,
   optionsFromLabels,
 } from "@/components/admin/shared/list/list-filters"
+import { ListOrgScopeFilter, useOrgScopeAfterUniverse } from "@/components/admin/shared/list/org-scope-filter"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
-import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { OrgScopeSelect, useOrgScopeUnits, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import { IndicatorCorrectionPanel } from "@/components/admin/indicators/indicator-correction-panel"
 import { IndicatorDefinitionForm } from "@/components/admin/indicators/indicator-definition-form"
 import { DiagnosticStrategyStatusBadge, IndicatorDiagnosticStrategyTab } from "@/components/admin/indicators/indicator-diagnostic-strategy-tab"
 import { STRATEGY_STATUS_LABELS } from "@/schemas/admin/indicator-diagnostic-strategy.schema"
 import { formatIndicatorValue } from "@/lib/analytics/format"
 import { describeIndicatorCapability, MEASUREMENT_COMPONENT_LABELS, OPERATIONAL_GRANULARITY_LABELS } from "@/schemas/admin/indicator-definition.schema"
-import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
-import { orgScopeAfterUniverseChange, orgScopePatch, teamScopeFitsUniverse } from "@/lib/operating-universe/hierarchy"
+import { orgScopePatch } from "@/lib/operating-universe/hierarchy"
 import type { IndicatorListParams } from "@/services/admin/indicator-rule-service"
 import {
   useCreateIndicatorDefinitionMutation,
@@ -324,7 +323,6 @@ function IndicatorDefinitionSummary({ indicator }: { indicator: IndicatorWithRul
 // Regras de cálculo por grupo e glossário do indicador — o mesmo conteúdo que antes ficava
 // aberto dentro de cada card, agora num painel lateral acessível pela lista e pelos cards.
 export function IndicatorManager({ indicator }: { indicator: IndicatorWithRules }) {
-  const teamsQuery = useTeamsQuery()
   const saveRuleMutation = useSaveIndicatorRuleMutation()
   const setRuleActiveMutation = useSetIndicatorRuleActiveMutation()
   const saveGlossaryMutation = useSaveIndicatorGlossaryMutation()
@@ -334,6 +332,7 @@ export function IndicatorManager({ indicator }: { indicator: IndicatorWithRules 
   // "Nova regra" é AÇÃO dentro da aba de regras (V1.6.2), não uma aba: o formulário aparece no lugar da tabela.
   const [ruleFormOpen, setRuleFormOpen] = useState(false)
   const [orgScope, setOrgScope] = useState<OrgScopeValue>({ scopeType: "ALL_TEAMS" })
+  const orgScopeUnits = useOrgScopeUnits("configuration.manage", orgScope)
   const [calculationPeriod, setCalculationPeriod] = useState<CalculationPeriod>("MONTHLY")
   const [calculationMethod, setCalculationMethod] = useState("")
   const [attainmentRule, setAttainmentRule] = useState("")
@@ -458,8 +457,8 @@ export function IndicatorManager({ indicator }: { indicator: IndicatorWithRules 
           <div className="max-w-xl space-y-4">
             <h3 className="text-sm font-semibold">{editingRule ? "Editar regra" : "Nova regra"}</h3>
             {/* Hierarquia: a regra só vale para Grupos/Subgrupos classificados no universo do indicador. */}
-            {teamsQuery.data ? <OrgScopeSelect teams={teamsQuery.data} value={orgScope} onChange={setOrgScope} universe={indicator.operatingUniverse ?? null} /> : <Skeleton className="h-10 w-full" />}
-            {teamsQuery.data && orgScope.scopeType !== "ALL_TEAMS" && !teamScopeFitsUniverse(teamsQuery.data, orgScope, indicator.operatingUniverse ?? null) ? (
+            <OrgScopeSelect permission="configuration.manage" value={orgScope} onChange={setOrgScope} universe={indicator.operatingUniverse ?? null} />
+            {orgScope.scopeType !== "ALL_TEAMS" && !orgScopeUnits.fits(indicator.operatingUniverse ?? null) ? (
               <p role="status" data-testid="indicator-rule-scope-outside-universe" className="text-xs text-amber-700 dark:text-amber-300">
                 O Grupo/Subgrupo salvo nesta regra é de outro universo. Escolha um do universo {indicator.operatingUniverse} do indicador.
               </p>
@@ -693,7 +692,6 @@ function NewIndicatorForm({ onDone }: { onDone: () => void }) {
 }
 
 export function IndicatorsPage() {
-  const teamsQuery = useTeamsQuery()
   const [autoOpen, setAutoOpen] = useAutoOpenFromQuery("new")
   const [tab, setTab] = useState<"list" | "form">("list")
   const [managingId, setManagingId] = useState<string | null>(null)
@@ -702,6 +700,7 @@ export function IndicatorsPage() {
   const pageQuery = useIndicatorsWithRulesPageQuery(list.params)
   // Hierarquia universo → Grupo/Subgrupo das regras: o filtro de Grupo só oferece os do universo escolhido; trocar o universo limpa o que não cabe.
   const currentScope = { scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }
+  const scopeAfterUniverse = useOrgScopeAfterUniverse("configuration.manage", currentScope)
 
   // O painel lê sempre o registro mais recente da página — depois de salvar uma regra ou o
   // glossário, a lista é invalidada e o painel acompanha sem precisar reabrir.
@@ -765,10 +764,10 @@ export function IndicatorsPage() {
                 <ListMultiSelectFilter label="Periodicidade das regras" values={list.filters.calculationPeriod} onChange={(values) => list.setFilter("calculationPeriod", values)} options={PERIOD_OPTIONS} />
                 <ListUniverseFilter
                   value={list.filters.operatingUniverse}
-                  onChange={(operatingUniverse) => list.patchFilters({ operatingUniverse, ...orgScopePatch(orgScopeAfterUniverseChange(currentScope, teamsQuery.data, universeChoiceOf(operatingUniverse))) })}
+                  onChange={(operatingUniverse) => list.patchFilters({ operatingUniverse, ...orgScopePatch(scopeAfterUniverse(universeChoiceOf(operatingUniverse))) })}
                 />
                 <ListOrgScopeFilter
-                  teams={teamsQuery.data}
+                  permission="configuration.manage"
                   globalLabel="Com regra para todos os grupos"
                   universe={universeChoiceOf(list.filters.operatingUniverse)}
                   value={currentScope}

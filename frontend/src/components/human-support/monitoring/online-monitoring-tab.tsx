@@ -17,7 +17,7 @@ import { ResponseTimesControl } from "./response-times-control"
  * esconde o que não usa; fica salvo para ela (`anjos.monitoria-online`). "Tempos de resposta" (migration 193) ajusta quanto o operador e
  * o Anjo podem ficar sem responder.
  */
-export function OnlineMonitoringTab({ scope }: { scope: { teamId?: string | null; subteamId?: string | null } }) {
+export function OnlineMonitoringTab({ scope }: { scope: { teamId?: readonly string[] | null; subteamId?: readonly string[] | null } }) {
   const today = civilToday()
   const operationNow = useOperationNowSection(scope)
   const abandonment = useAbandonmentSection({

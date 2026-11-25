@@ -5,14 +5,15 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { chooseUnit, closeUnitField, openUnitField, scopeUnitsServiceFrom } from "@/components/admin/shared/testing/scope-units-fake"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import { userAccountSchema, userDetailSchema } from "@/schemas/admin/user-account.schema"
 import type { AccessAccount } from "@/schemas/access/access.schema"
 
+import { PersonBelongsTo } from "./person-belongs-to"
 import { UsersPage } from "./users-page"
 
 const users = vi.hoisted(() => ({
-  fetchUserAccounts: vi.fn(),
   fetchUserAccountsPage: vi.fn(),
   fetchUserDetail: vi.fn(),
   createUserAccount: vi.fn(),
@@ -29,7 +30,8 @@ const users = vi.hoisted(() => ({
   fetchJobPositionOptions: vi.fn(),
 }))
 vi.mock("@/services/admin/user-account-service", () => users)
-vi.mock("@/services/admin/org-structure-service", () => ({ fetchTeams: vi.fn(async () => [{ id: "t-atd", name: "Atendimento" }, { id: "t-ret", name: "Retenção" }]), fetchManageableTeams: vi.fn(), fetchSubjects: vi.fn() }))
+const UNITS = vi.hoisted(() => [{ id: "t-atd", name: "Atendimento", operatingUniverse: "B2C", subteams: [{ id: "s-premium", name: "Premium" }, { id: "s-tarde-a", name: "Tarde" }] }, { id: "t-ret", name: "Retenção", operatingUniverse: "B2B", subteams: [{ id: "s-tarde-r", name: "Tarde" }] }])
+vi.mock("@/services/scope-units/scope-units-service", () => scopeUnitsServiceFrom(UNITS))
 vi.mock("@/services/admin/operational-calendar-service", () => ({ fetchCapitals: vi.fn(async () => ({ capitals: [] })), fetchCalendarSettings: vi.fn(), fetchHolidayCatalog: vi.fn(), fetchHolidayCatalogCoverage: vi.fn(), fetchHolidays: vi.fn(), createHoliday: vi.fn(), deleteHoliday: vi.fn(), updateCalendarSettings: vi.fn(), updateHoliday: vi.fn() }))
 const access = vi.hoisted(() => ({ fetchAccessAccount: vi.fn(), fetchAccessRoles: vi.fn(), fetchScopeOptions: vi.fn(), fetchIdentifiedUsers: vi.fn(), enableUserAccess: vi.fn(), issueTemporaryPassword: vi.fn(), disableUserAccess: vi.fn(), assignAccessRole: vi.fn(), revokeAccessRole: vi.fn() }))
 vi.mock("@/services/access/access-service", () => access)
@@ -108,7 +110,7 @@ describe("Pessoas — campos que vêm da base do cliente", () => {
     await openEdit("Mariana Alves")
     const belongs = screen.getByTestId("person-belongs-to")
     expect(within(belongs).getByRole("heading", { name: "Pertence a" })).toBeInTheDocument()
-    const team = within(belongs).getByRole("combobox", { name: "Grupo" })
+    const team = await within(belongs).findByRole("button", { name: "Grupo: Atendimento" })
     expect(team).toBeDisabled()
     expect(team).toHaveAccessibleDescription(NOTICE)
     expect(await within(belongs).findByText("Premium")).toBeInTheDocument()
@@ -127,7 +129,7 @@ describe("Pessoas — campos que vêm da base do cliente", () => {
     await openEdit("Pessoa Manual")
     expect(screen.getByLabelText("Nome")).toBeEnabled()
     expect(screen.getByRole("combobox", { name: "Cargo" })).toBeEnabled()
-    expect(screen.getByRole("combobox", { name: "Grupo" })).toBeEnabled()
+    expect(await screen.findByRole("button", { name: "Grupo: Atendimento" })).toBeEnabled()
     await screen.findByText("Premium")
     expect(screen.queryByTestId("source-managed-notice")).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Pessoa Corrigida" } })
@@ -145,6 +147,17 @@ async function fillNewUser(fields: { matricula?: string } = {}) {
 }
 
 const ISSUED = { personId: "p-nova", accountId: "a-nova", name: "Nova Pessoa", email: "nova@empresa.com", temporaryPassword: "Kq7m-Pz4x-Wn9r", expiresAt: "2026-10-20T12:00:00.000Z" }
+
+describe("Pertence a — sem Grupo", () => {
+  it("quem só administra Grupos não vê \"Sem grupo\" (o servidor recusa)", async () => {
+    renderWithQuery(<PersonBelongsTo detail={undefined} teamId="" onTeamChange={() => {}} teamManagedBy={null} canLeaveTeam={false} />)
+    const trigger = screen.getByRole("button", { name: /^Grupo:/ })
+    expect(trigger).not.toHaveAccessibleName("Grupo: Sem grupo")
+    fireEvent.click(trigger)
+    await screen.findByRole("listbox")
+    expect(screen.queryByRole("option", { name: "Sem grupo" })).not.toBeInTheDocument()
+  })
+})
 
 describe("Novo usuário — sem pessoa duplicada entre o cadastro e a base", () => {
   it("com Colaboradores vigente, sem matrícula só \"Fora da hierarquia\"; com matrícula, a hierarquia volta e a matrícula vai junto", async () => {
@@ -224,5 +237,37 @@ describe("Vincular à pessoa da base", () => {
     await openEdit("Pessoa Manual")
     expect(await screen.findByTestId("person-linked-to")).toHaveTextContent("Vinculada a Pessoa Manual da Base (matrícula OP-55555)")
     expect(screen.queryByRole("button", { name: "Vincular à pessoa da base" })).not.toBeInTheDocument()
+  })
+})
+
+describe("Pessoas — Grupo e Subgrupo na lista", () => {
+  const lastList = () => users.fetchUserAccountsPage.mock.lastCall![0] as Record<string, unknown>
+
+  it("busca, Grupo e Subgrupo combinam no servidor; trocar o Grupo limpa o Subgrupo que deixou de caber e limpar o Grupo o mantém", async () => {
+    setup()
+    await screen.findByText("Mariana Alves")
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar usuário" }), { target: { value: "mari" } })
+    await chooseUnit("Filtrar por grupo", "Atendimento")
+    expect(await openUnitField("Filtrar por subgrupo")).toEqual(["Atendimento › Premium", "Atendimento › Tarde"])
+    fireEvent.click(screen.getByRole("option", { name: "Atendimento › Tarde" }))
+    closeUnitField()
+    await waitFor(() => expect(lastList()).toMatchObject({ search: "mari", teamId: ["t-atd"], subteamId: ["s-tarde-a"], page: 1 }))
+    fireEvent.click(await screen.findByRole("button", { name: "Remover filtro Grupo: Atendimento" }))
+    await waitFor(() => expect(lastList()).toMatchObject({ teamId: undefined, subteamId: ["s-tarde-a"] }))
+    await chooseUnit("Filtrar por grupo", "Retenção")
+    await waitFor(() => expect(lastList()).toMatchObject({ teamId: ["t-ret"], subteamId: undefined }))
+    expect(screen.getByRole("list", { name: "Filtros ativos" })).toHaveTextContent("Busca: mari")
+    fireEvent.click(screen.getByRole("button", { name: "Limpar filtros" }))
+    await waitFor(() => expect([lastList().search, lastList().teamId, lastList().subteamId]).toEqual([undefined, undefined, undefined]))
+  })
+
+  it("universo em cima: trocar limpa o Grupo e o Subgrupo que não cabem", async () => {
+    setup()
+    await screen.findByText("Mariana Alves")
+    await chooseUnit("Filtrar por subgrupo", "Atendimento › Tarde")
+    await waitFor(() => expect(lastList()).toMatchObject({ subteamId: ["s-tarde-a"] }))
+    fireEvent.keyDown(screen.getByRole("button", { name: "Filtrar por universo" }), { key: "Enter" })
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "B2B" }))
+    await waitFor(() => expect(lastList()).toMatchObject({ operatingUniverse: ["B2B"], subteamId: undefined }))
   })
 })

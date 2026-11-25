@@ -6,6 +6,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { chooseUnit, openUnitField, scopeUnitsServiceFrom } from "@/components/admin/shared/testing/scope-units-fake"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import type { AnalysisReport, BestPracticesMeta, PatternDetail } from "@/schemas/best-practices/best-practices.schema"
 
@@ -14,6 +15,19 @@ import { GuidancePreview } from "./guidance-preview"
 import { NewAnalysisDialog } from "./new-analysis-dialog"
 import { PatternDetailBody } from "./pattern-detail-dialog"
 import { RelevantPracticesHint } from "./relevant-practices-hint"
+
+// Grupos e Subgrupos da rota de alcance; `managesWholeTeam` = a conta administra o Grupo inteiro.
+const managesWholeTeam = vi.hoisted(() => ({ value: true }))
+const UNITS = vi.hoisted(() => [{ id: "t-1", name: "Grupo QA", subteams: [{ id: "s-1", name: "Célula A" }] }])
+vi.mock("@/services/scope-units/scope-units-service", () => {
+  const fake = scopeUnitsServiceFrom(UNITS)
+  const manageable = <T extends { kind: string }>(items: T[]) => items.map((item) => ({ ...item, manageable: item.kind === "SUBTEAM" || managesWholeTeam.value }))
+  return {
+    ...fake,
+    fetchScopeUnits: async (search: Parameters<typeof fake.fetchScopeUnits>[0]) => ({ items: manageable((await fake.fetchScopeUnits(search)).items), nextCursor: null }),
+    fetchScopeUnitsByIds: async (kind: string, permission: string, ids: readonly string[]) => manageable(await fake.fetchScopeUnitsByIds(kind, permission, ids)),
+  }
+})
 
 const service = vi.hoisted(() => ({
   fetchRelevantPractices: vi.fn(),
@@ -166,7 +180,6 @@ describe("seletores sem valor inicial", () => {
   const META: BestPracticesMeta = {
     indicators: [{ id: "i-1", code: "TMA", name: "Tempo Médio de Atendimento", unit: "SECONDS", direction: "LOWER_IS_BETTER" }],
     signals: [{ id: "f-1", name: "Nota da URA", good: "Nota da URA ≥ 4", bad: "Nota da URA ≤ 2" }],
-    teams: [], manageableTeams: [{ id: "t-1", name: "Grupo QA", subteams: [], wholeTeam: true }],
     datasets: [
       { id: "d-1", key: "BP_A", label: "Dataset A", description: "", version: 1, hasAnswerKey: true, calls: 10, operators: 2, operatorList: [{ ref: "OP-1", name: "Operador 1" }, { ref: "OP-2", name: "Operador 2" }], periods: ["2026-09"] },
       { id: "d-2", key: "BP_B", label: "Dataset B", description: "", version: 1, hasAnswerKey: true, calls: 10, operators: 1, operatorList: [{ ref: "OP-9", name: "Operador 9" }], periods: ["2026-09"] },
@@ -198,25 +211,32 @@ describe("seletores sem valor inicial", () => {
   })
   it("a nova análise pode comparar só um Subgrupo do Grupo; quem administra só o Subgrupo não vê \"Todo o Grupo\"", async () => {
     service.createAnalysis.mockResolvedValue({ id: "a-1", status: "QUEUED" })
-    const withSubteams = { ...META, manageableTeams: [{ id: "t-1", name: "Grupo QA", subteams: [{ id: "s-1", name: "Célula A" }], wholeTeam: true }] }
-    const { unmount } = renderWithQuery(<NewAnalysisDialog meta={withSubteams} />)
+    const { unmount } = renderWithQuery(<NewAnalysisDialog meta={META} />)
     fireEvent.click(screen.getByRole("button", { name: "Nova análise" }))
     fireEvent.click(screen.getByRole("radio", { name: "Reais" }))
     await choose("Indicador", "Tempo Médio de Atendimento")
-    await choose("Subgrupo", "Célula A")
+    expect(screen.getByRole("button", { name: "Subgrupo: Escolha o Grupo ou um Subgrupo" })).toBeInTheDocument()
+    await chooseUnit("Grupo", "Grupo QA")
+    expect((await openUnitField("Subgrupo"))[0]).toBe("Todo o Grupo")
+    fireEvent.click(await screen.findByRole("option", { name: "Grupo QA › Célula A" }))
     fireEvent.click(screen.getByRole("button", { name: "Pedir análise" }))
     await vi.waitFor(() => expect(service.createAnalysis).toHaveBeenCalledWith(expect.objectContaining({ origin: "REAL", teamId: "t-1", subteamId: "s-1" })))
     unmount()
-    renderWithQuery(<NewAnalysisDialog meta={{ ...withSubteams, manageableTeams: [{ ...withSubteams.manageableTeams[0]!, wholeTeam: false }] }} />)
+    managesWholeTeam.value = false
+    renderWithQuery(<NewAnalysisDialog meta={META} />)
     fireEvent.click(screen.getByRole("button", { name: "Nova análise" }))
-    fireEvent.click(screen.getByRole("combobox", { name: "Subgrupo" }))
-    expect(await screen.findByRole("option", { name: "Célula A" })).toBeInTheDocument()
-    expect(screen.queryByRole("option", { name: "Todo o Grupo" })).not.toBeInTheDocument()
+    await chooseUnit("Grupo", "Grupo QA")
+    const offered = await openUnitField("Subgrupo")
+    expect(offered).toContain("Grupo QA › Célula A")
+    expect(offered).not.toContain("Todo o Grupo")
+    expect(screen.getByRole("button", { name: "Pedir análise", hidden: true })).toBeDisabled()
+    managesWholeTeam.value = true
   })
   it("a nova análise pode medir pelo SINAL da chamada (chamadas boas × ruins), sem indicador nem quartil", async () => {
     service.createAnalysis.mockResolvedValue({ id: "a-2", status: "QUEUED" })
     renderWithQuery(<NewAnalysisDialog meta={META} />)
     fireEvent.click(screen.getByRole("button", { name: "Nova análise" }))
+    await chooseUnit("Grupo", "Grupo QA")
     fireEvent.click(screen.getByRole("radio", { name: /Sinal da chamada/ }))
     expect(screen.getByText(/Compara chamadas com Nota da URA ≥ 4 \(boas\) e com Nota da URA ≤ 2 \(ruins\)/)).toBeInTheDocument()
     expect(screen.queryByRole("combobox", { name: "Comparação" })).not.toBeInTheDocument()
@@ -228,8 +248,9 @@ describe("seletores sem valor inicial", () => {
     const warnings = watchControlWarnings()
     renderWithQuery(<NewAnalysisDialog meta={META} />)
     fireEvent.click(screen.getByRole("button", { name: "Nova análise" }))
+    await chooseUnit("Grupo", "Grupo QA")
     await choose("Indicador", "Tempo Médio de Atendimento")
-    expect(screen.getByRole("button", { name: "Pedir análise" })).toBeEnabled()
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Pedir análise" })).toBeEnabled())
     expect(warnings.found()).toEqual([])
     warnings.restore()
   })

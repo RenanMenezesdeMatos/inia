@@ -5,6 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { scopeUnitsServiceFrom } from "@/components/admin/shared/testing/scope-units-fake"
 import { networkEnableReportCsv, networkSignals, networkVerdict } from "@/lib/access/network-access-labels"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import type { IdentifiedUser, NetworkAttempts, NetworkEnableReport } from "@/schemas/access/access.schema"
@@ -13,6 +14,7 @@ import { AccessUsersView } from "./access-users-view"
 
 const service = vi.hoisted(() => ({ fetchIdentifiedUsers: vi.fn(), enableUserAccess: vi.fn(), issueTemporaryPassword: vi.fn(), disableUserAccess: vi.fn(), downloadNetworkEnableTemplate: vi.fn(), previewNetworkEnable: vi.fn(), applyNetworkEnable: vi.fn(), checkNetworkLogin: vi.fn(), fetchAccessAccount: vi.fn(), fetchAccessRoles: vi.fn(), fetchScopeOptions: vi.fn(), assignAccessRole: vi.fn(), revokeAccessRole: vi.fn() }))
 vi.mock("@/services/access/access-service", () => service)
+vi.mock("@/services/scope-units/scope-units-service", () => scopeUnitsServiceFrom([]))
 const download = vi.hoisted(() => ({ downloadBlob: vi.fn() }))
 vi.mock("@/lib/access/download", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/access/download")>()), ...download }))
 vi.mock("next/navigation", () => ({ usePathname: () => "/admin/users", useSearchParams: () => new URLSearchParams(), useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }) }))

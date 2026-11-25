@@ -1,7 +1,9 @@
 import { knowledgeAvailableSql } from "../../knowledge/application/live-knowledge-version.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import type { OptionsCursor } from "../../org-structure/application/scoped-options.js"
 import type { Queryable } from "../../people/application/schedule-exception-service.js"
+import { foldedLikeWords, foldSql } from "../../../shared/infrastructure/database/text-search.js"
 import { competencyInputSchema, PATTERN_KEY, type CompetencyInput } from "../domain/competency.js"
 import { emptyInterventionTypeDefinition, interventionTypeDefinitionSchema, validateInterventionType, type ConfigIssue, type InterventionTypeDefinition } from "../domain/intervention-type.js"
 import { emptyPolicyDefinition, policyDefinitionSchema, validatePolicyDefinition, type PolicyDefinition } from "../domain/policy-definition.js"
@@ -152,44 +154,54 @@ export async function setInterventionTypeActive(db: Database, organizationId: st
 // CATÁLOGO DO EDITOR
 // ---------------------------------------------------------------------------------------------
 
-/** `operatingUniverse`: no Grupo, o dele; no Subgrupo, o EFETIVO (o próprio ou o do Grupo-pai) — o mesmo contrato de `/admin/org-structure/teams`. */
-export type EditorCatalogTeam = { id: string; name: string; operationId: string; operatingUniverse: string | null; subteams: { id: string; teamId: string; name: string; operatingUniverse: string | null }[] }
 export type EditorCatalog = {
-  /** Grupos e subgrupos que o escopo de quem edita cobre; `unrestricted` = pode escolher "toda a organização". */
-  teams: EditorCatalogTeam[]
+  /** Pode escolher "toda a organização" (os Grupos e Subgrupos do escopo vêm em lotes de `/admin/scope-units`). */
   unrestricted: boolean
   indicators: { code: string; name: string; unit: string; active: boolean; dailySupported: boolean; officialClosureSupported: boolean }[]
-  /** Só título e se há versão publicada — o conteúdo continua com a permissão da base de conhecimento. */
-  documents: { id: string; title: string; published: boolean }[]
   /** Catálogo de flags por canal (as flags chegam calculadas com cada atendimento). */
   flags: { channel: string; flagName: string; valueType: "BOOLEAN" | "NUMERIC"; description: string | null; active: boolean }[]
 }
 
 /**
- * Leituras mínimas de que o editor de políticas precisa (grupos para o escopo, indicadores para as condições, documentos para as
- * competências), servidas pela própria área: quem edita políticas não precisa da permissão de configurar a estrutura, o catálogo
+ * Leituras mínimas de que o editor de políticas precisa (indicadores e flags para as condições; documentos das competências em lotes),
+ * servidas pela própria área: quem edita políticas não precisa da permissão de configurar a estrutura, o catálogo
  * de indicadores ou a base de conhecimento para escolher entre eles.
  */
-export async function loadEditorCatalog(db: Database, organizationId: string, scope: { unrestricted: boolean; teamIds: ReadonlySet<string>; subteamIds: ReadonlySet<string> }): Promise<EditorCatalog> {
-  const [teams, subteams, indicators, documents, flags] = await Promise.all([
-    db.query<{ id: string; name: string; operationId: string; operatingUniverse: string | null }>(`select id, name, operation_id "operationId", operating_universe "operatingUniverse" from teams where organization_id = $1 order by name`, [organizationId]),
-    db.query<{ id: string; teamId: string; name: string; operatingUniverse: string | null }>(`select s.id, s.team_id "teamId", s.name, coalesce(s.operating_universe, t.operating_universe) "operatingUniverse" from subteams s join teams t on t.id = s.team_id where s.organization_id = $1 order by s.name`, [organizationId]),
+export async function loadEditorCatalog(db: Database, organizationId: string, scope: { unrestricted: boolean }): Promise<EditorCatalog> {
+  const [indicators, flags] = await Promise.all([
     db.query<EditorCatalog["indicators"][number]>(
       `select code, name, unit, active, daily_supported "dailySupported", official_closure_supported "officialClosureSupported" from indicator_definitions where organization_id = $1 order by name`,
       [organizationId],
     ),
-    // Base só com rascunho não tem versão vigente: sem o coalesce "published" vinha NULL e o navegador recusava o catálogo inteiro
-    // (grupos, indicadores, flags e documentos do editor) — achado na conferência de 18/11/2026.
-    db.query<EditorCatalog["documents"][number]>(
-      `select d.id, d.title, coalesce(${knowledgeAvailableSql("d.id")}, false) published from knowledge_documents d where d.organization_id = $1 and d.deleted_at is null order by d.title`,
-      [organizationId],
-    ),
     db.query<EditorCatalog["flags"][number]>(`select channel, flag_name "flagName", value_type "valueType", description, active from channel_flags where organization_id = $1 order by channel, flag_name`, [organizationId]),
   ])
-  const visibleTeams = teams.rows
-    .map((team) => ({ ...team, subteams: subteams.rows.filter((subteam) => subteam.teamId === team.id && (scope.unrestricted || scope.teamIds.has(team.id) || scope.subteamIds.has(subteam.id))) }))
-    .filter((team) => scope.unrestricted || scope.teamIds.has(team.id) || team.subteams.length > 0)
-  return { teams: visibleTeams, unrestricted: scope.unrestricted, indicators: indicators.rows, documents: documents.rows, flags: flags.rows }
+  return { unrestricted: scope.unrestricted, indicators: indicators.rows, flags: flags.rows }
+}
+
+export type EditorDocument = { id: string; title: string; published: boolean }
+
+/**
+ * Bases para ligar a uma competência, em lotes: só título e se há versão publicada — o conteúdo continua com a permissão da base de
+ * conhecimento. Busca pelo título no banco, ordem estável (título + id) e cursor; `ids` resolve as já ligadas.
+ */
+export async function listEditorDocuments(db: Database, organizationId: string, request: { search?: string | undefined; cursor?: OptionsCursor | undefined; limit: number; ids?: readonly string[] | undefined }): Promise<{ items: EditorDocument[]; nextCursor: OptionsCursor | null }> {
+  const params: unknown[] = [organizationId]
+  const add = (value: unknown) => `$${params.push(value)}`
+  const title = foldSql("d.title")
+  // A ordem usa o começo do título: título não tem tamanho máximo, e o cursor com ele inteiro passaria do limite (run-13 CFQ-04).
+  const sortTitle = `left(${title}, 200)`
+  const where = ["d.organization_id = $1", "d.deleted_at is null"]
+  if (request.ids) where.push(`d.id = any(${add([...request.ids])}::uuid[])`)
+  else {
+    for (const word of foldedLikeWords(request.search)) where.push(`${title} like ${add(word)}`)
+    if (request.cursor) where.push(`(${sortTitle}, d.id) > (${add(request.cursor.name)}::text, ${add(request.cursor.id)}::uuid)`)
+  }
+  const limit = add(request.ids ? Math.max(request.ids.length, 1) : request.limit + 1)
+  // Base só com rascunho não tem versão vigente: sem o coalesce "published" vinha NULL e o navegador recusava a resposta inteira.
+  const result = await db.query<EditorDocument & { sort_name: string }>(`select d.id, d.title, coalesce(${knowledgeAvailableSql("d.id")}, false) published, ${sortTitle} sort_name from knowledge_documents d where ${where.join(" and ")} order by ${sortTitle}, d.id limit ${limit}`, params)
+  const rows = request.ids ? result.rows : result.rows.slice(0, request.limit)
+  const last = rows[rows.length - 1]
+  return { items: rows.map(({ id, title: name, published }) => ({ id, title: name, published })), nextCursor: !request.ids && result.rows.length > request.limit && last ? { name: last.sort_name, id: last.id } : null }
 }
 
 export type PatternOption = { key: string; kind: "PRACTICE" | "CRITERION"; title: string; detail: string | null }

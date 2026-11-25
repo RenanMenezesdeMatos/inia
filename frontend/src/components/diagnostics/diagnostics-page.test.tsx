@@ -5,6 +5,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { chooseUnit, closeUnitField, openUnitField } from "@/components/admin/shared/testing/scope-units-fake"
+import { scopedOptionsServiceFrom } from "@/components/admin/shared/testing/scoped-options-fake"
 
 import type { ProcessRow } from "@/schemas/diagnostics/diagnostics-memory.schema"
 
@@ -24,6 +26,17 @@ const service = vi.hoisted(() => ({
   memoryExportHref: (_filters: unknown, view: string) => `/export.csv?view=${view}`,
 }))
 vi.mock("@/services/diagnostics/diagnostics-memory-service", () => service)
+const UNITS = vi.hoisted(() => [
+  { id: "t-b2b", name: "B2B · Grandes Contas", subteams: [{ id: "s-corp", name: "Corporate" }] },
+  { id: "t-b2c", name: "B2C · Digital", subteams: [{ id: "s-dig", name: "Digital A" }] },
+])
+vi.mock("@/services/scope-units/scoped-options-service", () => scopedOptionsServiceFrom(UNITS, [{ id: "p-ana", name: "Ana B2B", teamId: "t-b2b", subteamId: "s-corp" }, { id: "p-bia", name: "Bia B2C", teamId: "t-b2c", subteamId: "s-dig" }]))
+/** Nomes oferecidos num filtro (abre, lê e fecha). */
+async function offered(label: string) {
+  const names = await openUnitField(label)
+  closeUnitField()
+  return names
+}
 
 /** 20 regras avaliadas; 6 em desvio por regra — duas delas a MESMA conduta (protocolo antes de transferir, duas fontes): 5 condutas. */
 const OCCURRENCES = { basis: "FULL" as const, assessed: 19, deviations: 5, met: 14, assessedRules: 20, deviationRules: 6, sharedDeviationRules: 2, undeterminedAssessedRules: 0, deviationRate: 26.3 }
@@ -349,29 +362,36 @@ describe("Diagnóstico — filtros encadeados Grupo → Subgrupo → pessoa", ()
       ],
     })
   })
-  const optionsOf = async (name: string) => {
-    fireEvent.click(screen.getByRole("combobox", { name }))
-    const options = (await screen.findAllByRole("option")).map((option) => option.textContent)
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" })
-    return options
-  }
-  const choose = async (name: string, option: string) => {
-    fireEvent.click(screen.getByRole("combobox", { name }))
-    fireEvent.click(await screen.findByRole("option", { name: option }))
-  }
-
-  it("Grupo escolhido restringe Subgrupos e pessoas; trocar o Grupo limpa Subgrupo e pessoa", async () => {
+  it("Grupos escolhidos restringem Subgrupos e pessoas; trocar os Grupos limpa o Subgrupo e a pessoa que deixaram de caber", async () => {
     renderWithQuery(<DiagnosticsPage />)
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "Subgrupo" })).toBeEnabled())
-    await waitFor(async () => expect(await optionsOf("Pessoa")).toEqual(["Todas as pessoas", "Ana B2B", "Bia B2C"]))
-    await choose("Grupo", "B2B · Grandes Contas")
-    expect(await optionsOf("Subgrupo")).toEqual(["Todos os subgrupos", "Corporate"])
-    expect(await optionsOf("Pessoa")).toEqual(["Todas as pessoas", "Ana B2B"])
-    await choose("Subgrupo", "Corporate")
-    await choose("Pessoa", "Ana B2B")
-    await choose("Grupo", "B2C · Digital")
-    expect(screen.getByRole("combobox", { name: "Subgrupo" })).toHaveTextContent("Todos os subgrupos")
-    expect(screen.getByRole("combobox", { name: "Pessoa" })).toHaveTextContent("Todas as pessoas")
-    expect(await optionsOf("Pessoa")).toEqual(["Todas as pessoas", "Bia B2C"])
+    expect(await offered("Filtrar por pessoa")).toEqual(["Todas as pessoas", "Ana B2B", "Bia B2C"])
+    await chooseUnit("Filtrar por grupo", "B2B · Grandes Contas")
+    expect(await offered("Filtrar por subgrupo")).toEqual(["B2B · Grandes Contas › Corporate"])
+    expect(await offered("Filtrar por pessoa")).toEqual(["Todas as pessoas", "Ana B2B"])
+    await chooseUnit("Filtrar por subgrupo", "B2B · Grandes Contas › Corporate")
+    await chooseUnit("Filtrar por pessoa", "Ana B2B")
+    // Um segundo Grupo se soma: a pessoa e o Subgrupo do primeiro continuam valendo.
+    await chooseUnit("Filtrar por grupo", "B2C · Digital")
+    expect(screen.getByRole("button", { name: "Filtrar por grupo: 2 grupos" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Filtrar por pessoa: Ana B2B" })).toBeInTheDocument()
+    expect(await offered("Filtrar por pessoa")).toEqual(["Todas as pessoas", "Ana B2B", "Bia B2C"])
+    fireEvent.click(screen.getByRole("button", { name: "Remover filtro Grupo: B2B · Grandes Contas" }))
+    expect(await screen.findByRole("button", { name: "Filtrar por subgrupo: Todos os subgrupos" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Filtrar por pessoa: Todas as pessoas" })).toBeInTheDocument()
+    expect(await offered("Filtrar por pessoa")).toEqual(["Todas as pessoas", "Bia B2C"])
+  })
+})
+
+describe("DiagnosticsPage — página e filtros", () => {
+  it("mudar um filtro volta \"Pessoas e equipes\" para a página 1", async () => {
+    service.fetchPeopleAggregates.mockImplementation(async (_filters: unknown, _groupBy: string, page: number, pageSize: number) => ({ total: 80, groupBy: "PERSON", page, pageSize, items: [{ ...STATS, key: `p-${page}`, label: `Pessoa da página ${page}`, topDeviations: [], notMet: 1, partial: 0, met: 4, assessed: 5 }] }))
+    renderWithQuery(<DiagnosticsPage />)
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /Pessoas e equipes/ }), { button: 0 })
+    await screen.findByText("Pessoa da página 1")
+    fireEvent.click(screen.getByRole("button", { name: /Próxima/ }))
+    await screen.findByText("Pessoa da página 2")
+    await chooseUnit("Filtrar por grupo", "B2B · Grandes Contas")
+    await screen.findByText("Pessoa da página 1")
+    expect(service.fetchPeopleAggregates.mock.lastCall!.slice(0, 3)).toEqual([expect.objectContaining({ teamId: ["t-b2b"] }), "PERSON", 1])
   })
 })

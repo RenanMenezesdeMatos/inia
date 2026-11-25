@@ -1,15 +1,16 @@
 "use client"
 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useId } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { BarChart3, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ListPagination } from "@/components/admin/shared/list/list-pagination"
 import { ListDateRangeFilter, ListSelectFilter, ListToolbar } from "@/components/admin/shared/list/list-filters"
+import { TeamSubteamFilters } from "@/components/admin/shared/list/team-subteam-filters"
 import { ListCardGrid, ListEmptyState, ListErrorState, ListNoResultsState, ListSkeleton } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
 import { useAdminListState, useClampListPage } from "@/hooks/use-admin-list-state"
@@ -20,6 +21,8 @@ import { useAiModelsQuery, useAiProvidersQuery, useAiUseCasesQuery } from "@/que
 import { useAiUsageRankingContextQuery, useAiUsageRankingQuery } from "@/queries/admin/use-ai-usage-ranking-queries"
 import type { AiUsageRankingParams } from "@/services/admin/ai-usage-ranking-service"
 import { AI_USAGE_PERIOD_LABELS, AI_USAGE_PERIODS, type AiUsagePeriod } from "@/schemas/admin/ai-management.schema"
+import { narrowToTeam, type OrgUnitIds } from "@/lib/admin/unit-selection"
+import { parentsOf, useSelectedOrgUnits } from "@/components/admin/shared/list/org-unit-multi-filter"
 import {
   AI_USAGE_RANKING_LEVEL_LABELS,
   AI_USAGE_RANKING_LEVELS,
@@ -27,7 +30,6 @@ import {
   AI_USAGE_RANKING_SORTS,
   AI_USAGE_SOURCE_LABELS,
   AI_USAGE_SOURCES,
-  type AiUsageRankingContext,
   type AiUsageRankingItem,
   type AiUsageRankingLevel,
   type AiUsageRankingSort,
@@ -51,13 +53,15 @@ type RankingFilters = {
   period: AiUsagePeriod
   range: DateRangeFilter
   source?: AiUsageSource
-  org: { teamId?: string; subteamId?: string }
+  org: OrgUnitIds
   leader?: { id: string; name: string }
   providerKey?: string
   modelId?: string
   useCase?: string
 }
 
+/** Grupos e Subgrupos onde a conta pode ver uso, em lotes. */
+const OPTIONS_SOURCE = { path: "/api/v1/admin/ai/usage/ranking/unit-options" }
 const DEFAULT_FILTERS: RankingFilters = { search: "", period: "30D", range: {}, org: {} }
 const DEFAULT_LEVEL: AiUsageRankingLevel = "DIRECTOR"
 
@@ -98,7 +102,7 @@ export function UsageRankingTab() {
     period: filters.period,
     ...(range ?? {}),
     ...(filters.source ? { source: filters.source } : {}),
-    ...(filters.org.subteamId ? { subteamId: filters.org.subteamId } : filters.org.teamId ? { teamId: filters.org.teamId } : {}),
+    ...filters.org,
     ...(filters.leader ? { leaderId: filters.leader.id } : {}),
     ...(filters.providerKey ? { providerKey: filters.providerKey } : {}),
     ...(filters.modelId ? { modelId: filters.modelId } : {}),
@@ -122,16 +126,15 @@ export function UsageRankingTab() {
   }
 
   const data = rankingQuery.data
+  const parents = parentsOf(useSelectedOrgUnits(OPTIONS_SOURCE, "SUBTEAM", filters.org.subteamId ?? []).units)
   const scope = contextQuery.data?.scope
 
   /** "Ver usuários" de uma linha: estreita ao ramo (Grupo, Subgrupo ou estrutura do líder) e troca para o nível Usuário. */
   function openPeople(item: AiUsageRankingItem) {
     if (!data || data.level === "PERSON") return
-    if (data.level === "TEAM") list.patchFilters({ org: { teamId: item.key }, leader: undefined })
-    else if (data.level === "SUBTEAM") {
-      const team = contextQuery.data?.teams.find((entry) => entry.subteams.some((subteam) => subteam.id === item.key))
-      list.patchFilters({ org: { teamId: team?.id, subteamId: item.key }, leader: undefined })
-    } else list.patchFilters({ leader: { id: item.key, name: item.name ?? "pessoa removida do cadastro" } })
+    if (data.level === "TEAM") list.patchFilters({ org: narrowToTeam(filters.org, item.key, parents), leader: undefined })
+    else if (data.level === "SUBTEAM") list.patchFilters({ org: { subteamId: [item.key] }, leader: undefined })
+    else list.patchFilters({ leader: { id: item.key, name: item.name ?? "pessoa removida do cadastro" } })
     setUrlParam("level", "PERSON", DEFAULT_LEVEL)
   }
 
@@ -171,7 +174,8 @@ export function UsageRankingTab() {
           </SelectContent>
         </Select>
         {filters.period === "CUSTOM" ? <ListDateRangeFilter label="Escolha as datas" value={filters.range} onChange={(value) => list.setFilter("range", value)} /> : null}
-        <RankingOrgFilter value={filters.org} onChange={(value) => list.setFilter("org", value)} context={contextQuery.data} />
+        {/* Grupo/Subgrupo — só os onde a conta pode ver uso. Estreita o recorte; nunca o amplia. */}
+        <TeamSubteamFilters source={OPTIONS_SOURCE} value={filters.org} onChange={(scope) => list.setFilter("org", scope)} />
         {filters.leader ? (
           <Button type="button" variant="outline" size="sm" className="border-primary/50" onClick={() => list.setFilter("leader", undefined)} aria-label={`Remover filtro: estrutura de ${filters.leader.name}`}>
             Estrutura de {filters.leader.name}
@@ -274,42 +278,5 @@ function LevelSelector({ value, onChange }: { value: AiUsageRankingLevel; onChan
         </ToggleGroupItem>
       ))}
     </ToggleGroup>
-  )
-}
-
-const ANY_TEAM = "__any__"
-
-/** Grupo/Subgrupo — só os onde a conta pode ver uso (vêm do backend). Estreita o recorte; nunca o amplia. */
-function RankingOrgFilter({ value, onChange, context }: { value: { teamId?: string; subteamId?: string }; onChange: (value: { teamId?: string; subteamId?: string }) => void; context: AiUsageRankingContext | undefined }) {
-  const encoded = value.subteamId ? `subteam:${value.subteamId}` : value.teamId ? `team:${value.teamId}` : ANY_TEAM
-  function decode(next: string) {
-    if (next.startsWith("team:")) return onChange({ teamId: next.slice(5) })
-    if (next.startsWith("subteam:")) {
-      const subteamId = next.slice(8)
-      const team = context?.teams.find((entry) => entry.subteams.some((subteam) => subteam.id === subteamId))
-      return onChange({ teamId: team?.id, subteamId })
-    }
-    onChange({})
-  }
-  return (
-    <Select value={encoded} onValueChange={decode} disabled={!context}>
-      <SelectTrigger className={cn("w-full sm:w-auto sm:min-w-40", encoded !== ANY_TEAM && "border-primary/50")} aria-label="Filtrar por grupo">
-        <SelectValue placeholder="Qualquer grupo" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={ANY_TEAM}>Qualquer grupo</SelectItem>
-        {context?.teams.map((team) => (
-          <SelectGroup key={team.id}>
-            <SelectLabel>{team.name}</SelectLabel>
-            <SelectItem value={`team:${team.id}`}>{team.name} (grupo inteiro)</SelectItem>
-            {team.subteams.map((subteam) => (
-              <SelectItem key={subteam.id} value={`subteam:${subteam.id}`}>
-                {team.name} › {subteam.name}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        ))}
-      </SelectContent>
-    </Select>
   )
 }

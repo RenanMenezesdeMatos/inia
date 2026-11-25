@@ -1,10 +1,12 @@
 import { z } from "zod"
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
+import { toQueryString } from "@/lib/admin/list-query"
 import {
   auditEntrySchema,
   capabilityCatalogSchema,
   competencyViewSchema,
   editorCatalogSchema,
+  editorDocumentPageSchema,
   evaluationListItemSchema,
   interventionTypeViewSchema,
   patternOptionSchema,
@@ -22,6 +24,9 @@ const BASE = "/api/v1/admin/intervention-policies"
 
 export const fetchCapabilityCatalog = async () => capabilityCatalogSchema.parse(await adminGet<unknown>(`${BASE}/capabilities`))
 export const fetchEditorCatalog = async () => editorCatalogSchema.parse(await adminGet<unknown>(`${BASE}/editor-catalog`))
+/** Bases para a competência, em lotes (busca pelo título); `ids` resolve as já ligadas. */
+export const fetchEditorDocuments = async (search: { search?: string; cursor?: string | null; ids?: readonly string[] }, signal?: AbortSignal) =>
+  editorDocumentPageSchema.parse(await adminGet<unknown>(`${BASE}/editor-catalog/documents${toQueryString({ search: search.search, cursor: search.cursor, ids: search.ids?.join(",") })}`, signal))
 export const searchPatternOptions = async (params: { search?: string; keys?: string[] }) => {
   const query = new URLSearchParams()
   if (params.search?.trim()) query.set("search", params.search.trim())

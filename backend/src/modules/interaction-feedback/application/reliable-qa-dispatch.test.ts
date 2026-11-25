@@ -24,7 +24,8 @@ const context = { collaborator: { id: OPERATOR, name: "Operadora", jobTitle: "Op
 function readerFor(store: ReliableFeedbackStore): FeedbackReviewReader {
   return {
     grantsOf: async () => [{ scopeType: "ORGANIZATION", teamId: null, subteamId: null }],
-    listQueue: async () => ({ rows: [], total: 0, filterOptions: { collaborators: [], teams: [] } }),
+    listQueue: async () => ({ rows: [], total: 0 }),
+    listFilterOptions: async () => ({ items: [], nextCursor: null }),
     loadInScope: async (_viewer, reviewId): Promise<ScopedReview | null> => {
       const record = await store.getReview(ORG, reviewId)
       return record ? { origin: "WORKFLOW", record, context, knowledge: [] } : null

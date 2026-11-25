@@ -17,7 +17,6 @@ import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
 import {
   ListDateRangeFilter,
   ListMultiSelectFilter,
-  ListOrgScopeFilter,
   ListUniverseFilter,
   universeChoiceOf,
   ListSearchInput,
@@ -25,11 +24,11 @@ import {
   ListToolbar,
   optionsFromLabels,
 } from "@/components/admin/shared/list/list-filters"
+import { ListOrgScopeFilter, useOrgScopeAfterUniverse } from "@/components/admin/shared/list/org-scope-filter"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
 import { useKnowledgeDocumentsPageQuery, useKnowledgeSubjectsQuery } from "@/queries/admin/use-knowledge-queries"
-import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
-import { orgScopeAfterUniverseChange, orgScopePatch } from "@/lib/operating-universe/hierarchy"
+import { orgScopePatch } from "@/lib/operating-universe/hierarchy"
 import type { KnowledgeListParams } from "@/services/admin/knowledge-service"
 import {
   DOCUMENT_TYPE_LABELS,
@@ -186,7 +185,6 @@ export function KnowledgePage() {
   const router = useRouter()
   const productScope = useProductScopeLabels("KNOWLEDGE_DOCUMENT")
   const [autoOpen] = useAutoOpenFromQuery("new")
-  const teamsQuery = useTeamsQuery()
   const subjectsQuery = useKnowledgeSubjectsQuery()
 
   // A biblioteca nasceu em cards — continua sendo o padrão desta tela.
@@ -194,6 +192,7 @@ export function KnowledgePage() {
   const pageQuery = useKnowledgeDocumentsPageQuery(list.params)
   // Hierarquia universo → Grupo/Subgrupo: o filtro de Grupo só oferece os do universo escolhido; trocar o universo limpa o Grupo que não cabe.
   const currentScope = { scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }
+  const scopeAfterUniverse = useOrgScopeAfterUniverse("knowledge.manage", currentScope)
 
   // Compatibilidade com o atalho antigo "?new=1" — o cadastro agora tem rota própria.
   useEffect(() => {
@@ -235,10 +234,10 @@ export function KnowledgePage() {
             <ListMultiSelectFilter label="Status" values={list.filters.status} onChange={(values) => list.setFilter("status", values)} options={STATUS_OPTIONS} />
             <ListUniverseFilter
               value={list.filters.operatingUniverse}
-              onChange={(operatingUniverse) => list.patchFilters({ operatingUniverse, ...orgScopePatch(orgScopeAfterUniverseChange(currentScope, teamsQuery.data, universeChoiceOf(operatingUniverse))) })}
+              onChange={(operatingUniverse) => list.patchFilters({ operatingUniverse, ...orgScopePatch(scopeAfterUniverse(universeChoiceOf(operatingUniverse))) })}
             />
             <ListOrgScopeFilter
-              teams={teamsQuery.data}
+              permission="knowledge.manage"
               universe={universeChoiceOf(list.filters.operatingUniverse)}
               value={currentScope}
               onChange={(scope) => list.patchFilters(orgScopePatch(scope))}

@@ -2,17 +2,19 @@
 
 import { FilterX, Search } from "lucide-react"
 
+import { TeamSubteamFilters } from "@/components/admin/shared/list/team-subteam-filters"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { MEMBER_SITUATION_LABELS, type MemberSituation, type TeamOverview } from "@/schemas/analytics/analytics.schema"
+import type { ScopedOptionsSource } from "@/services/scope-units/scoped-options-service"
 
 const ALL = "__all__"
 
 export type TeamFilterState = {
   search: string
-  teamId: string | null
-  subteamId: string | null
+  teamId: string[] | null
+  subteamId: string[] | null
   situation: MemberSituation | null
   attentionIndicatorCode: string | null
   pendingOnly: boolean
@@ -24,9 +26,8 @@ export function hasActiveTeamFilters(filters: TeamFilterState): boolean {
   return filters.search.trim() !== "" || filters.teamId !== null || filters.subteamId !== null || filters.situation !== null || filters.attentionIndicatorCode !== null || filters.pendingOnly
 }
 
-/** Filtros da lista de membros — só aparecem os que fazem sentido para o conjunto (Grupo só com 2+ grupos etc.). */
-export function TeamFilters({ filters, options, onChange, onClear }: { filters: TeamFilterState; options: TeamOverview["filterOptions"]; onChange: (patch: Partial<TeamFilterState>) => void; onClear: () => void }) {
-  const subteams = filters.teamId ? options.subteams.filter((subteam) => subteam.teamId === filters.teamId) : options.subteams
+/** Filtros da lista de membros. Grupo e Subgrupo são buscados no servidor, só os da estrutura vista. */
+export function TeamFilters({ filters, options, source, onChange, onClear }: { filters: TeamFilterState; options: TeamOverview["filterOptions"]; /** Grupos e Subgrupos da estrutura vista, em lotes. */ source: ScopedOptionsSource; onChange: (patch: Partial<TeamFilterState>) => void; onClear: () => void }) {
   return (
     <div className="space-y-2">
       <div className="relative">
@@ -34,36 +35,7 @@ export function TeamFilters({ filters, options, onChange, onClear }: { filters: 
         <Input value={filters.search} onChange={(event) => onChange({ search: event.target.value })} placeholder="Buscar por nome" aria-label="Buscar colaborador por nome" className="bg-card pl-8" />
       </div>
       <div role="group" aria-label="Filtros" className="flex flex-wrap items-center gap-2">
-        {options.teams.length > 1 ? (
-          <Select value={filters.teamId ?? ALL} onValueChange={(value) => onChange({ teamId: value === ALL ? null : value, subteamId: null })}>
-            <SelectTrigger className="w-44 bg-card" aria-label="Grupo">
-              <SelectValue placeholder="Grupo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Todos os grupos</SelectItem>
-              {options.teams.map((team) => (
-                <SelectItem key={team.id} value={team.id}>
-                  {team.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : null}
-        {subteams.length > 0 ? (
-          <Select value={filters.subteamId ?? ALL} onValueChange={(value) => onChange({ subteamId: value === ALL ? null : value })}>
-            <SelectTrigger className="w-48 bg-card" aria-label="Subgrupo">
-              <SelectValue placeholder="Subgrupo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Todos os subgrupos</SelectItem>
-              {subteams.map((subteam) => (
-                <SelectItem key={subteam.id} value={subteam.id}>
-                  {subteam.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : null}
+        <TeamSubteamFilters source={source} value={{ teamId: filters.teamId ?? undefined, subteamId: filters.subteamId ?? undefined }} onChange={(scope) => onChange({ teamId: scope.teamId ?? null, subteamId: scope.subteamId ?? null })} teamLabel="Todos os grupos" subteamLabel="Todos os subgrupos" />
         <Select value={filters.situation ?? ALL} onValueChange={(value) => onChange({ situation: value === ALL ? null : (value as MemberSituation) })}>
           <SelectTrigger className="w-48 bg-card" aria-label="Situação">
             <SelectValue placeholder="Situação" />

@@ -14,8 +14,9 @@ export async function fetchTeams(): Promise<Team[]> {
   return z.array(teamSchema).parse(await adminGet("/api/v1/admin/org-structure/teams"))
 }
 
+/** Só se quem administra alcança a organização inteira ("Todos os grupos"); os Grupos em si vêm em lotes de `/admin/scope-units`. */
 export async function fetchManageableTeams(): Promise<ManageableTeams> {
-  return manageableTeamsSchema.parse(await adminGet("/api/v1/admin/org-structure/teams/manageable"))
+  return manageableTeamsSchema.parse(await adminGet("/api/v1/admin/org-structure/teams/manageable?summary=true"))
 }
 
 export async function fetchSubjects(): Promise<Subject[]> {

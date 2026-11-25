@@ -1,61 +1,61 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react"
+import { useState } from "react"
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
-import type { AudiencePerson, ReportAudience, ReportOptions } from "@/schemas/reports/reports.schema"
-import { searchAudiencePeople } from "@/services/reports/reports-service"
-import { AudienceFields } from "./audience-fields"
+import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { scopedOptionsServiceFrom } from "@/components/admin/shared/testing/scoped-options-fake"
+import type { ReportAudience, ReportOptions } from "@/schemas/reports/reports.schema"
 
-vi.mock("@/services/reports/reports-service", () => ({ searchAudiencePeople: vi.fn() }))
+const UNITS = vi.hoisted(() => [{ id: "t-a", name: "Atendimento", subteams: [{ id: "s-a", name: "Tarde" }] }, { id: "t-r", name: "Retenção", subteams: [{ id: "s-r", name: "Tarde" }] }])
+const PEOPLE = vi.hoisted(() => [{ id: "p-ana", name: "Ana Lima", teamId: "t-a" }, { id: "p-salva", name: "Salva Antiga", teamId: "t-r" }])
+vi.mock("@/services/scope-units/scoped-options-service", () => scopedOptionsServiceFrom(UNITS, PEOPLE))
+
+import { AudienceFields } from "./audience-fields"
 
 const catalog: ReportOptions = {
   capabilities: { canCreateForSelf: true, canDistribute: true },
   timeZone: "America/Sao_Paulo",
   ownStructure: null,
-  structures: [],
   indicators: [],
-  audience: { scope: { organizationWide: true, teamIds: [], subteamIds: [] }, jobTitles: [], teams: [], subteams: [] },
+  audience: { scope: { organizationWide: true, teamIds: [], subteamIds: [] }, jobTitles: [] },
 }
-const distribution: ReportAudience = { mode: "DISTRIBUTION", everyone: false, levels: [], jobTitles: [], teamIds: [], subteamIds: [], personIds: [] }
-const person = (personId: string, name: string): AudiencePerson => ({ personId, name, role: "OPERATOR", jobTitle: null })
+const saved: ReportAudience = { mode: "DISTRIBUTION", everyone: false, levels: [], jobTitles: [], teamIds: [], subteamIds: [], personIds: ["p-salva"] }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((done) => {
-    resolve = done
-  })
-  return { promise, resolve }
+function Form({ onAudience }: { onAudience: (audience: ReportAudience) => void }) {
+  const [audience, setAudience] = useState<ReportAudience>(saved)
+  return <AudienceFields audience={audience} onChange={(next) => { setAudience(next); onAudience(next) }} catalog={catalog} canCreateForSelf />
 }
 
 beforeAll(() => installJsdomStubs())
-beforeEach(() => vi.useFakeTimers())
-afterEach(() => {
-  cleanup()
-  vi.useRealTimers()
-  vi.mocked(searchAudiencePeople).mockReset()
-})
+afterEach(cleanup)
 
-describe("busca de pessoas específicas", () => {
-  it("resposta atrasada de uma busca antiga não substitui a lista da busca atual", async () => {
-    const first = deferred<AudiencePerson[]>()
-    const second = deferred<AudiencePerson[]>()
-    vi.mocked(searchAudiencePeople).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
-    render(<AudienceFields audience={distribution} onChange={() => {}} catalog={catalog} canCreateForSelf />)
-    const input = screen.getByRole("textbox", { name: "Buscar pessoa" })
+describe("Público do report — Grupos, Subgrupos e pessoas", () => {
+  it("a pessoa já salva aparece pelo nome e continua ao buscar e escolher outra", async () => {
+    const onAudience = vi.fn()
+    renderWithQuery(<Form onAudience={onAudience} />)
+    expect(await screen.findByText("Salva Antiga")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /^Pessoas:/ }))
+    fireEvent.change(await screen.findByRole("combobox", { name: /Buscar pessoa/ }), { target: { value: "ana" } })
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1))
+    fireEvent.click(screen.getByRole("option", { name: "Ana Lima" }))
+    expect(onAudience).toHaveBeenLastCalledWith(expect.objectContaining({ personIds: ["p-salva", "p-ana"] }))
+    const chosen = screen.getByRole("list", { name: "Pessoas escolhidos", hidden: true })
+    expect(await within(chosen).findByText("Ana Lima")).toBeInTheDocument()
+    expect(within(chosen).getByText("Salva Antiga")).toBeInTheDocument()
+  })
 
-    fireEvent.change(input, { target: { value: "an" } })
-    act(() => vi.advanceTimersByTime(250))
-    fireEvent.change(input, { target: { value: "bia" } })
-    act(() => vi.advanceTimersByTime(250))
-    expect(vi.mocked(searchAudiencePeople).mock.calls).toEqual([["an"], ["bia"]])
-
-    // A busca "bia" responde primeiro; a de "an", depois.
-    await act(async () => second.resolve([person("p2", "Bia Souza")]))
-    await act(async () => first.resolve([person("p1", "Ana Lima")]))
-
-    expect(screen.getByRole("button", { name: "Bia Souza" })).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Ana Lima" })).not.toBeInTheDocument()
+  it("Subgrupos de nome igual: o Grupo de origem distingue na lista e no selo", async () => {
+    const onAudience = vi.fn()
+    renderWithQuery(<Form onAudience={onAudience} />)
+    fireEvent.click(screen.getByRole("button", { name: /^Subgrupos:/ }))
+    fireEvent.click(await screen.findByRole("option", { name: "Retenção › Tarde" }))
+    expect(screen.getByRole("option", { name: "Atendimento › Tarde" })).toHaveAttribute("aria-selected", "false")
+    expect(onAudience).toHaveBeenLastCalledWith(expect.objectContaining({ subteamIds: ["s-r"] }))
+    fireEvent.keyDown(screen.getByRole("combobox", { name: /Buscar/ }), { key: "Escape" })
+    fireEvent.click(await screen.findByRole("button", { name: "Remover Retenção › Tarde" }))
+    expect(onAudience).toHaveBeenLastCalledWith(expect.objectContaining({ subteamIds: [] }))
   })
 })

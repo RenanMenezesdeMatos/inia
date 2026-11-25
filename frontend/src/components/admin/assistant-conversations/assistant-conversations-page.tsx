@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation"
 import { MessagesSquare, Mic, SearchX } from "lucide-react"
 
 import { ListDateRangeFilter, ListSearchInput, ListSelectFilter, ListToolbar, optionsFromLabels } from "@/components/admin/shared/list/list-filters"
+import { TeamSubteamFilters } from "@/components/admin/shared/list/team-subteam-filters"
 import { ListPagination } from "@/components/admin/shared/list/list-pagination"
 import { AnalyticsEmptyState } from "@/components/analytics/analytics-states"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -34,8 +35,11 @@ import { ResponseTimeCard } from "./response-time-card"
 export const LIST_POLL_INTERVAL_MS = 20_000
 const PAGE_SIZE = 20
 
-type Filters = { search: string; origin: MonitoringOrigin | undefined; status: MonitoringStatus | undefined; teamId: string | undefined; subteamId: string | undefined; period: DateRangeFilter }
+type Filters = { search: string; origin: MonitoringOrigin | undefined; status: MonitoringStatus | undefined; teamId: string[] | undefined; subteamId: string[] | undefined; period: DateRangeFilter }
 const DEFAULT_FILTERS: Filters = { search: "", origin: undefined, status: undefined, teamId: undefined, subteamId: undefined, period: {} }
+
+/** Grupos e Subgrupos de quem tem conversa no alcance de quem lê, em lotes. */
+const OPTIONS_SOURCE = { path: "/api/v1/admin/assistant-conversations/filter-options" }
 
 /**
  * "Conversas com a INIA" — leitura da troca REAL de mensagens entre colaboradores e a INIA (nunca resumo de IA, log ou tabela de
@@ -82,8 +86,6 @@ export function AssistantConversationsPage() {
     window.history.replaceState(null, "", `${pathname}${next.size > 0 ? `?${next}` : ""}`)
   }
 
-  const options = query.data?.filterOptions
-  const subteamOptions = (options?.subteams ?? []).filter((subteam) => !list.filters.teamId || subteam.teamId === list.filters.teamId)
   const forbidden = query.error instanceof ApiError && query.error.status === 403
   const total = query.data?.total ?? 0
 
@@ -107,8 +109,7 @@ export function AssistantConversationsPage() {
           >
             <ListSelectFilter value={list.filters.origin} onChange={(value) => list.setFilter("origin", value)} options={optionsFromLabels(MONITORING_ORIGIN_LABELS)} allLabel="Todos os tipos" ariaLabel="Filtrar por tipo de conversa" />
             <ListSelectFilter value={list.filters.status} onChange={(value) => list.setFilter("status", value)} options={optionsFromLabels(MONITORING_STATUS_LABELS)} allLabel="Todos os estados" ariaLabel="Filtrar por estado" />
-            <ListSelectFilter value={list.filters.teamId} onChange={(value) => list.patchFilters({ teamId: value, subteamId: undefined })} options={(options?.teams ?? []).map((team) => ({ value: team.id, label: team.name }))} allLabel="Todos os grupos" ariaLabel="Filtrar por grupo" />
-            <ListSelectFilter value={list.filters.subteamId} onChange={(value) => list.setFilter("subteamId", value)} options={subteamOptions.map((subteam) => ({ value: subteam.id, label: subteam.name }))} allLabel="Todos os subgrupos" ariaLabel="Filtrar por subgrupo" />
+            <TeamSubteamFilters source={OPTIONS_SOURCE} value={{ teamId: list.filters.teamId, subteamId: list.filters.subteamId }} onChange={(scope) => list.patchFilters(scope)} teamLabel="Todos os grupos" subteamLabel="Todos os subgrupos" />
             <ListDateRangeFilter label="Última atividade" value={list.filters.period} onChange={(value) => list.setFilter("period", value)} />
           </ListToolbar>
 

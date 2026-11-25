@@ -4,20 +4,22 @@ import { useEffect, useMemo, useState } from "react"
 import { ListChecks, SearchX } from "lucide-react"
 import { toast } from "sonner"
 
-import { ListOrgScopeFilter, ListSearchInput, ListSelectFilter, ListSubjectScopeFilter, ListToolbar, type FilterOption } from "@/components/admin/shared/list/list-filters"
+import { ListSearchInput, ListSelectFilter, ListSubjectScopeFilter, ListToolbar, type FilterOption } from "@/components/admin/shared/list/list-filters"
+import { ListOrgScopeFilter } from "@/components/admin/shared/list/org-scope-filter"
 import { CursorPagination } from "@/components/admin/shared/list/list-pagination"
 import { UniverseBadge } from "@/components/operating-universe/universe-badge"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { EmptyState, InlineError, LoadingState } from "@/components/ui/states"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import type { OrgScopeFilter, SubjectScopeFilter } from "@/lib/admin/list-query"
-import { teamsForUniverse, type UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
+import type { UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
 import { cn } from "@/lib/utils"
 import { useKnowledgeOptionFacetsQuery, useKnowledgeOptionsQuery, type KnownKnowledgeOptions } from "@/queries/admin/use-agent-knowledge-options-queries"
 import type { AgentKnowledgeScope, KnowledgeOptionFacets, KnowledgeOptionState, KnowledgeOptionsFilter } from "@/schemas/admin/agent-knowledge-options.schema"
 import type { Team } from "@/schemas/admin/org-structure.schema"
 import { OPERATING_UNIVERSES, type OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import { fetchKnowledgeOptionIds } from "@/services/admin/agent-knowledge-options-service"
+import { hasOrgUnits } from "@/lib/admin/unit-selection"
 
 import { ConfirmButton } from "./confirm-button"
 import { KnowledgeOptionRow } from "./knowledge-option-row"
@@ -29,14 +31,6 @@ const STATE_OPTIONS: FilterOption<KnowledgeOptionState>[] = [
   { value: "NO_VERSION", label: "Sem versão disponível" },
   { value: "ARCHIVED", label: "Arquivadas" },
 ]
-
-/** Grupos que o filtro oferece: os do universo e, para agente de Grupos/Subgrupos, só os Grupos dele (as outras bases não podem ser ligadas). */
-function teamsForPicker(teams: readonly Team[] | undefined, universe: OperatingUniverse | undefined, agentScope: AgentKnowledgeScope | undefined): Team[] | undefined {
-  if (!teams) return undefined
-  const inUniverse = teamsForUniverse(teams, universe)
-  const teamIds = agentTeamIds(agentScope, inUniverse)
-  return teamIds ? inUniverse.filter((team) => teamIds.has(team.id)) : inUniverse
-}
 
 /** Produto: famílias (inclui os produtos dela) e produtos, agrupados pela família — só os que aparecem em alguma base. */
 function ProductFilter({ value, onChange, facets }: { value: string | undefined; onChange: (value: string | undefined) => void; facets: KnowledgeOptionFacets | undefined }) {
@@ -99,7 +93,7 @@ export function AvailablePanel({ selectedIds, onChange, known, universe, agentSc
     ...(universe ? { agentUniverse: universe } : {}),
     ...(universeFilter ? { universe: universeFilter } : {}),
     ...(agentScope ? { agentScope } : {}),
-    ...(orgScope.subteamId ? { subteamId: orgScope.subteamId } : orgScope.teamId ? { teamId: orgScope.teamId } : orgScope.scopeType === "ALL_TEAMS" ? { scopeType: "ALL_TEAMS" as const } : {}),
+    ...(hasOrgUnits(orgScope) ? { teamId: orgScope.teamId, subteamId: orgScope.subteamId } : orgScope.scopeType === "ALL_TEAMS" ? { scopeType: "ALL_TEAMS" as const } : {}),
     ...(productId ? { productId } : {}),
     ...(subjectScope.subjectId ? { subjectId: subjectScope.subjectId } : subjectScope.subjectScopeType ? { subjectScopeType: "ALL_SUBJECTS" as const } : {}),
     ...(state ? { state } : {}),
@@ -145,7 +139,7 @@ export function AvailablePanel({ selectedIds, onChange, known, universe, agentSc
 
   const selected = new Set(selectedIds)
   const toggle = (id: string) => emit(selected.has(id) ? selectedIds.filter((value) => value !== id) : [...selectedIds, id])
-  const hasFilters = Boolean(debouncedSearch || universeFilter || orgScope.teamId || orgScope.subteamId || orgScope.scopeType || productId || subjectScope.subjectId || subjectScope.subjectScopeType || state)
+  const hasFilters = Boolean(debouncedSearch || universeFilter || hasOrgUnits(orgScope) || orgScope.scopeType || productId || subjectScope.subjectId || subjectScope.subjectScopeType || state)
   const clearFilters = () => {
     setSearch("")
     setUniverseFilter(undefined)
@@ -201,7 +195,7 @@ export function AvailablePanel({ selectedIds, onChange, known, universe, agentSc
             ariaLabel="Filtrar por universo de atuação"
           />
         )}
-        <ListOrgScopeFilter value={orgScope} onChange={setOrgScope} teams={teamsForPicker(teams, universe ?? (universeFilter && universeFilter !== "PENDING" ? universeFilter : undefined), agentScope)} universe={universe ?? (universeFilter !== "PENDING" ? universeFilter : undefined)} />
+        <ListOrgScopeFilter permission="agents.manage" value={orgScope} onChange={setOrgScope} withinTeamIds={agentTeamIds(agentScope, teams)} universe={universe ?? (universeFilter !== "PENDING" ? universeFilter : undefined)} />
         <ProductFilter value={productId} onChange={setProductId} facets={facetsQuery.data} />
         <ListSubjectScopeFilter value={subjectScope} onChange={setSubjectScope} subjects={facetsQuery.data?.subjects} />
         <ListSelectFilter<KnowledgeOptionState> value={state} onChange={setState} options={STATE_OPTIONS} allLabel="Qualquer situação" ariaLabel="Filtrar por situação" />

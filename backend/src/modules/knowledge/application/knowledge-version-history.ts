@@ -110,6 +110,22 @@ export type KnowledgeVersionDetail = {
   changeSummary: string | null
   publishedAt: Date | null
   extraction: PdfExtraction | null
+  /** Nomes dos Grupos e Subgrupos da configuração, mesmo fora do que quem lê administra (a comparação já os mostra a quem lê a versão). */
+  scopeNames: { teams: Record<string, string>; subteams: Record<string, string> }
+}
+
+async function loadScopeNames(db: Queryable, organizationId: string, config: KnowledgeVersionConfig | null): Promise<KnowledgeVersionDetail["scopeNames"]> {
+  const idsOf = (key: "teamId" | "subteamId") => [...new Set((config?.orgScopes ?? []).flatMap((scope) => scope[key] ?? []))]
+  const [teamIds, subteamIds] = [idsOf("teamId"), idsOf("subteamId")]
+  if (teamIds.length === 0 && subteamIds.length === 0) return { teams: {}, subteams: {} }
+  const rows = (await db.query<{ kind: "T" | "S"; id: string; name: string }>(
+    `select 'T' kind, t.id, t.name from teams t where t.organization_id = $1 and t.id = any($2::uuid[])
+     union all
+     select 'S', s.id, t.name || ' › ' || s.name from subteams s join teams t on t.id = s.team_id where s.organization_id = $1 and s.id = any($3::uuid[])`,
+    [organizationId, teamIds, subteamIds],
+  )).rows
+  const namesOf = (kind: "T" | "S") => Object.fromEntries(rows.filter((row) => row.kind === kind).map((row) => [row.id, row.name]))
+  return { teams: namesOf("T"), subteams: namesOf("S") }
 }
 
 export async function loadKnowledgeVersion(db: Queryable, organizationId: string, documentId: string, versionId: string): Promise<KnowledgeVersionDetail | null> {
@@ -120,7 +136,8 @@ export async function loadKnowledgeVersion(db: Queryable, organizationId: string
     [versionId, documentId, organizationId],
   )).rows[0]
   if (!row) return null
-  return { id: row.id, number: row.version, status: row.status, content: row.content, textAvailable: row.text_status === "AVAILABLE", config: await withCanonicalSubjects(db, parseKnowledgeVersionConfig(row.config)), fileId: row.file_id, changeSummary: row.change_summary, publishedAt: row.published_at, extraction: parseKnowledgeExtraction(row.extraction) }
+  const config = await withCanonicalSubjects(db, parseKnowledgeVersionConfig(row.config))
+  return { id: row.id, number: row.version, status: row.status, content: row.content, textAvailable: row.text_status === "AVAILABLE", config, scopeNames: await loadScopeNames(db, organizationId, config), fileId: row.file_id, changeSummary: row.change_summary, publishedAt: row.published_at, extraction: parseKnowledgeExtraction(row.extraction) }
 }
 
 const DOCUMENT_TYPE_LABELS: Record<string, string> = { PROCEDURE: "Procedimento", MANUAL: "Manual", FAQ: "Perguntas frequentes", RULE: "Regra", FLOW: "Fluxo", WORK_INSTRUCTION: "IT - Instrução de trabalho" }

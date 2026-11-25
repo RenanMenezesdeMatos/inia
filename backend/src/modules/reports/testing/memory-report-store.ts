@@ -247,11 +247,13 @@ export function createFakeRuntime(options: { people: FakePerson[]; card: (struct
     async indicatorCatalog() {
       return [{ code: "TMA", name: "Tempo Médio de Atendimento", active: true }]
     },
-    async audienceOptions(_organizationId, scope) {
-      return { jobTitles: ["Supervisor de Atendimento"], teams: scope.teamIds.map((id) => ({ id, name: "Grupo" })), subteams: scope.subteamIds.map((id) => ({ id, name: "Subgrupo", teamId: scope.teamIds[0] ?? id })) }
+    async audienceOptions() {
+      return { jobTitles: ["Supervisor de Atendimento"] }
     },
-    async searchPeople(_organizationId, _scope, query, ids) {
-      return state.people.filter((person) => (ids && ids.length > 0 ? ids.includes(person.personId) : person.name.toLowerCase().includes(query.toLowerCase()))).map((person) => ({ personId: person.personId, name: person.name, role: person.role, jobTitle: null }))
+    async audienceUnitOptions(_organizationId, scope, request) {
+      const option = (id: string, name: string, role: string | null = null) => ({ kind: request.kind, id, name, teamId: null, teamName: null, subteamId: null, subteamName: null, operatingUniverse: null, matricula: null, role, jobTitle: null })
+      const all = request.kind === "PERSON" ? state.people.map((person) => option(person.personId, person.name, person.role)) : (request.kind === "TEAM" ? scope.teamIds : scope.subteamIds).map((id) => option(id, request.kind === "TEAM" ? "Grupo" : "Subgrupo"))
+      return { items: all.filter((item) => (request.ids ? request.ids.includes(item.id) : item.name.toLowerCase().includes((request.search ?? "").toLowerCase()))), nextCursor: null }
     },
   }
   return { runtime, calls, batches, lookups, state }

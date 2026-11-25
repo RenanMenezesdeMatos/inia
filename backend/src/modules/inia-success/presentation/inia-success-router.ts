@@ -1,3 +1,4 @@
+import { unitFilterShape } from "../../../shared/presentation/list-query.js"
 import { Router, type NextFunction, type Request, type Response } from "express"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
@@ -5,9 +6,10 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { AccessContext } from "../../access/domain/access-decision.js"
 import { createPostgresAccessRepository } from "../../access/infrastructure/postgres-access-repository.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { respondScopedOptions, UNIT_OPTION_KINDS } from "../../org-structure/presentation/options-query.js"
 import { alignmentsSummary } from "../application/alignments-reader.js"
 import { complianceSummary } from "../application/compliance-reader.js"
-import { canSeeAnySection, canSeeSection, successContext, type SuccessSection } from "../application/context-reader.js"
+import { canSeeAnySection, canSeeSection, successContext, successOptionsReach, type SuccessSection } from "../application/context-reader.js"
 import { feedbackSummary } from "../application/feedback-reader.js"
 import { repliesSummary } from "../application/replies-reader.js"
 import { responseTimeSummary } from "../application/response-time-reader.js"
@@ -21,12 +23,13 @@ import { periodBuckets, periodDays } from "../domain/success-metrics.js"
  * `requireAuth` ANTES do `/api/v1/admin` da governança; aqui dentro, a conta precisa de ao menos uma das permissões dos blocos e cada
  * rota confere a do seu bloco (403 sem ela). O alcance concreto de cada bloco é o da tela de origem dos dados.
  *
- *   GET /context                 blocos visíveis + opções de Grupo/Subgrupo do alcance
+ *   GET /context                 blocos visíveis
+ *   GET /unit-options            Grupos e Subgrupos do alcance, em lotes
  *   GET /response-time | /routes | /replies | /support | /feedback | /compliance | /alignments   (?from&to[&teamId][&subteamId])
  */
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe a data no formato AAAA-MM-DD.")
 const querySchema = z
-  .object({ from: localDate, to: localDate, teamId: z.string().uuid().optional(), subteamId: z.string().uuid().optional() })
+  .object({ from: localDate, to: localDate, ...unitFilterShape })
   .strict()
 
 type AccessRequest = Request & { successAccess?: AccessContext }
@@ -48,7 +51,12 @@ export function createIniaSuccessRouter(db: Database) {
   })
 
   router.get("/context", async (request: AccessRequest, response) => {
-    response.json({ data: await successContext(db, viewerOf(request), request.successAccess!) })
+    response.json({ data: successContext(request.successAccess!) })
+  })
+  // Grupos e Subgrupos dos filtros, em lotes, no alcance dos blocos que a conta vê.
+  router.get("/unit-options", async (request: AccessRequest, response) => {
+    const viewer = viewerOf(request)
+    response.json({ data: await respondScopedOptions(db, viewer.organizationId, () => successOptionsReach(viewer, request.successAccess!), request.query, { kinds: UNIT_OPTION_KINDS }) })
   })
 
   const section = <T>(name: SuccessSection, read: (db: Database, viewer: SuccessViewer, query: SuccessQuery) => Promise<T>) => {

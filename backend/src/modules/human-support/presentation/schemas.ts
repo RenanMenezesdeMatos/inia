@@ -1,3 +1,4 @@
+import { unitFilterShape } from "../../../shared/presentation/list-query.js"
 import { z } from "zod"
 import { ANJO_PAUSE_REASONS, ANJO_UNRESPONSIVE_LIMITS, HUMAN_SUPPORT_LIMITS, RESPONSE_TIMES_LIMITS } from "../domain/catalogs.js"
 import { SCOPE_STATES } from "../domain/enablement.js"
@@ -44,15 +45,15 @@ const timesShape = {
 export const groupResponseTimesSchema = z.object({ times: z.object(timesShape).strict().nullable(), version: z.number().int().min(0) }).strict()
 export const scopeParamsSchema = z.object({ scopeType: z.enum(["group", "subgroup"]), id }).strict()
 export const scopeStateSchema = z.object({ state: z.enum(SCOPE_STATES) }).strict()
-export const anjosQuerySchema = z.object({ teamId: id.optional(), subteamId: id.optional() }).strict()
+export const anjosQuerySchema = z.object({ ...unitFilterShape }).strict()
 export const capacitySchema = z.object({ maxConcurrent: z.number().int().min(HUMAN_SUPPORT_LIMITS.capacityMin).max(HUMAN_SUPPORT_LIMITS.capacityMax).nullable() }).strict()
 const civilDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
-export const panelQuerySchema = z.object({ from: civilDate, to: civilDate, teamId: id.optional(), subteamId: id.optional() }).strict()
+export const panelQuerySchema = z.object({ from: civilDate, to: civilDate, ...unitFilterShape }).strict()
 /** "Quem abandonou" em cada card do bloco de abandonos: o tipo, a página e o tamanho (10/20/50, como a paginação do app). */
 export const abandonmentListQuerySchema = panelQuerySchema.extend({ kind: z.enum(["WAITING", "ANJO", "OPERATOR"]), page: int(1, 100_000).optional(), pageSize: z.coerce.number().int().refine((value) => [10, 20, 50].includes(value), "Use 10, 20 ou 50 por página.").optional() }).strict()
 export const panelListQuerySchema = panelQuerySchema.extend({ search: z.string().trim().max(100).optional(), status: z.enum(["WAITING", "IN_PROGRESS", "AWAITING_OPERATOR", "CLOSED", "CANCELLED", "EXPIRED", "ABANDONED"]).optional(), origin: z.enum(["BUTTON", "DISLIKE", "SIGNAL"]).optional(), cursor: z.string().max(200).optional(), limit: int(1, 50).optional() }).strict()
 export const attemptsQuerySchema = panelQuerySchema.extend({ cursor: z.string().max(200).optional(), limit: int(1, 50).optional() }).strict()
-export const anjosNowQuerySchema = z.object({ teamId: id.optional(), subteamId: id.optional() }).strict()
+export const anjosNowQuerySchema = z.object({ ...unitFilterShape }).strict()
 export const timelineQuerySchema = z.object({ from: civilDate, to: civilDate }).strict()
 /** Acionamentos do período (aba Indicadores): o filtro opcional de produtivo × não produtivo × não avaliado. */
 export const demandQuerySchema = panelQuerySchema.extend({ productivity: z.enum(["PRODUCTIVE", "NOT_PRODUCTIVE", "NOT_EVALUATED"]).optional() }).strict()

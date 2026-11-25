@@ -17,15 +17,15 @@ function effectiveTeamIds(teams: Team[], target: ScopedLike): string[] {
   if (target.scopeType === "GROUPS") return [...new Set((target.scopeLinks ?? []).map((link) => link.teamId))]
   if (target.scopeType === "TEAM") return target.teamId ? [target.teamId] : []
   if (target.scopeType === "SUBTEAM") {
-    const team = teams.find((candidate) => candidate.subteams.some((subteam) => subteam.id === target.subteamId))
-    return team ? [team.id] : []
+    const teamId = target.teamId ?? teams.find((candidate) => candidate.subteams.some((subteam) => subteam.id === target.subteamId))?.id
+    return teamId ? [teamId] : []
   }
   return []
 }
 
 /**
  * Espelha scopesAreCompatible do backend (manageable-scopes.ts) — mesma regra, só que
- * calculada a partir da árvore de times/subgrupos já carregada no cliente (sem round-trip),
+ * calculada no cliente (sem round-trip); `teams` só resolve o Grupo-pai do formato antigo (Subgrupo sem `teamId`),
  * pra filtrar pickers (Parte 24 do pedido: nunca oferecer uma referência cross-group). O
  * backend continua sendo quem decide de verdade — este filtro é só UX, nunca a autorização em
  * si.

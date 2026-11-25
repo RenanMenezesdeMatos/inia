@@ -9,7 +9,7 @@ import type { ActionConfig, FlowGraph } from "@/schemas/admin/workflow-graph.sch
 
 import { EscalateForm } from "./escalate-form"
 
-vi.mock("@/queries/admin/use-user-account-queries", () => ({ useUserAccountsQuery: () => ({ data: [] }) }))
+vi.mock("@/components/admin/users/user-combobox", () => ({ UserCombobox: () => <button type="button">Pessoa</button> }))
 installJsdomStubs()
 
 beforeEach(() => {

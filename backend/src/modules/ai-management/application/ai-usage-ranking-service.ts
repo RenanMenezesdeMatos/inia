@@ -1,6 +1,8 @@
+import { unitFilterSql } from "../../../shared/infrastructure/database/unit-filter.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { SqlParams } from "../../../shared/infrastructure/sql-params.js"
 import { scopedPeopleSql } from "../../access/application/scope-people-reader.js"
+import type { OptionsReach } from "../../org-structure/application/scoped-options.js"
 import { scopesWithPermission, type AccessContext } from "../../access/domain/access-decision.js"
 import type { AccessScope } from "../../access/domain/access-scope.js"
 import {
@@ -176,8 +178,8 @@ export async function usageRanking(context: AiAdminContext, viewer: RankingViewe
   if (query.useCase) eventWhere.push(`u.use_case = ${p.add(query.useCase)}`)
   const personWhere = [`p.organization_id = ${org}`, `p.id in (select person_id from attributed where person_id is not null)`]
   if (!scope.organizationWide) personWhere.push(`p.id in (${scopedPeopleSql(p, { organizationId: viewer.organizationId, viewerPersonId: viewer.personId, permission: RANKING_PERMISSION })})`)
-  if (query.teamId) personWhere.push(`p.team_id = ${p.typed(query.teamId, "uuid")}`)
-  if (query.subteamId) personWhere.push(`p.subteam_id = ${p.typed(query.subteamId, "uuid")}`)
+  const units = unitFilterSql(query, (value) => p.add(value), { team: "p.team_id", subteam: "p.subteam_id" })
+  if (units) personWhere.push(units)
   // Estrutura do líder: ele e quem está abaixo (anticiclo por profundidade, como as demais CTEs de hierarquia). Só estreita.
   const leaderTree = query.leaderId
     ? `leader_tree as (
@@ -187,7 +189,7 @@ export async function usageRanking(context: AiAdminContext, viewer: RankingViewe
     ),`
     : ""
   if (query.leaderId) personWhere.push(`p.id in (select id from leader_tree)`)
-  const unlinkedWithoutPersonVisible = scope.organizationWide && !query.teamId && !query.subteamId && !query.leaderId
+  const unlinkedWithoutPersonVisible = scope.organizationWide && !units && !query.leaderId
   const includeUnlinked = p.typed(unlinkedWithoutPersonVisible, "boolean")
   const sourceWhere = query.source ? ` and a.source = ${p.add(query.source)}` : ""
   const entityOf = entityOfSql(p, org, query.level)
@@ -337,7 +339,6 @@ export async function usageRanking(context: AiAdminContext, viewer: RankingViewe
 export type AiUsageRankingContext = {
   levels: { key: AiUsageRankingLevel; label: string }[]
   scope: { organizationWide: boolean; labels: string[] }
-  teams: { id: string; name: string; subteams: { id: string; name: string }[] }[]
 }
 
 /**
@@ -346,37 +347,27 @@ export type AiUsageRankingContext = {
  */
 export async function usageRankingContext(context: AiAdminContext, viewer: RankingViewer): Promise<AiUsageRankingContext> {
   const scope = rankingScope(viewer.access)
-  const p = new SqlParams()
-  const org = p.typed(viewer.organizationId, "uuid")
-  const teamsSql = scope.organizationWide
-    ? `select t.id team_id, t.name team_name, s.id subteam_id, s.name subteam_name from teams t left join subteams s on s.team_id = t.id and s.organization_id = t.organization_id where t.organization_id = ${org}`
-    : `select distinct t.id team_id, t.name team_name, s.id subteam_id, s.name subteam_name
-         from people pe join teams t on t.id = pe.team_id and t.organization_id = pe.organization_id
-         left join subteams s on s.id = pe.subteam_id and s.organization_id = pe.organization_id
-        where pe.organization_id = ${org} and pe.id in (${scopedPeopleSql(p, { organizationId: viewer.organizationId, viewerPersonId: viewer.personId, permission: RANKING_PERMISSION })})`
   const teamIds = scope.scopes.flatMap((item) => (item.type === "GROUP" ? [item.teamId] : []))
   const subteamIds = scope.scopes.flatMap((item) => (item.type === "SUBGROUP" ? [item.subteamId] : []))
-  const [teamRows, scopeNames] = await Promise.all([
-    context.db.query<{ team_id: string; team_name: string; subteam_id: string | null; subteam_name: string | null }>(teamsSql, p.values),
-    context.db.query<{ id: string; name: string }>(
-      `select id, name from teams where organization_id = $1 and id = any($2::uuid[]) union all select id, name from subteams where organization_id = $1 and id = any($3::uuid[])`,
-      [viewer.organizationId, teamIds, subteamIds],
-    ),
-  ])
-  const teams = new Map<string, { id: string; name: string; subteams: Map<string, string> }>()
-  for (const row of teamRows.rows) {
-    const team = teams.get(row.team_id) ?? { id: row.team_id, name: row.team_name, subteams: new Map<string, string>() }
-    if (row.subteam_id && row.subteam_name) team.subteams.set(row.subteam_id, row.subteam_name)
-    teams.set(row.team_id, team)
-  }
+  const scopeNames = await context.db.query<{ id: string; name: string }>(
+    `select id, name from teams where organization_id = $1 and id = any($2::uuid[]) union all select id, name from subteams where organization_id = $1 and id = any($3::uuid[])`,
+    [viewer.organizationId, teamIds, subteamIds],
+  )
   const nameOf = new Map(scopeNames.rows.map((row) => [row.id, row.name]))
   const labels = scope.organizationWide
     ? ["Organização inteira"]
     : [...new Set(scope.scopes.map((item) => (item.type === "GROUP" ? `Grupo ${nameOf.get(item.teamId) ?? "—"}` : item.type === "SUBGROUP" ? `Subgrupo ${nameOf.get(item.subteamId) ?? "—"}` : "Minha estrutura")))]
-  const byName = (left: { name: string }, right: { name: string }) => left.name.localeCompare(right.name, "pt-BR")
   return {
     levels: AI_USAGE_RANKING_LEVELS.map((key) => ({ key, label: AI_USAGE_RANKING_LEVEL_LABELS[key] })),
     scope: { organizationWide: scope.organizationWide, labels },
-    teams: [...teams.values()].map((team) => ({ id: team.id, name: team.name, subteams: [...team.subteams.entries()].map(([id, name]) => ({ id, name })).sort(byName) })).sort(byName),
   }
+}
+
+/** Grupos e Subgrupos que a conta pode usar no filtro do ranking, em lotes: organização inteira = todos; senão, os das pessoas do escopo. */
+export function usageRankingOptionsReach(viewer: RankingViewer): OptionsReach {
+  const p = new SqlParams()
+  const org = p.typed(viewer.organizationId, "uuid")
+  if (rankingScope(viewer.access).organizationWide) return { select: `select null::uuid person_id, t.id team_id, s.id subteam_id from teams t left join subteams s on s.team_id = t.id where t.organization_id = ${org}`, params: p.values }
+  const people = scopedPeopleSql(p, { organizationId: viewer.organizationId, viewerPersonId: viewer.personId, permission: RANKING_PERMISSION })
+  return { select: `select distinct null::uuid person_id, pe.team_id, pe.subteam_id from people pe where pe.organization_id = ${org} and pe.id in (${people})`, params: p.values }
 }

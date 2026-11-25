@@ -1,3 +1,4 @@
+import { unitMatcher } from "../../../shared/infrastructure/database/unit-filter.js"
 import type { StructureAnchor } from "../../workflows/domain/structure-anchor-schema.js"
 import { isHierarchyRole, type GroupingDimension } from "../domain/hierarchy-levels.js"
 import { longPeriodLabel } from "../domain/reference-period.js"
@@ -149,24 +150,17 @@ function summarizeCounts(performances: MemberPerformance[], context: MemberConte
 }
 
 function buildFilterOptions(members: PersonNode[], dataset: PerformanceDataset): TeamOverview["filterOptions"] {
-  const teams = new Map<string, string>()
-  const subteams = new Map<string, { name: string; teamId: string }>()
-  for (const member of members) {
-    if (member.teamId && member.teamName) teams.set(member.teamId, member.teamName)
-    if (member.subteamId && member.subteamName && member.teamId) subteams.set(member.subteamId, { name: member.subteamName, teamId: member.teamId })
-  }
   const codes = indicatorCodesWithData(dataset, members.map((member) => member.id), dataset.period)
   return {
-    teams: [...teams].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
-    subteams: [...subteams].map(([id, entry]) => ({ id, name: entry.name, teamId: entry.teamId })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
     indicators: codes.map((code) => ({ code, name: dataset.definitions.get(code)?.name ?? code })),
   }
 }
 
 export type TeamMembersQuery = {
   search?: string | undefined
-  teamId?: string | undefined
-  subteamId?: string | undefined
+  /** Grupos e Subgrupos já refinados (`refinedUnits`). */
+  teamId?: readonly string[] | undefined
+  subteamId?: readonly string[] | undefined
   situation?: MemberSituation | undefined
   /** Só quem está abaixo da referência NESTE indicador. */
   attentionIndicatorCode?: string | undefined
@@ -188,11 +182,11 @@ export async function buildTeamMembersPage(repository: AnalyticsReadRepository, 
   const term = query.search?.trim().toLocaleLowerCase("pt-BR")
 
   const anchorId = resolved.anchor?.id ?? null
+  const inUnits = unitMatcher(query)
   const rows = resolved.members
     .filter((member) => !query.directOnly || isDirectMember(scope, anchorId, member))
     .filter((member) => !term || member.name.toLocaleLowerCase("pt-BR").includes(term))
-    .filter((member) => !query.teamId || member.teamId === query.teamId)
-    .filter((member) => !query.subteamId || member.subteamId === query.subteamId)
+    .filter(inUnits)
     .map((member) => toMemberSummary(member, context.base.performances.get(member.id)!, context))
     .filter((row) => !query.situation || row.situation === query.situation)
     // Todos os indicadores abaixo da referência — não só os 3 piores mostrados na linha (quem tem o indicador pedido como 4º pior também entra).

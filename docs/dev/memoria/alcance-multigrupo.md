@@ -121,7 +121,7 @@ agente/Orquestrador com `scopeLinks`, legado TEAM/SUBTEAM lido por `resourceScop
 maiúsculas/acentos (Subgrupo também pelo Grupo-pai), `universes`, `teamId`, cursor keyset; universo, escopo e elegibilidade no SQL ANTES do
 `limit`. Elegível = ≥1 `people` ativo, `role='OPERATOR'`, `current_employment_status` em produção (`EM_PRODUCAO` e legado `ACTIVE`); Grupo
 conta os dele e os dos Subgrupos; com universo, só operadores daquele universo. `ids=` resolve escolhas salvas com `eligible:false`.
-`eligibility=all` existe para filtros/relatórios (ninguém usa ainda).
+`eligibility=all` e `purpose=filter` servem aos filtros das listas (24/11, seção "Busca e filtros para listas grandes").
 
 **Escrita** — `assertNewScopeLinksAdmissible` (`scope-unit-admission.ts`): vínculos NOVOS (fora de `previous`) precisam caber no universo do
 cadastro (`SCOPE_UNIT_OUTSIDE_UNIVERSE`) e ter operador em produção (`SCOPE_UNIT_WITHOUT_PRODUCTION_OPERATORS`); o salvo continua aceito.
@@ -147,6 +147,57 @@ publicar entrando no "Todos"), `network-temporary-password-proof`; as provas mul
 Equivalência da 249 numa cópia do `inia` (pg_dump): 58 agentes, 18 Orquestradores, 73 Workflows — 0 diferenças de alcance.
 
 **Limitações:** Produto/Indicador não filtram ainda nenhum seletor de outro cadastro (só lista e detalhe); `applyManageableScopeFilter` e
-`SqlFilter.orgScope` compartilhados não conhecem GROUPS (cada módulo usa filtro próprio); a Publicação tem um universo só por recorte;
+`SqlFilter.orgScope` compartilhados não conhecem GROUPS (o segundo aceita vários ids desde 24/11) (cada módulo usa filtro próprio); a Publicação tem um universo só por recorte;
 "Habilitar acesso" de conta que entra pela rede ainda mostra senha temporária.
 
+## Busca e filtros para listas grandes (24/11/2026)
+
+Pedido do responsável: campos de seleção com muitos registros com busca no servidor e carregamento sob demanda, começando por Usuários e
+acessos; depois, no meio da entrega: "devemos poder selecionar mais de um grupo ou subgrupo, assim como o seletor do Workflow". Sem migration.
+
+**Filtro de vários Grupos/Subgrupos — uma regra só** (`backend/src/shared/infrastructure/database/unit-filter.ts`): entra quem está em algum
+Subgrupo escolhido ou em algum Grupo escolhido que não tenha Subgrupo escolhido (o Subgrupo REFINA o Grupo dele; os outros Grupos entram
+inteiros). `unitFilterSql` (parâmetros dinâmicos), `optionalUnitMatchSql` (parâmetros fixos), `unitMatcher` (listas em memória: Equipe e
+Calendário, sempre depois de `refinedUnits`: o Grupo de um Subgrupo nunca é deduzido das pessoas da lista), `wholeParent` (vínculo do Grupo inteiro também alcança o Subgrupo: Workflow, Indicador, seletor de bases do agente, base
+`scopeMatch=fits`). Parâmetros continuam `teamId`/`subteamId`, agora lista (`unitFilterShape`: `?teamId=a&teamId=b` ou `?teamId=a,b`, até 40
+de cada; um id só vale como antes). O escopo de quem lê é sempre outra cláusula: a escolha nunca amplia. Espelho na tela:
+`frontend/src/lib/admin/unit-selection.ts` (teto de 30 somados, pela URL do IIS).
+
+**Opções em lotes** — duas rotas, mesmo contrato (`kind`, `search`, `cursor`, `limit`, `ids`): `/admin/scope-units` (Administração; `permission`
+da tela, `purpose=filter` mostra também o Grupo-pai de um Subgrupo administrado e os sem operador em produção, `withinTeamIds`) e
+`listScopedOptions` (`org-structure/application/scoped-options.ts`), onde cada tela de acompanhamento diz quem o leitor alcança por uma
+subconsulta (`reach`): conversas, diagnóstico, indicadores de sucesso, usabilidade, QA de feedback, Equipe, Calendário, ranking de IA, boas
+práticas, Reports. Busca sem maiúsculas nem acentos, palavra a palavra (`text-search.ts`); ordem por nome e, entre Subgrupos homônimos, pelo
+Grupo (id desempata); cursor keyset; `ids=` resolve escolhas fora do lote e nunca traz o que está fora do alcance. Fora do payload das telas:
+`filterOptions`/`teams` completos. Cada rota diz os tipos que aceita (`kinds`): Indicadores de sucesso, Equipe, ranking de IA e Boas práticas
+só Grupo e Subgrupo (pessoa = 400). Matrícula (login de rede) só volta e só é pesquisável na Usabilidade (`matricula: true`); nas demais vem
+nula. Grupo trazido só como pai (`manageable: false`) vem sem contagem de operadores, e o universo dele só considera os Subgrupos do alcance.
+Bases no seletor: `GET /admin/knowledge?sort=title`, busca sem acento palavra a palavra. Nomes de Grupo/Subgrupo de uma versão da base vêm
+do servidor (`scopeNames`), mesmo fora do que quem lê administra.
+
+**Usuários e acessos** — Acessos e Pessoas: Grupo e Subgrupo lado a lado, busca sem acento combinada com os dois, total certo numa página além
+do fim, ordem estável (nome + id), volta à página 1 ao mudar filtro. Trocar os Grupos mantém os Subgrupos que continuam dentro deles; sem Grupo
+escolhido, o Subgrupo fica e aparece com o Grupo de origem. Grupo da pessoa no cadastro e escopo do papel também em lotes (escolha única).
+
+**Telas com o padrão** — filtros múltiplos: Acessos, Pessoas, Agentes, Orquestradores, Workflows, Bases, Argumentários, Indicadores,
+Alinhamentos, bases do agente, agentes da base, Conversas, Indicadores de sucesso, Diagnóstico, Equipe, Calendário, Painel dos Anjos e aba
+Anjos, ranking de IA, Boas práticas, QA de feedback, usabilidade (na URL, `teamId=a,b`). Campos em lotes: alcances (`MultiOrgScopeField`),
+escopo do papel, Grupo da pessoa, regra de indicador, escopo e documentos das políticas, âncora e população do Workflow, pessoa do nó, líder,
+público e estrutura dos Reports, nova análise de Boas práticas, documento de origem do Argumentário, filtro de base em Agentes.
+
+**Como a tela se comporta** — Acessos e listas com dois campos: `TeamSubteamFilters`; um campo com abas: `ListOrgScopeFilter` (marcar um Subgrupo
+tira o Grupo inteiro dele e vice-versa; "Somente globais" é exclusivo). "Ver usuários"/detalhar a linha de um Grupo estreita a escolha sem
+perder os Subgrupos já escolhidos dele (`narrowToTeam`).
+
+**Provas** — `org-structure/testing/large-list-options-proof.test.ts` (18: fora da 1ª página, homônimos, escopo por Grupo e Subgrupo, vários
+Grupos/Subgrupos em Acessos e Pessoas, e a lista/painel de CADA tela com vários no banco real). Frontend: `remote-combobox.test.tsx`,
+`list-filters.test.tsx`, `unit-selection.test.ts`, `access.test.tsx`, `users-page.test.tsx`; serviços falsos em
+`components/admin/shared/testing/` (`scope-units-fake`, `scoped-options-fake`).
+
+**Limitações:** os editores de base, argumentário e alinhamento ainda carregam a árvore de Grupos para a regra de troca de universo (não para o
+seletor); agentes, Orquestradores, Workflows, indicadores e produtos continuam em listas completas (catálogos pequenos); responsável do
+alinhamento, QA Lab e execução manual já buscavam no servidor e não mudaram; o rótulo de um papel com escopo de Subgrupo não mostra o Grupo;
+trocar o universo tira o Grupo escolhido mesmo que ele tenha Subgrupo do universo novo (o Subgrupo pode ser buscado sem Grupo). Decisão de
+produto em aberto (igual antes desta entrega): com um Subgrupo escolhido, o recurso que vale para o Grupo inteiro aparece em Workflows,
+Indicadores e no seletor de bases, e não em Agentes, Orquestradores, Bases, Argumentários e Alinhamentos. Auditoria run-13:
+`docs/security/relatorio-de-achados.md` § "Décima sexta rodada" (R16-01..10, R-54).

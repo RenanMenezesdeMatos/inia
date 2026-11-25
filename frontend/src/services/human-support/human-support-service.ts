@@ -106,8 +106,8 @@ export async function fetchSupportScopes() {
 export async function saveSupportScopeState(scopeType: "group" | "subgroup", id: string, state: ScopeState) {
   return z.object({ node: scopeNodeSchema }).parse(await apiSend<unknown>(`${ADMIN}/scopes/${scopeType}/${id}`, "PUT", { state })).node
 }
-export async function fetchSupportAnjos(filter: { teamId?: string | null; subteamId?: string | null } = {}) {
-  const params = new URLSearchParams(Object.entries(filter).flatMap(([key, value]) => (value ? [[key, value]] : [])))
+export async function fetchSupportAnjos(filter: { teamId?: readonly string[] | null; subteamId?: readonly string[] | null } = {}) {
+  const params = new URLSearchParams(Object.entries(filter).flatMap(([key, value]) => (value?.length ? [[key, value.join(",")]] : [])))
   return z.object({ items: z.array(anjoRowSchema) }).parse(await apiGet<unknown>(`${ADMIN}/anjos${params.size ? `?${params}` : ""}`)).items
 }
 export async function saveAnjoCapacity(personId: string, maxConcurrent: number | null) {
@@ -115,8 +115,8 @@ export async function saveAnjoCapacity(personId: string, maxConcurrent: number |
 }
 
 // Painel do apoio (Coordenador de Anjos e Administrador geral)
-export type PanelFilter = { from: string; to: string; teamId?: string | null; subteamId?: string | null }
-const panelParams = (filter: PanelFilter & Record<string, string | number | null | undefined>) => new URLSearchParams(Object.entries(filter).flatMap(([key, value]) => (value === undefined || value === null || value === "" ? [] : [[key, String(value)]])))
+export type PanelFilter = { from: string; to: string; teamId?: readonly string[] | null; subteamId?: readonly string[] | null }
+const panelParams = (filter: PanelFilter & Record<string, string | number | readonly string[] | null | undefined>) => new URLSearchParams(Object.entries(filter).flatMap(([key, value]) => (value === undefined || value === null || value === "" ? [] : [[key, String(value)]])))
 export async function fetchSupportFunnel(filter: PanelFilter) {
   return funnelResponseSchema.parse(await apiGet<unknown>(`${MONITORING}/metrics?${panelParams(filter)}`))
 }
@@ -167,12 +167,12 @@ export async function saveResponseTimes(input: SaveResponseTimesInput) {
   const path = input.teamId === null ? `${MONITORING}/response-times` : `${MONITORING}/response-times/groups/${encodeURIComponent(input.teamId)}`
   return responseTimesPanelSchema.parse(await apiSend<unknown>(path, "PUT", body))
 }
-export async function fetchQueueWaiting(filter: { teamId?: string | null; subteamId?: string | null } = {}) {
+export async function fetchQueueWaiting(filter: { teamId?: readonly string[] | null; subteamId?: readonly string[] | null } = {}) {
   const params = panelParams(filter as PanelFilter)
   return queueWaitingSchema.parse(await apiGet<unknown>(`${MONITORING}/queue${params.size ? `?${params}` : ""}`)).items
 }
-export async function fetchAnjosNow(filter: { teamId?: string | null; subteamId?: string | null } = {}) {
-  const params = new URLSearchParams(Object.entries(filter).flatMap(([key, value]) => (value ? [[key, value]] : [])))
+export async function fetchAnjosNow(filter: { teamId?: readonly string[] | null; subteamId?: readonly string[] | null } = {}) {
+  const params = new URLSearchParams(Object.entries(filter).flatMap(([key, value]) => (value?.length ? [[key, value.join(",")]] : [])))
   return anjosNowSchema.parse(await apiGet<unknown>(`${MONITORING}/anjos/now${params.size ? `?${params}` : ""}`))
 }
 export async function fetchAnjoPresenceTimeline(personId: string, period: { from: string; to: string }) {

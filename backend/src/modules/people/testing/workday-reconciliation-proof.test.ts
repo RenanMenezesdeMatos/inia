@@ -18,12 +18,13 @@ import { PgPendingActionsRepository } from "../../pending-actions/application/pe
 import { evaluateDataCondition } from "../../workflows/application/condition-evaluator.js"
 import { cancelScheduleException, loadScheduleExceptionAudit, provisionScheduleExceptions } from "../application/schedule-exception-service.js"
 import { syncScheduleHorizonAlerts } from "../application/schedule-horizon-alert-service.js"
-import { buildTeamCalendar } from "../application/team-calendar.js"
+import { buildTeamCalendar, teamCalendarOptionsReach } from "../application/team-calendar.js"
 import { reconcileOrganizationWorkdays, resolveReconciliation } from "../application/workday-reconciliation-service.js"
 import { classificationHistoryForTeam, classifyForTeam } from "../application/team-calendar.js"
 import { loadClassificationHistory } from "../application/workday-classification-service.js"
 import { updateIndicatorDefinition } from "../../indicators/application/indicator-definition-service.js"
 import { fixedClock } from "../../../shared/domain/clock.js"
+import { listScopedOptions } from "../../org-structure/application/scoped-options.js"
 import { PgAnalyticsReadRepository } from "../../performance-analytics/application/analytics-read-repository.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 
@@ -428,21 +429,21 @@ describe.skipIf(!ENABLED)("PLANEJADO × OBSERVADO — reconciliação, provision
     const calendar = await buildTeamCalendar(db, analytics, sup, { anchorId: null, from: "2026-09-13", to: "2026-09-18", now: NOW })
     expect(calendar.people.map((person) => person.name)).toEqual(["Ana TH", "Bia TH", "Caio TH", "Dani TH", "Edu TH"])
     expect(calendar.pagination).toEqual({ page: 1, pageSize: 10, total: 5, totalPeople: 5 })
-    expect(calendar.provisionablePeople.map((person) => person.name)).toEqual(["Ana TH", "Bia TH", "Caio TH", "Dani TH", "Edu TH"])
+    const teamOptions = async (kind: "TEAM" | "PERSON") => (await listScopedOptions(db, ORG, await teamCalendarOptionsReach(analytics, sup, { anchorId: null, anchors: false }), { kind, limit: 30 })).items
+    expect((await teamOptions("PERSON")).map((person) => person.name)).toEqual(["Ana TH", "Bia TH", "Caio TH", "Dani TH", "Edu TH"])
     expect(calendar.filterOptions.attention.map((entry) => entry.code)).toEqual(["MISSING_PRODUCTION", "WAITING_FOR_DATA", "DATA_SOURCE_DELAY", "UNJUSTIFIED_ABSENCE", "DIVERGENCE", "CONFLICT"])
     // Filtros + paginação (mesmo padrão das listagens administrativas): página 2 de 2 em 2; busca sem acento;
     // "atenção" por inconsistência (Caio: produção com INSS); o seletor de provisionar continua com todos.
     const page2 = await buildTeamCalendar(db, analytics, sup, { anchorId: null, from: "2026-09-13", to: "2026-09-18", now: NOW, page: 2, pageSize: 2 })
     expect(page2.people.map((person) => person.name)).toEqual(["Caio TH", "Dani TH"])
     expect(page2.pagination).toEqual({ page: 2, pageSize: 2, total: 5, totalPeople: 5 })
-    expect(page2.provisionablePeople).toHaveLength(5)
     const searched = await buildTeamCalendar(db, analytics, sup, { anchorId: null, from: "2026-09-13", to: "2026-09-18", now: NOW, filters: { search: "DANI" } })
     expect(searched.people.map((person) => person.name)).toEqual(["Dani TH"])
     expect(searched.pagination).toMatchObject({ total: 1, totalPeople: 5 })
-    const byTeam = await buildTeamCalendar(db, analytics, sup, { anchorId: null, from: "2026-09-13", to: "2026-09-18", now: NOW, filters: { teamId: calendar.people[0]!.teamId ?? undefined } })
+    const byTeam = await buildTeamCalendar(db, analytics, sup, { anchorId: null, from: "2026-09-13", to: "2026-09-18", now: NOW, filters: { teamId: calendar.people[0]!.teamId ? [calendar.people[0]!.teamId] : undefined } })
     expect(byTeam.pagination.total).toBe(calendar.people.filter((person) => person.teamId === calendar.people[0]!.teamId).length)
-    expect(byTeam.filterOptions.teams.map((team) => team.id)).toEqual([...new Set(calendar.people.map((person) => person.teamId).filter(Boolean))].sort())
-    expect((await buildTeamCalendar(db, analytics, sup, { anchorId: null, from: "2026-09-13", to: "2026-09-18", now: NOW, filters: { teamId: "00000000-0000-4000-8000-0000000000ff" } })).pagination).toMatchObject({ total: 0, totalPeople: 5 })
+    expect((await teamOptions("TEAM")).map((team) => team.id).sort()).toEqual([...new Set(calendar.people.map((person) => person.teamId).filter(Boolean))].sort())
+    expect((await buildTeamCalendar(db, analytics, sup, { anchorId: null, from: "2026-09-13", to: "2026-09-18", now: NOW, filters: { teamId: ["00000000-0000-4000-8000-0000000000ff"] } })).pagination).toMatchObject({ total: 0, totalPeople: 5 })
     // "Escalados para hoje" = dia de HOJE elegível (NOW = 16/09): Dani está de folga, Caio em INSS → fora; com o período
     // visível SEM hoje, o backend resolve só o dia de hoje e chega ao mesmo resultado.
     const todayIn = await buildTeamCalendar(db, analytics, sup, { anchorId: null, from: "2026-09-13", to: "2026-09-18", now: NOW, filters: { scheduledToday: true } })

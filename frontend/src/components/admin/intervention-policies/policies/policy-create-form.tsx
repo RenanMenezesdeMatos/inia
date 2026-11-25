@@ -29,7 +29,7 @@ export function PolicyCreateForm({ onCancel }: { onCancel: () => void }) {
   const [keyTouched, setKeyTouched] = useState(false)
   const [chosenScope, setScope] = useState<OrgScopeValue | null>(null)
   // Quem edita com escopo de grupo nunca vê "toda a organização": começa no grupo (o backend recusaria a organização).
-  const scope = chosenScope ?? (catalogQuery.data && !catalogQuery.data.unrestricted ? { scopeType: "TEAM" as const, teamId: catalogQuery.data.teams[0]?.id } : { scopeType: "ALL_TEAMS" as const })
+  const scope = chosenScope ?? (catalogQuery.data && !catalogQuery.data.unrestricted ? { scopeType: "TEAM" as const } : { scopeType: "ALL_TEAMS" as const })
   const policyScope = fromOrgScope(scope)
   const keyValid = STABLE_KEY_PATTERN.test(key)
   const canSubmit = name.trim().length > 0 && keyValid && scopeIsComplete(policyScope) && catalogQuery.isSuccess
@@ -81,7 +81,7 @@ export function PolicyCreateForm({ onCancel }: { onCancel: () => void }) {
       </div>
       <div className="space-y-1.5">
         <p className="text-sm font-medium">Escopo</p>
-        {catalogQuery.isError ? <Note>Não foi possível carregar os grupos agora: {errorMessage(catalogQuery.error)}</Note> : <PolicyScopeField teams={catalogQuery.data?.teams ?? []} value={scope} onChange={setScope} allowAllTeams={catalogQuery.data?.unrestricted ?? true} />}
+        {catalogQuery.isError ? <Note>Não foi possível carregar os grupos agora: {errorMessage(catalogQuery.error)}</Note> : <PolicyScopeField value={scope} onChange={setScope} allowAllTeams={catalogQuery.data?.unrestricted ?? true} />}
         <p className="text-xs text-muted-foreground">Quem a política alcança. Seu escopo de edição precisa cobrir o escolhido; depois da primeira publicação o escopo não muda.</p>
       </div>
       {create.isError ? <p className="text-sm text-destructive">{errorMessage(create.error)}</p> : null}

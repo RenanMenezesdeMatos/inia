@@ -234,7 +234,7 @@ describe.skipIf(!ENABLED)("Indicadores de sucesso da INIA — prova Postgres", (
     const admin = await responseTimeSummary(db(), viewer("ADMIN"), period)
     expect(admin.text).toMatchObject({ questions: 9, measured: 6 })
     expect(admin.text.average.sum).toBeCloseTo(700)
-    expect((await responseTimeSummary(db(), viewer("ADMIN"), { ...period, teamId: ids.G2 })).text).toMatchObject({ questions: 1, measured: 1 })
+    expect((await responseTimeSummary(db(), viewer("ADMIN"), { ...period, teamId: [ids.G2!] })).text).toMatchObject({ questions: 1, measured: 1 })
   })
 
   it("avaliação das respostas: vigente conta uma vez, retirada não conta, evolução por dia = funil oficial", async () => {
@@ -298,7 +298,7 @@ describe.skipIf(!ENABLED)("Indicadores de sucesso da INIA — prova Postgres", (
     expect(summary.counts).toEqual({ checks: 8, allowed: 6, violations: 1, blocked: 0, recorded: 1, failed: 1 })
     expect(summary.conformity).toMatchObject({ numerator: 6, denominator: 7 })
     expect(summary.inconclusive).toMatchObject({ numerator: 1, denominator: 8 })
-    expect((await complianceSummary(db(), viewer("ADMIN"), { ...period, teamId: ids.G2 })).counts.checks).toBe(1)
+    expect((await complianceSummary(db(), viewer("ADMIN"), { ...period, teamId: [ids.G2!] })).counts.checks).toBe(1)
   })
 
   it("pela API: cada bloco exige a própria permissão; sem nenhuma = 403; período acima de 92 dias = 422", async () => {
@@ -318,7 +318,7 @@ describe.skipIf(!ENABLED)("Indicadores de sucesso da INIA — prova Postgres", (
     const context = await reviewer.get("/api/v1/admin/inia-success/context")
     expect(context.status).toBe(200)
     expect(context.body.data.sections).toEqual({ responseTime: false, routes: false, replies: false, support: false, feedback: true, compliance: false, alignments: false })
-    expect(context.body.data.teams.map((team: { id: string }) => team.id)).toEqual([ids.G1])
+    expect((await reviewer.get("/api/v1/admin/inia-success/unit-options?kind=TEAM")).body.data.items.map((team: { id: string }) => team.id)).toEqual([ids.G1])
     expect((await reviewer.get(`/api/v1/admin/inia-success/replies?${query}`)).status).toBe(403)
     const feedback = await reviewer.get(`/api/v1/admin/inia-success/feedback?${query}`)
     expect(feedback.status).toBe(200)

@@ -73,11 +73,6 @@ export async function fetchUsabilityTimeline(personId: string, query: UsabilityQ
   return timelineSchema.parse(await adminGet(`${BASE}/users/${personId}/timeline${qs(query)}`))
 }
 
-export type PersonOption = { id: string; name: string; matricula: string | null; teamName: string | null }
-export async function searchUsabilityPeople(search: string): Promise<PersonOption[]> {
-  return adminGet(`${BASE}/users/options${qs({ search })}`)
-}
-
 /** Exportação: o MESMO recorte da API (aba, tabela e filtros). O arquivo vem do servidor com BOM, `;` e vírgula decimal. */
 export async function downloadUsabilityCsv(tab: UsabilityTab, table: string, query: UsabilityQuery): Promise<void> {
   const { blob, filename } = await adminGetBlob(`${BASE}/export.csv${qs({ ...query, tab, table })}`)

@@ -591,11 +591,14 @@ describe.skipIf(!ENABLED)("Políticas de acompanhamento e intervenções — per
     const catalog = await editor.get("/api/v1/admin/intervention-policies/editor-catalog")
     expect(catalog.status).toBe(200)
     expect(catalog.body.data.unrestricted).toBe(false)
-    expect(catalog.body.data.teams.map((team: { id: string }) => team.id)).toEqual([ids.team])
-    // O catálogo traz o universo do Grupo (nulo = ainda não classificado): é o que encadeia universo → Grupo → Subgrupo no escopo.
-    expect(catalog.body.data.teams[0]).toHaveProperty("operatingUniverse")
+    // Grupos do escopo de quem edita, em lotes e com o universo (nulo = ainda não classificado), que encadeia universo → Grupo → Subgrupo.
+    const units = await editor.get("/api/v1/admin/scope-units?kind=TEAM&permission=intervention_policies.edit&eligibility=all")
+    expect(units.body.data.items.map((team: { id: string }) => team.id)).toEqual([ids.team])
+    expect(units.body.data.items[0]).toHaveProperty("operatingUniverse")
     expect(catalog.body.data.indicators.some((indicator: { code: string }) => indicator.code === `${KEY}_TMA`)).toBe(true)
-    expect(catalog.body.data.documents.every((document: { title: string; published: boolean }) => typeof document.title === "string" && typeof document.published === "boolean")).toBe(true)
+    const documents = await editor.get("/api/v1/admin/intervention-policies/editor-catalog/documents?limit=5")
+    expect(documents.status).toBe(200)
+    expect(documents.body.data.items.every((document: { title: string; published: boolean }) => typeof document.title === "string" && typeof document.published === "boolean")).toBe(true)
     expect((await editor.post("/api/v1/admin/intervention-policies/policies").send({ key: `${KEY}_ORG`, name: `Organização ${TAG}`, scopeType: "ORGANIZATION" })).status).toBe(403)
     // Configurar não dá acesso a colaborador: a prévia de impacto dele não soma ninguém que ele não enxerga.
     const blind = await editor.post(`/api/v1/admin/intervention-policies/policies/${policyId}/impact-preview`).send({})

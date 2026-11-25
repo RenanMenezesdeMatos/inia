@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { scopeUnitsServiceFrom } from "@/components/admin/shared/testing/scope-units-fake"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import type { KnowledgeDocument, KnowledgeDocumentDetail, KnowledgeVersionComparison, KnowledgeVersionConfig, KnowledgeVersionDetail, KnowledgeVersionFullRow, KnowledgeVersionRow } from "@/schemas/admin/knowledge.schema"
 
@@ -48,6 +49,7 @@ vi.mock("@/services/admin/org-structure-service", () => ({
   fetchManageableTeams: vi.fn(async () => ({ teams: [], unrestricted: true })),
   fetchSubjects: vi.fn(async () => [{ id: "s1", name: "Faturas", description: null, active: true }]),
 }))
+vi.mock("@/services/scope-units/scope-units-service", () => scopeUnitsServiceFrom([{ id: "t1", name: "Atendimento", subteams: [{ id: "st1", name: "Contas" }] }]))
 vi.mock("@/queries/admin/use-product-catalog-queries", () => ({
   useProductNodesQuery: () => ({ data: [{ id: "p1", kind: "PRODUCT", name: "Linha IP" }] }),
 }))
@@ -210,7 +212,7 @@ const VERSIONS: KnowledgeVersionRow[] = [
   versionRow({ number: 1, status: "SUPERSEDED", situation: "SUPERSEDED", publishedAt: null, supersededReason: "ARCHIVED" }),
 ]
 
-const VERSION_DETAIL: KnowledgeVersionDetail = { id: "v2", number: 2, status: "PUBLISHED", content: "Texto antigo da V2.", textAvailable: true, config: CONFIG, fileId: null, changeSummary: "Ajuste de prazo", publishedAt: "2026-10-02T10:00:00.000Z" }
+const VERSION_DETAIL: KnowledgeVersionDetail = { id: "v2", number: 2, status: "PUBLISHED", content: "Texto antigo da V2.", textAvailable: true, config: CONFIG, fileId: null, changeSummary: "Ajuste de prazo", publishedAt: "2026-10-02T10:00:00.000Z", scopeNames: { teams: { t1: "Atendimento" }, subteams: { st1: "Atendimento › Contas" } } }
 
 const COMPARISON: KnowledgeVersionComparison = {
   from: { id: "v2", number: 2, status: "PUBLISHED" },
@@ -688,7 +690,7 @@ describe("histórico de versões", () => {
     const dialog = await screen.findByRole("dialog", { name: /V2 · Publicada · substituída/ })
     expect(await within(dialog).findByText("Texto antigo da V2.")).toBeInTheDocument()
     fireEvent.mouseDown(within(dialog).getByRole("tab", { name: "Configuração" }), { button: 0 })
-    expect(await within(dialog).findByText("Subgrupo Contas")).toBeInTheDocument()
+    expect(await within(dialog).findByText("Subgrupo Atendimento › Contas")).toBeInTheDocument()
     expect(await within(dialog).findByText("Assunto Faturas")).toBeInTheDocument()
     fireEvent.mouseDown(within(dialog).getByRole("tab", { name: "Arquivo" }), { button: 0 })
     expect(await within(dialog).findByText("Esta versão não tem arquivo.")).toBeInTheDocument()

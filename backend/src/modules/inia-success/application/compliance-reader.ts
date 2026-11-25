@@ -1,3 +1,4 @@
+import { hasUnitFilter } from "../../../shared/infrastructure/database/unit-filter.js"
 import { SqlParams } from "../../../shared/infrastructure/sql-params.js"
 import { responseCheckMode } from "../../governance/domain/response-compliance.js"
 import { foldByBucket, rate, type Bucket, type Rate } from "../domain/success-metrics.js"
@@ -46,7 +47,7 @@ export async function complianceSummary(db: Queryable, viewer: SuccessViewer, qu
   const org = p.typed(viewer.organizationId, "uuid")
   const bounds = boundsCte(p, viewer.organizationId, query)
   const surfaces = p.typed([...SURFACES], "text[]")
-  const filtered = Boolean(query.teamId || query.subteamId)
+  const filtered = hasUnitFilter(query)
   const placed = placementFilter(p, query)
   const result = await db.query<Row>(
     `with ${bounds}

@@ -14,7 +14,7 @@ import type { Viewer } from "./request-service.js"
  * alcance, período e filtro) e classificam cada registro com as MESMAS funções do domínio — a lista de um card tem sempre o total do
  * card (pedido do responsável em 2026-11-17).
  */
-export type AbandonmentQuery = { from: string; to: string; teamId?: string | undefined; subteamId?: string | undefined }
+export type AbandonmentQuery = { from: string; to: string; teamId?: readonly string[] | undefined; subteamId?: readonly string[] | undefined }
 
 type RequestRow = { id: string; status: RequestStatus; end_cause: RequestEndCause | null }
 type AttendanceRow = { id: string; end_cause: AttendanceEndCause | null; lost_cause: LostCause | null; responded: boolean; last_author: "ANJO" | "OPERATOR" | null }

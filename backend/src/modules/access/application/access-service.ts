@@ -96,7 +96,7 @@ export async function scopeOptions(deps: AccessDeps, actor: SessionActor) {
   const access = await resolveAccess(deps, actor)
   if (!canAnywhere(access, "access.roles.assign", deps.catalog)) throw forbidden()
   const visibility = visibilityOf(access, "access.roles.assign", deps.catalog)
-  return { organizationWide: visibility.organizationWide, ...(await deps.repository.scopeOptions(actor.organizationId, visibility)) }
+  return { organizationWide: visibility.organizationWide, ...(await deps.repository.scopeReach(actor.organizationId, visibility)) }
 }
 
 export async function assignRole(deps: AccessDeps, actor: SessionActor, input: { accountId: string; roleCode: string; scope: { type: AccessScope["type"]; teamId?: string | null | undefined; subteamId?: string | null | undefined } }) {

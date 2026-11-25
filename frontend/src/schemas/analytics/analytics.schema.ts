@@ -538,8 +538,6 @@ export const teamOverviewSchema = z.object({
   showsMembersDirectly: z.boolean(),
   directMemberCount: z.number(),
   filterOptions: z.object({
-    teams: z.array(z.object({ id: z.string(), name: z.string() })),
-    subteams: z.array(z.object({ id: z.string(), name: z.string(), teamId: z.string() })),
     indicators: z.array(z.object({ code: z.string(), name: z.string() })),
   }),
 })

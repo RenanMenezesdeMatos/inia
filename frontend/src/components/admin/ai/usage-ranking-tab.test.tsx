@@ -5,6 +5,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { chooseUnit } from "@/components/admin/shared/testing/scope-units-fake"
+import { scopedOptionsServiceFrom } from "@/components/admin/shared/testing/scoped-options-fake"
 import type { AiUsageRanking, AiUsageRankingContext } from "@/schemas/admin/ai-usage-ranking.schema"
 
 import { AiManagementPage } from "./ai-management-page"
@@ -19,6 +21,8 @@ vi.mock("next/navigation", () => ({
 
 const ranking = vi.hoisted(() => ({ fetchAiUsageRanking: vi.fn(), fetchAiUsageRankingContext: vi.fn() }))
 vi.mock("@/services/admin/ai-usage-ranking-service", () => ranking)
+const UNITS = vi.hoisted(() => [{ id: "team-norte", name: "Norte", subteams: [{ id: "sub-n1", name: "N1" }] }])
+vi.mock("@/services/scope-units/scoped-options-service", () => scopedOptionsServiceFrom(UNITS))
 const ai = vi.hoisted(() => ({ fetchAiPermissions: vi.fn(), fetchAiOverview: vi.fn(), fetchAiProviders: vi.fn(), fetchAiModels: vi.fn(), fetchAiUseCases: vi.fn() }))
 vi.mock("@/services/admin/ai-management-service", () => ai)
 
@@ -26,7 +30,6 @@ const METRICS = { requests: 0, attempts: 0, errors: 0, tokens: null, tokensRepor
 const CONTEXT: AiUsageRankingContext = {
   levels: [],
   scope: { organizationWide: true, labels: ["Organização inteira"] },
-  teams: [{ id: "team-norte", name: "Norte", subteams: [{ id: "sub-n1", name: "N1" }] }],
 }
 
 function rankingPage(overrides: Partial<AiUsageRanking> = {}): AiUsageRanking {
@@ -124,10 +127,9 @@ describe("IA / Modelos — Quem mais usa", () => {
     // O nome do campo é o rótulo visível (WCAG 2.5.3).
     expect(screen.getByRole("combobox", { name: "Ordenar por" })).toBeInTheDocument()
     ranking.fetchAiUsageRanking.mockResolvedValue(rankingPage({ items: [], total: 0, totals: METRICS, unlinked: { ...METRICS, reasons: [] } }))
-    fireEvent.click(screen.getByRole("combobox", { name: "Filtrar por grupo" }))
-    fireEvent.click(await screen.findByRole("option", { name: "Norte › N1" }))
-    await waitFor(() => expect(ranking.fetchAiUsageRanking).toHaveBeenLastCalledWith(expect.objectContaining({ subteamId: "sub-n1" })))
-    expect(ranking.fetchAiUsageRanking.mock.lastCall?.[0]).not.toHaveProperty("teamId")
+    await chooseUnit("Filtrar por subgrupo", "Norte › N1")
+    await waitFor(() => expect(ranking.fetchAiUsageRanking).toHaveBeenLastCalledWith(expect.objectContaining({ subteamId: ["sub-n1"] })))
+    expect(ranking.fetchAiUsageRanking.mock.lastCall?.[0]?.teamId).toBeUndefined()
     expect(await screen.findByText("Nenhum uso de IA para os filtros escolhidos")).toBeInTheDocument()
   })
 
@@ -180,7 +182,7 @@ describe("IA / Modelos — Quem mais usa", () => {
     ranking.fetchAiUsageRanking.mockResolvedValue(rankingPage({ level: "SUBTEAM", levelLabel: "Subgrupo", items: [{ ...rankingPage().items[0]!, key: "sub-n1", name: "N1", jobTitle: null }] }))
     renderWithQuery(<UsageRankingTab />)
     fireEvent.click(within(await screen.findByTestId("ranking-row-1")).getByRole("button", { name: "Ver usuários de N1" }))
-    await waitFor(() => expect(ranking.fetchAiUsageRanking).toHaveBeenLastCalledWith(expect.objectContaining({ level: "PERSON", subteamId: "sub-n1" })))
+    await waitFor(() => expect(ranking.fetchAiUsageRanking).toHaveBeenLastCalledWith(expect.objectContaining({ level: "PERSON", subteamId: ["sub-n1"] })))
     expect(ranking.fetchAiUsageRanking.mock.lastCall?.[0]).not.toHaveProperty("leaderId")
   })
 

@@ -17,13 +17,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
 import { EntityCard, EntityCardIcon, EntityCardTag } from "@/components/admin/shared/list/entity-card"
-import { ListBooleanFilter, ListOrgScopeFilter, ListSearchInput, ListSelectFilter, ListToolbar, ListUniverseFilter, universeChoiceOf } from "@/components/admin/shared/list/list-filters"
-import { filterByUniverse, orgScopeAfterUniverseChange, orgScopePatch, type UniverseChoice } from "@/lib/operating-universe/hierarchy"
+import { ListBooleanFilter, ListSearchInput, ListSelectFilter, ListToolbar, ListUniverseFilter, universeChoiceOf } from "@/components/admin/shared/list/list-filters"
+import { ListOrgScopeFilter, useOrgScopeAfterUniverse } from "@/components/admin/shared/list/org-scope-filter"
+import { filterByUniverse, orgScopePatch, type UniverseChoice } from "@/lib/operating-universe/hierarchy"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
 import { useArgumentScriptsPageQuery } from "@/queries/admin/use-argument-script-queries"
 import { useBusinessDomainsQuery } from "@/queries/admin/use-business-domain-queries"
-import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import { ARGUMENT_SCRIPT_STATUS_LABELS, LEGACY_CONVERSION_LABEL, READ_ONLY_LABEL, type ArgumentScript, type ArgumentScriptConversion, type ArgumentScriptStatus } from "@/schemas/admin/argument-script.schema"
 import type { ArgumentScriptListParams } from "@/services/admin/argument-script-service"
 
@@ -189,13 +189,13 @@ const CONVERSION_OPTIONS = [
 type View = { tab: "list" } | { tab: "form"; selectedId: string | null }
 
 export function ArgumentScriptsPage() {
-  const teamsQuery = useTeamsQuery()
   const domainsQuery = useBusinessDomainsQuery({ includeInactive: true })
   const list = useAdminListState({ storageKey: "argument-scripts", defaultFilters: DEFAULT_FILTERS })
   const pageQuery = useArgumentScriptsPageQuery(list.params)
   // Hierarquia universo → Grupo/Subgrupo e universo → área: cada filtro só oferece o que cabe no universo escolhido; trocar o universo limpa o que deixou de caber.
   const universeChoice = universeChoiceOf(list.filters.operatingUniverse)
   const currentScope = { scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }
+  const scopeAfterUniverse = useOrgScopeAfterUniverse("configuration.manage", currentScope)
   const keepDomain = (id: string | undefined, universe: UniverseChoice) => (id && filterByUniverse(domainsQuery.data ?? [], universe).some((domain) => domain.id === id) ? id : undefined)
 
   // `?new=1` (atalho da sidebar) abre o formulário de criação sem efeito: o pedido da URL vale até a primeira navegação.
@@ -256,11 +256,11 @@ export function ArgumentScriptsPage() {
                   value={list.filters.operatingUniverse}
                   onChange={(operatingUniverse) => {
                     const universe = universeChoiceOf(operatingUniverse)
-                    list.patchFilters({ operatingUniverse, ...orgScopePatch(orgScopeAfterUniverseChange(currentScope, teamsQuery.data, universe)), businessDomainId: keepDomain(list.filters.businessDomainId, universe) })
+                    list.patchFilters({ operatingUniverse, ...orgScopePatch(scopeAfterUniverse(universe)), businessDomainId: keepDomain(list.filters.businessDomainId, universe) })
                   }}
                 />
                 <ListOrgScopeFilter
-                  teams={teamsQuery.data}
+                  permission="configuration.manage"
                   universe={universeChoice}
                   value={currentScope}
                   onChange={(scope) => list.patchFilters(orgScopePatch(scope))}

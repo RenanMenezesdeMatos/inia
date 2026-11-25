@@ -10,7 +10,6 @@ import { nodeLabel } from "@/components/admin/product-catalog/node-picker"
 import { formatShortDateTime } from "@/lib/format/date"
 import { useKnowledgeSubjectsQuery, useKnowledgeVersionQuery } from "@/queries/admin/use-knowledge-queries"
 import { useProductNodesQuery } from "@/queries/admin/use-product-catalog-queries"
-import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import {
   DOCUMENT_TYPE_LABELS,
   KNOWLEDGE_SITUATION_LABELS,
@@ -24,26 +23,22 @@ import { KnowledgeArticleContent } from "../knowledge-article-content"
 import { KnowledgeFilePreview, useDownloadKnowledgeFile } from "../knowledge-file-preview"
 import { formatFileSize, NOT_RECORDED, versionLabel } from "../knowledge-visuals"
 
-function useConfigLabels() {
-  const teams = useTeamsQuery().data ?? []
+function useConfigLabels(names: KnowledgeVersionDetail["scopeNames"]) {
   const subjects = useKnowledgeSubjectsQuery().data?.items ?? []
   const productsQuery = useProductNodesQuery()
   return {
     org: (scope: KnowledgeVersionConfig["orgScopes"][number]) => {
       if (scope.scopeType === "ALL_TEAMS") return "Todos os grupos"
-      if (scope.scopeType === "SUBTEAM") {
-        const subteam = teams.flatMap((team) => team.subteams).find((entry) => entry.id === scope.subteamId)
-        return `Subgrupo ${subteam?.name ?? "não identificado"}`
-      }
-      return `Grupo ${teams.find((team) => team.id === scope.teamId)?.name ?? "não identificado"}`
+      if (scope.scopeType === "SUBTEAM") return `Subgrupo ${names.subteams[scope.subteamId ?? ""] ?? "não identificado"}`
+      return `Grupo ${names.teams[scope.teamId ?? ""] ?? "não identificado"}`
     },
     subject: (scope: KnowledgeVersionConfig["subjectScopes"][number]) => (scope.scopeType === "ALL_SUBJECTS" ? "Todos os assuntos" : `Assunto ${subjects.find((subject) => subject.id === scope.subjectId)?.name ?? "não identificado"}`),
     product: (id: string) => (productsQuery.data ? nodeLabel(productsQuery.data, id) : "Produto não identificado"),
   }
 }
 
-function ConfigurationPanel({ config, versionNumber }: { config: KnowledgeVersionConfig | null; versionNumber: number }) {
-  const labels = useConfigLabels()
+function ConfigurationPanel({ config, scopeNames, versionNumber }: { config: KnowledgeVersionConfig | null; scopeNames: KnowledgeVersionDetail["scopeNames"]; versionNumber: number }) {
+  const labels = useConfigLabels(scopeNames)
   if (!config) return <p className="text-sm text-muted-foreground">A configuração da versão {versionNumber} não foi registrada.</p>
   const rows: [string, string][] = [
     ["Título", config.title],
@@ -125,7 +120,7 @@ export function VersionViewDialog({ documentId, documentTitle, version, onClose 
                 <ContentPanel detail={detailQuery.data} documentTitle={documentTitle} />
               </TabsContent>
               <TabsContent value="configuration" className="pt-3">
-                <ConfigurationPanel config={detailQuery.data.config} versionNumber={version.number} />
+                <ConfigurationPanel config={detailQuery.data.config} scopeNames={detailQuery.data.scopeNames} versionNumber={version.number} />
               </TabsContent>
               <TabsContent value="file" className="pt-3">
                 <FilePanel documentId={documentId} documentTitle={documentTitle} detail={detailQuery.data} />

@@ -20,6 +20,7 @@ import { recordPersonalDataAccess } from "../../data-lifecycle/application/perso
 import { projectPeerTranscript } from "../../investigation/domain/peer-privacy-projection.js"
 import { projectTranscript } from "../../investigation/domain/transcript-projection.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { respondScopedOptions, UNIT_OPTION_KINDS } from "../../org-structure/presentation/options-query.js"
 
 /**
  * /api/v1/best-practices — base de boas práticas. LEITURA: o público do Diagnóstico (lidera alguém ativo ou tem `indicators.view`)
@@ -55,18 +56,6 @@ export function createBestPracticesRouter(db: Database, deps: { repository?: Ana
     const reader = await readerOf(db, repository, request)
     const organizationId = reader.actor.organizationId
     const indicators = (await db.query(`select id, code, name, unit, desired_direction "direction" from indicator_definitions where organization_id = $1 and active order by name`, [organizationId])).rows
-    const teams = (await db.query<{ id: string; name: string; subteams: { id: string; name: string }[] }>(
-      `select t.id, t.name, coalesce((select jsonb_agg(jsonb_build_object('id', s.id, 'name', s.name) order by s.name) from subteams s where s.team_id = t.id), '[]'::jsonb) subteams
-         from teams t where t.organization_id = $1 order by t.name`,
-      [organizationId],
-    )).rows
-    const scopes = reader.scopes
-    // Quem administra só um Subgrupo vê o Grupo dele com apenas os Subgrupos que administra (pede análise só do Subgrupo).
-    const manageableTeams = scopes.unrestricted || scopes.allTeams
-      ? teams.map((team) => ({ ...team, wholeTeam: true }))
-      : teams
-          .filter((team) => scopes.teamIds.has(team.id) || team.subteams.some((subteam) => scopes.subteamIds.has(subteam.id)))
-          .map((team) => ({ ...team, wholeTeam: scopes.teamIds.has(team.id), subteams: scopes.teamIds.has(team.id) ? team.subteams : team.subteams.filter((subteam) => scopes.subteamIds.has(subteam.id)) }))
     const production = isProductionEnvironment()
     const datasets = production ? [] : (await db.query(`select id, dataset_key "key", label, description, version, answer_key is not null "hasAnswerKey", jsonb_array_length(corpus->'calls') "calls", jsonb_array_length(corpus->'operators') "operators", corpus->'operators' "operatorList", (select coalesce(jsonb_agg(distinct r->>'referencePeriod'), '[]'::jsonb) from jsonb_array_elements(corpus->'results') r) "periods", updated_at "updatedAt" from best_practice_synthetic_datasets where organization_id = $1 order by label`, [organizationId])).rows
     // Sinais da chamada com "chamada boa × ruim" cadastrado: podem ser o resultado de uma análise (BEST_PRACTICE_ANALYSIS_V3).
@@ -81,8 +70,6 @@ export function createBestPracticesRouter(db: Database, deps: { repository?: Ana
       data: {
         indicators,
         signals,
-        teams,
-        manageableTeams,
         datasets,
         periods,
         capabilities: { canManage: reader.canManage, canRunSynthetic: !production && coversOrganization(reader.scopes) },
@@ -91,6 +78,14 @@ export function createBestPracticesRouter(db: Database, deps: { repository?: Ana
         labels: { outcome: OUTCOME_LABELS, strength: STRENGTH_LABELS, obligation: OBLIGATION_STATUS_LABELS, review: REVIEW_STATUS_LABELS },
       },
     })
+  })
+
+  // Grupos do filtro da lista, em lotes (a base é da organização: quem a lê filtra por qualquer Grupo). Os Grupos e Subgrupos de uma nova
+  // análise vêm de `/admin/scope-units`, no escopo de `configuration.manage`.
+  router.get("/unit-options", async (request, response) => {
+    const reader = await readerOf(db, repository, request)
+    const organizationId = reader.actor.organizationId
+    response.json({ data: await respondScopedOptions(db, organizationId, () => ({ select: "select null::uuid person_id, t.id team_id, s.id subteam_id from teams t left join subteams s on s.team_id = t.id where t.organization_id = $1", params: [organizationId] }), request.query, { kinds: UNIT_OPTION_KINDS }) })
   })
 
   router.get("/patterns", async (request, response) => {

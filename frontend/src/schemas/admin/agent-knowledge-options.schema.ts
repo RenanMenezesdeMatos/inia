@@ -49,8 +49,8 @@ export type KnowledgeOptionsFilter = {
   universe?: string
   agentScope?: AgentKnowledgeScope
   scopeType?: "ALL_TEAMS"
-  teamId?: string
-  subteamId?: string
+  teamId?: readonly string[] | undefined
+  subteamId?: readonly string[] | undefined
   productId?: string
   subjectScopeType?: "ALL_SUBJECTS"
   subjectId?: string

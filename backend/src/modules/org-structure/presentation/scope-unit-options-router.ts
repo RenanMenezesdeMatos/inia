@@ -9,6 +9,7 @@ import { getManageableScopes } from "../../auth/application/manageable-scopes.js
 import { sessionUser } from "../../auth/presentation/session-user.js"
 import { OPERATING_UNIVERSES } from "../../operating-universe/domain/operating-universe.js"
 import { listScopeUnitOptions } from "../application/scope-unit-options.js"
+import { decodeOptionsCursor, encodeOptionsCursor, idListParam } from "./options-query.js"
 
 /**
  * Permissões de quem edita o alcance nos cadastros (o seletor pede a da tela; a lista vem restrita ao escopo dela). Lista fechada:
@@ -22,10 +23,15 @@ export const SCOPE_PICKER_PERMISSIONS = [
   "operational_alignments.manage",
   "communications.publish_organization",
   "communications.publish_team",
+  // Filtros e campos de Grupo/Subgrupo de outras telas (24/11/2026): mesma rota, escopo da permissão da própria tela.
+  "people.manage",
+  "access.users.view",
+  "access.roles.assign",
+  "intervention_policies.edit",
+  "human_support.manage",
 ] as const satisfies readonly Permission[]
 
 const uuid = z.string().uuid()
-const MAX_IDS = 300
 
 const listQuerySchema = z.object({
   kind: z.enum(["TEAM", "SUBTEAM"]),
@@ -38,28 +44,25 @@ const listQuerySchema = z.object({
     return values as (typeof OPERATING_UNIVERSES)[number][]
   }),
   teamId: uuid.optional(),
-  /** "all" só para filtros/relatórios que precisam ver também os sem operador em produção; o padrão é a regra das novas escolhas. */
-  eligibility: z.enum(["production", "all"]).default("production"),
-  cursor: z.string().max(400).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(30),
-  ids: z.string().optional().transform((raw, context) => {
+  /** Só estes Grupos e os Subgrupos deles (ex.: os Grupos do agente). Até 40: cabe na URL padrão do IIS. */
+  withinTeamIds: z.string().optional().transform((raw, context) => {
     if (raw === undefined) return undefined
     const values = raw.split(",").map((value) => value.trim()).filter(Boolean)
-    // Até 300: o mesmo teto dos vínculos de um conteúdo (`scopeLinksInputSchema`), para a edição resolver todos os já escolhidos (run-10 QA-06).
-    if (values.length > MAX_IDS || values.some((value) => !uuid.safeParse(value).success)) { context.addIssue({ code: "custom", message: "Lista de ids inválida." }); return z.NEVER }
+    if (values.length === 0 || values.length > 40 || values.some((value) => !uuid.safeParse(value).success)) { context.addIssue({ code: "custom", message: "Lista de Grupos inválida." }); return z.NEVER }
     return values
   }),
+  /** "all" só para filtros/relatórios que precisam ver também os sem operador em produção; o padrão é a regra das novas escolhas. */
+  eligibility: z.enum(["production", "all"]).optional(),
+  /**
+   * "filter": filtro de lista (o Grupo-pai de um Subgrupo do escopo ou do universo também aparece, com ou sem gente em produção);
+   * "reach" (padrão): alcance ou alvo de um cadastro, só o que a conta administra inteiro.
+   */
+  purpose: z.enum(["reach", "filter"]).default("reach"),
+  cursor: z.string().max(1000).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  // Até 300: o mesmo teto dos vínculos de um conteúdo (`scopeLinksInputSchema`), para a edição resolver todos os já escolhidos (run-10 QA-06).
+  ids: idListParam,
 })
-
-const encodeCursor = (cursor: { name: string; id: string }) => Buffer.from(JSON.stringify([cursor.name, cursor.id])).toString("base64url")
-function decodeCursor(raw: string | undefined): { name: string; id: string } | undefined {
-  if (!raw) return undefined
-  try {
-    const [name, id] = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as [unknown, unknown]
-    if (typeof name === "string" && typeof id === "string" && uuid.safeParse(id).success) return { name, id }
-  } catch { /* cai no erro abaixo */ }
-  throw new DomainError("Posição da lista inválida — recarregue as opções.", "SCOPE_UNITS_CURSOR_INVALID", 400)
-}
 
 /**
  * `GET /api/v1/admin/scope-units` — Grupos ou Subgrupos para os seletores de alcance, com busca (sem maiúsculas nem acentos, pelo nome e,
@@ -81,13 +84,15 @@ export function createScopeUnitOptionsRouter(db: Database) {
       search: query.search,
       universes: query.universes,
       teamId: query.teamId,
-      eligibleOnly: query.eligibility === "production",
+      withinTeamIds: query.withinTeamIds,
+      eligibleOnly: (query.eligibility ?? (query.purpose === "filter" ? "all" : "production")) === "production",
+      includeParentTeams: query.purpose === "filter",
       scopes,
-      cursor: decodeCursor(query.cursor),
+      cursor: decodeOptionsCursor(query.cursor),
       limit: query.limit,
       ids: query.ids,
     })
-    response.json({ data: { items: page.items, nextCursor: page.nextCursor ? encodeCursor(page.nextCursor) : null } })
+    response.json({ data: { items: page.items, nextCursor: page.nextCursor ? encodeOptionsCursor(page.nextCursor) : null } })
   })
   return router
 }

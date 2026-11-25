@@ -9,7 +9,7 @@ import type { Viewer } from "./request-service.js"
  * ACIONAMENTOS DO PERÍODO (regra em `domain/demand.ts`): os pedidos criados no período, no alcance de quem lê (Coordenador de Anjos e
  * Administrador geral) e no filtro de Grupo/Subgrupo; hora e dia na hora local da organização; espera até o PRIMEIRO acolhimento.
  */
-export type DemandQuery = { from: string; to: string; teamId?: string | undefined; subteamId?: string | undefined; productivity?: Productivity | undefined }
+export type DemandQuery = { from: string; to: string; teamId?: readonly string[] | undefined; subteamId?: readonly string[] | undefined; productivity?: Productivity | undefined }
 
 export async function supportDemand(db: Queryable, viewer: Viewer, query: DemandQuery): Promise<Demand & { period: { from: string; to: string } }> {
   assertPanelPeriod(query)

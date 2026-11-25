@@ -1,3 +1,4 @@
+import { foldedLikeWords, foldSql } from "../../../shared/infrastructure/database/text-search.js"
 import { scopeLinkProblems } from "../../../shared/domain/scope-links/scope-links.js"
 import { assertNewScopeLinksAdmissible } from "../../org-structure/application/scope-unit-admission.js"
 import { DOCUMENT_BUDGET_CHARS } from "../../feedback-engine/domain/document-selection.js"
@@ -88,6 +89,9 @@ const knowledgeListStatusSchema = z.enum(["DRAFT", "APPROVED", "PROCESSING", "FA
 
 const listKnowledgeSchema = orgScopeFilterSchema.extend({
   search: searchParam,
+  /** "fits" = também as bases que valem para todos os Grupos ou para o Grupo inteiro (o que um seletor pode oferecer). */
+  scopeMatch: z.enum(["exact", "fits"]).default("exact"),
+  ids: listParam(z.string().uuid()),
   documentType: listParam(knowledgeDocumentTypeSchema),
   sourceType: listParam(z.enum(["TEXT", "PDF", "DOCX", "TXT", "JSON"])),
   status: listParam(knowledgeListStatusSchema),
@@ -98,6 +102,8 @@ const listKnowledgeSchema = orgScopeFilterSchema.extend({
   operatingUniverse: listParam(z.enum([...OPERATING_UNIVERSES, "PENDING"])),
   createdFrom: dateParam,
   createdTo: dateParam,
+  /** "title" = ordem alfabética (seletores); o padrão da lista é da mais nova para a mais antiga. */
+  sort: z.enum(["recent", "title"]).default("recent"),
 })
 const updateKnowledgeSchema = z.object({
   title: z.string().trim().min(2).optional(),
@@ -334,10 +340,12 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
     const organizationId = sessionUser(request).organizationId
     const input = listKnowledgeSchema.parse(request.query)
     const filter = new SqlFilter([organizationId])
-      .search(input.search, ["q.title", 'q."originalFilename"'])
       .in('q."documentType"', input.documentType)
       .in('q."sourceType"', input.sourceType)
       .dateRange('q."createdAt"', input.createdFrom, input.createdTo)
+    // Busca sem acento, palavra a palavra, como nos demais seletores ("cobranca tarde" acha "Cobrança da tarde").
+    const searched = foldSql(`q.title || ' ' || coalesce(q."originalFilename", '')`)
+    for (const word of foldedLikeWords(input.search)) filter.add(`${searched} like ${filter.param(word)}`)
     // O filtro acha a base pela versão em uso e também pelo que está por cima dela: rascunho em edição ou atualização em processamento ou com falha.
     if (input.status?.length) {
       const statuses = filter.param(input.status)
@@ -349,10 +357,11 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
       filter.add(`(q."operatingUniverse" = any(${filter.param(universes)}::text[])${input.operatingUniverse.includes("PENDING") ? ` or q."operatingUniverse" is null` : ""})`)
     }
     // Alcances ficam em tabelas próprias (n:1), então o filtro é um EXISTS e não uma coluna.
-    if (input.subteamId) {
-      filter.add(`exists (select 1 from knowledge_document_org_scopes os where os.knowledge_document_id = q.id and os.subteam_id = ${filter.param(input.subteamId)}::uuid)`)
-    } else if (input.teamId) {
-      filter.add(`exists (select 1 from knowledge_document_org_scopes os where os.knowledge_document_id = q.id and os.team_id = ${filter.param(input.teamId)}::uuid)`)
+    filter.in("q.id", input.ids, "uuid")
+    const fits = input.scopeMatch === "fits"
+    const units = filter.units({ team: "os.team_id", subteam: "os.subteam_id", wholeParent: fits }, input)
+    if (units) {
+      filter.add(`exists (select 1 from knowledge_document_org_scopes os where os.knowledge_document_id = q.id and (${fits ? "os.scope_type = 'ALL_TEAMS' or " : ""}${units}))`)
     } else if (input.scopeType === "ALL_TEAMS") {
       filter.add(`exists (select 1 from knowledge_document_org_scopes os where os.knowledge_document_id = q.id and os.scope_type = 'ALL_TEAMS')`)
     }
@@ -364,7 +373,7 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
     } else if (input.subjectScopeType === "ALL_SUBJECTS") {
       filter.add(`exists (select 1 from knowledge_document_subject_scopes ss where ss.knowledge_document_id = q.id and ss.scope_type = 'ALL_SUBJECTS')`)
     }
-    const data = await respondList(db, request.query, { select: KNOWLEDGE_SELECT, filter, orderBy: 'q."createdAt" desc, q.id' })
+    const data = await respondList(db, request.query, { select: KNOWLEDGE_SELECT, filter, orderBy: input.sort === "title" ? `${foldSql("q.title")}, q.id` : 'q."createdAt" desc, q.id' })
     response.json({ data })
   })
 

@@ -11,6 +11,7 @@ import { resolveIndicatorReference, resolveStructureReference, structureCandidat
 import { resolveEmploymentStatusFreshness, type EmploymentStatusFreshness } from "../../people/application/employment-status-freshness.js"
 import { loadAnalyticsVersion } from "../../performance-analytics/infrastructure/analytics-versions.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
+import { listScopedOptions, type OptionsCursor, type ScopedOption, type ScopedOptionsRequest } from "../../org-structure/application/scoped-options.js"
 import type { SourceState } from "../domain/delivery-decision.js"
 import type { RecordMarks } from "../domain/record-coverage.js"
 import { localDateParts } from "../../workflows/application/schedule-recurrence.js"
@@ -84,9 +85,9 @@ export type ReportRuntime = {
   timeZone(organizationId: string): Promise<string>
   /** Catálogo de indicadores da organização (validação de quem distribui sem estrutura própria). */
   indicatorCatalog(organizationId: string): Promise<{ code: string; name: string; active: boolean }[]>
-  /** Opções de público dentro do escopo de distribuição (níveis, cargos, Grupos, Subgrupos) e busca de pessoas. */
-  audienceOptions(organizationId: string, scope: DistributionScope): Promise<{ jobTitles: string[]; teams: { id: string; name: string }[]; subteams: { id: string; name: string; teamId: string }[] }>
-  searchPeople(organizationId: string, scope: DistributionScope, query: string, ids?: string[]): Promise<{ personId: string; name: string; role: string; jobTitle: string | null }[]>
+  /** Opções de público dentro do escopo de distribuição: cargos e, em lotes, Grupos, Subgrupos e pessoas com conta ativa. */
+  audienceOptions(organizationId: string, scope: DistributionScope): Promise<{ jobTitles: string[] }>
+  audienceUnitOptions(organizationId: string, scope: DistributionScope, request: ScopedOptionsRequest): Promise<{ items: ScopedOption[]; nextCursor: OptionsCursor | null }>
 }
 
 export function payloadForAccount(organizationId: string, account: AccountInfo): AuthTokenPayload {
@@ -304,22 +305,20 @@ export function createPostgresReportRuntime(db: Database, clock: () => Date = ()
     async audienceOptions(organizationId, scope) {
       const inScope = `($2::boolean or p.team_id = any($3::uuid[]) or p.subteam_id = any($4::uuid[]))`
       const params = [organizationId, scope.organizationWide, scope.teamIds, scope.subteamIds]
-      const [titles, teams, subteams] = await Promise.all([
-        db.query<{ job_title: string }>(`select distinct p.job_title from people p join user_accounts ua on ua.person_id = p.id and ua.active where p.organization_id = $1 and p.active and p.job_title is not null and btrim(p.job_title) <> '' and ${inScope} order by 1 limit 200`, params),
-        db.query<{ id: string; name: string }>(`select t.id, t.name from teams t where t.organization_id = $1 and ($2::boolean or t.id = any($3::uuid[]) or t.id in (select team_id from subteams where id = any($4::uuid[]))) order by t.name`, params),
-        db.query<{ id: string; name: string; team_id: string }>(`select s.id, s.name, s.team_id from subteams s where s.organization_id = $1 and ($2::boolean or s.team_id = any($3::uuid[]) or s.id = any($4::uuid[])) order by s.name`, params),
-      ])
-      return { jobTitles: titles.rows.map((row) => row.job_title), teams: teams.rows, subteams: subteams.rows.map((row) => ({ id: row.id, name: row.name, teamId: row.team_id })) }
+      const titles = await db.query<{ job_title: string }>(`select distinct p.job_title from people p join user_accounts ua on ua.person_id = p.id and ua.active where p.organization_id = $1 and p.active and p.job_title is not null and btrim(p.job_title) <> '' and ${inScope} order by 1 limit 200`, params)
+      return { jobTitles: titles.rows.map((row) => row.job_title) }
     },
-    async searchPeople(organizationId, scope, query, ids) {
-      const result = await db.query<{ id: string; name: string; role: string; job_title: string | null }>(
-        `select p.id, p.name, p.role, p.job_title from people p join user_accounts ua on ua.person_id = p.id and ua.organization_id = p.organization_id
-          where p.organization_id = $1 and p.active and ua.active and ($2::boolean or p.team_id = any($3::uuid[]) or p.subteam_id = any($4::uuid[]))
-            and (($6::uuid[] is not null and p.id = any($6::uuid[])) or ($6::uuid[] is null and p.name ilike '%' || $5 || '%'))
-          order by p.name limit 20`,
-        [organizationId, scope.organizationWide, scope.teamIds, scope.subteamIds, query.replace(/[%_]/g, ""), ids && ids.length > 0 ? ids : null],
-      )
-      return result.rows.map((row) => ({ personId: row.id, name: row.name, role: row.role, jobTitle: row.job_title }))
+    // Grupos, Subgrupos e pessoas do escopo de quem distribui, em lotes; pessoa = com conta ativa (a regra de quem pode receber).
+    audienceUnitOptions(organizationId, scope, request) {
+      const params = [organizationId, scope.organizationWide, scope.teamIds, scope.subteamIds]
+      const select =
+        request.kind === "PERSON"
+          ? `select rp.id person_id, rp.team_id, rp.subteam_id from people rp join user_accounts ua on ua.person_id = rp.id and ua.organization_id = rp.organization_id and ua.active
+              where rp.organization_id = $1 and rp.active and ($2::boolean or rp.team_id = any($3::uuid[]) or rp.subteam_id = any($4::uuid[]))`
+          : request.kind === "TEAM"
+            ? `select null::uuid person_id, rt.id team_id, null::uuid subteam_id from teams rt where rt.organization_id = $1 and ($2::boolean or rt.id = any($3::uuid[])) and $4::uuid[] is not null`
+            : `select null::uuid person_id, rs.team_id, rs.id subteam_id from subteams rs where rs.organization_id = $1 and ($2::boolean or rs.team_id = any($3::uuid[]) or rs.id = any($4::uuid[]))`
+      return listScopedOptions(db, organizationId, { select, params }, request)
     },
   }
 }

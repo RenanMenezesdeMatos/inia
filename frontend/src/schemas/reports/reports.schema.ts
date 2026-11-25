@@ -241,18 +241,20 @@ export const reportOptionsSchema = z.object({
   capabilities: z.object({ canCreateForSelf: z.boolean(), canDistribute: z.boolean() }),
   timeZone: z.string(),
   ownStructure: z.string().nullable(),
-  structures: z.array(z.object({ subjectKind: z.string(), subjectId: z.string(), label: z.string(), description: z.string() })),
   indicators: z.array(z.object({ code: z.string(), name: z.string(), active: z.boolean() })),
   audience: z
     .object({
       scope: z.object({ organizationWide: z.boolean(), teamIds: z.array(z.string()), subteamIds: z.array(z.string()) }),
       jobTitles: z.array(z.string()),
-      teams: z.array(z.object({ id: z.string(), name: z.string() })),
-      subteams: z.array(z.object({ id: z.string(), name: z.string(), teamId: z.string() })),
     })
     .nullable(),
 })
 export type ReportOptions = z.infer<typeof reportOptionsSchema>
+
+/** Estrutura fixa que o escopo atual alcança (líder, Grupo ou Subgrupo) — em lotes. */
+export const reportStructureOptionSchema = z.object({ subjectKind: z.string(), subjectId: z.string(), label: z.string(), description: z.string() })
+export type ReportStructureOption = z.infer<typeof reportStructureOptionSchema>
+export const reportStructurePageSchema = z.object({ items: z.array(reportStructureOptionSchema), nextCursor: z.string().nullable() })
 
 export const reportPreviewSchema = z.object({
   preview: z.literal(true),
@@ -275,8 +277,6 @@ export const reportProposalSchema = z.object({
 })
 export type ReportProposal = z.infer<typeof reportProposalSchema>
 
-export const audiencePersonSchema = z.object({ personId: z.string(), name: z.string(), role: z.string(), jobTitle: z.string().nullable() })
-export type AudiencePerson = z.infer<typeof audiencePersonSchema>
 
 /** Oferta "Criar report desta consulta" numa resposta do chat. */
 export const reportOfferSchema = z.object({ proposalId: z.string(), title: z.string(), status: z.string(), reportId: z.string().nullable().optional() })

@@ -6,16 +6,19 @@ import { toast } from "sonner"
 
 import { AnalyticsEmptyState, AnalyticsErrorState } from "@/components/analytics/analytics-states"
 import { Badge } from "@/components/ui/badge"
+import { TeamSubteamFilters } from "@/components/admin/shared/list/team-subteam-filters"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import { useSaveAnjoCapacityMutation, useSupportAnjosQuery, useSupportScopesQuery, useSupportSettingsQuery } from "@/queries/human-support/use-human-support-admin"
+import { useSaveAnjoCapacityMutation, useSupportAnjosQuery, useSupportSettingsQuery } from "@/queries/human-support/use-human-support-admin"
 import { NOT_ELIGIBLE_LABELS, type AnjoRow } from "@/schemas/human-support/admin.schema"
 import { PRESENCE_STATUS_LABELS } from "@/schemas/human-support/catalogs.schema"
+import { useSelectedOrgUnits } from "@/components/admin/shared/list/org-unit-multi-filter"
+import { hasOrgUnits } from "@/lib/admin/unit-selection"
 
-import { ScopeFilter, scopeFilterName, type ScopeFilterValue } from "./scope-filter"
+import type { OrgUnitIds } from "@/lib/admin/unit-selection"
 import { CAPACITY_OPTIONS } from "./settings-tab"
 
 /** Rota do editor de papéis que já existe (Usuários e acessos): é lá que se concede Anjo e Coordenador de Anjos. */
@@ -27,18 +30,23 @@ const DEFAULT = "default"
  * própria (vazia = padrão da organização). Filtrando por Grupo/Subgrupo, a lista mostra só quem atende aquele escopo e, para cada um,
  * se pode receber um pedido agora — e por que não.
  */
-export function AnjosTab({ filter, onFilterChange, canGrantRoles }: { filter: ScopeFilterValue; onFilterChange: (filter: ScopeFilterValue) => void; canGrantRoles: boolean }) {
-  const scopes = useSupportScopesQuery()
+const SCOPE_SOURCE = "human_support.manage"
+
+export function AnjosTab({ filter, onFilterChange, canGrantRoles }: { filter: OrgUnitIds; onFilterChange: (filter: OrgUnitIds) => void; canGrantRoles: boolean }) {
   const settings = useSupportSettingsQuery()
   const query = useSupportAnjosQuery({ teamId: filter.teamId ?? null, subteamId: filter.subteamId ?? null })
-  const filtered = Boolean(filter.teamId || filter.subteamId)
-  const scopeName = scopeFilterName(scopes.data ?? [], filter)
+  const filtered = hasOrgUnits(filter)
+  const teams = useSelectedOrgUnits(SCOPE_SOURCE, "TEAM", filter.teamId ?? [])
+  const subteams = useSelectedOrgUnits(SCOPE_SOURCE, "SUBTEAM", filter.subteamId ?? [])
+  // Com uma escolha só, o vazio diz o nome dela; com várias, "estes Grupos e Subgrupos".
+  const names = [...(filter.teamId ?? []).map((id) => teams.labelOf(id)), ...(filter.subteamId ?? []).map((id) => subteams.labelOf(id))]
+  const scopeName = names.length === 1 ? names[0] : "estes Grupos e Subgrupos"
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <ScopeFilter nodes={scopes.data ?? []} value={filter} onChange={onFilterChange} />
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <TeamSubteamFilters source={SCOPE_SOURCE} value={filter} onChange={onFilterChange} teamLabel="Todos os Grupos" subteamLabel="Todos os Subgrupos" />
           {filtered ? (
             <Button type="button" variant="ghost" size="sm" onClick={() => onFilterChange({})}>
               Limpar filtro
@@ -63,8 +71,8 @@ export function AnjosTab({ filter, onFilterChange, canGrantRoles }: { filter: Sc
       ) : query.data.length === 0 ? (
         <AnalyticsEmptyState
           icon={filtered ? SearchX : HeartHandshake}
-          title={filtered ? `Ninguém atende ${scopeName ?? "este escopo"}` : "Nenhuma pessoa com o papel Anjo"}
-          description={filtered ? "Conceda o papel Anjo com um escopo que cubra este Grupo ou Subgrupo." : "Conceda o papel Anjo em Usuários e acessos para alguém atender os pedidos de apoio."}
+          title={filtered ? `Ninguém atende ${scopeName}` : "Nenhuma pessoa com o papel Anjo"}
+          description={filtered ? "Conceda o papel Anjo com um escopo que cubra um destes Grupos ou Subgrupos." : "Conceda o papel Anjo em Usuários e acessos para alguém atender os pedidos de apoio."}
         />
       ) : (
         <div className={TABLE_FRAME}>

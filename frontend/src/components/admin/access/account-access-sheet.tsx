@@ -5,6 +5,7 @@ import { Plus, ShieldCheck, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { OrgUnitCombobox } from "@/components/admin/shared/org-unit-combobox"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -127,7 +128,7 @@ function AddRoleForm({ accountId }: { accountId: string }) {
   const assignable = (roles.data ?? []).filter((role) => role.assignableByYou)
   const role = assignable.find((entry) => entry.code === roleCode)
   // Só os escopos que o papel admite E que você alcança (organização/estrutura só para quem administra a organização inteira).
-  const scopeTypes = (role?.allowedScopes ?? []).filter((type) => ((type === "ORGANIZATION" || type === "MY_STRUCTURE") ? options.data?.organizationWide === true : type === "GROUP" ? (options.data?.teams.length ?? 0) > 0 : (options.data?.subteams.length ?? 0) > 0))
+  const scopeTypes = (role?.allowedScopes ?? []).filter((type) => ((type === "ORGANIZATION" || type === "MY_STRUCTURE") ? options.data?.organizationWide === true : type === "GROUP" ? options.data?.hasGroups === true : options.data?.hasSubgroups === true))
 
   if (roles.isPending || options.isPending) return <Skeleton className="h-24 w-full" />
   if (assignable.length === 0) return <p className="text-xs text-muted-foreground">Você não pode conceder papéis a partir do seu acesso atual.</p>
@@ -162,12 +163,19 @@ function AddRoleForm({ accountId }: { accountId: string }) {
       {scopeType === "GROUP" || scopeType === "SUBGROUP" ? (
         <div className="space-y-1.5">
           <Label htmlFor="access-target">{scopeType === "GROUP" ? "Grupo" : "Subgrupo"}</Label>
-          <Select value={targetId} onValueChange={setTargetId}>
-            <SelectTrigger id="access-target" className="w-full" aria-label={scopeType === "GROUP" ? "Grupo" : "Subgrupo"}><SelectValue placeholder="Escolha" /></SelectTrigger>
-            <SelectContent>
-              {scopeType === "GROUP" ? options.data?.teams.map((team) => <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>) : options.data?.subteams.map((subteam) => <SelectItem key={subteam.id} value={subteam.id}>{subteam.teamName} › {subteam.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <OrgUnitCombobox
+            key={scopeType}
+            id="access-target"
+            kind={scopeType === "GROUP" ? "TEAM" : "SUBTEAM"}
+            source="access.roles.assign"
+            purpose="reach"
+            eligibility="all"
+            variant="field"
+            value={targetId || null}
+            onChange={(unit) => setTargetId(unit?.id ?? "")}
+            emptyLabel={null}
+            ariaLabel={scopeType === "GROUP" ? "Grupo" : "Subgrupo"}
+          />
         </div>
       ) : null}
       {role ? <p className="text-xs text-muted-foreground">Permissões: {role.permissions.map((permission) => permission.label).join(" · ")}</p> : null}

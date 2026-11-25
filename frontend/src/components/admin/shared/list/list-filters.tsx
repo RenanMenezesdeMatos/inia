@@ -1,6 +1,6 @@
 "use client"
 
-import type { ReactNode } from "react"
+import { useRef, useState, type ReactNode } from "react"
 import { ChevronDown, FilterX, Search, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -15,11 +15,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useFocusAfterRemoval } from "@/hooks/use-focus-after-removal"
 import { cn } from "@/lib/utils"
-import type { DateRangeFilter, OrgScopeFilter, SubjectScopeFilter } from "@/lib/admin/list-query"
-import { teamsForUniverse, type UniverseChoice, type UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
-import type { Subject, Team } from "@/schemas/admin/org-structure.schema"
+import type { DateRangeFilter, SubjectScopeFilter } from "@/lib/admin/list-query"
+import type { UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
+import type { Subject } from "@/schemas/admin/org-structure.schema"
 import { OPERATING_UNIVERSES, type OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 // Área de filtros padrão das listagens administrativas. Layout em duas linhas: busca + modo de
@@ -28,17 +29,22 @@ import { OPERATING_UNIVERSES, type OperatingUniverse } from "@/schemas/operating
 
 const ALL = "__all__"
 
+export type ActiveFilter = { key: string; label: string; onClear: () => void }
+
 export function ListToolbar({
   search,
   viewToggle,
   hasActiveFilters,
   onClearFilters,
+  activeFilters = [],
   children,
 }: {
   search: ReactNode
   viewToggle?: ReactNode
   hasActiveFilters: boolean
   onClearFilters: () => void
+  /** Filtros em vigor, um selo por filtro com o próprio "x" (além do "Limpar filtros"). */
+  activeFilters?: readonly ActiveFilter[]
   children?: ReactNode
 }) {
   return (
@@ -57,7 +63,42 @@ export function ListToolbar({
           ) : null}
         </div>
       ) : null}
+      <ActiveFilterChips filters={activeFilters} label="Filtros ativos" />
     </div>
+  )
+}
+
+/** Selos acima disto ficam atrás de "Mostrar mais": muitos Grupos escolhidos não empurram a lista para fora da tela. */
+const VISIBLE_CHIPS = 8
+
+/** Filtros em vigor, um selo por escolha com o próprio "x". */
+export function ActiveFilterChips({ filters, label, className }: { filters: readonly ActiveFilter[]; label: string; className?: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const listRef = useRef<HTMLUListElement>(null)
+  const removing = useFocusAfterRemoval(listRef, filters.length)
+  if (filters.length === 0) return null
+  const hidden = filters.length - VISIBLE_CHIPS
+  const visible = expanded || hidden <= 1 ? filters : filters.slice(0, VISIBLE_CHIPS)
+  return (
+    <ul ref={listRef} className={cn("flex flex-wrap items-center gap-1.5", className)} aria-label={label}>
+      {visible.map((filter, index) => (
+        <li key={filter.key} className="min-w-0 max-w-full">
+          <Badge variant="outline" className="max-w-[min(20rem,100%)] gap-1 border-primary/40 bg-card py-1 pr-1 font-normal">
+            <span className="truncate" title={filter.label}>{filter.label}</span>
+            <button type="button" data-removable className="rounded-full p-0.5 hover:bg-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Remover filtro ${filter.label}`} onClick={() => { removing(index); filter.onClear() }}>
+              <X className="size-3" aria-hidden />
+            </button>
+          </Badge>
+        </li>
+      ))}
+      {hidden > 1 ? (
+        <li>
+          <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" aria-expanded={expanded} onClick={() => setExpanded((current) => !current)}>
+            {expanded ? "Mostrar menos" : `Mostrar mais ${hidden}`}
+          </Button>
+        </li>
+      ) : null}
+    </ul>
   )
 }
 
@@ -215,69 +256,6 @@ export function ListMultiSelectFilter<V extends string>({
 // Intervalo de datas (inclusivo) — serializado como YYYY-MM-DD para a API. Mesmo seletor de período do resto do app.
 export function ListDateRangeFilter({ label, value, onChange }: { label: string; value: DateRangeFilter; onChange: (value: DateRangeFilter) => void }) {
   return <DateRangePicker value={value} onChange={(next) => onChange({ from: next.from, to: next.to })} placeholder={label} clearable highlightActive aria-label={`Filtrar por ${label.toLocaleLowerCase("pt-BR")}`} />
-}
-
-// Grupo/subgrupo: "qualquer" (sem filtro), só globais, um grupo (inclui subgrupos) ou um subgrupo.
-function encodeOrgScope(value: OrgScopeFilter) {
-  if (value.subteamId) return `subteam:${value.subteamId}`
-  if (value.teamId) return `team:${value.teamId}`
-  if (value.scopeType === "ALL_TEAMS") return "global"
-  return ALL
-}
-
-function decodeOrgScope(encoded: string, teams: Team[]): OrgScopeFilter {
-  if (encoded === "global") return { scopeType: "ALL_TEAMS" }
-  if (encoded.startsWith("team:")) return { teamId: encoded.slice(5) }
-  if (encoded.startsWith("subteam:")) {
-    const subteamId = encoded.slice(8)
-    const team = teams.find((entry) => entry.subteams.some((subteam) => subteam.id === subteamId))
-    return { teamId: team?.id, subteamId }
-  }
-  return {}
-}
-
-/**
- * Filtro de Grupo/Subgrupo. Com `universe` (o universo escolhido no filtro ao lado), só oferece Grupos e Subgrupos daquele universo
- * (o Grupo/Subgrupo sem universo some) — hierarquia universo → Grupo → Subgrupo. Quem troca o universo limpa o Grupo que deixou de caber com
- * `orgScopeAfterUniverseChange` (lib/operating-universe/hierarchy.ts).
- */
-export function ListOrgScopeFilter({
-  value,
-  onChange,
-  teams,
-  globalLabel = "Somente globais (todos os grupos)",
-  universe,
-}: {
-  value: OrgScopeFilter
-  onChange: (value: OrgScopeFilter) => void
-  teams: Team[] | undefined
-  globalLabel?: string
-  universe?: UniverseChoice
-}) {
-  const encoded = encodeOrgScope(value)
-  const visibleTeams = teams ? teamsForUniverse(teams, universe) : undefined
-  return (
-    <Select value={encoded} onValueChange={(next) => onChange(decodeOrgScope(next, teams ?? []))} disabled={!teams}>
-      <SelectTrigger className={cn("w-full sm:w-auto sm:min-w-40", encoded !== ALL && "border-primary/50")} aria-label="Filtrar por grupo">
-        <SelectValue placeholder="Qualquer grupo" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={ALL}>Qualquer grupo</SelectItem>
-        <SelectItem value="global">{globalLabel}</SelectItem>
-        {visibleTeams?.map((team) => (
-          <SelectGroup key={team.id}>
-            <SelectLabel>{team.name}</SelectLabel>
-            {team.selectable ? <SelectItem value={`team:${team.id}`}>{team.name} (grupo inteiro)</SelectItem> : null}
-            {team.subteams.map((subteam) => (
-              <SelectItem key={subteam.id} value={`subteam:${subteam.id}`}>
-                {team.name} › {subteam.name}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        ))}
-      </SelectContent>
-    </Select>
-  )
 }
 
 const UNIVERSE_FILTER_OPTIONS: FilterOption<UniverseFilterValue>[] = [

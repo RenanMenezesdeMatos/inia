@@ -1,3 +1,4 @@
+import { optionalUnitMatchSql, unitMatchSql } from "../../../shared/infrastructure/database/unit-filter.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { criterionProductViewOf, productIdentificationViewOf, type CriterionProductApplicability, type ProductApplicabilityRecord } from "../domain/product-applicability.js"
 import { projectTranscript } from "../../investigation/domain/transcript-projection.js"
@@ -29,8 +30,8 @@ type Queryable = Pick<Database, "query">
 export type MemoryFilters = {
   from: string
   to: string
-  teamId: string | null
-  subteamId: string | null
+  teamId: readonly string[] | null
+  subteamId: readonly string[] | null
   personId: string | null
   subject: string | null
   documentId: string | null
@@ -126,7 +127,7 @@ export function occurrenceStatsOf(row: StatsRow): OccurrenceStats {
 /** WHERE comum (parâmetros $1..$12): organização, pessoas visíveis, período e filtros. */
 function baseWhere(): string {
   return `c.organization_id = $1 and c.is_current and c.person_id = any($2::uuid[]) and c.local_date between $3::date and $4::date
-    and ($5::uuid is null or c.team_id = $5) and ($6::uuid is null or c.subteam_id = $6) and ($7::uuid is null or c.person_id = $7)
+    and ${optionalUnitMatchSql({ team: "c.team_id", subteam: "c.subteam_id" }, "$5", "$6")} and ($7::uuid is null or c.person_id = $7)
     and ($8::text is null or coalesce(c.subject_canonical, c.subject_raw) = $8) and ($9::uuid is null or coalesce(c.document_id, c.argument_script_id) = $9)
     and ($10::text is null or c.criterion_key = $10) and ($11::text is null or c.effective_status = $11 or ($11 = 'DEVIATION' and c.effective_status in ('NOT_MET','PARTIAL')) or ($11 = 'INCONCLUSIVE' and c.effective_status in ('NOT_OBSERVABLE','NOT_ASSESSED')))
     and ($12::text is null or c.practice_key = $12)`
@@ -144,7 +145,7 @@ export async function memorySummary(db: Queryable, organizationId: string, perso
             count(*) filter (where a.path_assessment in ('INCORRECT','PARTIALLY_CORRECT'))::int path_incorrect, count(*) filter (where a.path_assessment in ('CORRECT','INCORRECT','PARTIALLY_CORRECT'))::int path_assessed
      from call_assessments a
      where a.organization_id = $1 and a.is_current and ${reviewSettledSql("a")} and a.person_id = any($2::uuid[]) and a.local_date between $3::date and $4::date
-       and ($5::uuid is null or a.team_id = $5) and ($6::uuid is null or a.subteam_id = $6) and ($7::uuid is null or a.person_id = $7) and ($8::text is null or coalesce(a.subject_canonical, a.subject_raw) = $8)`,
+       and ${optionalUnitMatchSql({ team: "a.team_id", subteam: "a.subteam_id" }, "$5", "$6")} and ($7::uuid is null or a.person_id = $7) and ($8::text is null or coalesce(a.subject_canonical, a.subject_raw) = $8)`,
     [organizationId, [...personIds], filters.from, filters.to, filters.teamId, filters.subteamId, filters.personId, filters.subject],
   )).rows[0]!
   return { stats: statsOf(row), criteria: row.criteria, people: row.people, lastAnalysisAt: row.last_analysis, callOutcomes: calls }
@@ -297,9 +298,9 @@ export async function materialAggregates(db: Queryable, organizationId: string, 
             count(distinct r.person_id)::int people, (array_agg(distinct r.reason))[1:5] reasons, array_agg(distinct k) criterion_keys
      from feedback_material_recommendations r join knowledge_documents d on d.id = r.document_id
      left join lateral unnest(r.criterion_keys) k on true
-     where r.organization_id = $1 and r.person_id = any($2::uuid[]) and (r.created_at at time zone 'UTC')::date between $3::date and $4::date and ($5::uuid is null or r.person_id in (select id from people where team_id = $5)) and ($6::uuid is null or r.person_id = $6) and ($7::uuid is null or r.document_id = $7)
+     where r.organization_id = $1 and r.person_id = any($2::uuid[]) and (r.created_at at time zone 'UTC')::date between $3::date and $4::date and (($5::uuid[] is null and $8::uuid[] is null) or r.person_id in (select fp.id from people fp where ${unitMatchSql({ team: "fp.team_id", subteam: "fp.subteam_id" }, "$5", "$8")})) and ($6::uuid is null or r.person_id = $6) and ($7::uuid is null or r.document_id = $7)
      group by 1, 2`,
-    [organizationId, [...personIds], filters.from, filters.to, filters.teamId, filters.personId, filters.documentId],
+    [organizationId, [...personIds], filters.from, filters.to, filters.teamId, filters.personId, filters.documentId, filters.subteamId],
   )).rows
   // Cada recomendação aponta regras; a regra leva à PRÁTICA (título) e à SEÇÃO do documento — o que se indica, por conduta e por seção.
   const keys = [...new Set(recommended.flatMap((row) => row.criterion_keys ?? []).filter(Boolean))]
@@ -315,8 +316,8 @@ export async function materialAggregates(db: Queryable, organizationId: string, 
     : new Map<string, { criterion_key: string; practice_key: string; title: string; section: string | null }>()
   const recommendationKeys = (await db.query<{ document_id: string; criterion_keys: string[] }>(
     `select r.document_id, r.criterion_keys from feedback_material_recommendations r
-     where r.organization_id = $1 and r.person_id = any($2::uuid[]) and (r.created_at at time zone 'UTC')::date between $3::date and $4::date and ($5::uuid is null or r.person_id in (select id from people where team_id = $5)) and ($6::uuid is null or r.person_id = $6) and ($7::uuid is null or r.document_id = $7)`,
-    [organizationId, [...personIds], filters.from, filters.to, filters.teamId, filters.personId, filters.documentId],
+     where r.organization_id = $1 and r.person_id = any($2::uuid[]) and (r.created_at at time zone 'UTC')::date between $3::date and $4::date and (($5::uuid[] is null and $8::uuid[] is null) or r.person_id in (select fp.id from people fp where ${unitMatchSql({ team: "fp.team_id", subteam: "fp.subteam_id" }, "$5", "$8")})) and ($6::uuid is null or r.person_id = $6) and ($7::uuid is null or r.document_id = $7)`,
+    [organizationId, [...personIds], filters.from, filters.to, filters.teamId, filters.personId, filters.documentId, filters.subteamId],
   )).rows
   const tally = (documentId: string, pick: (row: { practice_key: string; title: string; section: string | null }) => { key: string; label: string } | null) => {
     const counts = new Map<string, { label: string; recommended: number }>()
@@ -379,9 +380,9 @@ export async function indicatorInvestigations(db: Queryable, organizationId: str
   const rows = (await db.query<{ id: string; person_id: string; person_name: string; indicator_code: string; period_start: string; period_end: string; reference_period: string | null; conclusion: string; official: Record<string, unknown>; localization: Record<string, unknown>; evidence: unknown[]; reference_group: Record<string, unknown> | null; questions: unknown[]; limitations: string[]; created_at: Date; total: number }>(
     `select i.id, i.person_id, p.name person_name, i.indicator_code, i.period_start::text, i.period_end::text, i.reference_period, i.conclusion, i.official, i.localization, i.evidence, i.reference_group, i.questions, i.limitations, i.created_at, count(*) over ()::int total
      from indicator_investigations i join people p on p.id = i.person_id
-     where i.organization_id = $1 and i.is_current and i.person_id = any($2::uuid[]) and i.period_end >= $3::date and i.period_start <= $4::date and ($5::uuid is null or i.team_id = $5) and ($6::uuid is null or i.person_id = $6)
+     where i.organization_id = $1 and i.is_current and i.person_id = any($2::uuid[]) and i.period_end >= $3::date and i.period_start <= $4::date and ${optionalUnitMatchSql({ team: "i.team_id", subteam: "i.subteam_id" }, "$5", "$9")} and ($6::uuid is null or i.person_id = $6)
      order by i.period_end desc, i.created_at desc limit $7 offset $8`,
-    [organizationId, [...personIds], filters.from, filters.to, filters.teamId, filters.personId, page.limit, page.offset],
+    [organizationId, [...personIds], filters.from, filters.to, filters.teamId, filters.personId, page.limit, page.offset, filters.subteamId],
   )).rows
   return {
     total: rows[0]?.total ?? 0,

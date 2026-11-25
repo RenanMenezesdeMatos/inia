@@ -211,7 +211,7 @@ export const TEAM_OVERVIEW: TeamOverview = {
   unitsGroupBy: null,
   showsMembersDirectly: true,
   directMemberCount: 0,
-  filterOptions: { teams: [], subteams: [{ id: "sub-1", name: "Chat", teamId: "team-a" }], indicators: [{ code: "TMA", name: "Tempo Médio de Atendimento" }] },
+  filterOptions: { indicators: [{ code: "TMA", name: "Tempo Médio de Atendimento" }] },
 }
 
 export const STRUCTURE_OVERVIEW: TeamOverview = {

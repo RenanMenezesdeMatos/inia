@@ -5,6 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { chooseUnit, scopeUnitsServiceFrom } from "@/components/admin/shared/testing/scope-units-fake"
 import { ApiError } from "@/lib/api/api-client"
 import type { AnjoRow, ScopeNode } from "@/schemas/human-support/admin.schema"
 
@@ -18,6 +19,8 @@ const service = vi.hoisted(() => ({
   fetchSupportAnjos: vi.fn(),
   saveAnjoCapacity: vi.fn(),
 }))
+const UNITS = vi.hoisted(() => [{ id: "gx", name: "Grupo X", subteams: [{ id: "x1", name: "X1" }] }])
+vi.mock("@/services/scope-units/scope-units-service", () => scopeUnitsServiceFrom(UNITS))
 vi.mock("@/services/human-support/human-support-service", () => service)
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
@@ -247,7 +250,7 @@ describe("Apoio com Anjo › Escopos", () => {
     select("x1")
     fireEvent.click(screen.getByRole("button", { name: "Ver Anjos" }))
     expect(await screen.findByTestId("anjo-p-ana")).toBeInTheDocument()
-    expect(service.fetchSupportAnjos).toHaveBeenCalledWith({ teamId: "gx", subteamId: "x1" })
+    expect(service.fetchSupportAnjos).toHaveBeenCalledWith({ teamId: ["gx"], subteamId: ["x1"] })
   })
 })
 
@@ -295,8 +298,8 @@ describe("Apoio com Anjo › Anjos", () => {
 
   it("filtrar por Subgrupo mostra quem atende e, para quem não pode receber agora, o motivo", async () => {
     await renderAnjos()
-    await choose(screen.getByRole("combobox", { name: "Filtrar por Grupo ou Subgrupo" }), "Grupo X › X1")
-    await waitFor(() => expect(service.fetchSupportAnjos).toHaveBeenCalledWith({ teamId: "gx", subteamId: "x1" }))
+    await chooseUnit("Filtrar por subgrupo", "Grupo X › X1")
+    await waitFor(() => expect(service.fetchSupportAnjos).toHaveBeenCalledWith({ teamId: null, subteamId: ["x1"] }))
     expect(await screen.findByText("Pode receber agora?")).toBeInTheDocument()
     expect(within(screen.getByTestId("anjo-p-ana")).getByText("Sim")).toBeInTheDocument()
     expect(within(screen.getByTestId("anjo-p-bia")).getByText(/Em pausa$/, { selector: "span.text-muted-foreground" })).toBeInTheDocument()

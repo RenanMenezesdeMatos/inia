@@ -662,7 +662,7 @@ Subgrupo, pessoa, assunto, procedimento), resumo com denominador e método, abas
 compõem e cada avaliação abre a regra, os trechos da conversa e a transcrição. Exportação CSV por aba com período, filtros,
 método e denominador no cabeçalho. Nenhuma tela chama IA.
 
-API: `/api/v1/diagnostics/memory/{summary,filter-options,processes,people,concentration,materials,indicators,indicators/:id,
+API: `/api/v1/diagnostics/memory/{summary,filter-options,unit-options,processes,people,concentration,materials,indicators,indicators/:id,
 assessments,assessments/:id,export.csv}` — organização da sessão, só pessoas do escopo do leitor (subárvore ∪ escopo de
 `indicators.view`); detalhe fora do escopo/organização = 404; `status` aceita `DEVIATION` e `INCONCLUSIVE`.
 

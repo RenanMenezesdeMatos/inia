@@ -26,7 +26,7 @@ const count = (value: number) => ({ numerator: value, denominator: null, value, 
 const bucket = { key: "2026-11-10", from: "2026-11-10", to: "2026-11-10", days: 1, partial: false }
 const PERIOD: SuccessPeriod = { from: "2026-11-10", to: "2026-11-10", days: 1, granularity: "DAY", buckets: [bucket] }
 const ALL = { responseTime: true, routes: true, replies: true, support: true, feedback: true, compliance: true }
-const context = (sections: Partial<SuccessContext["sections"]>): SuccessContext => ({ sections: { ...Object.fromEntries(Object.keys(ALL).map((key) => [key, false])), ...sections } as SuccessContext["sections"], teams: [{ id: "t1", name: "Grupo Prova" }], subteams: [] })
+const context = (sections: Partial<SuccessContext["sections"]>): SuccessContext => ({ sections: { ...Object.fromEntries(Object.keys(ALL).map((key) => [key, false])), ...sections } as SuccessContext["sections"] })
 
 const FEEDBACK: FeedbackData = {
   period: PERIOD,

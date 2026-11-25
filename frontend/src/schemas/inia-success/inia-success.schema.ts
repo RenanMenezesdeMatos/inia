@@ -21,8 +21,6 @@ export const SUCCESS_SECTIONS = ["responseTime", "routes", "replies", "support",
 export type SuccessSection = (typeof SUCCESS_SECTIONS)[number]
 export const successContextSchema = z.object({
   sections: z.object({ responseTime: z.boolean(), routes: z.boolean(), replies: z.boolean(), support: z.boolean(), feedback: z.boolean(), compliance: z.boolean(), alignments: z.boolean().default(false) }),
-  teams: z.array(z.object({ id: z.string(), name: z.string() })),
-  subteams: z.array(z.object({ id: z.string(), name: z.string(), teamId: z.string().nullable() })),
 })
 export type SuccessContext = z.infer<typeof successContextSchema>
 
@@ -111,7 +109,7 @@ export const complianceSchema = z.object({
 export type ComplianceData = z.infer<typeof complianceSchema>
 
 /** Filtros da tela: os MESMOS em todos os blocos. */
-export type SuccessFilter = { from: string; to: string; teamId: string | null; subteamId: string | null }
+export type SuccessFilter = { from: string; to: string; teamId: readonly string[] | null; subteamId: readonly string[] | null }
 
 /** 7. Alinhamentos operacionais (permissão e alcance da tela de Alinhamentos). */
 const rankedSchema = z.object({ key: z.string(), label: z.string(), count: z.number(), share: z.number().nullable() })

@@ -1,5 +1,5 @@
 import type { OrgScopeFilter } from "@/lib/admin/list-query"
-import type { Team } from "@/schemas/admin/org-structure.schema"
+import { hasOrgUnits, wholeTeams, type SubteamParents } from "@/lib/admin/unit-selection"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 /**
@@ -50,68 +50,25 @@ export function filterByUniverse<T extends { operatingUniverse?: string | null }
   return items.filter((item) => fitsUniverse(item.operatingUniverse, choice) || Boolean(keep?.(item)))
 }
 
-export type UniverseTeam = Team & { /** O Grupo inteiro cabe no universo (e não só algum Subgrupo dele). */ selectable: boolean }
-
-/**
- * Grupos e Subgrupos do universo escolhido. Um Grupo de outro universo ainda aparece (não selecionável como "grupo inteiro") se tiver
- * Subgrupo do universo escolhido — o Subgrupo pode ter universo próprio diferente do Grupo-pai (migration 204).
- */
-export function teamsForUniverse(teams: readonly Team[], choice: UniverseChoice): UniverseTeam[] {
-  return teams.flatMap((team) => {
-    const selectable = unitFitsUniverse(team.operatingUniverse, choice)
-    // `?? []`: Grupo sem a lista de Subgrupos (resposta parcial) continua um Grupo válido.
-    const subteams = (team.subteams ?? []).filter((subteam) => unitFitsUniverse(subteam.operatingUniverse ?? team.operatingUniverse, choice))
-    if (!selectable && subteams.length === 0) return []
-    return [{ ...team, subteams, selectable }]
-  })
-}
-
-/** O Grupo/Subgrupo escolhido continua cabendo no universo? Sem Grupo/Subgrupo (ou "todos os grupos") = cabe. */
-export function teamScopeFitsUniverse(teams: readonly Team[], scope: { teamId?: string | null; subteamId?: string | null }, choice: UniverseChoice): boolean {
-  if (scope.subteamId) {
-    const team = teams.find((candidate) => (candidate.subteams ?? []).some((subteam) => subteam.id === scope.subteamId))
-    const subteam = team?.subteams.find((candidate) => candidate.id === scope.subteamId)
-    return !team || unitFitsUniverse(subteam?.operatingUniverse ?? team.operatingUniverse, choice)
-  }
-  if (scope.teamId) {
-    const team = teams.find((candidate) => candidate.id === scope.teamId)
-    return !team || unitFitsUniverse(team.operatingUniverse, choice)
-  }
-  return true
-}
-
-/** Filtro de Grupo/Subgrupo depois de trocar o universo: limpa se deixou de caber. */
-export function orgScopeAfterUniverseChange(scope: OrgScopeFilter, teams: readonly Team[] | undefined, choice: UniverseChoice): OrgScopeFilter {
-  if (!teams) return scope
-  return teamScopeFitsUniverse(teams, scope, choice) ? scope : {}
-}
-
-/** Um Grupo (id) depois de trocar o universo: o mesmo id se ainda cabe, senão vazio. */
-export function teamIdAfterUniverseChange<T extends string | undefined | null>(teamId: T, teams: readonly Team[] | undefined, choice: UniverseChoice): T | undefined {
-  if (!teamId || !teams) return teamId
-  return teamScopeFitsUniverse(teams, { teamId }, choice) ? teamId : undefined
-}
-
 /** Campos do filtro de Grupo/Subgrupo explícitos (para `patchFilters` limpar o que sumiu, em vez de manter o valor anterior). */
-export function orgScopePatch(scope: OrgScopeFilter): { scopeType: OrgScopeFilter["scopeType"] | undefined; teamId: string | undefined; subteamId: string | undefined } {
+export function orgScopePatch(scope: OrgScopeFilter): { scopeType: OrgScopeFilter["scopeType"] | undefined; teamId: string[] | undefined; subteamId: string[] | undefined } {
   return { scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId }
 }
 
 type ScopedEntry = { scopeType: string; teamId?: string | null; subteamId?: string | null }
 
 /**
- * Um recurso com alcances (ex.: base de conhecimento com N Grupos/Subgrupos) vale no Grupo/Subgrupo escolhido? Vale se algum alcance
- * for "todos os grupos", o próprio Grupo, ou — com Grupo escolhido — um Subgrupo dele; com Subgrupo escolhido, o Subgrupo ou o Grupo-pai.
- * Sem Grupo/Subgrupo escolhido (ou "só globais"), tudo cabe.
+ * Um recurso com alcances (ex.: base de conhecimento com N Grupos/Subgrupos) vale em algum Grupo/Subgrupo escolhido? Vale se algum
+ * alcance for "todos os grupos", um Grupo escolhido inteiro (ou Subgrupo dele), um Subgrupo escolhido ou o Grupo-pai de um. Sem
+ * Grupo/Subgrupo escolhido (ou "só globais"), tudo cabe. `parents`: o Grupo de cada Subgrupo escolhido.
  */
-export function scopesFitOrgScope(entries: readonly ScopedEntry[], scope: OrgScopeFilter, teams: readonly Team[] | undefined): boolean {
-  if (!scope.teamId && !scope.subteamId) return true
-  const teamOfSubteam = (subteamId: string | null | undefined) => teams?.find((team) => (team.subteams ?? []).some((subteam) => subteam.id === subteamId))?.id
-  const teamId = scope.teamId ?? teamOfSubteam(scope.subteamId)
+export function scopesFitOrgScope(entries: readonly ScopedEntry[], scope: OrgScopeFilter, parents: SubteamParents): boolean {
+  if (!hasOrgUnits(scope)) return true
+  const teams = wholeTeams(scope, parents)
+  const refinedTeams = new Set((scope.subteamId ?? []).map((id) => parents.get(id)))
   return entries.some((entry) => {
     if (entry.scopeType === "ALL_TEAMS") return true
-    if (entry.scopeType === "TEAM") return Boolean(entry.teamId) && entry.teamId === teamId
-    if (scope.subteamId) return entry.subteamId === scope.subteamId
-    return Boolean(entry.subteamId) && (entry.teamId === teamId || teamOfSubteam(entry.subteamId) === teamId)
+    if (entry.scopeType === "TEAM") return Boolean(entry.teamId) && (teams.has(entry.teamId!) || refinedTeams.has(entry.teamId!))
+    return (Boolean(entry.subteamId) && Boolean(scope.subteamId?.includes(entry.subteamId!))) || (Boolean(entry.teamId) && teams.has(entry.teamId!))
   })
 }

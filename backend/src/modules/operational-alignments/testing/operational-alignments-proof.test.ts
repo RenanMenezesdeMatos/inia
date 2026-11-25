@@ -277,7 +277,7 @@ describe.skipIf(!ENABLED)("Alinhamentos operacionais — prova Postgres (cadastr
     expect(summary.byRequestReason.find((entry) => entry.label === "Proof AO Fatura")!.count).toBe(summary.inPeriod)
     expect(summary.topProcesses.find((entry) => entry.key === doc)!.count).toBe(summary.inPeriod)
     expect(summary.byAuthorArea.find((entry) => entry.label === "Proof AO Ouvidoria")?.count ?? 0).toBeGreaterThanOrEqual(1)
-    const managerView = await alignmentsSummary(client, { organizationId: ORG, personId: gerenteOuvidoria.id, accountId: gerenteOuvidoria.accountId }, { from: "2026-11-01", to: "2026-11-30", teamId: outro })
+    const managerView = await alignmentsSummary(client, { organizationId: ORG, personId: gerenteOuvidoria.id, accountId: gerenteOuvidoria.accountId }, { from: "2026-11-01", to: "2026-11-30", teamId: [outro] })
     expect(managerView.inPeriod).toBe(0) // filtro por outro Grupo: nada do alcance dele
   })
 

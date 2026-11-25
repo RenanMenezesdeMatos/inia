@@ -80,6 +80,8 @@ export const userAccountSchema = z.object({
   operatingUniverseSource: universeSourceSchema,
   teamId: z.string().nullable(),
   teamName: z.string().nullable(),
+  subteamId: z.string().nullable().optional(),
+  subteamName: z.string().nullable().optional(),
   accountId: z.string().nullable(),
   email: z.string().nullable(),
   lastLoginAt: z.coerce.string().nullable(),

@@ -1,6 +1,5 @@
 import { z } from "zod"
 
-import { teamSchema } from "@/schemas/admin/org-structure.schema"
 import { decisionStatusSchema, evaluationOutcomeSchema, formFieldSchema, intelligenceReportSchema } from "@/schemas/interventions/intervention.schema"
 
 /**
@@ -185,15 +184,18 @@ export const capabilityCatalogSchema = z.object({
 })
 export type CapabilityCatalog = z.infer<typeof capabilityCatalogSchema>
 
-/** Leituras do editor servidas pela própria área (`/editor-catalog`): grupos do escopo de quem edita, indicadores e documentos. */
+/** Leituras do editor servidas pela própria área (`/editor-catalog`): indicadores, flags e se alcança a organização inteira. */
 export const editorCatalogSchema = z.object({
-  teams: z.array(teamSchema),
   unrestricted: z.boolean(),
   indicators: z.array(z.object({ code: z.string(), name: z.string(), unit: z.string(), active: z.boolean(), dailySupported: z.boolean(), officialClosureSupported: z.boolean() })),
-  documents: z.array(z.object({ id: z.string(), title: z.string(), published: z.boolean() })),
   flags: z.array(z.object({ channel: z.string(), flagName: z.string(), valueType: z.enum(["BOOLEAN", "NUMERIC"]), description: z.string().nullable(), active: z.boolean() })).default([]),
 })
 export type EditorCatalog = z.infer<typeof editorCatalogSchema>
+
+/** Base que pode ser ligada a uma competência (título e se há versão publicada), em lotes. */
+export const editorDocumentSchema = z.object({ id: z.string(), title: z.string(), published: z.boolean() })
+export type EditorDocument = z.infer<typeof editorDocumentSchema>
+export const editorDocumentPageSchema = z.object({ items: z.array(editorDocumentSchema), nextCursor: z.string().nullable() })
 
 /** Prática (KP-…) ou critério (KC-…) da base, pelo nome — para ligar a competência ao diagnóstico. */
 export const patternOptionSchema = z.object({ key: z.string(), kind: z.enum(["PRACTICE", "CRITERION"]), title: z.string(), detail: z.string().nullable() })

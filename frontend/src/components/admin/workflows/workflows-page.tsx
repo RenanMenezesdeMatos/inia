@@ -37,21 +37,21 @@ import {
   ListBooleanFilter,
   ListDateRangeFilter,
   ListMultiSelectFilter,
-  ListOrgScopeFilter,
   ListUniverseFilter,
   universeChoiceOf,
   ListSearchInput,
   ListToolbar,
 } from "@/components/admin/shared/list/list-filters"
+import { ListOrgScopeFilter, useOrgScopeAfterUniverse } from "@/components/admin/shared/list/org-scope-filter"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
 import { MultiOrgScopeField } from "@/components/admin/shared/multi-org-scope-field"
 import { EMPTY_SCOPE_VALUE, resourceScopePayloadOf, scopeValueIssue, type ScopeLinksValue } from "@/lib/scope-links/scope-links"
-import { fitsUniverse, orgScopeAfterUniverseChange, orgScopePatch } from "@/lib/operating-universe/hierarchy"
+import { fitsUniverse, orgScopePatch } from "@/lib/operating-universe/hierarchy"
 import { useIndicatorsWithRulesQuery } from "@/queries/admin/use-indicator-rule-queries"
 import { formatScopeLabel } from "@/lib/admin/scope-compatibility"
 import { isTriggerComplete, TriggerFields } from "@/components/admin/workflows/trigger-fields"
-import { useManageableTeamsQuery, useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
+import { useManageableTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import { useCreateWorkflowMutation, useDeleteWorkflowMutation, useUpdateWorkflowMutation, useWorkflowsPageQuery } from "@/queries/admin/use-workflow-queries"
 import type { WorkflowListParams, WorkflowTriggerInput } from "@/services/admin/workflow-service"
 import { goLiveImpactFromError, triggerBadgeText, type GoLiveImpact, type Workflow, type WorkflowTrigger } from "@/schemas/admin/workflow.schema"
@@ -424,7 +424,6 @@ const TRIGGER_KIND_OPTIONS = (Object.entries(TRIGGER_KIND_LABELS) as [WorkflowTr
 
 export function WorkflowsPage() {
   const router = useRouter()
-  const teamsQuery = useTeamsQuery()
   const [autoOpen, setAutoOpen] = useAutoOpenFromQuery("new")
   const [createOpen, setCreateOpen] = useState(false)
 
@@ -432,6 +431,7 @@ export function WorkflowsPage() {
   const pageQuery = useWorkflowsPageQuery(list.params)
   // Hierarquia universo → Grupo/Subgrupo: o filtro de Grupo só oferece os do universo escolhido; trocar o universo limpa o que não cabe.
   const currentScope = { scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }
+  const scopeAfterUniverse = useOrgScopeAfterUniverse("workflows.manage", currentScope)
 
   // `?new` na URL abre o diálogo (ajuste na renderização, sem render extra) e consome o pedido: cada nova navegação com
   // `?new` abre de novo.
@@ -474,10 +474,10 @@ export function WorkflowsPage() {
             <ListBooleanFilter value={list.filters.hasActiveEnrollments} onChange={(value) => list.setFilter("hasActiveEnrollments", value)} allLabel="Com ou sem execuções" trueLabel="Com execuções em andamento" falseLabel="Sem execuções em andamento" ariaLabel="Filtrar por execuções em andamento" />
             <ListUniverseFilter
               value={list.filters.operatingUniverse}
-              onChange={(operatingUniverse) => list.patchFilters({ operatingUniverse, ...orgScopePatch(orgScopeAfterUniverseChange(currentScope, teamsQuery.data, universeChoiceOf(operatingUniverse))) })}
+              onChange={(operatingUniverse) => list.patchFilters({ operatingUniverse, ...orgScopePatch(scopeAfterUniverse(universeChoiceOf(operatingUniverse))) })}
             />
             <ListOrgScopeFilter
-              teams={teamsQuery.data}
+              permission="workflows.manage"
               universe={universeChoiceOf(list.filters.operatingUniverse)}
               value={currentScope}
               onChange={(scope) => list.patchFilters(orgScopePatch(scope))}

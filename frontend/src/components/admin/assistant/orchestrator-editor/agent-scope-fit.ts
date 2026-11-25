@@ -1,3 +1,4 @@
+import { hasOrgUnits, wholeTeams, type OrgUnitIds, type SubteamParents } from "@/lib/admin/unit-selection"
 import { linksFromScopeValue, type ScopeLinksValue } from "@/lib/scope-links/scope-links"
 
 /** Alcance de um Agent como a API devolve: ALL_TEAMS, GROUPS + `scopeLinks` (249) ou o legado TEAM/SUBTEAM + ids. */
@@ -36,16 +37,15 @@ export function agentServesOrchestratorScope(scope: ScopeLinksValue, agent: Agen
 }
 
 /**
- * Filtro de Grupo/Subgrupo da lista de Orquestradores aplicado às opções de Agent (o Agent aparece se alcança o Grupo/Subgrupo
- * filtrado). Vínculos (249): Grupo = algum vínculo naquele Grupo; Subgrupo = vínculo daquele Subgrupo ou do Grupo-pai inteiro.
- * Formato legado: `legacyFits` (a regra antiga da hierarquia).
+ * Filtro de Grupos/Subgrupos da lista de Orquestradores aplicado às opções de Agent (o Agent aparece se alcança algum deles). Vínculos
+ * (249): Grupo = algum vínculo naquele Grupo; Subgrupo = vínculo daquele Subgrupo ou do Grupo-pai inteiro. Formato legado: `legacyFits`
+ * (a regra antiga da hierarquia). `parents`: o Grupo de cada Subgrupo escolhido.
  */
-export function agentFitsListScope(agent: AgentScopeLike, filter: { teamId?: string | undefined; subteamId?: string | undefined }, teams: TeamTree, legacyFits: () => boolean): boolean {
-  if (!filter.teamId && !filter.subteamId) return true
+export function agentFitsListScope(agent: AgentScopeLike, filter: OrgUnitIds, parents: SubteamParents, legacyFits: () => boolean): boolean {
+  if (!hasOrgUnits(filter)) return true
   if (agent.scopeType === "ALL_TEAMS") return true
   if (agent.scopeType !== "GROUPS") return legacyFits()
-  const parentOfFiltered = filter.subteamId ? teams.find((team) => team.subteams.some((subteam) => subteam.id === filter.subteamId))?.id : undefined
-  return (agent.scopeLinks ?? []).some((link) =>
-    filter.subteamId ? link.subteamId === filter.subteamId || (link.subteamId === null && link.teamId === parentOfFiltered) : link.teamId === filter.teamId,
-  )
+  const teams = wholeTeams(filter, parents)
+  const refinedTeams = new Set((filter.subteamId ?? []).map((id) => parents.get(id)))
+  return (agent.scopeLinks ?? []).some((link) => teams.has(link.teamId) || (link.subteamId === null ? refinedTeams.has(link.teamId) : Boolean(filter.subteamId?.includes(link.subteamId))))
 }

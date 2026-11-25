@@ -82,7 +82,7 @@ export default function TeamPage() {
       </WikiSection>
 
       <WikiSection id="filtros" title="Filtros e ordenação" eyebrow="Lista">
-        <FieldRow label="Filtros" value="Busca por nome, Grupo, Subgrupo, situação, indicador em atenção e 'com pendências'." />
+        <FieldRow label="Filtros" value="Busca por nome, Grupos e Subgrupos (um ou vários), situação, indicador em atenção e 'com pendências'." />
         <FieldRow label="Ordenação" value="Situação, nome, atingimento médio, PRV ou variação — com paginação." />
       </WikiSection>
 

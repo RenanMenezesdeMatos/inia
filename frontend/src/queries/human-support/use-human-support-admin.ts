@@ -38,7 +38,7 @@ const MONITORING_KEY = ["human-support", "monitoring"] as const
 
 export const useSupportSettingsQuery = () => useQuery({ queryKey: [...ADMIN_KEY, "settings"], queryFn: fetchSupportSettings })
 export const useSupportScopesQuery = () => useQuery({ queryKey: [...ADMIN_KEY, "scopes"], queryFn: fetchSupportScopes })
-export const useSupportAnjosQuery = (filter: { teamId?: string | null; subteamId?: string | null }) => useQuery({ queryKey: [...ADMIN_KEY, "anjos", filter], queryFn: () => fetchSupportAnjos(filter), refetchInterval: 30_000 })
+export const useSupportAnjosQuery = (filter: { teamId?: readonly string[] | null; subteamId?: readonly string[] | null }) => useQuery({ queryKey: [...ADMIN_KEY, "anjos", filter], queryFn: () => fetchSupportAnjos(filter), refetchInterval: 30_000 })
 
 export function useSaveSupportSettingsMutation() {
   const queryClient = useQueryClient()
@@ -99,7 +99,7 @@ export const useSupportAbandonmentListQuery = (filter: PanelFilter & { kind: Aba
 /** Situação dos Anjos agora: atualiza sozinha a cada 15 s (e ao voltar para a aba), como a lista de Anjos da configuração. */
 /** Situação agora: relê a cada 5 s e, ao voltar a conexão ou o foco, na hora (o servidor é a fonte da verdade). */
 export const ANJOS_NOW_REFRESH_MS = 5_000
-export const useAnjosNowQuery = (filter: { teamId?: string | null; subteamId?: string | null }) =>
+export const useAnjosNowQuery = (filter: { teamId?: readonly string[] | null; subteamId?: readonly string[] | null }) =>
   useQuery({
     queryKey: [...MONITORING_KEY, "anjos-now", filter],
     queryFn: () => fetchAnjosNow(filter),
@@ -118,7 +118,7 @@ export function useSaveResponseTimesMutation() {
   return useMutation({ mutationFn: (input: SaveResponseTimesInput) => saveResponseTimes(input), onSettled: () => queryClient.invalidateQueries({ queryKey: [...MONITORING_KEY, "response-times"] }) })
 }
 /** Quem está na fila (aberto ao clicar no indicador de fila); relê junto com a "Operação agora". */
-export const useQueueWaitingQuery = (filter: { teamId?: string | null; subteamId?: string | null }, enabled: boolean) =>
+export const useQueueWaitingQuery = (filter: { teamId?: readonly string[] | null; subteamId?: readonly string[] | null }, enabled: boolean) =>
   useQuery({ queryKey: [...MONITORING_KEY, "queue", filter], queryFn: () => fetchQueueWaiting(filter), enabled, refetchInterval: enabled ? ANJOS_NOW_REFRESH_MS : false })
 /** Histórico da operação: da coordenação (alcance de quem lê, com o consolidado) ou o próprio, do Anjo. */
 export const useOperationHistoryQuery = (filter: PanelFilter & { anjoPersonId?: string | null }, source: "coordination" | "anjo" = "coordination") =>

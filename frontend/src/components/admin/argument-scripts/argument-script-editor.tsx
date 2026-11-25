@@ -31,8 +31,9 @@ import {
   useUpdateArgumentScriptMutation,
 } from "@/queries/admin/use-argument-script-queries"
 import { useBusinessDomainsQuery } from "@/queries/admin/use-business-domain-queries"
-import { useKnowledgeDocumentsQuery } from "@/queries/admin/use-knowledge-queries"
+import { useKnowledgeOptionQuery } from "@/queries/admin/use-knowledge-queries"
 import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
+import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import {
   ARGUMENT_SCRIPT_STATUS_LABELS,
   LEGACY_CONVERSION_LABEL,
@@ -154,10 +155,10 @@ function HeaderFields({
   )
 }
 
-/** Bases para "Base de origem": só as do universo do argumentário (ou ainda sem universo); a já escolhida o formulário mostra mesmo assim. */
-function useKnowledgeOptions(universe: OperatingUniverse | null) {
-  const knowledgeQuery = useKnowledgeDocumentsQuery()
-  return { documents: knowledgeQuery.data ? filterByUniverse(knowledgeQuery.data, universe) : undefined, unavailable: knowledgeQuery.isError }
+/** "Base de origem" só para quem administra bases (a rota exige `knowledge.manage`); os demais usam a referência em texto. */
+function useKnowledgeUnavailable() {
+  const permissions = useCurrentUserQuery().data?.access.permissions
+  return permissions !== undefined && !permissions.includes("knowledge.manage")
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -178,9 +179,9 @@ function CreateForm({ scopeOptions, teams, onCreated, onCancel }: { scopeOptions
   const [content, setContent] = useState<ContentFormState>(EMPTY_CONTENT_FORM)
   const productScope = useSourceProductScope("ARGUMENT_SCRIPT", null)
   const [operatingUniverse, setOperatingUniverse] = useState<OperatingUniverse | null>(null)
-  const knowledge = useKnowledgeOptions(operatingUniverse)
+  const knowledgeUnavailable = useKnowledgeUnavailable()
+  const sourceDocument = useKnowledgeOptionQuery(content.sourceDocumentId).data
   const domainsQuery = useBusinessDomainsQuery()
-  const allKnowledge = useKnowledgeDocumentsQuery().data
 
   // Trocou o universo: o que já estava escolhido e é de outro universo sai da escolha (universos não se misturam) — área, escopo
   // (Grupo/Subgrupo), base de origem e produtos.
@@ -194,8 +195,7 @@ function CreateForm({ scopeOptions, teams, onCreated, onCancel }: { scopeOptions
         scope: scopeValueAfterUniverseChange(current.scope, teamsForScope(teams, scopeOptions), (unit) => unitFitsUniverse(unit, next)),
       }
     })
-    const source = (allKnowledge ?? []).find((document) => document.id === content.sourceDocumentId)
-    if (source && !fitsUniverse(source.operatingUniverse, next)) setContent((current) => ({ ...current, sourceDocumentId: null }))
+    if (sourceDocument && !fitsUniverse(sourceDocument.operatingUniverse, next)) setContent((current) => ({ ...current, sourceDocumentId: null }))
     const compatible = new Set(productsCompatibleWith(productScope.nodes, next).map((node) => node.id))
     if (productScope.value.some((id) => !compatible.has(id))) productScope.setValue(productScope.value.filter((id) => compatible.has(id)))
   }
@@ -224,7 +224,7 @@ function CreateForm({ scopeOptions, teams, onCreated, onCancel }: { scopeOptions
     <div className="max-w-4xl space-y-4">
       <p className="text-sm text-muted-foreground">O argumentário nasce como rascunho. Ele só passa a valer depois de publicado.</p>
       <HeaderFields value={header} onChange={setHeader} teams={teams} scopeOptions={scopeOptions} currentAreaName={null} universe={{ value: operatingUniverse, onChange: handleUniverseChange }} />
-      <ArgumentScriptContentFields value={content} onChange={setContent} knowledgeDocuments={knowledge.documents} knowledgeUnavailable={knowledge.unavailable} />
+      <ArgumentScriptContentFields value={content} onChange={setContent} universe={operatingUniverse} knowledgeUnavailable={knowledgeUnavailable} />
       {productScope.available ? <ProductScopeField nodes={productScope.nodes} value={productScope.value} onChange={productScope.setValue} idPrefix="argument-script-products" universe={operatingUniverse} /> : null}
       {createMutation.isError ? <p className="text-sm text-destructive">{createMutation.error.message}</p> : null}
       <div className="flex flex-wrap justify-end gap-2">
@@ -290,7 +290,7 @@ function ArgumentScriptEditor({ detail, onBack, onDeleted }: { detail: ArgumentS
   const scopeOptionsQuery = useArgumentScriptScopeOptionsQuery()
   const teamsQuery = useTeamsQuery()
   const updateMutation = useUpdateArgumentScriptMutation()
-  const knowledge = useKnowledgeOptions(detail.operatingUniverse ?? null)
+  const knowledgeUnavailable = useKnowledgeUnavailable()
 
   // Edição parte do rascunho (ou da vigente, quando o rascunho ainda vai nascer); a leitura mostra o que vale hoje.
   const base: ArgumentScriptVersion | null = detail.draft ?? detail.current
@@ -398,7 +398,7 @@ function ArgumentScriptEditor({ detail, onBack, onDeleted }: { detail: ArgumentS
             scopePublished={detail.everPublished}
             savedUniverse={detail.operatingUniverse ?? null}
           />
-          <ArgumentScriptContentFields value={content} onChange={setContent} knowledgeDocuments={knowledge.documents} knowledgeUnavailable={knowledge.unavailable} currentSourceTitle={base?.sourceDocumentTitle ?? null} />
+          <ArgumentScriptContentFields value={content} onChange={setContent} universe={detail.operatingUniverse ?? null} knowledgeUnavailable={knowledgeUnavailable} currentSource={base?.sourceDocumentId ? { id: base.sourceDocumentId, title: base.sourceDocumentTitle } : null} />
         </>
       ) : (
         <>

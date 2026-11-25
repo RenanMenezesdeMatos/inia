@@ -22,7 +22,8 @@ export type AccessAccountPage = z.infer<typeof accessAccountPageSchema>
 
 export const accessRoleSchema = z.object({ code: z.string(), name: z.string(), description: z.string(), system: z.boolean(), allowedScopes: z.array(scopeTypeSchema), permissions: z.array(z.object({ code: z.string(), label: z.string() })), assignableByYou: z.boolean() })
 export type AccessRole = z.infer<typeof accessRoleSchema>
-export const scopeOptionsSchema = z.object({ organizationWide: z.boolean(), teams: z.array(named), subteams: z.array(z.object({ id: z.string(), name: z.string(), teamId: z.string(), teamName: z.string() })) })
+/** O que a conta alcança ao conceder papéis (os Grupos e Subgrupos em si vêm em lotes de `/admin/scope-units`). */
+export const scopeOptionsSchema = z.object({ organizationWide: z.boolean(), hasGroups: z.boolean(), hasSubgroups: z.boolean() })
 export type ScopeOptions = z.infer<typeof scopeOptionsSchema>
 
 /**

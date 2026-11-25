@@ -2,7 +2,7 @@ import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
-import { respondList, searchParam, SqlFilter, type PageResult } from "../../../shared/presentation/list-query.js"
+import { respondList, searchParam, SqlFilter, unitFilterShape, type PageResult } from "../../../shared/presentation/list-query.js"
 import { canManageAllLinks, coversOrganization, resolveScopeLinksForWrite, SCOPE_LINK_FAILURE_MESSAGE, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
 import { linkKey, type ScopeLink } from "../../../shared/domain/scope-links/scope-links.js"
 import { assertNewScopeLinksAdmissible } from "../../org-structure/application/scope-unit-admission.js"
@@ -217,8 +217,7 @@ const listQuerySchema = z
     state: z.enum(ALIGNMENT_STATES).optional(),
     operatingUniverse: z.enum(["B2B", "B2C", "B2X"]).optional(),
     documentId: z.string().uuid().optional(),
-    teamId: z.string().uuid().optional(),
-    subteamId: z.string().uuid().optional(),
+    ...unitFilterShape,
     // "Todo o universo" do filtro de Grupo (mesmo valor que o filtro compartilhado manda para "globais").
     scopeType: z.enum(["ALL_TEAMS"]).optional(),
     hasDraft: z.preprocess((value) => (value === "true" ? true : value === "false" ? false : undefined), z.boolean().optional()),
@@ -260,8 +259,8 @@ export async function listAlignments(db: Database, organizationId: string, scope
   if (input.hasDraft !== undefined) filter.add(input.hasDraft ? `q."hasDraft"` : `not q."hasDraft"`)
   if (input.documentId) filter.add(`${filter.param(input.documentId)}::uuid = any(q."documentIds")`)
   // Grupo/Subgrupo: alinhamentos com algum vínculo (da versão mostrada) naquele Grupo/Subgrupo — o mesmo alinhamento uma vez só.
-  if (input.subteamId) filter.add(`exists (select 1 from operational_alignment_version_scopes l where l.version_id = q."versionId" and l.subteam_id = ${filter.param(input.subteamId)}::uuid)`)
-  else if (input.teamId) filter.add(`exists (select 1 from operational_alignment_version_scopes l where l.version_id = q."versionId" and l.team_id = ${filter.param(input.teamId)}::uuid)`)
+  const units = filter.units({ team: "l.team_id", subteam: "l.subteam_id" }, input)
+  if (units) filter.add(`exists (select 1 from operational_alignment_version_scopes l where l.version_id = q."versionId" and ${units})`)
   else if (input.scopeType === "ALL_TEAMS") filter.add(`q."scopeType" = 'UNIVERSE'`)
   // Visibilidade = o que a pessoa administra (o mesmo de `canManageScope`): universo inteiro só com alcance da organização.
   // A mesma regra do detalhe (`loadAlignmentOrThrow`): toda versão que decide o alinhamento (publicada/cancelada e rascunho) no alcance.

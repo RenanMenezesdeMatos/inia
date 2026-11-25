@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import { PageHeader } from "@/components/ui/surface"
 import { AnjosTab } from "./anjos-tab"
-import type { ScopeFilterValue } from "./scope-filter"
+import type { OrgUnitIds } from "@/lib/admin/unit-selection"
 import { ScopesTab } from "./scopes-tab"
 import { SettingsTab } from "./settings-tab"
 
@@ -20,7 +20,7 @@ type AdminTab = "settings" | "scopes" | "anjos"
  */
 export function HumanSupportAdminPage({ canGrantRoles }: { canGrantRoles: boolean }) {
   const [tab, setTab] = useState<AdminTab>("settings")
-  const [anjoFilter, setAnjoFilter] = useState<ScopeFilterValue>({})
+  const [anjoFilter, setAnjoFilter] = useState<OrgUnitIds>({})
 
   return (
     <section className="space-y-6">

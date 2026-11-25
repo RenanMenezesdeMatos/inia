@@ -1,40 +1,40 @@
 "use client"
 
-import { useId, useState } from "react"
 import { Link2, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { useEditorCatalogQuery } from "@/queries/admin/use-intervention-policy-queries"
+import { RemoteCombobox, RemoteComboboxTrigger, RemoteSelectionFooter, remoteListOf, useRemoteCombobox } from "@/components/ui/remote-combobox"
+import { useEditorDocumentsByIdsQuery, useEditorDocumentsInfiniteQuery } from "@/queries/admin/use-intervention-policy-queries"
 import type { CompetencyView } from "@/schemas/admin/intervention-policy.schema"
 
 import { Note } from "../shared/fields"
+
+const MAX_DOCUMENTS = 30
 
 export type LinkedDocument = { id: string; title: string; published: boolean | null }
 
 /**
  * Documentos da base de conhecimento ligados à competência (o conteúdo APROVADO que o treinamento usa). Título e "tem versão
- * publicada" vêm do catálogo do editor de políticas — vincular não exige a permissão de gerenciar a base (ler o conteúdo, sim).
+ * publicada" vêm da própria área de políticas — vincular não exige a permissão de gerenciar a base (ler o conteúdo, sim).
  */
 export function useLinkedDocuments(ids: string[], saved: CompetencyView["documents"]): LinkedDocument[] {
-  const catalogQuery = useEditorCatalogQuery()
+  // Só as que o registro salvo não traz (ligadas agora): título pelo id, mesmo fora do lote carregado no seletor.
+  const missing = ids.filter((id) => !saved.some((document) => document.id === id))
+  const found = useEditorDocumentsByIdsQuery(missing).data
   return ids.map((id) => {
     const fromSaved = saved.find((document) => document.id === id)
     if (fromSaved) return { id, title: fromSaved.title, published: fromSaved.published }
-    const fromBase = catalogQuery.data?.documents.find((document) => document.id === id)
+    const fromBase = found?.find((document) => document.id === id)
     return { id, title: fromBase?.title ?? "Documento", published: fromBase ? fromBase.published : null }
   })
 }
 
 export function DocumentsSection({ ids, saved, disabled, onChange }: { ids: string[]; saved: CompetencyView["documents"]; disabled: boolean; onChange: (ids: string[]) => void }) {
-  const catalogQuery = useEditorCatalogQuery()
   const linked = useLinkedDocuments(ids, saved)
-  const searchId = useId()
-  const [search, setSearch] = useState("")
-  const term = search.trim().toLocaleLowerCase("pt-BR")
-  const candidates = (catalogQuery.data?.documents ?? []).filter((document) => !ids.includes(document.id) && (!term || document.title.toLocaleLowerCase("pt-BR").includes(term))).slice(0, 8)
+  const state = useRemoteCombobox()
+  const list = remoteListOf(useEditorDocumentsInfiniteQuery(state.term, state.open))
+  const full = ids.length >= MAX_DOCUMENTS
 
   return (
     <section className="space-y-3 rounded-xl border p-4">
@@ -59,29 +59,20 @@ export function DocumentsSection({ ids, saved, disabled, onChange }: { ids: stri
         ))}
       </ul>
       {linked.some((document) => document.published === false) ? <Note tone="warning">Há documento sem versão publicada: ele não entra em treinamento até ser publicado na base.</Note> : null}
-      {disabled ? null : catalogQuery.isError ? (
-        <Note>Não foi possível carregar os documentos da base agora.</Note>
-      ) : (
-        <div className="space-y-1.5">
-          <Label htmlFor={searchId} className="text-xs">
-            Vincular documento
-          </Label>
-          <Input id={searchId} type="search" value={search} placeholder="Buscar pelo título" onChange={(event) => setSearch(event.target.value)} />
-          <ul className="space-y-1">
-            {candidates.map((document) => (
-              <li key={document.id} className="flex items-center justify-between gap-2 text-sm">
-                <span>
-                  {document.title}
-                  {document.published ? null : <span className="ml-1 text-xs text-muted-foreground">(não publicado)</span>}
-                </span>
-                <Button type="button" size="sm" variant="ghost" disabled={ids.length >= 30} onClick={() => onChange([...ids, document.id])}>
-                  <Link2 /> Vincular
-                </Button>
-              </li>
-            ))}
-            {catalogQuery.isSuccess && candidates.length === 0 ? <li className="text-xs text-muted-foreground">Nenhum documento encontrado.</li> : null}
-          </ul>
-        </div>
+      {disabled ? null : (
+        <RemoteCombobox
+          state={state}
+          list={list}
+          multiple
+          listLabel="Documentos da base"
+          searchLabel="Buscar documento pelo título"
+          searchPlaceholder="Buscar pelo título"
+          emptyText="Nenhum documento na base."
+          optionOf={(document) => ({ id: document.id, label: document.title, details: document.published ? null : "Não publicado", selected: ids.includes(document.id), disabledReason: full && !ids.includes(document.id) ? `Até ${MAX_DOCUMENTS} documentos` : null })}
+          onSelect={(document) => onChange(ids.includes(document.id) ? ids.filter((id) => id !== document.id) : [...ids, document.id])}
+          footer={<RemoteSelectionFooter count={ids.length} summary={ids.length === 1 ? "1 documento vinculado" : `${ids.length} documentos vinculados`} emptyText="Nenhum documento vinculado" onDone={() => state.setOpen(false)} />}
+          trigger={<RemoteComboboxTrigger label={null} placeholder="Vincular documento" icon={<Link2 className="size-4" aria-hidden />} className="max-w-96" />}
+        />
       )}
     </section>
   )

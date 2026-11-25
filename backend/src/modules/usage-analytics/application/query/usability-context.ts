@@ -1,3 +1,4 @@
+import { unitFilterSql } from "../../../../shared/infrastructure/database/unit-filter.js"
 import type { Database } from "../../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../../shared/domain/domain-error.js"
 import { SqlParams } from "../../../../shared/infrastructure/sql-params.js"
@@ -112,8 +113,8 @@ export function scopePeopleSql(p: SqlParams, ctx: UsabilityContext, options: { c
   const clauses: string[] = []
   if (f.personId) clauses.push(`pop.person_id = ${p.typed(f.personId, "uuid")}`)
   if (f.leaderId) clauses.push(`pop.person_id in (${descendantsSql(p, ctx.organizationId, f.leaderId)})`)
-  if (options.currentStructure && f.teamId) clauses.push(`pop.team_id = ${p.typed(f.teamId, "uuid")}`)
-  if (options.currentStructure && f.subteamId) clauses.push(`pop.subteam_id = ${p.typed(f.subteamId, "uuid")}`)
+  const units = options.currentStructure ? unitFilterSql(f, (value) => p.add(value), { team: "pop.team_id", subteam: "pop.subteam_id" }) : null
+  if (units) clauses.push(units)
   if (f.jobTitle) clauses.push(`pop.job_title = ${p.add(f.jobTitle)}`)
   if (f.personStatus === "ACTIVE") clauses.push(`pop.person_active and pop.employment_status in ('EM_PRODUCAO', 'ACTIVE')`)
   if (f.personStatus === "AWAY") clauses.push(`pop.person_active and pop.employment_status not in ('EM_PRODUCAO', 'ACTIVE')`)
@@ -155,10 +156,7 @@ export function smallCellPeopleSql(p: SqlParams, ctx: UsabilityContext): string 
 /** Estrutura NO MOMENTO DO FATO (snapshot) — só no modo AT_FACT e só para fatos que guardam o vínculo. */
 export function factStructureSql(p: SqlParams, ctx: UsabilityContext, alias: string): string {
   if (ctx.filters.structureMode !== "AT_FACT") return "true"
-  const clauses = ["true"]
-  if (ctx.filters.teamId) clauses.push(`${alias}.team_id = ${p.typed(ctx.filters.teamId, "uuid")}`)
-  if (ctx.filters.subteamId) clauses.push(`${alias}.subteam_id = ${p.typed(ctx.filters.subteamId, "uuid")}`)
-  return clauses.join(" and ")
+  return unitFilterSql(ctx.filters, (value) => p.add(value), { team: `${alias}.team_id`, subteam: `${alias}.subteam_id` }) ?? "true"
 }
 
 export function areaSql(ctx: UsabilityContext, screenColumn: string, areaColumn: string): string {

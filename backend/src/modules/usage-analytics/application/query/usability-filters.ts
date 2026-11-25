@@ -1,3 +1,4 @@
+import { unitFilterShape } from "../../../../shared/presentation/list-query.js"
 import { z } from "zod"
 import { DomainError } from "../../../../shared/domain/domain-error.js"
 import { USAGE_DEVICES } from "../../domain/ingestion-rules.js"
@@ -19,8 +20,7 @@ export const usabilityFiltersSchema = z
     to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     compare: flag.default(true),
     structureMode: z.enum(["AT_FACT", "CURRENT"]).default("AT_FACT"),
-    teamId: uuid.optional(),
-    subteamId: uuid.optional(),
+    ...unitFilterShape,
     leaderId: uuid.optional(),
     personId: uuid.optional(),
     accessRole: z.string().regex(/^[A-Z][A-Z_]{2,59}$/).optional(),

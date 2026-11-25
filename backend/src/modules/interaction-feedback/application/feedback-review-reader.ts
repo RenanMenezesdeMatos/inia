@@ -1,3 +1,4 @@
+import type { OptionsCursor, ScopedOption, ScopedOptionsRequest } from "../../org-structure/application/scoped-options.js"
 import type { ReviewStatus } from "../domain/feedback-review.js"
 import type { ReviewContext, ReviewQueueItemRecord } from "../domain/review-view.js"
 import type { ItemReviewRecord } from "./ports.js"
@@ -26,7 +27,7 @@ export type ReviewQueueFilters = {
   /** Busca pelo nome do colaborador (texto simples, sem curingas). */
   search?: string | undefined
   collaboratorId?: string | undefined
-  teamId?: string | undefined
+  teamId?: readonly string[] | undefined
   section?: "STRENGTH" | "OPPORTUNITY" | undefined
   /** Datas locais (fuso da organização), inclusivas, sobre a data da interação (ou da criação, se não houver). */
   from?: string | undefined
@@ -35,7 +36,7 @@ export type ReviewQueueFilters = {
   pageSize: number
 }
 export type ReviewQueueRow = { record: ReviewQueueItemRecord; context: ReviewContext }
-export type ReviewQueuePage = { rows: ReviewQueueRow[]; total: number; filterOptions: { collaborators: { id: string; name: string }[]; teams: { id: string; name: string }[] } }
+export type ReviewQueuePage = { rows: ReviewQueueRow[]; total: number }
 export type ReviewKnowledgeRow = { documentTitle: string; href: string | null; deliveryStatus: string }
 /**
  * V1.5.12: a fila de QA também recebe itens do FEEDBACK CONFIÁVEL do Workflow (`origin: "WORKFLOW"`, tabela
@@ -52,6 +53,8 @@ export interface FeedbackReviewReader {
   /** Escopos em que a conta do avaliador tem a permissão (atribuições ativas; vazio = sem a permissão). */
   grantsOf(viewer: ReviewViewer, permission: QaPermission): Promise<QaGrantScope[]>
   listQueue(viewer: ReviewViewer, filters: ReviewQueueFilters): Promise<ReviewQueuePage>
+  /** Colaboradores e equipes que TÊM item de QA no escopo (filtros da fila), em lotes. */
+  listFilterOptions(viewer: ReviewViewer, request: ScopedOptionsRequest): Promise<{ items: ScopedOption[]; nextCursor: OptionsCursor | null }>
   /** O item SÓ se estiver selecionado para QA e no escopo da permissão pedida (null = inexistente, de outra organização ou fora do escopo). */
   loadInScope(viewer: ReviewViewer, reviewId: string, permission?: QaPermission): Promise<ScopedReview | null>
 }

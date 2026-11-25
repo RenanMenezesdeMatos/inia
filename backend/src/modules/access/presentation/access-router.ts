@@ -1,4 +1,4 @@
-import { booleanParam } from "../../../shared/presentation/list-query.js"
+import { booleanParam, unitFilterShape } from "../../../shared/presentation/list-query.js"
 import { Router, type Request } from "express"
 import { z } from "zod"
 import { env } from "../../../config/env.js"
@@ -24,7 +24,7 @@ import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const idParam = z.string().uuid()
 const listSchema = z.object({ search: z.string().trim().max(100).optional(), page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20) })
-const usersListSchema = listSchema.extend({ status: z.enum(ACCOUNT_ACCESS_STATUSES).optional(), networkIssue: booleanParam })
+const usersListSchema = listSchema.extend({ status: z.enum(ACCOUNT_ACCESS_STATUSES).optional(), networkIssue: booleanParam, ...unitFilterShape })
 const enableSchema = z.object({ email: z.string().trim().email().max(160).optional() }).strict()
 // Arquivo em base64: o servidor decide a codificação (Excel salva CSV em Windows-1252) e os limites; nada é gravado em disco.
 const networkEnableSchema = z.object({ contentBase64: z.string().min(1).max(960_000).regex(/^[A-Za-z0-9+/]+={0,2}$/) }).strict()

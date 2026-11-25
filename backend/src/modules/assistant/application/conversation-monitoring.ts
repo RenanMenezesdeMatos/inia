@@ -1,9 +1,11 @@
+import { unitFilterSql } from "../../../shared/infrastructure/database/unit-filter.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { parseFeedbackSessionClarificationScope } from "../../feedback-application/domain/product-confirmation.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { rolesWithPermission } from "../../access/domain/roles.js"
 import { loadAvatarPresenter, personAvatarLoader } from "../../profile-preferences/application/person-presentation-loader.js"
 import { DEFAULT_ORGANIZATION_TIMEZONE } from "../../workflows/application/organization-timezone.js"
+import type { OptionsReach } from "../../org-structure/application/scoped-options.js"
 import { decodeCursor } from "../domain/assistant-conversation.js"
 import { CONVERSATION_SUMMARY_SELECT, loadConversationMessages, toSummary, type ConversationSummary, type ConversationSummaryRow } from "./assistant-conversations.js"
 import { loadConversationRatings, type RatingSnapshot } from "./assistant-interaction-ratings.js"
@@ -89,8 +91,8 @@ export type MonitoringFilters = {
   /** Nome do colaborador OU assunto (título) da conversa. */
   search?: string | undefined
   ownerPersonId?: string | undefined
-  teamId?: string | undefined
-  subteamId?: string | undefined
+  teamId?: readonly string[] | undefined
+  subteamId?: readonly string[] | undefined
   status?: (typeof MONITORING_STATUS_FILTERS)[number] | undefined
   origin?: (typeof MONITORING_ORIGIN_FILTERS)[number] | undefined
   /** Datas LOCAIS da organização (YYYY-MM-DD), inclusivas, sobre a última atividade. */
@@ -128,8 +130,8 @@ function filterSql(filters: MonitoringFilters, params: unknown[]): string {
     clauses.push(`(owner.name ilike ${pattern} or c.title ilike ${pattern})`)
   }
   if (filters.ownerPersonId) clauses.push(`c.owner_person_id = ${add(filters.ownerPersonId)}::uuid`)
-  if (filters.teamId) clauses.push(`owner.team_id = ${add(filters.teamId)}::uuid`)
-  if (filters.subteamId) clauses.push(`owner.subteam_id = ${add(filters.subteamId)}::uuid`)
+  const units = unitFilterSql(filters, add, { team: "owner.team_id", subteam: "owner.subteam_id" })
+  if (units) clauses.push(units)
   if (filters.status === "ACTIVE") clauses.push(`c.status = 'ACTIVE'`)
   if (filters.status === "CLOSED") clauses.push(`c.status = 'CLOSED' and c.kind = 'CONVERSATION'`)
   if (filters.status === "LEGACY") clauses.push(`c.kind = 'LEGACY_HISTORY'`)
@@ -146,8 +148,7 @@ export async function listMonitoredConversations(db: Queryable, viewer: Monitori
   const extra = filterSql(filters, params)
   const countParams = [...params]
   params.push(filters.pageSize, (filters.page - 1) * filters.pageSize)
-  const optionParams = baseParams(viewer)
-  const [rows, total, owners] = await Promise.all([
+  const [rows, total] = await Promise.all([
     db.query<Row>(
       `${SCOPE_CTE} select ${CONVERSATION_SUMMARY_SELECT}, ${OWNER_SELECT} ${FROM} ${MONITORING_LAST_MESSAGE_JOIN}
        where ${VISIBLE}${extra}
@@ -155,34 +156,24 @@ export async function listMonitoredConversations(db: Queryable, viewer: Monitori
       params,
     ),
     db.query<{ n: number }>(`${SCOPE_CTE} select count(*)::int n ${FROM} where ${VISIBLE}${extra}`, countParams),
-    // Opções de filtro derivadas do PRÓPRIO alcance (nunca listam quem está fora dele): as PESSOAS no alcance que têm ao menos
-    // uma conversa — uma consulta pelo índice de dono por pessoa, em vez de um distinct sobre todas as conversas a cada
-    // atualização da tela (20 s). Grupos e Subgrupos saem dessas mesmas pessoas.
-    db.query<{ id: string; name: string; team_id: string | null; team_name: string | null; subteam_id: string | null; subteam_name: string | null }>(
-      `${SCOPE_CTE} select owner.id, owner.name, owner.team_id, t.name team_name, owner.subteam_id, st.name subteam_name
-         from people owner
-         left join teams t on t.id = owner.team_id
-         left join subteams st on st.id = owner.subteam_id
-        where owner.organization_id = $1 and ${OWNER_VISIBLE}
-          and exists (select 1 from assistant_conversations c where c.organization_id = $1 and c.owner_person_id = owner.id)
-        order by owner.name`,
-      optionParams,
-    ),
   ])
-  const teamOptions = new Map<string, string>()
-  const subteamOptions = new Map<string, { id: string; name: string; teamId: string | null }>()
-  for (const row of owners.rows) {
-    if (row.team_id && row.team_name) teamOptions.set(row.team_id, row.team_name)
-    if (row.subteam_id && row.subteam_name) subteamOptions.set(row.subteam_id, { id: row.subteam_id, name: row.subteam_name, teamId: row.team_id })
-  }
   return {
     items: await presentOwners(db, viewer.organizationId, rows.rows),
     total: total.rows[0]?.n ?? 0,
-    filterOptions: {
-      operators: owners.rows.slice(0, 500).map((row) => ({ id: row.id, name: row.name })),
-      teams: [...teamOptions].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
-      subteams: [...subteamOptions.values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
-    },
+  }
+}
+
+/**
+ * Opções dos filtros (Grupo, Subgrupo, colaborador): as PESSOAS no alcance que têm ao menos uma conversa, pelo índice de dono — nunca
+ * quem está fora dele. Servidas em lotes pela rota de opções, não a cada atualização da lista (20 s).
+ */
+export function monitoringOptionsReach(viewer: MonitoringViewer): OptionsReach {
+  return {
+    with: SCOPE_CTE,
+    select: `select owner.id person_id, owner.team_id, owner.subteam_id from people owner
+      where owner.organization_id = $1 and ${OWNER_VISIBLE}
+        and exists (select 1 from assistant_conversations c where c.organization_id = $1 and c.owner_person_id = owner.id)`,
+    params: baseParams(viewer),
   }
 }
 

@@ -495,7 +495,8 @@ export type TeamOverview = {
   showsMembersDirectly: boolean
   /** Operadores ligados diretamente à âncora quando há unidades — listados à parte (`directOnly`). */
   directMemberCount: number
-  filterOptions: { teams: { id: string; name: string }[]; subteams: { id: string; name: string; teamId: string }[]; indicators: { code: string; name: string }[] }
+  /** Grupo e Subgrupo vêm em lotes (`/team/unit-options`). */
+  filterOptions: { indicators: { code: string; name: string }[] }
 }
 
 export type TeamMembersPage = {

@@ -1,3 +1,5 @@
+import { anjoCoversUnits } from "./coverage.js"
+import { hasUnitFilter, type OrgUnitFilter } from "../../../shared/infrastructure/database/unit-filter.js"
 import { assignmentScopesOf, personIdsWithPermission } from "../../access/application/permission-holders.js"
 import type { AccessScope } from "../../access/domain/access-scope.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
@@ -147,7 +149,7 @@ export async function updateScopeState(db: TransactionSource & Queryable, viewer
 }
 
 /** Anjos a partir das atribuições, com escopos, capacidade e situação agora. Com filtro de Grupo/Subgrupo: quem atende aquele escopo e, para quem não pode receber atribuição agora, o motivo. */
-export async function listAnjos(db: Queryable, organizationId: string, filter: { teamId?: string | null | undefined; subteamId?: string | null | undefined } = {}): Promise<AnjoRow[]> {
+export async function listAnjos(db: Queryable, organizationId: string, filter: OrgUnitFilter = {}): Promise<AnjoRow[]> {
   const [settings, scopes, structure] = await Promise.all([loadSettings(db, organizationId), anjoScopes(db, organizationId), structureOf(db, organizationId)])
   const ids = [...scopes.keys()]
   if (ids.length === 0) return []
@@ -163,10 +165,8 @@ export async function listAnjos(db: Queryable, organizationId: string, filter: {
   ])
   const teamName = new Map(structure.teams.map((team) => [team.id, team.name]))
   const subteamById = new Map(structure.subteams.map((subteam) => [subteam.id, subteam]))
-  const filterTeam = filter.subteamId ? (subteamById.get(filter.subteamId)?.team_id ?? null) : (filter.teamId ?? null)
-  const filtered = Boolean(filter.teamId || filter.subteamId)
-  const coversFilter = (list: AccessScope[]) =>
-    list.some((scope) => scope.type === "ORGANIZATION" || (scope.type === "GROUP" && scope.teamId === filterTeam) || (scope.type === "SUBGROUP" && Boolean(filter.subteamId) && scope.subteamId === filter.subteamId))
+  const filtered = hasUnitFilter(filter)
+  const coversFilter = anjoCoversUnits(filter, (filter.subteamId ?? []).flatMap((id) => subteamById.get(id)?.team_id ?? []))
   const rows = presence.rows.map((row): AnjoRow => {
     const list = scopes.get(row.person_id) ?? []
     const capacity = effectiveCapacity(row.max_concurrent === null ? null : Number(row.max_concurrent), settings.defaultCapacity)

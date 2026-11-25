@@ -37,7 +37,7 @@ export const memoryStatsSchema = z.object({
 })
 export type MemoryStats = z.infer<typeof memoryStatsSchema>
 
-export type MemoryFilters = { from: string; to: string; teamId?: string | null; subteamId?: string | null; personId?: string | null; subject?: string | null; documentId?: string | null; criterionKey?: string | null; practiceKey?: string | null; status?: string | null }
+export type MemoryFilters = { from: string; to: string; teamId?: readonly string[] | null; subteamId?: readonly string[] | null; personId?: string | null; subject?: string | null; documentId?: string | null; criterionKey?: string | null; practiceKey?: string | null; status?: string | null }
 
 export const memorySummarySchema = z.object({
   filters: z.record(z.string(), z.unknown()),
@@ -50,13 +50,10 @@ export const memorySummarySchema = z.object({
 })
 export type MemorySummary = z.infer<typeof memorySummarySchema>
 
+/** Grupo, Subgrupo e pessoa vêm em lotes (`/memory/unit-options`). */
 export const filterOptionsSchema = z.object({
-  teams: z.array(z.object({ id: z.string(), name: z.string() })),
-  // `teamId`/`subteamId` opcionais: encadeiam Grupo → Subgrupo → pessoa nos filtros (servidor antigo = sem encadear).
-  subteams: z.array(z.object({ id: z.string(), name: z.string(), teamId: z.string().nullable().optional() })),
   subjects: z.array(z.string()),
   documents: z.array(z.object({ id: z.string(), title: z.string() })),
-  people: z.array(z.object({ id: z.string(), name: z.string(), teamId: z.string().nullable().optional(), subteamId: z.string().nullable().optional() })),
 })
 export type FilterOptions = z.infer<typeof filterOptionsSchema>
 

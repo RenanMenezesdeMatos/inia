@@ -3,6 +3,7 @@ import "@testing-library/jest-dom/vitest"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
@@ -131,7 +132,7 @@ const version = (status: "DRAFT" | "PUBLISHED", cfg: StrategyConfig, number = 1)
 describe("V1.6.2 — drawer do indicador: abas e \"Nova regra\" como ação (regressão)", () => {
   it("L) abas Definição / Regras de cálculo / Diagnóstico com IA / Glossário; \"Nova regra\" abre o formulário dentro da aba e salva a regra", async () => {
     state.overview = overview()
-    render(<IndicatorManager indicator={indicator()} />)
+    renderWithQuery(<IndicatorManager indicator={indicator()} />)
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Definição", "Regras de cálculo", "Diagnóstico com IA", "Glossário"])
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Regras de cálculo" }))
     fireEvent.click(screen.getByRole("tab", { name: "Regras de cálculo" }))

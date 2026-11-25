@@ -66,8 +66,8 @@ export type KnowledgeOptionsFilter = {
   agentScope?: AgentScope | undefined
   /** Filtro de Grupo/Subgrupo do seletor (vínculo da própria base). */
   scopeType?: "ALL_TEAMS" | undefined
-  teamId?: string | undefined
-  subteamId?: string | undefined
+  teamId?: readonly string[] | undefined
+  subteamId?: readonly string[] | undefined
   productId?: string | undefined
   subjectScopeType?: "ALL_SUBJECTS" | undefined
   subjectId?: string | undefined
@@ -96,11 +96,9 @@ export function knowledgeOptionsWhere(organizationId: string, scopes: Manageable
   if (agentScope && agentScope.scopeType !== "ALL_TEAMS" && agentScopeLinks(agentScope).length > 0) {
     sql.add(knowledgeFitsAgentSql("d.id", { scopeType: `'GROUPS'`, teamIds: linkArraysSql(sql, agentScope).teamIds }))
   }
-  if (filter.subteamId) {
-    const subteam = sql.param(filter.subteamId)
-    sql.add(SCOPE_EXISTS(`os.subteam_id = ${subteam}::uuid or (os.scope_type = 'TEAM' and os.team_id = (select st.team_id from subteams st where st.id = ${subteam}::uuid))`))
-  } else if (filter.teamId) {
-    sql.add(SCOPE_EXISTS(`os.team_id = ${sql.param(filter.teamId)}::uuid`))
+  const units = sql.units({ team: "os.team_id", subteam: "os.subteam_id", wholeParent: true }, filter)
+  if (units) {
+    sql.add(SCOPE_EXISTS(units))
   } else if (filter.scopeType === "ALL_TEAMS") {
     sql.add(SCOPE_EXISTS(`os.scope_type = 'ALL_TEAMS'`))
   }

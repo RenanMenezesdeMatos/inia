@@ -36,7 +36,6 @@ export const feedbackReviewPageSchema = z.object({
   total: z.number(),
   page: z.number(),
   pageSize: z.number(),
-  filterOptions: z.object({ collaborators: z.array(namedSchema), teams: z.array(namedSchema) }),
 })
 export type FeedbackReviewPage = z.infer<typeof feedbackReviewPageSchema>
 
@@ -159,7 +158,7 @@ export const editCheckSchema = z.object({ blocking: z.array(violationSchema), wa
 export type EditCheck = z.infer<typeof editCheckSchema>
 
 export type FeedbackReviewDecisionInput = { decision: FeedbackReviewDecision; finalWording?: ItemWording | null; reasonCategory?: string | null; comment?: string | null }
-export type FeedbackReviewListParams = { status: FeedbackReviewStatus | "ALL"; search?: string | undefined; collaboratorId?: string | undefined; teamId?: string | undefined; section?: "STRENGTH" | "OPPORTUNITY" | undefined; from?: string | undefined; to?: string | undefined; page: number; pageSize: number }
+export type FeedbackReviewListParams = { status: FeedbackReviewStatus | "ALL"; search?: string | undefined; collaboratorId?: string | undefined; teamId?: readonly string[] | undefined; section?: "STRENGTH" | "OPPORTUNITY" | undefined; from?: string | undefined; to?: string | undefined; page: number; pageSize: number }
 
 export const STATUS_FILTER_LABELS: Record<FeedbackReviewStatus | "ALL", string> = { PENDING_REVIEW: "Aguardando avaliação", APPROVED_UNCHANGED: "Aprovados sem edição", APPROVED_EDITED: "Aprovados com edição", REJECTED: "Rejeitados", ALL: "Todos" }
 export const SECTION_LABELS: Record<"STRENGTH" | "OPPORTUNITY", string> = { STRENGTH: "Ponto positivo", OPPORTUNITY: "Ponto de desenvolvimento" }

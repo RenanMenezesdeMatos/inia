@@ -6,7 +6,8 @@ import { accessAccountSchema, accessRoleSchema, enabledAccessSchema, identifiedU
 
 const BASE = "/api/v1/admin/access"
 
-export const fetchIdentifiedUsers = async (params: { search?: string | undefined; status?: AccessStatus | undefined; networkIssue?: boolean | undefined; page: number; pageSize: number }) => identifiedUserPageSchema.parse(await adminGet(`${BASE}/users${toQueryString(params)}`))
+export type IdentifiedUsersParams = { search?: string | undefined; status?: AccessStatus | undefined; networkIssue?: boolean | undefined; teamId?: readonly string[] | undefined; subteamId?: readonly string[] | undefined; page: number; pageSize: number }
+export const fetchIdentifiedUsers = async (params: IdentifiedUsersParams) => identifiedUserPageSchema.parse(await adminGet(`${BASE}/users${toQueryString(params)}`))
 export const fetchAccessAccount = async (accountId: string) => accessAccountSchema.parse(await adminGet(`${BASE}/accounts/${encodeURIComponent(accountId)}`))
 export const fetchAccessRoles = async () => z.array(accessRoleSchema).parse(await adminGet(`${BASE}/roles`))
 export const fetchScopeOptions = async () => scopeOptionsSchema.parse(await adminGet(`${BASE}/scope-options`))

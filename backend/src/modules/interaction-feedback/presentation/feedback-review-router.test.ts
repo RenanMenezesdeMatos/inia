@@ -88,7 +88,7 @@ async function setup(options: { failingWriter?: boolean } = {}): Promise<Setup> 
   return { memory, deliveries, writerCalls: () => calls, app }
 }
 
-const list = async (s: Setup, as: TestPerson, query = "") => (await request(s.app(as)).get(`/feedback-quality-reviews${query}`)).body.data as { items: { reviewId: string; collaborator: { name: string }; section: string; status: string; isFallback: boolean }[]; total: number; filterOptions: { collaborators: { name: string }[]; teams: { name: string }[] } }
+const list = async (s: Setup, as: TestPerson, query = "") => (await request(s.app(as)).get(`/feedback-quality-reviews${query}`)).body.data as { items: { reviewId: string; collaborator: { name: string }; section: string; status: string; isFallback: boolean }[]; total: number }
 const firstOf = async (s: Setup, as: TestPerson, section: "STRENGTH" | "OPPORTUNITY" = "STRENGTH") => (await list(s, as, `?section=${section}`)).items[0]!.reviewId
 
 describe("V1.5.5 — QA de feedback: capability explícita, escopo e isolamento", () => {
@@ -120,7 +120,7 @@ describe("V1.5.5 — QA de feedback: capability explícita, escopo e isolamento"
     expect(await names(QUALITY)).toEqual(["Operador Dois", "Operador Três", "Operadora Quatro", "Operadora Um"])
     expect(await names(RETENTION_QA)).toEqual(["Operador Três"])
     expect(await names(OTHER_SUP)).toEqual(["Operador Externo"])
-    expect((await list(s, SUP_A)).filterOptions.collaborators.map((entry) => entry.name).sort()).toEqual(["Operador Dois", "Operadora Um"])
+    expect(((await request(s.app(SUP_A)).get("/feedback-quality-reviews/filter-options?kind=PERSON")).body.data.items as { name: string }[]).map((entry) => entry.name).sort()).toEqual(["Operador Dois", "Operadora Um"])
     expect((await request(s.app(QUALITY)).get("/feedback-quality-reviews/access")).body.data).toEqual({ canReview: true, canDecide: true, scopes: [{ scopeType: "ORGANIZATION", label: "Toda a organização" }] })
   })
 

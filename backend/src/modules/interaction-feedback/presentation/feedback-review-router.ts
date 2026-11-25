@@ -1,8 +1,10 @@
+import { unitIdsParam } from "../../../shared/presentation/list-query.js"
 import { Router } from "express"
 import { z } from "zod"
+import { respondOptions, UNIT_AND_PERSON_OPTION_KINDS } from "../../org-structure/presentation/options-query.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { systemClock, type Clock } from "../../../shared/domain/clock.js"
-import { checkFeedbackReviewEdit, decideFeedbackReview, getFeedbackQualityAccess, getFeedbackReview, listFeedbackReviews, type FeedbackReviewDeps } from "../application/feedback-review-service.js"
+import { checkFeedbackReviewEdit, decideFeedbackReview, getFeedbackQualityAccess, getFeedbackReview, listFeedbackReviewOptions, listFeedbackReviews, type FeedbackReviewDeps } from "../application/feedback-review-service.js"
 import { REVIEW_REASON_CATEGORIES, REVIEWER_COMMENT_MAX } from "../domain/feedback-review.js"
 import { WORDING_MAX_CHARS } from "../domain/review-view.js"
 import { createPostgresFeedbackReviewReader } from "../infrastructure/postgres-feedback-review-reader.js"
@@ -16,7 +18,7 @@ const listQuerySchema = z.object({
   status: z.enum(["PENDING_REVIEW", "APPROVED_UNCHANGED", "APPROVED_EDITED", "REJECTED", "ALL"]).default("PENDING_REVIEW"),
   search: z.string().trim().max(100).optional(),
   collaboratorId: z.string().uuid().optional(),
-  teamId: z.string().uuid().optional(),
+  teamId: unitIdsParam,
   section: z.enum(["STRENGTH", "OPPORTUNITY"]).optional(),
   from: localDate.optional(),
   to: localDate.optional(),
@@ -59,6 +61,10 @@ export function createFeedbackReviewRouter(database: Database, deps?: Partial<Fe
   })
   router.get("/", async (request, response) => {
     response.json({ data: await listFeedbackReviews(resolved, viewerOf(request), listQuerySchema.parse(request.query)) })
+  })
+  // Antes de "/:reviewId": "filter-options" não é id de revisão.
+  router.get("/filter-options", async (request, response) => {
+    response.json({ data: await respondOptions(request.query, UNIT_AND_PERSON_OPTION_KINDS, (query) => listFeedbackReviewOptions(resolved, viewerOf(request), query)) })
   })
   router.get("/:reviewId", async (request, response) => {
     response.json({ data: await getFeedbackReview(resolved, viewerOf(request), paramsSchema.parse(request.params).reviewId) })

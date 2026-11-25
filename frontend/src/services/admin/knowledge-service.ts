@@ -33,10 +33,6 @@ import type { OperatingUniverse } from "@/schemas/operating-universe/operating-u
 
 const BASE_PATH = "/api/v1/admin/knowledge"
 
-export async function fetchKnowledgeDocuments(): Promise<KnowledgeDocument[]> {
-  return z.array(knowledgeDocumentSchema).parse(await adminGet(BASE_PATH))
-}
-
 export type KnowledgeListParams = ListParams &
   OrgScopeFilter &
   SubjectScopeFilter & {
@@ -54,6 +50,19 @@ export async function fetchKnowledgeDocumentsPage(params: KnowledgeListParams): 
   // "Aprovada" é só uma marca do rascunho: quem filtra Rascunho também vê essas bases.
   const statuses = status.includes("DRAFT") ? [...status, "APPROVED" as const] : status
   return pageResultSchema(knowledgeDocumentSchema).parse(await adminGet(`${BASE_PATH}${toQueryString({ ...rest, status: statuses, createdFrom: createdAt.from, createdTo: createdAt.to })}`))
+}
+
+export type KnowledgeOptionsSearch = { search?: string | undefined; universe?: string | null | undefined; teamId?: readonly string[] | undefined; subteamId?: readonly string[] | undefined }
+
+/** Bases para um seletor, em páginas: as do universo (e as ainda sem universo) e as que valem no Grupo/Subgrupo, inclusive as globais. */
+export async function fetchKnowledgeOptionsPage(search: KnowledgeOptionsSearch, page: number, pageSize: number, signal?: AbortSignal): Promise<PageResult<KnowledgeDocument>> {
+  const scope = { teamId: search.teamId, subteamId: search.subteamId, scopeMatch: search.teamId?.length || search.subteamId?.length ? "fits" : undefined }
+  return pageResultSchema(knowledgeDocumentSchema).parse(await adminGet(`${BASE_PATH}${toQueryString({ search: search.search, operatingUniverse: search.universe ? [search.universe, "PENDING"] : undefined, ...scope, sort: "title", page, pageSize })}`, signal))
+}
+
+/** Uma base já escolhida (nome, universo e alcance), mesmo fora do lote carregado; fora do alcance de quem pede não volta. */
+export async function fetchKnowledgeOption(id: string): Promise<KnowledgeDocument | null> {
+  return pageResultSchema(knowledgeDocumentSchema).parse(await adminGet(`${BASE_PATH}${toQueryString({ ids: id, page: 1, pageSize: 1 })}`)).items[0] ?? null
 }
 
 /** Assuntos da base: o catálogo canônico das chamadas (o mesmo dos Alinhamentos), com a permissão de incluir. */

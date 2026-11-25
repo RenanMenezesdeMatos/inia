@@ -33,7 +33,6 @@ import {
   ListBooleanFilter,
   ListDateRangeFilter,
   ListMultiSelectFilter,
-  ListOrgScopeFilter,
   ListUniverseFilter,
   universeChoiceOf,
   ListSearchInput,
@@ -41,14 +40,14 @@ import {
   ListToolbar,
   optionsFromLabels,
 } from "@/components/admin/shared/list/list-filters"
+import { ListOrgScopeFilter, useOrgScopeAfterUniverse } from "@/components/admin/shared/list/org-scope-filter"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
 import { resourceScopeLabel } from "@/lib/scope-links/scope-links"
 import { agentFitsListScope } from "./orchestrator-editor/agent-scope-fit"
 import { useAgentsQuery } from "@/queries/admin/use-agent-queries"
-import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import type { OrgScopeFilter } from "@/lib/admin/list-query"
-import { filterByUniverse, orgScopeAfterUniverseChange, orgScopePatch, scopesFitOrgScope } from "@/lib/operating-universe/hierarchy"
+import { filterByUniverse, orgScopePatch, scopesFitOrgScope } from "@/lib/operating-universe/hierarchy"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import {
   useDeleteOrchestratorMutation,
@@ -62,6 +61,8 @@ import { describeBusinessDomain } from "@/schemas/admin/business-domain.schema"
 import { ORCHESTRATOR_POLICY_KIND_SHORT_LABELS, POLICY_REQUIRED_MESSAGE, resolveRoutingPolicy } from "@/schemas/admin/orchestrator-policy"
 import { cn } from "@/lib/utils"
 import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
+import type { SubteamParents } from "@/lib/admin/unit-selection"
+import { parentsOf, useSelectedOrgUnits } from "@/components/admin/shared/list/org-unit-multi-filter"
 
 /** Alcance (249): "Todos os Grupos" ou os Grupos/Subgrupos vinculados ("Grupo A · Grupo B › B1"). */
 const groupLabel = (orchestrator: Orchestrator) => resourceScopeLabel(orchestrator)
@@ -255,7 +256,6 @@ const INVOCATION_MODE_OPTIONS = optionsFromLabels(ORCHESTRATOR_INVOCATION_MODE_L
 
 export function AssistantPage() {
   const router = useRouter()
-  const teamsQuery = useTeamsQuery()
   const agentsQuery = useAgentsQuery()
   const [autoOpen] = useAutoOpenFromQuery("new")
 
@@ -265,13 +265,15 @@ export function AssistantPage() {
   // Hierarquia universo → Grupo/Subgrupo → agente: cada filtro só oferece o que cabe nos de cima; trocar um de cima limpa os de baixo.
   const universeChoice = universeChoiceOf(list.filters.operatingUniverse)
   const currentScope: OrgScopeFilter = { scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }
-  const agentsFor = (universe: OperatingUniverse | undefined, scope: OrgScopeFilter, orchestrator: boolean) =>
-    filterByUniverse(agentsQuery.data ?? [], universe).filter((agent) => (agent.agentType === "ORCHESTRATOR") === orchestrator && agentFitsListScope(agent, scope, teamsQuery.data ?? [], () => scopesFitOrgScope([agent], scope, teamsQuery.data)))
-  const keepAgent = (id: string | undefined, universe: OperatingUniverse | undefined, scope: OrgScopeFilter, orchestrator: boolean) =>
-    id && agentsFor(universe, scope, orchestrator).some((agent) => agent.id === id) ? id : undefined
-  const dependentAgents = (universe: OperatingUniverse | undefined, scope: OrgScopeFilter) => ({
-    orchestratorAgentId: keepAgent(list.filters.orchestratorAgentId, universe, scope, true),
-    specialistAgentId: keepAgent(list.filters.specialistAgentId, universe, scope, false),
+  const scopeAfterUniverse = useOrgScopeAfterUniverse("agents.manage", currentScope)
+  const scopeParents = parentsOf(useSelectedOrgUnits("agents.manage", "SUBTEAM", currentScope.subteamId ?? []).units)
+  const agentsFor = (universe: OperatingUniverse | undefined, scope: OrgScopeFilter, orchestrator: boolean, parents: SubteamParents = scopeParents) =>
+    filterByUniverse(agentsQuery.data ?? [], universe).filter((agent) => (agent.agentType === "ORCHESTRATOR") === orchestrator && agentFitsListScope(agent, scope, parents, () => scopesFitOrgScope([agent], scope, parents)))
+  const keepAgent = (id: string | undefined, universe: OperatingUniverse | undefined, scope: OrgScopeFilter, orchestrator: boolean, parents: SubteamParents) =>
+    id && agentsFor(universe, scope, orchestrator, parents).some((agent) => agent.id === id) ? id : undefined
+  const dependentAgents = (universe: OperatingUniverse | undefined, scope: OrgScopeFilter, parents: SubteamParents = scopeParents) => ({
+    orchestratorAgentId: keepAgent(list.filters.orchestratorAgentId, universe, scope, true, parents),
+    specialistAgentId: keepAgent(list.filters.specialistAgentId, universe, scope, false, parents),
   })
   const orchestratorAgentOptions = agentsFor(universeChoice, currentScope, true).map((agent) => ({ value: agent.id, label: agent.name }))
   const specialistAgentOptions = agentsFor(universeChoice, currentScope, false).map((agent) => ({ value: agent.id, label: agent.name }))
@@ -317,15 +319,15 @@ export function AssistantPage() {
               value={list.filters.operatingUniverse}
               onChange={(operatingUniverse) => {
                 const universe = universeChoiceOf(operatingUniverse)
-                const scope = orgScopeAfterUniverseChange(currentScope, teamsQuery.data, universe)
+                const scope = scopeAfterUniverse(universe)
                 list.patchFilters({ operatingUniverse, ...orgScopePatch(scope), ...dependentAgents(universe, scope) })
               }}
             />
             <ListOrgScopeFilter
-              teams={teamsQuery.data}
+              permission="agents.manage"
               universe={universeChoice}
               value={currentScope}
-              onChange={(scope) => list.patchFilters({ ...orgScopePatch(scope), ...dependentAgents(universeChoice, scope) })}
+              onChange={(scope, parents) => list.patchFilters({ ...orgScopePatch(scope), ...dependentAgents(universeChoice, scope, parents) })}
             />
             <ListSelectFilter
               value={list.filters.orchestratorAgentId}

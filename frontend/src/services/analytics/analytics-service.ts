@@ -1,4 +1,5 @@
 import { apiGet, toQueryString } from "@/lib/api/api-client"
+import type { ScopedOptionsSource } from "@/services/scope-units/scoped-options-service"
 import { subjectQuery, type SubjectRef } from "@/lib/analytics/subject-params"
 import type { FollowUpAudience, FollowUpType } from "@/schemas/analytics/analytics.schema"
 import {
@@ -27,8 +28,8 @@ export type IndicatorMembersParams = { search?: string; sort?: "achievement" | "
 
 export type TeamMembersParams = {
   search?: string
-  teamId?: string
-  subteamId?: string
+  teamId?: readonly string[] | undefined
+  subteamId?: readonly string[] | undefined
   situation?: MemberSituation
   attentionIndicatorCode?: string
   pendingOnly?: boolean
@@ -58,6 +59,11 @@ export async function fetchIndicatorMembers(subject: SubjectRef | null, period: 
 
 export async function fetchTeamOverview(subject: SubjectRef | null, period: string | null): Promise<TeamOverview> {
   return teamOverviewSchema.parse(await apiGet(`${BASE}/team${toQueryString({ ...subjectQuery(subject), period })}`))
+}
+
+/** Grupos e Subgrupos de quem está na estrutura vista (filtros da Equipe), em lotes. */
+export function teamUnitOptionsSource(subject: SubjectRef | null): ScopedOptionsSource {
+  return { path: `${BASE}/team/unit-options`, params: subjectQuery(subject) }
 }
 
 export async function fetchTeamMembers(subject: SubjectRef | null, period: string | null, params: TeamMembersParams): Promise<TeamMembersPage> {

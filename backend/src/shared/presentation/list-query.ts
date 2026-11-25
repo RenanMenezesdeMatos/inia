@@ -1,3 +1,4 @@
+import { unitFilterSql, type OrgUnitFilter, type UnitColumns } from "../infrastructure/database/unit-filter.js"
 import type { QueryResultRow } from "pg"
 import { z } from "zod"
 import type { Database } from "../../infrastructure/database/pool.js"
@@ -104,13 +105,17 @@ export class SqlFilter {
   }
 
   // Filtro por grupo/subgrupo em entidades com scope_type/team_id/subteam_id próprios:
-  // "ALL_TEAMS" traz só as globais; um teamId traz o grupo e seus subgrupos; um subteamId traz
-  // só aquele subgrupo.
-  orgScope(alias: string, scope: { scopeType?: string | undefined; teamId?: string | undefined; subteamId?: string | undefined }) {
-    if (scope.subteamId) this.add(`${alias}."subteamId" = ${this.param(scope.subteamId)}::uuid`)
-    else if (scope.teamId) this.add(`${alias}."teamId" = ${this.param(scope.teamId)}::uuid`)
+  // "ALL_TEAMS" traz só as globais; Grupos e Subgrupos (vários) seguem a regra de `unit-filter.ts`.
+  orgScope(alias: string, scope: OrgUnitFilter & { scopeType?: string | undefined }) {
+    const units = this.units({ team: `${alias}."teamId"`, subteam: `${alias}."subteamId"` }, scope)
+    if (units) this.add(units)
     else if (scope.scopeType === "ALL_TEAMS") this.add(`${alias}."scopeType" = 'ALL_TEAMS'`)
     return this
+  }
+
+  /** Cláusula dos Grupos/Subgrupos escolhidos (`null` sem escolha), com os valores como parâmetros deste filtro. */
+  units(columns: UnitColumns, scope: OrgUnitFilter): string | null {
+    return unitFilterSql(scope, (value) => this.param(value), columns)
   }
 
   where() {
@@ -118,11 +123,13 @@ export class SqlFilter {
   }
 }
 
-export const orgScopeFilterSchema = z.object({
-  scopeType: z.enum(["ALL_TEAMS"]).optional(),
-  teamId: z.string().uuid().optional(),
-  subteamId: z.string().uuid().optional(),
-})
+/** Vários Grupos ou Subgrupos no filtro (`?teamId=a&teamId=b` ou `?teamId=a,b`). Teto do servidor; a tela limita a 30 no total, que cabe na URL padrão do IIS (2048). */
+export const MAX_FILTER_UNITS = 40
+export const unitIdsParam = listParam(z.string().uuid()).refine((ids) => !ids || ids.length <= MAX_FILTER_UNITS, `Escolha até ${MAX_FILTER_UNITS} Grupos ou Subgrupos.`)
+/** Campos de Grupo/Subgrupo de um filtro de lista ou painel — a regra de combinação está em `unit-filter.ts`. */
+export const unitFilterShape = { teamId: unitIdsParam, subteamId: unitIdsParam }
+
+export const orgScopeFilterSchema = z.object({ scopeType: z.enum(["ALL_TEAMS"]).optional(), ...unitFilterShape })
 
 type ListQueryInput = {
   select: string

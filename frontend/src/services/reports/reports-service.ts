@@ -1,6 +1,7 @@
+import { adminGet } from "@/lib/admin/admin-api"
+import { toQueryString } from "@/lib/admin/list-query"
 import { apiGet, apiPost, apiSend } from "@/lib/api/api-client"
 import {
-  audiencePersonSchema,
   deletedReportSchema,
   deliveryDetailSchema,
   receivedDeliverySchema,
@@ -9,6 +10,7 @@ import {
   reportOptionsSchema,
   reportPreviewSchema,
   reportProposalSchema,
+  reportStructurePageSchema,
   reportSummarySchema,
   type ReportConfig,
   type ReportDefinition,
@@ -81,6 +83,9 @@ export async function retryDeliveryAnalysis(id: string) {
   return z.object({ analysisStatus: z.string() }).parse(await apiPost(`/api/v1/reports/deliveries/${id}/analysis/retry`))
 }
 
-export async function searchAudiencePeople(query: string) {
-  return z.array(audiencePersonSchema).parse(await apiGet(`/api/v1/reports/audience/people?q=${encodeURIComponent(query)}`))
+/** Grupos, Subgrupos e pessoas do público, em lotes e no escopo de quem distribui. */
+export const REPORT_AUDIENCE_SOURCE = { path: "/api/v1/reports/audience/options" }
+
+export async function fetchReportStructures(search: { search?: string; cursor: string | null }, signal?: AbortSignal) {
+  return reportStructurePageSchema.parse(await adminGet(`/api/v1/reports/structure-options${toQueryString({ search: search.search, cursor: search.cursor })}`, signal))
 }

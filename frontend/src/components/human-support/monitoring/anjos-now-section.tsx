@@ -82,7 +82,7 @@ function NowState({ query, children, skeleton = "h-16" }: { query: ReturnType<ty
  * (relida a cada 5 s) e o mesmo filtro — clicar num estado filtra a tabela de Anjos. Cards: fila, sem 1ª resposta, operadores na fila,
  * Anjos por estado e a tabela de Anjos.
  */
-export function useOperationNowSection(filter: { teamId?: string | null; subteamId?: string | null }): GridSection {
+export function useOperationNowSection(filter: { teamId?: readonly string[] | null; subteamId?: readonly string[] | null }): GridSection {
   const scope = { teamId: filter.teamId ?? null, subteamId: filter.subteamId ?? null }
   const query = useAnjosNowQuery(scope)
   const [filters, setFilters] = useState<Filters>({ search: "" })
@@ -347,7 +347,7 @@ function QueueAwaitingCard({ queue, offsetMs }: { queue: QueueNow; offsetMs: num
 }
 
 /** Card "Operadores na fila": a tabela de quem aguarda e há quanto tempo, sempre à vista. */
-function QueueTableCard({ filter, offsetMs }: { filter: { teamId: string | null; subteamId: string | null }; offsetMs: number }) {
+function QueueTableCard({ filter, offsetMs }: { filter: { teamId: readonly string[] | null; subteamId: readonly string[] | null }; offsetMs: number }) {
   return (
     <section aria-labelledby="queue-table-title" className="space-y-2">
       <h3 id="queue-table-title" className="text-sm font-medium">
@@ -359,7 +359,7 @@ function QueueTableCard({ filter, offsetMs }: { filter: { teamId: string | null;
 }
 
 /** Quem está na fila agora, do que espera há mais tempo; a espera conta da entrada original (o pedido devolvido à fila mantém o horário). */
-function QueueTable({ filter, offsetMs }: { filter: { teamId: string | null; subteamId: string | null }; offsetMs: number }) {
+function QueueTable({ filter, offsetMs }: { filter: { teamId: readonly string[] | null; subteamId: readonly string[] | null }; offsetMs: number }) {
   const query = useQueueWaitingQuery(filter, true)
   if (query.isPending) return <Skeleton className="h-24 w-full rounded-xl" aria-label="Carregando a fila" />
   if (query.isError) return <PanelError error={query.error} onRetry={() => void query.refetch()} />

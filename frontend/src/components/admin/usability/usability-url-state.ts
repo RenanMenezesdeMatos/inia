@@ -82,7 +82,6 @@ export function withFilter(search: URLSearchParams, key: FilterKey, value: strin
     next.delete("from")
     next.delete("to")
   }
-  if (key === "teamId") next.delete("subteamId")
   return next
 }
 

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query"
 
 import { useAdminMutation } from "@/lib/admin/use-admin-mutation"
 import type { CompetencyInput, InterventionTypeDefinition, PolicyDefinition } from "@/schemas/admin/intervention-policy.schema"
@@ -11,6 +11,7 @@ import {
   fetchCapabilityCatalog,
   fetchCompetencies,
   fetchEditorCatalog,
+  fetchEditorDocuments,
   searchPatternOptions,
   fetchInterventionTypes,
   fetchPolicies,
@@ -36,6 +37,20 @@ import { adminQueryKeys } from "./admin-query-keys"
 // Catálogo técnico (fixo em código) e catálogos administráveis.
 export const useCapabilityCatalogQuery = () => useQuery({ queryKey: adminQueryKeys.interventionCapabilities(), queryFn: fetchCapabilityCatalog, staleTime: Infinity })
 export const useEditorCatalogQuery = () => useQuery({ queryKey: adminQueryKeys.interventionEditorCatalog(), queryFn: fetchEditorCatalog, staleTime: 60_000 })
+/** Bases para ligar a uma competência, em lotes. Só busca com o seletor aberto (`enabled`). */
+export const useEditorDocumentsInfiniteQuery = (search: string, enabled: boolean) =>
+  useInfiniteQuery({
+    queryKey: [...adminQueryKeys.interventionEditorCatalog(), "documents", search],
+    queryFn: ({ pageParam, signal }) => fetchEditorDocuments({ search, cursor: pageParam }, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
+    placeholderData: keepPreviousData,
+    enabled,
+    staleTime: 60_000,
+  })
+/** Título e situação das bases já ligadas. */
+export const useEditorDocumentsByIdsQuery = (ids: readonly string[]) =>
+  useQuery({ queryKey: [...adminQueryKeys.interventionEditorCatalog(), "documents-by-id", [...ids].sort()], queryFn: async () => (await fetchEditorDocuments({ ids })).items, enabled: ids.length > 0, placeholderData: keepPreviousData, staleTime: 60_000 })
 /** Práticas/critérios pelo nome: busca (a partir de 2 letras) e os rótulos dos já escolhidos. */
 export const usePatternOptionsQuery = (search: string, keys: string[]) =>
   useQuery({ queryKey: [...adminQueryKeys.interventionEditorCatalog(), "patterns", search.trim(), [...keys].sort().join(",")], queryFn: () => searchPatternOptions({ search: search.trim().length >= 2 ? search : "", keys }), enabled: search.trim().length >= 2 || keys.length > 0, staleTime: 60_000 })

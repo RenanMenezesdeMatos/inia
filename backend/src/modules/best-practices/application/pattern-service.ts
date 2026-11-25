@@ -3,7 +3,7 @@ import { patternCheckContent, type PatternTexts } from "../domain/pattern-check-
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
-import { booleanParam, listParam, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
+import { booleanParam, listParam, respondList, searchParam, SqlFilter, unitFilterShape } from "../../../shared/presentation/list-query.js"
 import { canManageScope, coversOrganization, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
 import { recordPersonalDataAccess } from "../../data-lifecycle/application/personal-data-access-log.js"
 import { hasUnmaskedLongNumber } from "../domain/excerpt-privacy.js"
@@ -44,8 +44,7 @@ const SELECT_PATTERNS = `
 const listQuerySchema = z.object({
   search: searchParam,
   indicatorId: z.string().uuid().optional(),
-  teamId: z.string().uuid().optional(),
-  subteamId: z.string().uuid().optional(),
+  ...unitFilterShape,
   origin: z.enum(["REAL", "SYNTHETIC"]).optional(),
   reviewStatus: listParam(z.enum(["PENDING_REVIEW", "APPROVED", "REJECTED", "INACTIVE"])),
   obligationStatus: listParam(z.enum(["OPTIONAL", "DIFFERENTIATED_EXECUTION", "UNDETERMINED"])),
@@ -58,8 +57,7 @@ export async function listPatterns(db: Database, organizationId: string, query: 
   const filter = new SqlFilter([organizationId])
     .search(input.search, ["q.name", "q.description"])
     .equals(`q."indicatorId"`, input.indicatorId)
-    .equals(`q."teamId"`, input.teamId)
-    .equals(`q."subteamId"`, input.subteamId)
+    .orgScope("q", input)
     .equals(`q."dataOrigin"`, input.origin)
     .in(`q."reviewStatus"`, input.reviewStatus)
     .in(`q."obligationStatus"`, input.obligationStatus)

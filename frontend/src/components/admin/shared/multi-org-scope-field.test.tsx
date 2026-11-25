@@ -64,10 +64,10 @@ describe("Campo de alcance — seletor pesquisável de Grupos e Subgrupos", () =
     expect(await screen.findByText("Grupo 00")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Carregar mais" }))
     expect(await screen.findByText("Cobrança")).toBeInTheDocument()
-    expect(service.fetchScopeUnits).toHaveBeenCalledWith(expect.objectContaining({ kind: "TEAM", permission: "agents.manage", universes: ["B2C"], cursor: "page-2" }))
+    expect(service.fetchScopeUnits).toHaveBeenCalledWith(expect.objectContaining({ kind: "TEAM", permission: "agents.manage", universes: ["B2C"], cursor: "page-2" }), expect.anything())
     fireEvent.click(screen.getByText("Cobrança"))
     fireEvent.change(screen.getByRole("combobox", { name: /Buscar grupo/ }), { target: { value: "reten" } })
-    await waitFor(() => expect(service.fetchScopeUnits).toHaveBeenCalledWith(expect.objectContaining({ kind: "TEAM", search: "reten" })))
+    await waitFor(() => expect(service.fetchScopeUnits).toHaveBeenCalledWith(expect.objectContaining({ kind: "TEAM", search: "reten" }), expect.anything()))
     const option = await screen.findByRole("option", { name: /Retenção/ })
     fireEvent.click(option)
     // Subgrupos: o do Grupo já escolhido inteiro fica indisponível ("já incluído"); escolher um Subgrupo não leva os irmãos.

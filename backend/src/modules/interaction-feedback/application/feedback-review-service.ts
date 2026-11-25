@@ -4,6 +4,7 @@ import type { ReviewDecisionInput } from "../domain/feedback-review.js"
 import { checkHumanEdit, toKnowledgeView, toQueueItem, toReliableReviewDetail, toReviewDetail, violationMessage, type ReviewDetailView } from "../domain/review-view.js"
 import { checkReliableHumanEdit, decideReliableReview } from "../../reliable-feedback/application/decide-reliable-review.js"
 import type { ReliableFeedbackStore } from "../../reliable-feedback/application/ports.js"
+import type { ScopedOptionsRequest } from "../../org-structure/application/scoped-options.js"
 import type { FeedbackReviewReader, QaGrantScope, QaPermission, ReviewQueueFilters, ReviewViewer, ScopedReview } from "./feedback-review-reader.js"
 import { decideItemReview } from "./interaction-feedback-pipeline.js"
 import { deliverFeedbackItem, type FeedbackDeliveryStore } from "./deliver-feedback.js"
@@ -41,7 +42,12 @@ const describeViolations = (codes: readonly string[]) => codes.map((code) => ({ 
 export async function listFeedbackReviews(deps: Pick<FeedbackReviewDeps, "reader">, viewer: ReviewViewer, filters: ReviewQueueFilters) {
   await requirePermission(deps, viewer, "feedback_quality_review.view")
   const page = await deps.reader.listQueue(viewer, filters)
-  return { items: page.rows.map((row) => toQueueItem(row.record, row.context)), total: page.total, page: filters.page, pageSize: filters.pageSize, filterOptions: page.filterOptions }
+  return { items: page.rows.map((row) => toQueueItem(row.record, row.context)), total: page.total, page: filters.page, pageSize: filters.pageSize }
+}
+
+export async function listFeedbackReviewOptions(deps: Pick<FeedbackReviewDeps, "reader">, viewer: ReviewViewer, request: ScopedOptionsRequest) {
+  await requirePermission(deps, viewer, "feedback_quality_review.view")
+  return deps.reader.listFilterOptions(viewer, request)
 }
 
 export async function getFeedbackReview(deps: Pick<FeedbackReviewDeps, "reader">, viewer: ReviewViewer, reviewId: string): Promise<ReviewDetailView> {

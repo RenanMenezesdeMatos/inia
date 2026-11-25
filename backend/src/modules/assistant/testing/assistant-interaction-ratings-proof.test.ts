@@ -162,7 +162,7 @@ describe.skipIf(!ENABLED)("Curtir/descurtir no chat — prova Postgres", () => {
     expect(funnel.cutoffs.signalsSince).not.toBeNull()
     // Fora do recorte (outro dia, ou Subgrupo que não é o da pessoa): nada.
     expect((await replyFunnel(client as never, org, { from: "2026-11-08", to: "2026-11-08" }, { kind: "UNITS", teamIds: [team], subteamIds: [] })).measures[0]!.main.value).toBe(0)
-    expect((await replyFunnel(client as never, org, { from: "2026-11-09", to: "2026-11-09" }, { kind: "UNITS", teamIds: [team], subteamIds: [] }, { subteamId: "00000000-0000-4000-8000-0000000000aa" })).measures[0]!.main.value).toBe(0)
+    expect((await replyFunnel(client as never, org, { from: "2026-11-09", to: "2026-11-09" }, { kind: "UNITS", teamIds: [team], subteamIds: [] }, { subteamId: ["00000000-0000-4000-8000-0000000000aa"] })).measures[0]!.main.value).toBe(0)
 
     // Exportação do titular: o motivo e os sinais vão junto (seguem `person_id` → people).
     const exported = await exportSubjectData(client as never, { organizationId: org, personId: joana, actorPersonId: joana, at: at(30) })

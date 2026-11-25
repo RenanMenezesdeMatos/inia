@@ -6,8 +6,8 @@ const BASE = "/api/v1/admin/inia-success"
 
 const queryOf = (filter: SuccessFilter) => {
   const params = new URLSearchParams({ from: filter.from, to: filter.to })
-  if (filter.teamId) params.set("teamId", filter.teamId)
-  if (filter.subteamId) params.set("subteamId", filter.subteamId)
+  if (filter.teamId?.length) params.set("teamId", filter.teamId.join(","))
+  if (filter.subteamId?.length) params.set("subteamId", filter.subteamId.join(","))
   return params.toString()
 }
 

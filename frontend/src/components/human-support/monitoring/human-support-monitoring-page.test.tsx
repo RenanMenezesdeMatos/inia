@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { chooseUnit, scopeUnitsServiceFrom } from "@/components/admin/shared/testing/scope-units-fake"
 import { ApiError } from "@/lib/api/api-client"
 import type { Abandonment, FunnelResponse, Measure, RequestDetail, RequestListItem } from "@/schemas/human-support/monitoring.schema"
 
@@ -28,6 +29,8 @@ const service = vi.hoisted(() => ({
   fetchResponseTimes: vi.fn(),
   saveResponseTimes: vi.fn(),
 }))
+const UNITS = vi.hoisted(() => [{ id: "gx", name: "Grupo X", subteams: [{ id: "x1", name: "X1" }] }])
+vi.mock("@/services/scope-units/scope-units-service", () => scopeUnitsServiceFrom(UNITS))
 vi.mock("@/services/human-support/human-support-service", () => service)
 vi.mock("@/services/view-layouts/view-layout-service", () => ({ fetchViewLayout: vi.fn().mockResolvedValue({ layout: null, updatedAt: null }), saveViewLayout: vi.fn(), resetViewLayout: vi.fn() }))
 
@@ -266,13 +269,11 @@ describe("Painel do apoio › Funil", () => {
     expect(service.fetchSupportScopes).not.toHaveBeenCalled()
   })
 
-  it("quem configura o apoio filtra por Grupo/Subgrupo (a árvore da configuração)", async () => {
-    service.fetchSupportScopes.mockResolvedValue([{ type: "GROUP", id: "gx", name: "Grupo X", state: "ON", effective: true, effectiveSource: "OWN", anjoCount: 1, warnings: [], children: [{ type: "SUBGROUP", id: "x1", name: "X1", state: "INHERIT", effective: true, effectiveSource: "GROUP", anjoCount: 1, warnings: [] }] }])
+  it("quem configura o apoio filtra por Grupo/Subgrupo (em lotes, no escopo de quem configura)", async () => {
     renderWithQuery(<HumanSupportMonitoringPage canFilterByScope />)
     openTab("Indicadores")
-    fireEvent.click(await screen.findByRole("combobox", { name: "Filtrar por subgrupo" }))
-    fireEvent.click(await screen.findByRole("option", { name: "Grupo X › X1" }))
-    await waitFor(() => expect(service.fetchSupportFunnel).toHaveBeenCalledWith({ ...PERIOD, teamId: "gx", subteamId: "x1" }))
+    await chooseUnit("Filtrar por subgrupo", "Grupo X › X1")
+    await waitFor(() => expect(service.fetchSupportFunnel).toHaveBeenCalledWith({ ...PERIOD, teamId: null, subteamId: ["x1"] }))
   })
 })
 

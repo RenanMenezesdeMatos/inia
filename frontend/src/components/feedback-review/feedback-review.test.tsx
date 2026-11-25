@@ -42,8 +42,8 @@ const ITEM: FeedbackReviewPage["items"][number] = {
   isFallback: false,
   reviewedAt: null,
 }
-const PAGE: FeedbackReviewPage = { items: [ITEM, { ...ITEM, reviewId: "rev-2", section: "STRENGTH", sectionLabel: "Ponto positivo", kindLabel: "Comportamento positivo", isFallback: true }], total: 2, page: 1, pageSize: 20, filterOptions: { collaborators: [{ id: "op-1", name: "Operadora Um" }], teams: [{ id: "t-1", name: "B2C · Atendimento" }] } }
-const EMPTY: FeedbackReviewPage = { items: [], total: 0, page: 1, pageSize: 20, filterOptions: { collaborators: [], teams: [] } }
+const PAGE: FeedbackReviewPage = { items: [ITEM, { ...ITEM, reviewId: "rev-2", section: "STRENGTH", sectionLabel: "Ponto positivo", kindLabel: "Comportamento positivo", isFallback: true }], total: 2, page: 1, pageSize: 20 }
+const EMPTY: FeedbackReviewPage = { items: [], total: 0, page: 1, pageSize: 20 }
 const PROPOSED = { observed: "Você usou um termo técnico, o que levou o cliente a dizer que não entendeu.", whyItMatters: "Explicar com palavras simples pode facilitar a compreensão.", whatYouCanDo: "Você pode explicar o termo com um exemplo." }
 const REASONS = ["FACTUAL_OVERCLAIM", "UNSUPPORTED_EFFECT", "UNSUPPORTED_PROCEDURE", "TOO_GENERIC", "NOT_ACTIONABLE", "TONE", "PRIVACY", "WRONG_FOCUS", "OTHER"].map((code) => ({ code, label: code === "FACTUAL_OVERCLAIM" ? "Afirma mais do que a evidência mostra" : code === "TOO_GENERIC" ? "Genérico demais" : code }))
 const DETAIL: FeedbackReviewDetail = {

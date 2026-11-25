@@ -1,3 +1,4 @@
+import { unitMatcher } from "../../../shared/infrastructure/database/unit-filter.js"
 import { randomUUID } from "node:crypto"
 import type { AccessRepository, VisibilityFilter } from "../application/access-repository.js"
 import type { AccountAccessRepository } from "../application/account-access-repository.js"
@@ -52,10 +53,11 @@ export function createInMemoryAccessRepository(seed: { people: MemPerson[]; acco
     async getAccount(organizationId, accountId) { const account = accounts.find((entry) => entry.id === accountId && entry.organizationId === organizationId); return account ? summary(account) : null },
     async listAssignments(organizationId, accountId) { return active(organizationId, accountId).map((entry) => ({ id: entry.id, accountId: entry.accountId, roleCode: entry.roleCode, scope: entry.scope, scopeLabel: entry.scope.type, source: "MANUAL", grantedAt: entry.grantedAt, grantedByName: null })) },
     async findAssignment(organizationId, assignmentId) { const entry = assignments.find((item) => item.id === assignmentId && item.organizationId === organizationId); return entry ? { id: entry.id, accountId: entry.accountId, roleCode: entry.roleCode, scope: entry.scope, revoked: entry.revokedAt !== null } : null },
-    async scopeOptions(organizationId, visibility) {
+    async scopeReach(organizationId, visibility) {
+      const teams = seed.teams.filter((team) => team.organizationId === organizationId)
       return {
-        teams: seed.teams.filter((team) => team.organizationId === organizationId && (visibility.organizationWide || visibility.teamIds.includes(team.id))).map(({ id, name }) => ({ id, name })),
-        subteams: seed.subteams.filter((subteam) => seed.teams.some((team) => team.id === subteam.teamId && team.organizationId === organizationId) && (visibility.organizationWide || visibility.teamIds.includes(subteam.teamId) || visibility.subteamIds.includes(subteam.id))).map((subteam) => ({ id: subteam.id, name: subteam.name, teamId: subteam.teamId, teamName: seed.teams.find((team) => team.id === subteam.teamId)!.name })),
+        hasGroups: teams.some((team) => visibility.organizationWide || visibility.teamIds.includes(team.id)),
+        hasSubgroups: seed.subteams.some((subteam) => teams.some((team) => team.id === subteam.teamId) && (visibility.organizationWide || visibility.teamIds.includes(subteam.teamId) || visibility.subteamIds.includes(subteam.id))),
       }
     },
     async createAssignment({ organizationId, accountId, roleCode, scope, grantedByAccountId, actorPersonId, permissions, at }) {
@@ -82,7 +84,7 @@ export function createInMemoryAccessRepository(seed: { people: MemPerson[]; acco
 }
 
 /** Liberação de acesso em memória sobre o MESMO estado (pessoas, contas, papéis, auditoria) — mesma semântica do Postgres. */
-export function createInMemoryAccountAccessRepository(memory: ReturnType<typeof createInMemoryAccessRepository>, seed: { teams: { id: string; name: string }[]; subteams: { id: string; name: string }[]; networkLogin?: { enabled: boolean } }): AccountAccessRepository {
+export function createInMemoryAccountAccessRepository(memory: ReturnType<typeof createInMemoryAccessRepository>, seed: { teams: { id: string; name: string }[]; subteams: { id: string; teamId?: string; name: string }[]; networkLogin?: { enabled: boolean } }): AccountAccessRepository {
   const { people, accounts, assignments, audit } = memory
   const visible = (visibility: VisibilityFilter, person: MemPerson) => visibility.organizationWide || (person.teamId !== null && visibility.teamIds.includes(person.teamId)) || (person.subteamId !== null && visibility.subteamIds.includes(person.subteamId))
   const networkOn = () => seed.networkLogin?.enabled === true
@@ -108,8 +110,10 @@ export function createInMemoryAccountAccessRepository(memory: ReturnType<typeof 
   }
   return {
     async listIdentifiedUsers(organizationId, visibility, filters) {
+      const refined = new Set((filters.subteamId ?? []).map((id) => seed.subteams.find((subteam) => subteam.id === id)?.teamId))
+      const inUnits = unitMatcher({ teamId: filters.teamId?.filter((id) => !refined.has(id)), subteamId: filters.subteamId })
       const all = people
-        .filter((person) => person.organizationId === organizationId && visible(visibility, person))
+        .filter((person) => person.organizationId === organizationId && visible(visibility, person) && inUnits(person))
         .map((person) => ({ person, account: accounts.find((entry) => entry.personId === person.id) ?? null }))
         .filter(({ person, account }) => (!filters.search || `${person.name} ${account?.email ?? ""}`.toLowerCase().includes(filters.search.toLowerCase())) && (!filters.status || accountAccessStatusOf(account ? { active: account.active, passwordChangeRequired: account.passwordChangeRequired === true, credentialProvider: account.credentialProvider ?? "LOCAL" } : null) === filters.status))
         .sort((a, b) => a.person.name.localeCompare(b.person.name))

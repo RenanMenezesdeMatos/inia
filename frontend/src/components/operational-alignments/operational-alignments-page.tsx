@@ -7,7 +7,8 @@ import { CalendarClock, FileText, MoreHorizontal, Pencil, Plus, Trash2, Users } 
 
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
 import { EntityCard, EntityCardIcon, EntityCardTag } from "@/components/admin/shared/list/entity-card"
-import { ListBooleanFilter, ListOrgScopeFilter, ListSearchInput, ListSelectFilter, ListToolbar } from "@/components/admin/shared/list/list-filters"
+import { ListBooleanFilter, ListSearchInput, ListSelectFilter, ListToolbar } from "@/components/admin/shared/list/list-filters"
+import { ListOrgScopeFilter, useOrgScopeAfterUniverse } from "@/components/admin/shared/list/org-scope-filter"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
 import { UniverseBadge } from "@/components/operating-universe/universe-badge"
@@ -18,16 +19,16 @@ import { PageHeader, StatusChip } from "@/components/ui/surface"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAdminListState } from "@/hooks/use-admin-list-state"
+import { orgScopePatch } from "@/lib/operating-universe/hierarchy"
 import { formatCivilDate } from "@/lib/format/date"
-import { useAlignmentScopeOptionsQuery, useAlignmentsPageQuery } from "@/queries/operational-alignments/use-operational-alignment-queries"
+import { useAlignmentsPageQuery } from "@/queries/operational-alignments/use-operational-alignment-queries"
 import { ALIGNMENT_STATE_LABELS, type AlignmentListItem, type AlignmentState } from "@/schemas/operational-alignments/operational-alignment.schema"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 import { AlignmentDetailPanel, AlignmentForm, DeleteConfirm, STATE_TONE } from "./alignment-editor"
 import { AlignmentReasonsPanel } from "./alignment-reasons-panel"
-import { keepCompatibleScope, teamsForUniverse } from "./scope-hierarchy"
 
-type Filters = { search: string; state?: AlignmentState; operatingUniverse?: OperatingUniverse; hasDraft?: boolean; scopeType?: "ALL_TEAMS"; teamId?: string; subteamId?: string }
+type Filters = { search: string; state?: AlignmentState; operatingUniverse?: OperatingUniverse; hasDraft?: boolean; scopeType?: "ALL_TEAMS"; teamId?: string[]; subteamId?: string[] }
 const DEFAULT_FILTERS: Filters = { search: "" }
 const STATE_OPTIONS = (Object.keys(ALIGNMENT_STATE_LABELS) as AlignmentState[]).map((value) => ({ value, label: ALIGNMENT_STATE_LABELS[value] }))
 const UNIVERSE_OPTIONS = (["B2B", "B2C", "B2X"] as const).map((value) => ({ value, label: value }))
@@ -118,11 +119,10 @@ type View = { tab: "list" } | { tab: "reasons" } | { tab: "form"; selectedId: st
  * área editorial; o botão de novo alinhamento continua aqui. `startWithNew`: abre direto no formulário (Nova publicação › Alinhamento).
  */
 export function OperationalAlignmentsPage({ embedded = false, startWithNew = false, onEditorOpenChange }: { embedded?: boolean; startWithNew?: boolean; onEditorOpenChange?: (open: boolean) => void } = {}) {
-  const scopeOptions = useAlignmentScopeOptionsQuery()
   const list = useAdminListState({ storageKey: "operational-alignments", defaultFilters: DEFAULT_FILTERS })
   // Filtros encadeados: universo → Grupo → Subgrupo (o Grupo/Subgrupo de outro universo some; trocar o universo limpa o que não cabe).
-  const scopeTeams = scopeOptions.data?.teams ?? []
-  const filterTeams = teamsForUniverse(scopeTeams, list.filters.operatingUniverse).map((team) => ({ id: team.id, name: team.name, operationId: "", subteams: team.subteams.map((subteam) => ({ id: subteam.id, teamId: team.id, name: subteam.name })) }))
+  const currentScope = { scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }
+  const scopeAfterUniverse = useOrgScopeAfterUniverse("operational_alignments.manage", currentScope)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const pageQuery = useAlignmentsPageQuery(list.params)
   const [view, setView] = useState<View>(startWithNew ? { tab: "form", selectedId: null } : { tab: "list" })
@@ -174,14 +174,13 @@ export function OperationalAlignmentsPage({ embedded = false, startWithNew = fal
                 <ListSelectFilter
                   value={list.filters.operatingUniverse}
                   onChange={(value) => {
-                    const kept = keepCompatibleScope(scopeTeams, value, list.filters.teamId, list.filters.subteamId)
-                    list.patchFilters({ operatingUniverse: value, teamId: kept.teamId ?? undefined, subteamId: kept.subteamId ?? undefined })
+                    list.patchFilters({ operatingUniverse: value, ...orgScopePatch(scopeAfterUniverse(value)) })
                   }}
                   options={UNIVERSE_OPTIONS}
                   allLabel="Qualquer universo"
                   ariaLabel="Filtrar por universo"
                 />
-                <ListOrgScopeFilter teams={filterTeams} globalLabel="Todo o universo" value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }} onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })} />
+                <ListOrgScopeFilter permission="operational_alignments.manage" universe={list.filters.operatingUniverse} globalLabel="Todo o universo" value={currentScope} onChange={(scope) => list.patchFilters(orgScopePatch(scope))} />
                 <ListSelectFilter value={list.filters.state} onChange={(value) => list.setFilter("state", value)} options={STATE_OPTIONS} allLabel="Qualquer situação" ariaLabel="Filtrar por situação" />
                 <ListBooleanFilter value={list.filters.hasDraft} onChange={(value) => list.setFilter("hasDraft", value)} allLabel="Com ou sem rascunho" trueLabel="Com rascunho" falseLabel="Sem rascunho" ariaLabel="Filtrar por rascunho" />
               </ListToolbar>

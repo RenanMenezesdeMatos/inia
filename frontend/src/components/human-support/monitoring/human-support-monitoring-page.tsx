@@ -4,13 +4,15 @@ import { useState, type ReactNode } from "react"
 import { ChartNoAxesColumn, Filter, FilterX, Inbox, RadioTower, UserX } from "lucide-react"
 
 import { ListSearchInput, ListSelectFilter, ListToolbar, optionsFromLabels } from "@/components/admin/shared/list/list-filters"
-import type { ScopeFilterValue } from "@/components/human-support/admin/scope-filter"
+import { TeamSubteamFilters } from "@/components/admin/shared/list/team-subteam-filters"
+import type { OrgUnitIds } from "@/lib/admin/unit-selection"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
-import { useSupportRequestsInfiniteQuery, useSupportScopesQuery } from "@/queries/human-support/use-human-support-admin"
+import { useSupportRequestsInfiniteQuery } from "@/queries/human-support/use-human-support-admin"
 import { REQUEST_ORIGIN_LABELS, REQUEST_STATUS_LABELS, type RequestOrigin, type RequestStatus } from "@/schemas/human-support/catalogs.schema"
 import type { PanelFilter, RequestListFilter } from "@/services/human-support/human-support-service"
+import { hasOrgUnits } from "@/lib/admin/unit-selection"
 
 import { OperationHistoryTab } from "../history/operation-history"
 import { FunnelTab } from "./funnel-tab"
@@ -36,7 +38,7 @@ const NO_REQUEST_FILTERS: RequestFilters = { search: "", status: undefined, orig
 export function HumanSupportMonitoringPage({ canFilterByScope = false }: { canFilterByScope?: boolean }) {
   const [tab, setTab] = useState<PanelTab>("requests")
   const [period, setPeriod] = useState<PanelPeriod>(() => defaultPanelPeriod())
-  const [scope, setScope] = useState<ScopeFilterValue>({})
+  const [scope, setScope] = useState<OrgUnitIds>({})
   const [requestFilters, setRequestFilters] = useState<RequestFilters>(NO_REQUEST_FILTERS)
   const search = useDebouncedValue(requestFilters.search.trim(), 300)
 
@@ -47,7 +49,7 @@ export function HumanSupportMonitoringPage({ canFilterByScope = false }: { canFi
   const total = requests.data?.pages[0]?.total ?? null
 
   const initialPeriod = defaultPanelPeriod()
-  const scopeActive = Boolean(scope.teamId || scope.subteamId)
+  const scopeActive = hasOrgUnits(scope)
   const panelActive = scopeActive || period.from !== initialPeriod.from || period.to !== initialPeriod.to
   const requestsFiltered = Boolean(search || requestFilters.status || requestFilters.origin)
   const clearPanel = () => {
@@ -149,28 +151,8 @@ function PanelFilters({ active, onClear, children }: { active: boolean; onClear:
 }
 
 /**
- * Só montado para quem configura o apoio: Grupo e Subgrupo, como nas outras listas, a partir da árvore dos escopos (rota do Administrador
- * geral). Com Subgrupo, o Grupo dele vai junto.
+ * Só montado para quem configura o apoio: Grupos e Subgrupos, como nas outras listas, em lotes e no escopo de `human_support.manage`.
  */
-function AdminScopeFilters({ value, onChange }: { value: ScopeFilterValue; onChange: (value: ScopeFilterValue) => void }) {
-  const scopes = useSupportScopesQuery()
-  const groups = scopes.data ?? []
-  if (groups.length === 0) return null
-  const subgroups = groups
-    .filter((group) => !value.teamId || group.id === value.teamId)
-    .flatMap((group) => (group.children ?? []).map((child) => ({ value: child.id, label: value.teamId ? child.name : `${group.name} › ${child.name}`, teamId: group.id })))
-  return (
-    <>
-      <ListSelectFilter value={value.teamId} onChange={(teamId) => onChange({ teamId })} options={groups.map((group) => ({ value: group.id, label: group.name }))} allLabel="Todos os grupos" ariaLabel="Filtrar por grupo" />
-      {subgroups.length > 0 ? (
-        <ListSelectFilter
-          value={value.subteamId}
-          onChange={(subteamId) => onChange(subteamId ? { teamId: subgroups.find((subgroup) => subgroup.value === subteamId)?.teamId ?? value.teamId, subteamId } : { teamId: value.teamId })}
-          options={subgroups.map(({ value: id, label }) => ({ value: id, label }))}
-          allLabel="Todos os subgrupos"
-          ariaLabel="Filtrar por subgrupo"
-        />
-      ) : null}
-    </>
-  )
+function AdminScopeFilters({ value, onChange }: { value: OrgUnitIds; onChange: (value: OrgUnitIds) => void }) {
+  return <TeamSubteamFilters source="human_support.manage" value={value} onChange={onChange} teamLabel="Todos os grupos" subteamLabel="Todos os subgrupos" />
 }

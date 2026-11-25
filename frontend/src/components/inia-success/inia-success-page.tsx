@@ -1,9 +1,9 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { TeamSubteamFilters, type OrgUnitChange } from "@/components/admin/shared/list/team-subteam-filters"
+import { useState } from "react"
 import { FilterX, Gauge } from "lucide-react"
 
-import { ListSelectFilter } from "@/components/admin/shared/list/list-filters"
 import { ASSISTANT_CONVERSATIONS_PATH } from "@/components/admin/assistant-conversations/assistant-conversations-route"
 import { FEEDBACK_CONTESTATIONS_PATH } from "@/components/admin/feedback-contestations/feedback-contestations-route"
 import { HUMAN_SUPPORT_MONITORING_PATH } from "@/components/human-support/monitoring/human-support-monitoring-route"
@@ -32,8 +32,8 @@ import { BlockState, SuccessSection } from "./success-ui"
 export function IniaSuccessPage() {
   const context = useSuccessContextQuery()
   const [period, setPeriod] = useState<PanelPeriod>(() => defaultPanelPeriod())
-  const [teamId, setTeamId] = useState<string | undefined>(undefined)
-  const [subteamId, setSubteamId] = useState<string | undefined>(undefined)
+  const [teamId, setTeamId] = useState<string[] | undefined>(undefined)
+  const [subteamId, setSubteamId] = useState<string[] | undefined>(undefined)
 
   const filter: SuccessFilter = {
     from: period.from,
@@ -97,16 +97,14 @@ export function IniaSuccessPage() {
       ) : (
         <>
           <Filters
-            context={context.data}
             period={period}
             onPeriod={setPeriod}
             teamId={teamId}
-            onTeam={(next) => {
-              setTeamId(next)
-              setSubteamId(undefined)
-            }}
             subteamId={subteamId}
-            onSubteam={setSubteamId}
+            onScope={(scope) => {
+              setTeamId(scope.teamId)
+              setSubteamId(scope.subteamId)
+            }}
             active={active}
             onClear={clear}
           />
@@ -195,55 +193,30 @@ function sourceLinks(context: SuccessContext) {
   ].filter((link): link is { href: string; label: string } => link !== null)
 }
 
+/** Grupos e Subgrupos do alcance dos blocos que a conta vê, em lotes. */
+const OPTIONS_SOURCE = { path: "/api/v1/admin/inia-success/unit-options" }
+
 function Filters({
-  context,
   period,
   onPeriod,
   teamId,
-  onTeam,
   subteamId,
-  onSubteam,
+  onScope,
   active,
   onClear,
 }: {
-  context: SuccessContext
   period: PanelPeriod
   onPeriod: (period: PanelPeriod) => void
-  teamId: string | undefined
-  onTeam: (teamId: string | undefined) => void
-  subteamId: string | undefined
-  onSubteam: (subteamId: string | undefined) => void
+  teamId: string[] | undefined
+  subteamId: string[] | undefined
+  onScope: OrgUnitChange
   active: boolean
   onClear: () => void
 }) {
-  const subteams = useMemo(() => context.subteams.filter((subteam) => !teamId || subteam.teamId === teamId), [context.subteams, teamId])
   return (
     <div role="group" aria-label="Filtros dos indicadores" className="flex flex-wrap items-center gap-2" data-usage-element="list.filter">
       <PeriodPicker value={period} onChange={onPeriod} />
-      {context.teams.length > 0 ? (
-        <ListSelectFilter
-          value={teamId}
-          onChange={onTeam}
-          options={context.teams.map((team) => ({
-            value: team.id,
-            label: team.name,
-          }))}
-          allLabel="Todos os Grupos"
-          ariaLabel="Filtrar por Grupo"
-        />
-      ) : null}
-      {subteams.length > 0 ? (
-        <ListSelectFilter
-          value={subteamId}
-          onChange={onSubteam}
-          options={subteams.map((subteam) => ({
-            value: subteam.id,
-            label: subteam.name,
-          }))}
-          allLabel="Todos os Subgrupos"
-          ariaLabel="Filtrar por Subgrupo"
-        />
-      ) : null}
+      <TeamSubteamFilters source={OPTIONS_SOURCE} value={{ teamId, subteamId }} onChange={onScope} teamLabel="Todos os Grupos" subteamLabel="Todos os Subgrupos" />
       {active ? (
         <Button type="button" variant="ghost" size="sm" onClick={onClear}>
           <FilterX data-icon="inline-start" /> Limpar filtros

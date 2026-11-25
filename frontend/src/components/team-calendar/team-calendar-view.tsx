@@ -6,6 +6,8 @@ import { toast } from "sonner"
 
 import { AnalyticsCard, AnalyticsEmptyState, AnalyticsErrorState, TableSkeleton } from "@/components/analytics/analytics-states"
 import { ListBooleanFilter, ListSearchInput, ListSelectFilter, ListToolbar } from "@/components/admin/shared/list/list-filters"
+import { TeamSubteamFilters } from "@/components/admin/shared/list/team-subteam-filters"
+import { PersonCombobox } from "@/components/admin/shared/person-combobox"
 import { ListPagination } from "@/components/admin/shared/list/list-pagination"
 import { ListNoResultsState } from "@/components/admin/shared/list/list-states"
 import { useAdminListState, useClampListPage } from "@/hooks/use-admin-list-state"
@@ -22,6 +24,9 @@ import { cn } from "@/lib/utils"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useCancelScheduleExceptionMutation, useClassificationHistoryQuery, useClassifyWorkdayMutation, useProvisionScheduleExceptionMutation, useScheduleExceptionAuditQuery, useTeamCalendarQuery } from "@/queries/team-calendar/use-team-calendar"
 import { AUDIT_ACTION_LABELS, type CalendarAttentionKind, type JustifiedAbsenceReason, type ResolvedWorkdayState, type TeamCalendarDay, type TeamCalendarListParams, type TeamCalendarPerson, type TeamCalendarView as TeamCalendarData, type WorkdayClassificationKind } from "@/schemas/team-calendar/team-calendar.schema"
+import { ROLE_LABELS, type PlatformRole } from "@/schemas/auth/auth.schema"
+import type { ScopedOption } from "@/schemas/scope-units/scoped-options.schema"
+import { calendarOptionsSource } from "@/services/team-calendar/calendar-options"
 
 import { describeRange, rangeFor, shiftRange, WEEKDAY_SHORT, weekdayOf, type CalendarMode } from "./calendar-dates"
 import { SectionLabel } from "@/components/ui/surface"
@@ -31,7 +36,11 @@ export type TeamCalendarState = { calendarDate: string | null; calendarPerson: s
 // Filtros da lista de colaboradores — mesmo estado/UX das listagens administrativas (busca debounced,
 // "Limpar filtros", paginação). Todos os filtros são seletores SIMPLES com o mesmo desenho ("Qualquer …"
 // como padrão); cargo = `job_title`; as opções vêm do backend, derivadas da própria equipe.
-type CalendarFilters = { search: string; teamId: string | undefined; subteamId: string | undefined; jobTitle: string | undefined; scheduleType: string | undefined; attention: CalendarAttentionKind | undefined; scheduledToday: boolean | undefined }
+type CalendarFilters = { search: string; teamId: string[] | undefined; subteamId: string[] | undefined; jobTitle: string | undefined; scheduleType: string | undefined; attention: CalendarAttentionKind | undefined; scheduledToday: boolean | undefined }
+/** Estruturas que o leitor pode abrir, em lotes. */
+const ANCHORS_SOURCE = calendarOptionsSource({ of: "anchors" })
+/** Nível da liderança e onde está: distingue as estruturas de nome parecido. */
+const anchorDetails = (person: ScopedOption) => [person.role ? (ROLE_LABELS[person.role as PlatformRole] ?? null) : null, [person.teamName, person.subteamName].filter(Boolean).join(" › ")].filter(Boolean).join(" · ") || null
 const DEFAULT_FILTERS: CalendarFilters = { search: "", teamId: undefined, subteamId: undefined, jobTitle: undefined, scheduleType: undefined, attention: undefined, scheduledToday: undefined }
 
 /**
@@ -57,13 +66,7 @@ export function TeamCalendarView({ state, onStateChange, employeeHref, pendingHr
   const currentToday = data?.today ?? today
   const pageResult = useMemo(() => (data ? { items: data.people, total: data.pagination.total, page: data.pagination.page, pageSize: data.pagination.pageSize } : undefined), [data])
   useClampListPage(pageResult, list.page, list.pageSize, list.setPage)
-  const teamOptions = useMemo(() => (data?.filterOptions.teams ?? []).map((team) => ({ value: team.id, label: team.name })), [data])
-  // Subgrupos do grupo escolhido; sem grupo, todos os subgrupos da equipe (prefixados pelo grupo).
-  const subteamOptions = useMemo(() => {
-    const teams = data?.filterOptions.teams ?? []
-    const selected = list.filters.teamId ? teams.filter((team) => team.id === list.filters.teamId) : teams
-    return selected.flatMap((team) => team.subteams.map((subteam) => ({ value: subteam.id, label: selected.length > 1 || !list.filters.teamId ? `${team.name} › ${subteam.name}` : subteam.name })))
-  }, [data, list.filters.teamId])
+  const unitSource = useMemo(() => calendarOptionsSource({ anchorId: state.calendarAnchor }), [state.calendarAnchor])
   const jobTitleOptions = useMemo(() => (data?.filterOptions.jobTitles ?? []).map((title) => ({ value: title, label: title })), [data])
   const scheduleOptions = useMemo(() => (data?.filterOptions.scheduleTypes ?? []).map((entry) => ({ value: entry.code, label: entry.label })), [data])
   const attentionOptions = useMemo(() => (data?.filterOptions.attention ?? []).map((entry) => ({ value: entry.code as CalendarAttentionKind, label: entry.label })), [data])
@@ -77,17 +80,10 @@ export function TeamCalendarView({ state, onStateChange, employeeHref, pendingHr
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Planejado (escala, folga, day off, banco de horas, atestado, situação funcional) × observado (produção real). Registre antes da data o que sai da produção; depois que os dados fecham, um dia sem produção vira pendência para você classificar. Ausência de dado não é ausência do colaborador: antes do prazo das fontes o dia fica &quot;aguardando dados&quot;.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {data && data.availableAnchors.length > 1 ? (
-            <Select value={data.anchor.personId} onValueChange={(value) => { list.setPage(1); onStateChange({ calendarAnchor: value }) }}>
-              <SelectTrigger className="w-56" aria-label="Equipe" data-testid="calendar-anchor">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {data.availableAnchors.map((anchor) => (
-                  <SelectItem key={anchor.personId} value={anchor.personId}>{anchor.name} · {anchor.roleLabel}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {data?.hasOtherAnchors ? (
+            <div data-testid="calendar-anchor">
+              <PersonCombobox source={ANCHORS_SOURCE} value={data.anchor.personId} currentName={data.anchor.name} detailsOf={anchorDetails} onChange={(person) => { if (!person) return; list.patchFilters({ teamId: undefined, subteamId: undefined }); onStateChange({ calendarAnchor: person.id }) }} emptyLabel={null} emptyText="Nenhuma equipe no seu alcance." ariaLabel="Equipe" />
+            </div>
           ) : null}
           <div className="flex items-center rounded-lg border border-border">
             <Button variant="ghost" size="icon" aria-label="Período anterior" onClick={() => onStateChange({ calendarDate: shiftRange(mode, anchorDate, -1) })}><ChevronLeft className="size-4" /></Button>
@@ -111,17 +107,7 @@ export function TeamCalendarView({ state, onStateChange, employeeHref, pendingHr
           hasActiveFilters={list.hasActiveFilters}
           onClearFilters={list.resetFilters}
         >
-          {teamOptions.length > 0 ? <ListSelectFilter value={list.filters.teamId} onChange={(value) => list.patchFilters({ teamId: value, subteamId: undefined })} options={teamOptions} allLabel="Qualquer grupo" ariaLabel="Filtrar por grupo" /> : null}
-          {teamOptions.length > 0 ? (
-            subteamOptions.length > 0 ? (
-              <ListSelectFilter value={list.filters.subteamId} onChange={(value) => list.setFilter("subteamId", value)} options={subteamOptions} allLabel="Qualquer subgrupo" ariaLabel="Filtrar por subgrupo" />
-            ) : (
-              <Select value="__none__" disabled>
-                <SelectTrigger className="w-full sm:w-auto sm:min-w-36" aria-label="Filtrar por subgrupo"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="__none__">{list.filters.teamId ? "Sem subgrupos neste grupo" : "Sem subgrupos nesta equipe"}</SelectItem></SelectContent>
-              </Select>
-            )
-          ) : null}
+          <TeamSubteamFilters source={unitSource} value={{ teamId: list.filters.teamId, subteamId: list.filters.subteamId }} onChange={(scope) => list.patchFilters(scope)} />
           <ListSelectFilter value={list.filters.jobTitle} onChange={(value) => list.setFilter("jobTitle", value)} options={jobTitleOptions} allLabel="Qualquer cargo" ariaLabel="Filtrar por cargo" />
           <ListSelectFilter value={list.filters.scheduleType} onChange={(value) => list.setFilter("scheduleType", value)} options={scheduleOptions} allLabel="Qualquer escala" ariaLabel="Filtrar por escala" />
           <ListSelectFilter value={list.filters.attention} onChange={(value) => list.setFilter("attention", value)} options={attentionOptions} allLabel="Qualquer situação no período" ariaLabel="Filtrar por situação no período" />
@@ -138,7 +124,7 @@ export function TeamCalendarView({ state, onStateChange, employeeHref, pendingHr
       {data && data.pagination.totalPeople === 0 ? (
         <AnalyticsCard>
           <div className="py-6">
-            <AnalyticsEmptyState icon={CalendarDays} title="Nenhum operador direto nesta equipe" description={data.availableAnchors.length > 1 ? "Escolha uma equipe acima para ver o calendário dos operadores." : "O calendário mostra os operadores que reportam diretamente a você."} />
+            <AnalyticsEmptyState icon={CalendarDays} title="Nenhum operador direto nesta equipe" description={data.hasOtherAnchors ? "Escolha uma equipe acima para ver o calendário dos operadores." : "O calendário mostra os operadores que reportam diretamente a você."} />
           </div>
         </AnalyticsCard>
       ) : null}
@@ -469,7 +455,7 @@ function ProvisionDialog({ data, draft, onOpenChange }: { data: TeamCalendarData
   const draftKey = draft ? `${draft.personId ?? ""}|${draft.from}|${draft.to}` : null
   if (draft && key !== draftKey) {
     setKey(draftKey)
-    setPersonId(draft.personId ?? data.provisionablePeople[0]?.personId ?? "")
+    setPersonId(draft.personId ?? "")
     setFrom(draft.from)
     setTo(draft.to)
   }
@@ -501,14 +487,9 @@ function ProvisionDialog({ data, draft, onOpenChange }: { data: TeamCalendarData
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor="provision-person">Colaborador</Label>
-            <Select value={personId} onValueChange={setPersonId}>
-              <SelectTrigger id="provision-person" data-testid="provision-person"><SelectValue placeholder="Escolha" /></SelectTrigger>
-              <SelectContent>
-                {data.provisionablePeople.map((person) => (
-                  <SelectItem key={person.personId} value={person.personId}>{person.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div data-testid="provision-person">
+              <PersonCombobox id="provision-person" source={calendarOptionsSource({ anchorId: data.anchor.personId })} value={personId || null} onChange={(person) => setPersonId(person?.id ?? "")} variant="field" emptyLabel={null} emptyText="Nenhum operador direto nesta equipe." ariaLabel="Colaborador" />
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="provision-code">Motivo</Label>

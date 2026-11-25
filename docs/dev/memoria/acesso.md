@@ -142,6 +142,14 @@ ligado e a conta não é de emergência (`emergency_local_access`); senão `LOCA
 - Provas: `access-service.test.ts` (em memória, inclusive a corrida) e `access/testing/network-temporary-password-proof.test.ts` (API real,
   liga/desliga o login pela rede numa transação). Frontend: `access.test.tsx`. Código de erro no catálogo (`errors:catalog`).
 
+## Listas de Acessos e Pessoas — busca e filtros (24/11/2026)
+
+`GET /admin/access/users` e `GET /admin/users` aceitam vários `teamId`/`subteamId`, com a busca sem acento e palavra a palavra
+(nome, e-mail ou matrícula: "maria silva" acha "Maria da Silva") combinada aos dois, sempre dentro do
+escopo da conta; ordem por nome + id e total certo numa página além do fim. `GET /admin/access/scope-options` devolve só `hasGroups`/`hasSubgroups`
+(as opções vêm em lotes de `/admin/scope-units`, `permission=access.users.view` ou `access.roles.assign`). Regra, rotas e provas em
+`alcance-multigrupo.md` › "Busca e filtros para listas grandes".
+
 ## Habilitar pela rede, CSV em massa e "por que não entra" (25/11/2026, migration 254)
 
 **Pedido:** com o AD ligado na VM, gente dizia que não conseguia entrar, e "Habilitar acesso" gerava senha temporária. O responsável pediu

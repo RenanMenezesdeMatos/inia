@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react"
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 import { AdminApiError, type UploadTransfer } from "@/lib/admin/admin-api"
 import { useAdminMutation } from "@/lib/admin/use-admin-mutation"
-import { isKnowledgeBusy, type KnowledgeDocumentDetail, type KnowledgeDocumentUpdate } from "@/schemas/admin/knowledge.schema"
+import { isKnowledgeBusy, type KnowledgeDocument, type KnowledgeDocumentDetail, type KnowledgeDocumentUpdate } from "@/schemas/admin/knowledge.schema"
 import {
   archiveKnowledgeDocument,
   compareKnowledgeVersions,
@@ -15,9 +15,10 @@ import {
   fetchKnowledgeAiPreview,
   fetchKnowledgeDocument,
   fetchKnowledgeDocumentPreview,
-  fetchKnowledgeDocuments,
   fetchKnowledgeDocumentsPage,
   fetchKnowledgeFile,
+  fetchKnowledgeOption,
+  fetchKnowledgeOptionsPage,
   fetchKnowledgeSubjects,
   fetchKnowledgeVersion,
   fetchKnowledgeVersionFile,
@@ -33,10 +34,13 @@ import {
   revertKnowledgeVersion,
   updateKnowledgeDocument,
   type KnowledgeListParams,
+  type KnowledgeOptionsSearch,
   type PublishKnowledgeInput,
   type RevertKnowledgeInput,
   type UpdateKnowledgeInput,
 } from "@/services/admin/knowledge-service"
+
+import { keepSameList } from "@/queries/scope-units/keep-same-list"
 
 import { adminQueryKeys } from "./admin-query-keys"
 
@@ -76,8 +80,31 @@ export function useRecentKnowledgeUploadsQuery(documentId?: string | null) {
   })
 }
 
-export function useKnowledgeDocumentsQuery() {
-  return useQuery({ queryKey: adminQueryKeys.knowledge(), queryFn: fetchKnowledgeDocuments })
+const KNOWLEDGE_OPTIONS_PAGE = 30
+
+/** Bases de um seletor, em lotes. Só busca com o seletor aberto (`enabled`). */
+export function useKnowledgeOptionsInfiniteQuery(search: KnowledgeOptionsSearch, enabled: boolean) {
+  return useInfiniteQuery({
+    queryKey: [...adminQueryKeys.knowledge(), "options", search] as const,
+    queryFn: ({ pageParam, signal }) => fetchKnowledgeOptionsPage(search, pageParam, KNOWLEDGE_OPTIONS_PAGE, signal),
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
+    placeholderData: keepSameList(search),
+    enabled,
+    staleTime: 30_000,
+  })
+}
+
+const knowledgeOptionKey = (id: string) => [...adminQueryKeys.knowledge(), "option", id] as const
+
+/** Guarda a base recém-escolhida, para o título dela aparecer no gatilho sem esperar a consulta por id. */
+export function useRememberKnowledgeOption() {
+  const queryClient = useQueryClient()
+  return (document: KnowledgeDocument) => queryClient.setQueryData(knowledgeOptionKey(document.id), document)
+}
+
+export function useKnowledgeOptionQuery(id: string | null | undefined) {
+  return useQuery({ queryKey: knowledgeOptionKey(id ?? ""), queryFn: () => fetchKnowledgeOption(id!), enabled: Boolean(id), staleTime: 30_000 })
 }
 
 // Listagem paginada/filtrada. keepPreviousData mantém a página anterior na tela enquanto a

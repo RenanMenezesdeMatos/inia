@@ -22,6 +22,9 @@ import { canSeeInterventionsOf } from "../application/intervention-access.js"
 import { loadPolicyWorkflowUsage, type PolicyWorkflowUsage } from "../application/policy-references.js"
 import { protectStoredLeave } from "../domain/protected-leave.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { decodeOptionsCursor, encodeOptionsCursor, optionsPageSchema } from "../../org-structure/presentation/options-query.js"
+
+const documentOptionsSchema = optionsPageSchema
 
 /**
  * Administração das políticas de acompanhamento — `/api/v1/admin/intervention-policies`. Permissões SEPARADAS: editar,
@@ -138,20 +141,21 @@ export function createInterventionAdminRouter(db: Database) {
     response.json({ data: { capabilities: INTERVENTION_CAPABILITIES.map((key) => ({ key, ...CAPABILITY_DEFINITIONS[key] })), evidenceKinds: Object.entries(EVIDENCE_KIND_LABELS).map(([key, label]) => ({ key, label })) } })
   })
 
-  // Grupos (do escopo de quem edita), indicadores e documentos para os seletores do editor — sem exigir as permissões das telas
-  // de estrutura, indicadores ou base de conhecimento. Sem permissão de editar, os grupos são os do escopo de leitura.
+  // Indicadores e flags para os seletores do editor, e se quem edita alcança a organização inteira — sem exigir as permissões das telas
+  // de estrutura e indicadores.
   router.get("/editor-catalog", async (request, response) => {
     const access = accessOf(request)
     const editScopes = scopesWithPermission(access, "intervention_policies.edit")
     const scopes = editScopes.length > 0 ? editScopes : [...POLICY_PERMISSIONS, "workflows.manage" as Permission].flatMap((permission) => scopesWithPermission(access, permission))
-    const teamIds = new Set<string>()
-    const subteamIds = new Set<string>()
-    for (const scope of scopes) {
-      if (scope.type === "GROUP") teamIds.add(scope.teamId)
-      if (scope.type === "SUBGROUP") subteamIds.add(scope.subteamId)
-    }
     const unrestricted = scopes.some((scope) => scope.type === "ORGANIZATION")
-    response.json({ data: await config.loadEditorCatalog(db, organizationOf(request), { unrestricted, teamIds, subteamIds }) })
+    response.json({ data: await config.loadEditorCatalog(db, organizationOf(request), { unrestricted }) })
+  })
+
+  // Bases para ligar a uma competência (título e se há versão publicada), em lotes.
+  router.get("/editor-catalog/documents", async (request, response) => {
+    const query = documentOptionsSchema.parse(request.query)
+    const page = await config.listEditorDocuments(db, organizationOf(request), { ...query, cursor: decodeOptionsCursor(query.cursor) })
+    response.json({ data: { items: page.items, nextCursor: page.nextCursor ? encodeOptionsCursor(page.nextCursor) : null } })
   })
 
   // Práticas e critérios da base pelo NOME (para ligar a competência ao diagnóstico sem digitar chaves técnicas).

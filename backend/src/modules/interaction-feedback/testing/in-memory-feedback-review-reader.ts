@@ -1,3 +1,4 @@
+import type { ScopedOptionsRequest } from "../../org-structure/application/scoped-options.js"
 import type { FeedbackReviewReader, QaGrantScope, QaPermission, ReviewQueueFilters, ReviewViewer } from "../application/feedback-review-reader.js"
 import type { createInMemoryInteractionFeedbackStore } from "./in-memory-interaction-feedback-store.js"
 
@@ -47,15 +48,18 @@ export function createInMemoryFeedbackReviewReader(memory: ReturnType<typeof cre
     },
     async listQueue(viewer: ReviewViewer, filters: ReviewQueueFilters) {
       const all = scoped(viewer)
-      const matching = all.filter(({ review, context }) => (filters.status === "ALL" || review.reviewStatus === filters.status) && (!filters.search || context.collaborator.name.toLowerCase().includes(filters.search.toLowerCase())) && (!filters.collaboratorId || context.collaborator.id === filters.collaboratorId) && (!filters.teamId || context.team?.id === filters.teamId) && (!filters.section || review.section === filters.section) && (!filters.from || localDate(context.occurredAt ?? context.createdAt) >= filters.from) && (!filters.to || localDate(context.occurredAt ?? context.createdAt) <= filters.to))
+      const matching = all.filter(({ review, context }) => (filters.status === "ALL" || review.reviewStatus === filters.status) && (!filters.search || context.collaborator.name.toLowerCase().includes(filters.search.toLowerCase())) && (!filters.collaboratorId || context.collaborator.id === filters.collaboratorId) && (!filters.teamId || (context.team !== null && filters.teamId.includes(context.team.id))) && (!filters.section || review.section === filters.section) && (!filters.from || localDate(context.occurredAt ?? context.createdAt) >= filters.from) && (!filters.to || localDate(context.occurredAt ?? context.createdAt) <= filters.to))
       matching.sort((a, b) => Number(b.review.reviewStatus === "PENDING_REVIEW") - Number(a.review.reviewStatus === "PENDING_REVIEW") || (b.context.occurredAt ?? b.context.createdAt).getTime() - (a.context.occurredAt ?? a.context.createdAt).getTime() || a.review.slot.localeCompare(b.review.slot))
       const page = matching.slice((filters.page - 1) * filters.pageSize, filters.page * filters.pageSize)
-      const unique = <T extends { id: string }>(items: T[]) => [...new Map(items.map((item) => [item.id, item])).values()]
       return {
         rows: page.map(({ review, context }) => ({ record: { id: review.id, reviewStatus: review.reviewStatus, section: review.section, findingKind: review.findingKind, wordingSource: review.wordingSource, interactionLabel: review.interactionLabel, reviewedAt: review.reviewedAt }, context })),
         total: matching.length,
-        filterOptions: { collaborators: unique(all.map(({ context }) => ({ id: context.collaborator.id, name: context.collaborator.name }))), teams: unique(all.flatMap(({ context }) => (context.team ? [context.team] : []))) },
       }
+    },
+    async listFilterOptions(viewer: ReviewViewer, request: ScopedOptionsRequest) {
+      const found = scoped(viewer).flatMap(({ context }) => (request.kind === "PERSON" ? [{ id: context.collaborator.id, name: context.collaborator.name }] : request.kind === "TEAM" && context.team ? [context.team] : []))
+      const unique = [...new Map(found.map((item) => [item.id, item])).values()].filter((item) => !request.search || item.name.toLowerCase().includes(request.search.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name))
+      return { items: unique.slice(0, request.limit).map((item) => ({ kind: request.kind, id: item.id, name: item.name, teamId: null, teamName: null, subteamId: null, subteamName: null, operatingUniverse: null, matricula: null, role: null, jobTitle: null })), nextCursor: null }
     },
     async loadInScope(viewer: ReviewViewer, reviewId: string, permission: QaPermission = "feedback_quality_review.view") {
       const found = scoped(viewer, permission).find(({ review }) => review.id === reviewId)

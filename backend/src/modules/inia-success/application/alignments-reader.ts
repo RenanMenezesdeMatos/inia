@@ -1,3 +1,4 @@
+import { unitFilterSql } from "../../../shared/infrastructure/database/unit-filter.js"
 import { alignmentLinksSql } from "../../operational-alignments/infrastructure/operational-alignment-loaders.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { getManageableScopes, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
@@ -51,15 +52,8 @@ function visibility(scopes: ManageableScopes, alias: string, params: unknown[]):
 }
 
 function audienceFilter(query: SuccessQuery, alias: string, params: unknown[]): string {
-  if (query.subteamId) {
-    params.push(query.subteamId)
-    return `exists (select 1 from operational_alignment_version_scopes l where l.version_id = ${alias}.id and l.subteam_id = $${params.length}::uuid)`
-  }
-  if (query.teamId) {
-    params.push(query.teamId)
-    return `exists (select 1 from operational_alignment_version_scopes l where l.version_id = ${alias}.id and l.team_id = $${params.length}::uuid)`
-  }
-  return "true"
+  const units = unitFilterSql(query, (value) => `$${params.push(value)}`, { team: "l.team_id", subteam: "l.subteam_id" })
+  return units ? `exists (select 1 from operational_alignment_version_scopes l where l.version_id = ${alias}.id and ${units})` : "true"
 }
 
 const audienceLabel = (row: Pick<Row, "scope_type" | "links" | "operating_universe">) =>

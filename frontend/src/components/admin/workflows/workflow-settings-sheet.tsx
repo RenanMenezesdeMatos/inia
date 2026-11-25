@@ -23,15 +23,18 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 
 import { MultiOrgScopeField } from "@/components/admin/shared/multi-org-scope-field"
+import { OrgUnitCombobox } from "@/components/admin/shared/org-unit-combobox"
+import { UserCombobox } from "@/components/admin/users/user-combobox"
 import { resourceScopePayloadOf, scopeValueFromResource, scopeValueIssue, scopeValueKey, type ScopeLinksValue } from "@/lib/scope-links/scope-links"
 import { TriggerConfigEditor } from "./trigger-fields"
 import { WorkflowUniverseProvider } from "./workflow-universe-context"
-import { fitsUniverse, teamsForUniverse, type UniverseChoice } from "@/lib/operating-universe/hierarchy"
 import { useManageableTeamsQuery } from "@/queries/admin/use-org-structure-queries"
-import { useUserAccountsQuery } from "@/queries/admin/use-user-account-queries"
 import { useDiscardWorkflowConfigurationMutation, useUpdateWorkflowAnalysisConfigMutation, useUpdateWorkflowMutation } from "@/queries/admin/use-workflow-queries"
 import type { AnalysisConfigInput } from "@/services/admin/workflow-service"
 import { withDraftConfiguration, type WorkflowDetail } from "@/schemas/admin/workflow.schema"
+import type { PlatformRole } from "@/schemas/auth/auth.schema"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
+import { MAX_WITHIN_TEAM_IDS } from "@/services/scope-units/scope-units-service"
 import { describeConfigurationChanges } from "./workflow-configuration-summary"
 import { workflowScopePayload, workflowScopeTeamIds } from "./workflow-scope"
 import {
@@ -99,25 +102,41 @@ function structureGroupId(kind: StructureAnchorKind, structure: ConsolidatedStru
 
 /** Numeração visual da sequência Abrangência → Gatilho → Alvo da avaliação → População/Estrutura —
  * transmite que são 4 decisões em ORDEM, não campos soltos (Parte 1/5 do pedido). */
-/** Grupos/Subgrupos que a âncora pode usar: só os que quem edita gerencia, dentro da Abrangência do Workflow. */
-// Também só os do universo do Workflow (hierarquia universo → Grupo → Subgrupo); pendente cabe em qualquer universo.
-// Com vários Grupos (249): `scopeTeamIds` = Grupos da Abrangência (null = todos) — o mesmo critério do backend (`scopesAreCompatible`).
-function groupOptionsFor(
-  kind: StructureAnchorKind | "ALL" | "EMPLOYEE",
-  manageable: ReturnType<typeof useManageableTeamsQuery>["data"],
-  scopeTeamIds: ReadonlySet<string> | null,
-  universe: UniverseChoice = null,
-) {
-  if (!manageable) return []
-  const universeTeams = teamsForUniverse(manageable.teams, universe)
-  const inScope = scopeTeamIds ? universeTeams.filter((team) => scopeTeamIds.has(team.id)) : universeTeams
-  if (kind === "TEAM") return inScope.filter((team) => team.selectable)
-  if (kind === "SUBTEAM") return inScope.flatMap((team) => team.subteams)
-  return []
-}
+const PERMISSION = "workflows.manage"
+/** Abrangência vazia: nenhum Grupo casa (nunca "sem recorte"). */
+const NO_TEAM = "00000000-0000-0000-0000-000000000000"
+const OUT_OF_SCOPE = "Fora da Abrangência do Workflow"
 
-/** A pessoa (pelo Grupo dela) está na Abrangência? `null` = todos os Grupos. */
-const teamInScope = (scopeTeamIds: ReadonlySet<string> | null, teamId: string | null) => scopeTeamIds === null || (teamId !== null && scopeTeamIds.has(teamId))
+/**
+ * Âncora da população/estrutura — pessoa do nível, Grupo ou Subgrupo —, buscada no servidor e dentro da Abrangência e do universo do
+ * Workflow (hierarquia universo → Grupo → Subgrupo; pessoa ainda sem universo cabe em qualquer um). `scopeTeamIds` nulo = todos os Grupos.
+ * Recorte pequeno vai na consulta; acima do teto da rota, o que está fora aparece indisponível. O backend confere de novo ao salvar.
+ */
+function AnchorField({ kind, role, label, value, onChange, scopeTeamIds, universe }: { kind: StructureAnchorKind | "ALL" | "EMPLOYEE"; role: string | undefined; label: string; value: string; onChange: (id: string) => void; scopeTeamIds: ReadonlySet<string> | null; universe: OperatingUniverse | null }) {
+  const within = scopeTeamIds === null ? undefined : scopeTeamIds.size === 0 ? [NO_TEAM] : scopeTeamIds.size <= MAX_WITHIN_TEAM_IDS ? [...scopeTeamIds].sort() : undefined
+  const outOfScope = (teamId: string | null) => (scopeTeamIds && !within && !(teamId !== null && scopeTeamIds.has(teamId)) ? OUT_OF_SCOPE : null)
+  if (kind === "SUBTEAM" || kind === "TEAM") {
+    return (
+      <OrgUnitCombobox
+        key={kind}
+        kind={kind}
+        source={PERMISSION}
+        purpose="reach"
+        eligibility="all"
+        universes={universe ? [universe] : undefined}
+        withinTeamIds={within}
+        disabledReason={(unit) => outOfScope(unit.kind === "TEAM" ? unit.id : unit.teamId)}
+        variant="field"
+        value={value || null}
+        onChange={(unit) => onChange(unit?.id ?? "")}
+        emptyLabel={null}
+        ariaLabel={kind === "SUBTEAM" ? "Subgrupo" : "Grupo"}
+      />
+    )
+  }
+  if (!role) return null
+  return <UserCombobox key={kind} value={value} onChange={onChange} filter={{ role: role as PlatformRole, teamIds: within, universe }} disabledReason={(person) => outOfScope(person.teamId)} placeholder={`Selecione ${label.toLowerCase()}`} ariaLabel={label} />
+}
 
 function SectionHeading({ n, title }: { n: number; title: string }) {
   return (
@@ -142,7 +161,6 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
   const discardMutation = useDiscardWorkflowConfigurationMutation(workflow.id)
   const [open, setOpen] = useState(false)
   const manageableTeamsQuery = useManageableTeamsQuery()
-  const usersQuery = useUserAccountsQuery()
   const updateMutation = useUpdateWorkflowMutation()
   const updateAnalysisMutation = useUpdateWorkflowAnalysisConfigMutation(workflow.id)
 
@@ -234,25 +252,6 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
 
   // Grupos da Abrangência do rascunho (null = todos): a âncora precisa estar num deles, como o backend confere.
   const scopeTeamIds = useMemo(() => workflowScopeTeamIds(editable), [editable])
-
-  const structurePeopleOptions = useMemo(() => {
-    if (!structureAnchorRole || !usersQuery.data) return []
-    return usersQuery.data.filter((person) => person.role === structureAnchorRole && teamInScope(scopeTeamIds, person.teamId) && fitsUniverse(person.operatingUniverse, editable.operatingUniverse))
-  }, [usersQuery.data, structureAnchorRole, scopeTeamIds, editable.operatingUniverse])
-
-  const filterPeopleOptions = useMemo(() => {
-    if (!filterAnchorRole || !usersQuery.data) return []
-    return usersQuery.data.filter((person) => person.role === filterAnchorRole && teamInScope(scopeTeamIds, person.teamId) && fitsUniverse(person.operatingUniverse, editable.operatingUniverse))
-  }, [usersQuery.data, filterAnchorRole, scopeTeamIds, editable.operatingUniverse])
-
-  const structureGroupOptions = useMemo(
-    () => groupOptionsFor(structureKind, manageableTeamsQuery.data, scopeTeamIds, editable.operatingUniverse),
-    [manageableTeamsQuery.data, structureKind, scopeTeamIds, editable.operatingUniverse],
-  )
-  const filterGroupOptions = useMemo(
-    () => groupOptionsFor(filterKind, manageableTeamsQuery.data, scopeTeamIds, editable.operatingUniverse),
-    [manageableTeamsQuery.data, filterKind, scopeTeamIds, editable.operatingUniverse],
-  )
 
   // Consolidado só existe em Agenda de calendário; em qualquer outro gatilho a avaliação é sempre individual.
   const consolidatedSelected = supportsConsolidatedMode && mode === "CONSOLIDATED"
@@ -431,7 +430,7 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
           {supportsPopulationFilter && mode === "INDIVIDUAL" ? (
             <>
               <p className="text-sm font-medium">Quais colaboradores?</p>
-              <Select value={filterKind} onValueChange={(value) => setFilterKind(value as PopulationFilterKind)}>
+              <Select value={filterKind} onValueChange={(value) => { setFilterKind(value as PopulationFilterKind); setFilterAnchorId("") }}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -444,35 +443,7 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
                 </SelectContent>
               </Select>
 
-              {filterAnchorRole ? (
-                <Select value={filterAnchorId} onValueChange={setFilterAnchorId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={`Selecione ${POPULATION_FILTER_LABELS[filterKind].toLowerCase()}`} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filterPeopleOptions.map((person) => (
-                      <SelectItem key={person.id} value={person.id}>
-                        {person.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : null}
-
-              {filterKind === "SUBTEAM" || filterKind === "TEAM" ? (
-                <Select value={filterAnchorId} onValueChange={setFilterAnchorId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={`Selecione o ${filterKind === "SUBTEAM" ? "subgrupo" : "grupo"}`} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filterGroupOptions.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
-                        {group.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : null}
+              <AnchorField kind={filterKind} role={filterAnchorRole} label={POPULATION_FILTER_LABELS[filterKind]} value={filterAnchorId} onChange={setFilterAnchorId} scopeTeamIds={scopeTeamIds} universe={editable.operatingUniverse} />
 
               <p className="text-xs text-muted-foreground">
                 Quais colaboradores, dentro da Abrangência, participam deste workflow — cada um continua tendo sua própria execução
@@ -501,7 +472,7 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
           {consolidatedSelected ? (
             <>
               <p className="text-sm font-medium">Qual estrutura será analisada?</p>
-              <Select value={structureKind} onValueChange={(value) => setStructureKind(value as ConsolidatedStructureKind)}>
+              <Select value={structureKind} onValueChange={(value) => { setStructureKind(value as ConsolidatedStructureKind); setStructureAnchorId("") }}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -514,35 +485,7 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
                 </SelectContent>
               </Select>
 
-              {structureAnchorRole ? (
-                <Select value={structureAnchorId} onValueChange={setStructureAnchorId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={`Selecione ${CONSOLIDATED_STRUCTURE_LABELS[structureKind].toLowerCase()}`} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {structurePeopleOptions.map((person) => (
-                      <SelectItem key={person.id} value={person.id}>
-                        {person.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : null}
-
-              {structureKind === "SUBTEAM" || structureKind === "TEAM" ? (
-                <Select value={structureAnchorId} onValueChange={setStructureAnchorId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={`Selecione o ${structureKind === "SUBTEAM" ? "subgrupo" : "grupo"}`} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {structureGroupOptions.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
-                        {group.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : null}
+              <AnchorField kind={structureKind} role={structureAnchorRole} label={CONSOLIDATED_STRUCTURE_LABELS[structureKind]} value={structureAnchorId} onChange={setStructureAnchorId} scopeTeamIds={scopeTeamIds} universe={editable.operatingUniverse} />
 
               <p className="text-xs text-muted-foreground">
                 Este workflow analisa a estrutura escolhida acima como UMA única unidade — nunca dispara uma execução por operador dela.

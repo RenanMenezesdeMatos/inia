@@ -22,8 +22,8 @@ export type MonitoringOrigin = keyof typeof MONITORING_ORIGIN_LABELS
 export type MonitoringFilters = {
   search?: string | undefined
   ownerPersonId?: string | undefined
-  teamId?: string | undefined
-  subteamId?: string | undefined
+  teamId?: readonly string[] | undefined
+  subteamId?: readonly string[] | undefined
   status?: MonitoringStatus | undefined
   origin?: MonitoringOrigin | undefined
   from?: string | undefined
@@ -37,7 +37,6 @@ export type MonitoredConversationPage = {
   total: number
   page: number
   pageSize: number
-  filterOptions: { operators: { id: string; name: string }[]; teams: { id: string; name: string }[]; subteams: { id: string; name: string; teamId: string | null }[] }
 }
 
 export function fetchMonitoredConversations(filters: MonitoringFilters): Promise<MonitoredConversationPage> {

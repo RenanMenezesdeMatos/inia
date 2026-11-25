@@ -85,7 +85,7 @@ export function PolicyHeaderCard({ policy }: { policy: PolicyView }) {
             {catalogQuery.isError ? (
               <Note>Não foi possível carregar os grupos agora: {errorMessage(catalogQuery.error)}</Note>
             ) : (
-              <PolicyScopeField teams={catalogQuery.data?.teams ?? []} value={scope} onChange={setScope} allowAllTeams={catalogQuery.data?.unrestricted ?? true} />
+              <PolicyScopeField value={scope} onChange={setScope} allowAllTeams={catalogQuery.data?.unrestricted ?? true} />
             )}
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" variant="outline" disabled={updateScope.isPending || !scopeChanged || !scopeComplete} onClick={() => updateScope.mutate({ id: policy.id, name: policy.name, ...nextScope })}>

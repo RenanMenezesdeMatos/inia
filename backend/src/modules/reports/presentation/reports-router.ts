@@ -5,9 +5,10 @@ import { gatewayAnalysisWriter, reportAnalysisGuard } from "../application/repor
 import { listReceivedDeliveries, loadDeliveryDetail, markDeliveryRead } from "../application/report-deliveries-reader.js"
 import { createPostgresProposalStore } from "../application/report-proposals.js"
 import { createPostgresReportRuntime } from "../application/report-runtime.js"
-import { createReport, deleteReport, getReportDetail, listDeletedReports, listReports, loadReportAccess, openProposal, previewReport, reportOptions, restoreDeletedReport, retryDeliveryAnalysis, runReportNow, searchAudiencePeople, setReportStatus, updateReport, type ReportActor, type ReportServiceDeps } from "../application/report-service.js"
+import { createReport, deleteReport, getReportDetail, listDeletedReports, listReports, loadReportAccess, openProposal, previewReport, reportOptions, restoreDeletedReport, retryDeliveryAnalysis, runReportNow, audienceUnitOptions, reportStructureOptions, setReportStatus, updateReport, type ReportActor, type ReportServiceDeps } from "../application/report-service.js"
 import { createPostgresReportStore } from "../application/report-store.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { decodeOptionsCursor, encodeOptionsCursor, optionsPageSchema, respondOptions, UNIT_AND_PERSON_OPTION_KINDS } from "../../org-structure/presentation/options-query.js"
 
 /**
  * `/api/v1/reports` — reports recorrentes. Dono e organização SEMPRE da sessão; permissões revalidadas a cada pedido no serviço
@@ -17,6 +18,7 @@ const idParam = z.string().uuid()
 const createSchema = z.object({ config: z.unknown(), activate: z.boolean().default(false), proposalId: z.string().uuid().nullish() })
 const updateSchema = z.object({ revision: z.number().int().min(0), config: z.unknown() })
 const statusSchema = z.object({ revision: z.number().int().min(0), status: z.enum(["ACTIVE", "INACTIVE"]) })
+const structureOptionsSchema = optionsPageSchema.pick({ search: true, cursor: true, limit: true })
 const previewSchema = z.object({ definition: z.unknown(), visualization: z.unknown().optional() })
 
 export function createReportsRouter(db: Database, overrides: Partial<ReportServiceDeps> = {}) {
@@ -38,7 +40,12 @@ export function createReportsRouter(db: Database, overrides: Partial<ReportServi
   })
   router.get("/deleted", async (request, response) => response.json({ data: await listDeletedReports(deps, actorOf(request)) }))
   router.get("/options", async (request, response) => response.json({ data: await reportOptions(deps, actorOf(request)) }))
-  router.get("/audience/people", async (request, response) => response.json({ data: await searchAudiencePeople(deps, actorOf(request), String(request.query.q ?? "")) }))
+  router.get("/audience/options", async (request, response) => response.json({ data: await respondOptions(request.query, UNIT_AND_PERSON_OPTION_KINDS, (query) => audienceUnitOptions(deps, actorOf(request), query)) }))
+  router.get("/structure-options", async (request, response) => {
+    const query = structureOptionsSchema.parse(request.query)
+    const page = await reportStructureOptions(deps, actorOf(request), { search: query.search, limit: query.limit, cursor: decodeOptionsCursor(query.cursor) })
+    response.json({ data: { items: page.items, nextCursor: page.nextCursor ? encodeOptionsCursor(page.nextCursor) : null } })
+  })
   router.post("/preview", async (request, response) => response.json({ data: await previewReport(deps, actorOf(request), previewSchema.parse(request.body ?? {})) }))
   router.get("/proposals/:proposalId", async (request, response) => response.json({ data: await openProposal(deps, actorOf(request), idParam.parse(request.params.proposalId)) }))
   router.get("/received", async (request, response) => {

@@ -4,7 +4,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { recordServerUsageEvent } from "../application/record-server-event.js"
 import { classifyPerson, reprocessProjections, unclassifyPerson, updateUsageSettings } from "../application/usage-settings-service.js"
-import { contextQuery, peopleOptionsQuery } from "../application/query/context-query.js"
+import { contextQuery, usabilityOptionsReach } from "../application/query/context-query.js"
 import { conversationsQuery } from "../application/query/conversations-query.js"
 import { feedbacksQuery } from "../application/query/feedbacks-query.js"
 import { journeysQuery } from "../application/query/journeys-query.js"
@@ -19,6 +19,7 @@ import type { UsabilityTab } from "../application/query/usability-filters.js"
 import { buildUsabilityExport, EXPORT_TABLES, type ExportTab } from "../application/query/usability-export.js"
 import { workflowsQuery } from "../application/query/workflows-query.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { respondScopedOptions, UNIT_AND_PERSON_OPTION_KINDS } from "../../org-structure/presentation/options-query.js"
 
 /**
  * Monitoria de usabilidade — `/api/v1/admin/usability`. Montado atrás de `usability.view` (qualquer escopo); cada rota aplica a
@@ -56,9 +57,9 @@ export function createUsabilityRouter(db: Database, options: { now?: () => Date 
     response.json({ data: { ...people, retention } })
   })
   router.get("/users/options", async (request, response) => {
-    const search = z.string().trim().min(2).max(80).parse(request.query.search)
+    const { of } = z.object({ of: z.enum(["people", "leaders"]).default("people") }).parse(request.query)
     const ctx = await contextOf(request, "people", {})
-    response.json({ data: await peopleOptionsQuery(db, ctx, search) })
+    response.json({ data: await respondScopedOptions(db, ctx.organizationId, (query) => usabilityOptionsReach(ctx, { people: query.kind === "PERSON", leadersOnly: query.kind === "PERSON" && of === "leaders" }), request.query, { kinds: UNIT_AND_PERSON_OPTION_KINDS, matricula: true }) })
   })
   router.get("/users/:personId", async (request, response) => {
     response.json({ data: await personDetailQuery(db, await contextOf(request, "person"), idParam.parse(request.params.personId)) })

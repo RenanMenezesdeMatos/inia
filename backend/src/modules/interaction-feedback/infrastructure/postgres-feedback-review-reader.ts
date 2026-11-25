@@ -1,6 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { FeedbackReviewReader, QaGrantScope, QaPermission, ReviewQueueFilters, ReviewViewer } from "../application/feedback-review-reader.js"
 import { rolesWithPermission } from "../../access/domain/roles.js"
+import { listScopedOptions, type ScopedOptionsRequest } from "../../org-structure/application/scoped-options.js"
 import type { FeedbackDeliveryDecision } from "../domain/feedback-delivery-policy.js"
 import type { ReviewStatus } from "../domain/feedback-review.js"
 import { DEFAULT_ORGANIZATION_TIMEZONE } from "../../workflows/application/organization-timezone.js"
@@ -106,35 +107,32 @@ export function createPostgresFeedbackReviewReader(db: Queryable): FeedbackRevie
       if (filters.status !== "ALL") add("q.review_status = ?", filters.status)
       if (filters.search) add("position(lower(?) in lower(q.collaborator_name)) > 0", filters.search)
       if (filters.collaboratorId) add("q.collaborator_id = ?::uuid", filters.collaboratorId)
-      if (filters.teamId) add("q.team_id = ?::uuid", filters.teamId)
+      if (filters.teamId?.length) add("q.team_id = any(?::uuid[])", filters.teamId)
       if (filters.section) add("q.section = ?", filters.section)
       if (filters.from) add("(coalesce(q.occurred_at, q.created_at) at time zone q.timezone)::date >= ?::date", filters.from)
       if (filters.to) add("(coalesce(q.occurred_at, q.created_at) at time zone q.timezone)::date <= ?::date", filters.to)
       const extra = where.length ? ` where ${where.join(" and ")}` : ""
       params.push(filters.pageSize, (filters.page - 1) * filters.pageSize)
-      const [page, options] = await Promise.all([
-        db.query<QueueRow>(
-          `${SCOPE_CTE}${UNIFIED}
-           select q.*, null::text reviewer_name, count(*) over() total from unified q${extra}
-           order by (q.review_status = 'PENDING_REVIEW') desc, coalesce(q.occurred_at, q.created_at) desc, q.sort_key, q.id
-           limit $${params.length - 1} offset $${params.length}`,
-          params,
-        ),
-        // Opções de filtro = quem/qual equipe TEM item de QA no escopo (nunca a organização inteira).
-        db.query<{ kind: "C" | "T"; id: string; name: string }>(
-          `${SCOPE_CTE}${UNIFIED}
-           select distinct 'C'::text kind, q.collaborator_id id, q.collaborator_name name from unified q
-           union
-           select distinct 'T'::text kind, q.team_id, q.team_name from unified q where q.team_id is not null
-           order by 3`,
-          [viewer.organizationId, viewer.personId, rolesWithPermission("feedback_quality_review.view")],
-        ),
-      ])
+      const page = await db.query<QueueRow>(
+        `${SCOPE_CTE}${UNIFIED}
+         select q.*, null::text reviewer_name, count(*) over() total from unified q${extra}
+         order by (q.review_status = 'PENDING_REVIEW') desc, coalesce(q.occurred_at, q.created_at) desc, q.sort_key, q.id
+         limit $${params.length - 1} offset $${params.length}`,
+        params,
+      )
       return {
         rows: page.rows.map((row) => ({ record: { origin: row.origin, id: row.id, reviewStatus: row.review_status, section: row.section, findingKind: row.finding_kind, wordingSource: row.wording_source, interactionLabel: row.interaction_label, reviewedAt: row.reviewed_at }, context: contextOf(row) })),
         total: Number(page.rows[0]?.total ?? 0),
-        filterOptions: { collaborators: options.rows.filter((row) => row.kind === "C").map(({ id, name }) => ({ id, name })), teams: options.rows.filter((row) => row.kind === "T").map(({ id, name }) => ({ id, name })) },
       }
+    },
+
+    // Opções de filtro = quem/qual equipe TEM item de QA no escopo (nunca a organização inteira), em lotes.
+    listFilterOptions(viewer: ReviewViewer, request: ScopedOptionsRequest) {
+      return listScopedOptions(db, viewer.organizationId, {
+        with: `${SCOPE_CTE}${UNIFIED}`,
+        select: "select distinct q.collaborator_id person_id, q.team_id, null::uuid subteam_id from unified q",
+        params: [viewer.organizationId, viewer.personId, rolesWithPermission("feedback_quality_review.view")],
+      }, request)
     },
 
     async loadInScope(viewer: ReviewViewer, reviewId: string, permission: QaPermission = "feedback_quality_review.view") {

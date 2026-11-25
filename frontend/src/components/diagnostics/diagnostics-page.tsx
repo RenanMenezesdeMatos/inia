@@ -4,6 +4,8 @@ import { useMemo, useState } from "react"
 import { Stethoscope, Activity, BookOpen, ChevronRight, Gauge, Info, ListChecks, Users } from "lucide-react"
 
 import { ListDateRangeFilter, ListSelectFilter, ListToolbar } from "@/components/admin/shared/list/list-filters"
+import { TeamSubteamFilters } from "@/components/admin/shared/list/team-subteam-filters"
+import { PersonCombobox, usePersonLabel } from "@/components/admin/shared/person-combobox"
 import { ListPagination } from "@/components/admin/shared/list/list-pagination"
 import { AnalyticsEmptyState, AnalyticsErrorState, TableSkeleton } from "@/components/analytics/analytics-states"
 import { Badge } from "@/components/ui/badge"
@@ -31,6 +33,8 @@ import { MaterialsTab } from "./materials-tab"
 import { CONCLUSION_LABELS, percent, shortDate } from "./memory-labels"
 import { ProcessesTab } from "./processes-tab"
 import { PageHeader } from "@/components/ui/surface"
+import { coversUnit, narrowToTeam } from "@/lib/admin/unit-selection"
+import { parentsOf, useSelectedOrgUnits } from "@/components/admin/shared/list/org-unit-multi-filter"
 
 const isoDay = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
 const defaultPeriod = (): DateRangeFilter => {
@@ -41,6 +45,9 @@ const defaultPeriod = (): DateRangeFilter => {
 }
 
 
+/** Grupo, Subgrupo e pessoa no alcance de quem olha, em lotes. */
+const OPTIONS_SOURCE = { path: "/api/v1/diagnostics/memory/unit-options" }
+
 /**
  * DIAGNÓSTICO DA LIDERANÇA — o que a memória operacional do motor de feedback registrou no escopo de quem olha: onde os
  * processos concentram desvios e acertos, quem (pessoa/equipe) com volume, taxa e cobertura, quando/em que assunto, quais
@@ -49,8 +56,8 @@ const defaultPeriod = (): DateRangeFilter => {
  */
 export function DiagnosticsPage() {
   const [period, setPeriod] = useState<DateRangeFilter>(defaultPeriod)
-  const [teamId, setTeamId] = useState<string | undefined>()
-  const [subteamId, setSubteamId] = useState<string | undefined>()
+  const [teamId, setTeamId] = useState<string[] | undefined>()
+  const [subteamId, setSubteamId] = useState<string[] | undefined>()
   const [personId, setPersonId] = useState<string | undefined>()
   const [subject, setSubject] = useState<string | undefined>()
   const [documentId, setDocumentId] = useState<string | undefined>()
@@ -63,10 +70,7 @@ export function DiagnosticsPage() {
     [period, fallback, teamId, subteamId, personId, subject, documentId],
   )
   const options = useMemoryFilterOptionsQuery()
-  // Só o que cabe no Grupo/Subgrupo escolhido. Item sem a informação (servidor antigo) continua oferecido.
-  const subteamsOf = (team: string | undefined) => (options.data?.subteams ?? []).filter((subteam) => !team || !subteam.teamId || subteam.teamId === team)
-  const peopleOf = (team: string | undefined, subteam: string | undefined) =>
-    (options.data?.people ?? []).filter((person) => (!team || person.teamId === undefined || person.teamId === team) && (!subteam || person.subteamId === undefined || person.subteamId === subteam))
+  const { person } = usePersonLabel(OPTIONS_SOURCE, personId)
   const summary = useMemorySummaryQuery(filters)
   const hasActiveFilters = Boolean(teamId || subteamId || personId || subject || documentId || period.from !== fallback.from || period.to !== fallback.to)
   const clearFilters = () => {
@@ -88,29 +92,19 @@ export function DiagnosticsPage() {
         onClearFilters={clearFilters}
       >
         <ListDateRangeFilter label="Período" value={period} onChange={setPeriod} />
-        <ListSelectFilter
-          ariaLabel="Grupo"
-          allLabel="Todos os grupos"
-          value={teamId}
-          onChange={(next) => {
-            setTeamId(next)
-            // Hierarquia Grupo → Subgrupo → pessoa: trocar o Grupo limpa o Subgrupo e a pessoa que deixaram de caber.
-            if (subteamId && !subteamsOf(next).some((subteam) => subteam.id === subteamId)) setSubteamId(undefined)
-            if (personId && !peopleOf(next, subteamId && subteamsOf(next).some((subteam) => subteam.id === subteamId) ? subteamId : undefined).some((person) => person.id === personId)) setPersonId(undefined)
+        <TeamSubteamFilters
+          source={OPTIONS_SOURCE}
+          value={{ teamId, subteamId }}
+          onChange={(next, parents) => {
+            setTeamId(next.teamId)
+            setSubteamId(next.subteamId)
+            // Hierarquia Grupo → Subgrupo → pessoa: a pessoa que deixou de caber sai.
+            if (person && !coversUnit(next, person, parents)) setPersonId(undefined)
           }}
-          options={(options.data?.teams ?? []).map((team) => ({ value: team.id, label: team.name }))}
+          teamLabel="Todos os grupos"
+          subteamLabel="Todos os subgrupos"
         />
-        <ListSelectFilter
-          ariaLabel="Subgrupo"
-          allLabel="Todos os subgrupos"
-          value={subteamId}
-          onChange={(next) => {
-            setSubteamId(next)
-            if (personId && !peopleOf(teamId, next).some((person) => person.id === personId)) setPersonId(undefined)
-          }}
-          options={subteamsOf(teamId).map((subteam) => ({ value: subteam.id, label: subteam.name }))}
-        />
-        <ListSelectFilter ariaLabel="Pessoa" allLabel="Todas as pessoas" value={personId} onChange={setPersonId} options={peopleOf(teamId, subteamId).map((person) => ({ value: person.id, label: person.name }))} />
+        <PersonCombobox source={OPTIONS_SOURCE} value={personId} onChange={(next) => setPersonId(next?.id)} teamId={teamId} subteamId={subteamId} emptyLabel="Todas as pessoas" ariaLabel="Filtrar por pessoa" />
         <ListSelectFilter ariaLabel="Assunto" allLabel="Todos os assuntos" value={subject} onChange={setSubject} options={(options.data?.subjects ?? []).map((name) => ({ value: name, label: name }))} />
         <ListSelectFilter ariaLabel="Procedimento" allLabel="Todos os procedimentos" value={documentId} onChange={setDocumentId} options={(options.data?.documents ?? []).map((document) => ({ value: document.id, label: document.title }))} />
       </ListToolbar>
@@ -196,9 +190,15 @@ function StatsCells({ stats }: { stats: MemoryStats }) {
 /** Contagens POR REGRA (uma regra numa chamada = 1) e, à parte, condutas distintas em desvio (* = parte das regras sem ligação). */
 const STATS_HEAD = ["Regras avaliadas", "Desvios por regra", "Condutas em desvio", "Acertos", "Taxa por regra", "Sem conclusão"]
 
-function usePaging() {
+/** Página e tamanho; outro recorte (filtros) volta para a página 1. */
+function usePaging(filters: MemoryFilters) {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
+  const [pagedFilters, setPagedFilters] = useState(filters)
+  if (pagedFilters !== filters) {
+    setPagedFilters(filters)
+    setPage(1)
+  }
   return { page, pageSize, setPage, setPageSize: (size: number) => { setPageSize(size); setPage(1) } }
 }
 
@@ -206,9 +206,17 @@ const GROUP_LABELS = { PERSON: "Pessoa", TEAM: "Grupo", SUBTEAM: "Subgrupo" } as
 
 function PeopleTab({ filters, onDrill }: { filters: MemoryFilters; onDrill: (drill: Drill) => void }) {
   const [groupBy, setGroupBy] = useState<keyof typeof GROUP_LABELS>("PERSON")
-  const paging = usePaging()
+  const paging = usePaging(filters)
   const query = usePeopleAggregatesQuery(filters, groupBy, paging.page, paging.pageSize)
-  const drillFilters = (key: string | null): MemoryFilters => (groupBy === "PERSON" ? { ...filters, personId: key } : groupBy === "TEAM" ? { ...filters, teamId: key } : { ...filters, subteamId: key })
+  const parents = parentsOf(useSelectedOrgUnits(OPTIONS_SOURCE, "SUBTEAM", filters.subteamId ?? []).units)
+  // A linha de um Grupo mantém os Subgrupos já escolhidos dele: o detalhe mostra o mesmo recorte do número.
+  const drillFilters = (key: string | null): MemoryFilters => {
+    if (groupBy === "PERSON") return { ...filters, personId: key }
+    if (key === null) return filters
+    if (groupBy === "SUBTEAM") return { ...filters, teamId: null, subteamId: [key] }
+    const units = narrowToTeam({ teamId: [...(filters.teamId ?? [])], subteamId: [...(filters.subteamId ?? [])] }, key, parents)
+    return { ...filters, teamId: units.teamId ?? null, subteamId: units.subteamId ?? null }
+  }
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2">
@@ -301,7 +309,7 @@ const ADVERSE_CONCLUSIONS = new Set(["PATTERN_SUPPORTED", "CHANGE_LOCATED_NO_CAU
 const POSITIVE_CONCLUSIONS = new Set(["STRENGTH_PATTERN", "RESULT_RECOGNITION"])
 
 function IndicatorsTab({ filters, onOpen }: { filters: MemoryFilters; onOpen: (id: string) => void }) {
-  const paging = usePaging()
+  const paging = usePaging(filters)
   const query = useIndicatorInvestigationsQuery(filters, paging.page, paging.pageSize)
   return (
     <Card>

@@ -4,15 +4,19 @@ import { useState } from "react"
 import { Lightbulb } from "lucide-react"
 
 import { ListBooleanFilter, ListSearchInput, ListSelectFilter, ListToolbar } from "@/components/admin/shared/list/list-filters"
+import { OrgUnitMultiFilter } from "@/components/admin/shared/list/org-unit-multi-filter"
 import { ListPagination } from "@/components/admin/shared/list/list-pagination"
 import { AnalyticsEmptyState, AnalyticsErrorState, TableSkeleton } from "@/components/analytics/analytics-states"
 import { Badge } from "@/components/ui/badge"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { usePatternsQuery } from "@/queries/best-practices/use-best-practices"
 import type { BestPracticesMeta, DataOrigin, PatternFilters, ReviewStatus } from "@/schemas/best-practices/best-practices.schema"
+import { idsOrUndefined } from "@/lib/admin/unit-selection"
 
 import { percentLabel, REVIEW_LABELS, reviewBadgeVariant, STRENGTH_LABELS } from "./best-practice-labels"
 
+/** Grupos da organização (a base de boas práticas é da organização), em lotes. */
+const OPTIONS_SOURCE = { path: "/api/v1/best-practices/unit-options" }
 const STATUS_OPTIONS = (Object.keys(REVIEW_LABELS) as ReviewStatus[]).map((value) => ({ value, label: REVIEW_LABELS[value] }))
 const ORIGIN_OPTIONS: { value: DataOrigin; label: string }[] = [
   { value: "REAL", label: "Dados reais" },
@@ -35,7 +39,7 @@ export function PatternList({ meta, onOpen }: { meta: BestPracticesMeta | undefi
       >
         <ListSelectFilter ariaLabel="Indicador" allLabel="Todos os indicadores" value={filters.indicatorId} onChange={(value) => set("indicatorId", value)} options={(meta?.indicators ?? []).map((indicator) => ({ value: indicator.id, label: indicator.name }))} />
         <ListSearchInput value={filters.context ?? ""} onChange={(value) => set("context", value || undefined)} placeholder="Contexto (motivo)" ariaLabel="Filtrar por contexto" />
-        <ListSelectFilter ariaLabel="Grupo" allLabel="Todos os grupos" value={filters.teamId} onChange={(value) => set("teamId", value)} options={(meta?.teams ?? []).map((team) => ({ value: team.id, label: team.name }))} />
+        <OrgUnitMultiFilter kind="TEAM" source={OPTIONS_SOURCE} value={filters.teamId ?? []} onChange={(ids) => set("teamId", idsOrUndefined(ids))} anyLabel="Todos os grupos" ariaLabel="Filtrar por grupo" showChips />
         <ListSelectFilter ariaLabel="Estado de revisão" allLabel="Qualquer estado" value={filters.reviewStatus} onChange={(value) => set("reviewStatus", value)} options={STATUS_OPTIONS} />
         <ListBooleanFilter ariaLabel="Disponível para recomendações" allLabel="Disponível ou não" trueLabel="Orienta operadores" falseLabel="Não orienta" value={filters.available} onChange={(value) => set("available", value)} />
         <ListSelectFilter ariaLabel="Origem dos dados" allLabel="Qualquer origem" value={filters.origin} onChange={(value) => set("origin", value)} options={ORIGIN_OPTIONS} />

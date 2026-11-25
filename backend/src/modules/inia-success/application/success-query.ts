@@ -1,3 +1,4 @@
+import { unitFilterSql, type OrgUnitFilter } from "../../../shared/infrastructure/database/unit-filter.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { SqlParams } from "../../../shared/infrastructure/sql-params.js"
 import { assertFunnelPeriod } from "../../assistant/application/reply-funnel.js"
@@ -10,7 +11,7 @@ import { assertFunnelPeriod } from "../../assistant/application/reply-funnel.js"
 export type Queryable = Pick<Database, "query">
 /** `accountId`: a conta da sessão (blocos cujo alcance vem das atribuições da conta, como o dos alinhamentos). */
 export type SuccessViewer = { organizationId: string; personId: string; accountId?: string }
-export type SuccessQuery = { from: string; to: string; teamId?: string | null | undefined; subteamId?: string | null | undefined }
+export type SuccessQuery = OrgUnitFilter & { from: string; to: string }
 
 export function assertSuccessPeriod(query: SuccessQuery) {
   assertFunnelPeriod({ from: query.from, to: query.to })
@@ -31,13 +32,7 @@ export function boundsCte(p: SqlParams, organizationId: string, query: SuccessQu
  * mesma regra do funil das respostas. Sem filtro = `true`.
  */
 export function placementFilter(p: SqlParams, query: SuccessQuery, person = "p", subteam = "st"): string {
-  const clauses: string[] = []
-  if (query.teamId) {
-    const team = p.typed(query.teamId, "uuid")
-    clauses.push(`(${person}.team_id = ${team} or ${subteam}.team_id = ${team})`)
-  }
-  if (query.subteamId) clauses.push(`${person}.subteam_id = ${p.typed(query.subteamId, "uuid")}`)
-  return clauses.length > 0 ? clauses.join(" and ") : "true"
+  return unitFilterSql(query, (value) => p.add(value), { team: [`${person}.team_id`, `${subteam}.team_id`], subteam: `${person}.subteam_id` }) ?? "true"
 }
 
 /** Dia civil local de um instante (texto AAAA-MM-DD), com o fuso de `bounds`. */

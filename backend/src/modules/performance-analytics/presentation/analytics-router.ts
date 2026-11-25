@@ -1,7 +1,8 @@
+import { refinedUnits } from "../../../shared/infrastructure/database/unit-filter.js"
 import { Router, type Request } from "express"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, listParam, paginationQuerySchema, searchParam } from "../../../shared/presentation/list-query.js"
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, listParam, paginationQuerySchema, searchParam, unitFilterShape } from "../../../shared/presentation/list-query.js"
 import { PgAnalyticsReadRepository, type AnalyticsReadRepository } from "../application/analytics-read-repository.js"
 import { buildAnalyticsContext } from "../application/build-analytics-context.js"
 import { buildEmployeeDashboard } from "../application/build-employee-dashboard.js"
@@ -9,7 +10,7 @@ import { buildFollowUpFeed } from "../application/build-follow-up-feed.js"
 import { buildIndicatorMembers } from "../application/build-indicator-members.js"
 import { buildStructureBreakdown, buildStructureDashboard } from "../application/build-structure-dashboard.js"
 import { buildTeamMembersPage, buildTeamOverview } from "../application/build-team-overview.js"
-import { loadViewerScope, resolveDefaultSubject, type ViewerScope } from "../application/viewer-scope.js"
+import { loadViewerScope, resolveDefaultSubject, resolveSubject, type ViewerScope } from "../application/viewer-scope.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { ANALYTICS_SUBJECT_KINDS, buildAnalyticsSubject, isStructureSubject, type AnalyticsSubject } from "../domain/analytics-subject.js"
 import { isGroupingDimension } from "../domain/hierarchy-levels.js"
@@ -21,6 +22,8 @@ import { clampToClosedReferencePeriod } from "../../indicators/domain/official-c
 import { decodeFollowUpCursor } from "../../feedbacks/domain/follow-up-cursor.js"
 import { loadAvatarPresenter, personAvatarLoader, type PersonAvatarLoader } from "../../profile-preferences/application/person-presentation-loader.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { reachOfPeople } from "../../org-structure/application/scoped-options.js"
+import { respondScopedOptions, UNIT_OPTION_KINDS } from "../../org-structure/presentation/options-query.js"
 
 const followUpQuerySchema = z.object({
   ack: z.enum(["all", "pending"]).default("all"),
@@ -147,6 +150,18 @@ export function createAnalyticsRouter(
     }
   })
 
+  /** Grupos e Subgrupos de quem está na estrutura vista (filtros da Equipe), em lotes. */
+  router.get("/team/unit-options", async (request, response, next) => {
+    try {
+      const scope = await loadViewerScope(repository, sessionUser(request))
+      const subject = requireStructure(subjectFrom(request, scope))
+      const members = resolveSubject(scope, subject).members.map((member) => member.id)
+      response.json({ data: await respondScopedOptions(db, scope.organizationId, () => reachOfPeople(members), request.query, { kinds: UNIT_OPTION_KINDS }) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
   router.get("/team/members", async (request, response, next) => {
     try {
       const scope = await loadViewerScope(repository, sessionUser(request))
@@ -155,8 +170,7 @@ export function createAnalyticsRouter(
         .merge(sortSchema)
         .extend({
           search: searchParam,
-          teamId: z.string().uuid().optional(),
-          subteamId: z.string().uuid().optional(),
+          ...unitFilterShape,
           situation: z.enum(["NO_DATA", "BELOW_REFERENCE", "IMPROVING", "WITHIN_REFERENCE"]).optional(),
           attentionIndicatorCode: z.string().max(60).optional(),
           pendingOnly: z.preprocess((value) => value === "true", z.boolean()).optional(),
@@ -165,7 +179,7 @@ export function createAnalyticsRouter(
           order: z.enum(["asc", "desc"]).default("asc"),
         })
         .parse(request.query)
-      const page = await buildTeamMembersPage(repository, scope, subject, periodFrom(request, await resolveOfficialClosure(db, scope.organizationId, now())), query)
+      const page = await buildTeamMembersPage(repository, scope, subject, periodFrom(request, await resolveOfficialClosure(db, scope.organizationId, now())), { ...query, ...(await refinedUnits(db, query)) })
       const present = await loadAvatarPresenter(personAvatars, scope.organizationId, page.items.map((item) => item.personId))
       response.json({ data: { ...page, items: page.items.map(present) } })
     } catch (error) {

@@ -86,7 +86,7 @@ describe.skipIf(!ENABLED)("Tempo de resposta da INIA — prova Postgres", () => 
     expect(await monitoredResponseTimes(client, viewer, { ...day, origin: "USER" })).toMatchObject({ replies: 3, averageSeconds: 19, medianSeconds: 15, p90Seconds: 30 })
     expect(await monitoredResponseTimes(client, viewer, { ...day, ownerPersonId: larissa.id, origin: "FEEDBACK" })).toMatchObject({ replies: 1, averageSeconds: 9 })
     // Fora do alcance (Grupo B) nunca entra; dia sem resposta = nulos, nunca zero.
-    expect(await monitoredResponseTimes(client, viewer, { ...day, teamId: teamB })).toEqual({ ...day, replies: 0, averageSeconds: null, medianSeconds: null, p90Seconds: null })
+    expect(await monitoredResponseTimes(client, viewer, { ...day, teamId: [teamB] })).toEqual({ ...day, replies: 0, averageSeconds: null, medianSeconds: null, p90Seconds: null })
     expect(await monitoredResponseTimes(client, viewer, { from: "2026-07-01", to: "2026-07-14" })).toMatchObject({ replies: 0, medianSeconds: null })
     // Dois dias: entra também a resposta do dia 16 (o Bruno continua fora).
     expect(await monitoredResponseTimes(client, viewer, { from: "2026-07-15", to: "2026-07-16" })).toMatchObject({ replies: 5 })

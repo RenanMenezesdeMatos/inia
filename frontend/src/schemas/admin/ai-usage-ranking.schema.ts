@@ -113,6 +113,5 @@ export type AiUsageRanking = z.infer<typeof aiUsageRankingSchema>
 export const aiUsageRankingContextSchema = z.object({
   levels: z.array(z.object({ key: z.enum(AI_USAGE_RANKING_LEVELS), label: z.string() })),
   scope: z.object({ organizationWide: z.boolean(), labels: z.array(z.string()) }),
-  teams: z.array(z.object({ id: z.string(), name: z.string(), subteams: z.array(z.object({ id: z.string(), name: z.string() })) })),
 })
 export type AiUsageRankingContext = z.infer<typeof aiUsageRankingContextSchema>

@@ -146,15 +146,19 @@ Subgrupo compatível, sem "grupo inteiro"; `PENDING` no filtro sozinho não rest
 Grupos, porque a pessoa pendente está em Grupo sem universo). Em EDIÇÃO, o vínculo já salvo e incompatível continua visível marcado "de outro universo" com aviso (nunca some em silêncio),
 mas nada novo incompatível é oferecido.
 
+**Atualização 24/11/2026:** os filtros de Grupo/Subgrupo viraram múltipla escolha em lotes; trocar o universo tira da escolha só o que deixou
+de caber (`useUnitsAfterUniverse`) e o Grupo de outro universo fica enquanto um Subgrupo escolhido dele cabe. `teamScopeFitsUniverse`,
+`orgScopeAfterUniverseChange` e `teamIdAfterUniverseChange` foram removidos. Ver `alcance-multigrupo.md` › "Busca e filtros para listas grandes".
+
 **Backend (só leitura, campos novos opcionais):** `GET /admin/org-structure/teams` e `/teams/manageable` devolvem `operatingUniverse` no
 Grupo e o efetivo no Subgrupo; agentes, Orquestradores, domínios, indicadores (`/indicator-rules`) e argumentários devolvem
 `operatingUniverse`; essas listas e a de Workflows aceitam `?operatingUniverse=B2B,PENDING` (`operating-universe/application/
-universe-list-filter.ts`, mesmo formato das Pessoas e bases). `GET /diagnostics/memory/filter-options` devolve `teamId` no Subgrupo e
-`teamId`/`subteamId` na pessoa.
+universe-list-filter.ts`, mesmo formato das Pessoas e bases). Grupo, Subgrupo e pessoa do Diagnóstico vêm em lotes de
+`GET /diagnostics/memory/unit-options` (24/11/2026).
 
 **Peças compartilhadas:** `ListUniverseFilter` + `universeChoiceOf` e `ListOrgScopeFilter universe=…` (`admin/shared/list/list-filters.tsx`,
-teste `list-filters.test.tsx`); `OrgScopeSelect universe=…` + `orgScopeValueAfterUniverseChange` (`admin/shared/org-scope-select.tsx`);
-`orgScopeAfterUniverseChange`/`orgScopePatch`/`scopesFitOrgScope`/`filterByUniverse` para as telas.
+teste `list-filters.test.tsx`); `OrgScopeSelect universe=…` (`admin/shared/org-scope-select.tsx`); `useUnitsAfterUniverse` para os filtros e
+`filterByUniverse` para as listas completas.
 
 ### Inventário
 

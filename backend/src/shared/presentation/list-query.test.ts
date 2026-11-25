@@ -22,9 +22,12 @@ describe("SqlFilter", () => {
     expect(filter.params).toEqual(["org-1"])
   })
 
-  it("maps the org scope filter: subteam wins over team, and ALL_TEAMS only matches global rows", () => {
-    expect(new SqlFilter().orgScope("q", { teamId: "t", subteamId: "s" }).where()).toBe(` where q."subteamId" = $1::uuid`)
-    expect(new SqlFilter().orgScope("q", { teamId: "t" }).where()).toBe(` where q."teamId" = $1::uuid`)
+  it("filtro de Grupo/Subgrupo: vários de cada, só ids como parâmetros, e ALL_TEAMS só sem escolha", () => {
+    const units = new SqlFilter(["org"]).orgScope("q", { scopeType: "ALL_TEAMS", teamId: ["t1", "t2"], subteamId: ["s"] })
+    expect(units.where()).toContain(`q."subteamId" = any($3::uuid[])`)
+    expect(units.where()).toContain(`q."teamId" = any(array(select unnest($2::uuid[]) except`)
+    expect(units.where()).not.toContain("scopeType")
+    expect(units.params).toEqual(["org", ["t1", "t2"], ["s"]])
     expect(new SqlFilter().orgScope("q", { scopeType: "ALL_TEAMS" }).where()).toBe(` where q."scopeType" = 'ALL_TEAMS'`)
   })
 })

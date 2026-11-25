@@ -45,8 +45,8 @@ describe("matchesKnowledgeLinkFilter", () => {
     expect(matchesKnowledgeLinkFilter(groupAgent, { universe: "B2C" })).toBe(true)
     expect(matchesKnowledgeLinkFilter(groupAgent, { universe: "PENDING" })).toBe(false)
     expect(matchesKnowledgeLinkFilter(subAgent, { universe: "PENDING" })).toBe(true)
-    expect(matchesKnowledgeLinkFilter(subAgent, { teamId: teamA })).toBe(true)
-    expect(matchesKnowledgeLinkFilter(groupAgent, { subteamId: sub })).toBe(false)
+    expect(matchesKnowledgeLinkFilter(subAgent, { teamId: [teamA] })).toBe(true)
+    expect(matchesKnowledgeLinkFilter(groupAgent, { subteamId: [sub] })).toBe(false)
     expect(matchesKnowledgeLinkFilter(groupAgent, { scopeType: "ALL_TEAMS" })).toBe(false)
     expect(matchesKnowledgeLinkFilter(subAgent, { state: "NOT_PUBLISHED" })).toBe(true)
     expect(matchesKnowledgeLinkFilter(groupAgent, { state: "INACTIVE" })).toBe(false)
@@ -54,11 +54,13 @@ describe("matchesKnowledgeLinkFilter", () => {
 
   it("vários vínculos (249): o filtro de Grupo acha o agente por QUALQUER vínculo; o de Subgrupo, só pelo vínculo daquele Subgrupo", () => {
     const multi = candidate("3", "Agente Multi", { scopeType: "GROUPS", scopeLinks: [{ teamId: teamA, teamName: "A", subteamId: null, subteamName: null }, { teamId: teamB, teamName: "B", subteamId: subB1, subteamName: "b1" }] })
-    expect(matchesKnowledgeLinkFilter(multi, { teamId: teamA })).toBe(true)
-    expect(matchesKnowledgeLinkFilter(multi, { teamId: teamB })).toBe(true)
-    expect(matchesKnowledgeLinkFilter(multi, { subteamId: subB1 })).toBe(true)
-    expect(matchesKnowledgeLinkFilter(multi, { subteamId: sub })).toBe(false)
+    expect(matchesKnowledgeLinkFilter(multi, { teamId: [teamA] })).toBe(true)
+    expect(matchesKnowledgeLinkFilter(multi, { teamId: [teamB] })).toBe(true)
+    expect(matchesKnowledgeLinkFilter(multi, { subteamId: [subB1] })).toBe(true)
+    expect(matchesKnowledgeLinkFilter(multi, { subteamId: [sub] })).toBe(false)
     expect(matchesKnowledgeLinkFilter(multi, { scopeType: "ALL_TEAMS" })).toBe(false)
+    expect(matchesKnowledgeLinkFilter(multi, { teamId: ["55555555-5555-4555-8555-555555555555"], subteamId: [subB1] })).toBe(true)
+    expect(matchesKnowledgeLinkFilter(multi, { teamId: ["55555555-5555-4555-8555-555555555555", teamA], subteamId: [sub] })).toBe(true)
   })
 })
 

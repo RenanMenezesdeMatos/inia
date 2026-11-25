@@ -2,7 +2,6 @@
 
 import { UniverseBadge } from "@/components/operating-universe/universe-badge"
 import { UniverseSelect } from "@/components/operating-universe/universe-select"
-import { teamsForUniverse } from "@/lib/operating-universe/hierarchy"
 import { PositionSelect, type PersonPosition } from "./position-select"
 import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import { OPERATING_UNIVERSES, type OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
@@ -30,13 +29,13 @@ import {
   ListDateRangeFilter,
   ListMultiSelectFilter,
   ListSearchInput,
-  ListSelectFilter,
   ListToolbar,
   optionsFromLabels,
 } from "@/components/admin/shared/list/list-filters"
+import { TeamSubteamFilters, useTeamSubteamActiveFilters, useUnitsAfterUniverse } from "@/components/admin/shared/list/team-subteam-filters"
+import { OrgUnitCombobox } from "@/components/admin/shared/org-unit-combobox"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
-import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import { useUpdateUserShiftMutation, useUserShiftQuery } from "@/queries/admin/use-user-shift-queries"
 import { useApplyEmploymentStatusMutation, useEmploymentStatusQuery, useUpdateOperationalCapitalMutation } from "@/queries/admin/use-employment-status-queries"
 import {
@@ -313,6 +312,9 @@ function lastLoginLabel(user: UserAccount) {
   return user.lastLoginAt ? `Último acesso ${formatShortDateTime(user.lastLoginAt, { withYear: true })}` : "Nunca acessou"
 }
 
+/** Grupo › Subgrupo da pessoa. */
+const placeOf = (user: UserAccount) => [user.teamName, user.subteamName].filter(Boolean).join(" › ") || "Sem grupo"
+
 function UserCard({ user, onEdit }: { user: UserAccount; onEdit: (user: UserAccount) => void }) {
   return (
     <EntityCard
@@ -322,7 +324,7 @@ function UserCard({ user, onEdit }: { user: UserAccount; onEdit: (user: UserAcco
         <>
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{user.jobPositionName ?? ROLE_LABELS[user.role]}</span>
           <span aria-hidden>·</span>
-          <span>{user.teamName ?? "Sem grupo"}</span>
+          <span>{placeOf(user)}</span>
         </>
       }
       title={user.name}
@@ -336,7 +338,7 @@ function UserCard({ user, onEdit }: { user: UserAccount; onEdit: (user: UserAcco
       descriptionFallback="Sem conta de acesso."
       tags={
         <>
-          <EntityCardTag icon={UsersRound}>{user.teamName ?? "Sem grupo"}</EntityCardTag>
+          <EntityCardTag icon={UsersRound}>{placeOf(user)}</EntityCardTag>
           <EntityCardTag icon={user.accountId ? LogIn : KeyRound}>{lastLoginLabel(user)}</EntityCardTag>
         </>
       }
@@ -376,7 +378,10 @@ function UsersTable({ users, onEdit }: { users: UserAccount[]; onEdit: (user: Us
               <TableCell>
                 <RoleSelect user={user} />
               </TableCell>
-              <TableCell>{user.teamName ?? "—"}</TableCell>
+              <TableCell>
+                {user.teamName ?? "—"}
+                {user.subteamName ? <p className="text-xs text-muted-foreground">{user.subteamName}</p> : null}
+              </TableCell>
               <TableCell>
                 <div className="flex items-center gap-1.5">
                   <UniverseBadge universe={user.operatingUniverse} />
@@ -408,6 +413,9 @@ type UserFilters = Omit<UserListParams, "page" | "pageSize" | "search"> & { sear
 const DEFAULT_FILTERS: UserFilters = { search: "", role: [], operatingUniverse: [], lastLoginAt: {} }
 const UNIVERSE_FILTER_OPTIONS = [...OPERATING_UNIVERSES.map((universe) => ({ value: universe, label: universe })), { value: "PENDING" as const, label: "Pendente" }]
 const ROLE_OPTIONS = optionsFromLabels(ROLE_LABELS)
+const SCOPE_SOURCE = "people.manage"
+// Com "Pendente" marcado, a pessoa pendente está num Grupo sem universo: aí o universo não restringe os Grupos.
+const universesForUnits = (universes: UserFilters["operatingUniverse"]) => (!universes?.length || universes.includes("PENDING") ? undefined : universes)
 
 /**
  * Pessoas (Usuários e acessos). Campo que a base do cliente controla (feed da Central de Dados) aparece desabilitado com a
@@ -431,17 +439,27 @@ export function UsersPage({
   /** Leva para a aba Acessos já na pessoa (ex.: matrícula que já existe → "Habilitar acesso"). */
   onOpenAccess?: (focus: AccessFocus) => void
 }) {
-  const teamsQuery = useTeamsQuery()
   const createMutation = useCreateUserAccountMutation()
   const updateDetailsMutation = useUpdateUserDetailsMutation()
 
   const list = useAdminListState({ storageKey: "users", defaultFilters: DEFAULT_FILTERS })
   const usersQuery = useUserAccountsPageQuery(list.params)
-  // Hierarquia universo → Grupo: o filtro de Grupo só oferece Grupos com gente do universo escolhido (o próprio Grupo ou um Subgrupo
-  // dele); trocar o universo limpa o Grupo que deixou de caber.
-  // Com "Pendente" marcado, a pessoa pendente está num Grupo sem universo: aí o filtro de Grupo não restringe.
-  const teamsInUniverse = (universes: UserFilters["operatingUniverse"]) => teamsForUniverse(teamsQuery.data ?? [], universes?.includes("PENDING") ? undefined : universes)
-  const teamOptions = teamsInUniverse(list.filters.operatingUniverse).map((team) => ({ value: team.id, label: team.name }))
+  // Hierarquia universo → Grupo → Subgrupo: cada nível só oferece o que cabe no de cima; trocar o universo limpa o que deixou de caber
+  // (o Grupo de outro universo fica enquanto o Subgrupo escolhido dele cabe).
+  const scopeValue = { teamId: list.filters.teamId, subteamId: list.filters.subteamId }
+  const unitsAfterUniverse = useUnitsAfterUniverse(SCOPE_SOURCE, scopeValue)
+  const scopeAfterUniverse = (universes: UserFilters["operatingUniverse"]) => unitsAfterUniverse(universesForUnits(universes))
+  const scopeFilters = useTeamSubteamActiveFilters(SCOPE_SOURCE, scopeValue, (scope) => list.patchFilters(scope))
+  const { search, role, operatingUniverse, active, hasAccount, lastLoginAt } = list.filters
+  const activeFilters = [
+    ...(search.trim() ? [{ key: "search", label: `Busca: ${search.trim()}`, onClear: () => list.setFilter("search", "") }] : []),
+    ...(role.length ? [{ key: "role", label: `Nível: ${role.map((value) => ROLE_LABELS[value]).join(", ")}`, onClear: () => list.setFilter("role", []) }] : []),
+    ...(operatingUniverse?.length ? [{ key: "universe", label: `Universo: ${operatingUniverse.map((value) => (value === "PENDING" ? "Pendente" : value)).join(", ")}`, onClear: () => list.patchFilters({ operatingUniverse: [], ...scopeAfterUniverse([]) }) }] : []),
+    ...scopeFilters,
+    ...(active !== undefined ? [{ key: "active", label: active ? "Ativos" : "Inativos", onClear: () => list.setFilter("active", undefined) }] : []),
+    ...(hasAccount !== undefined ? [{ key: "account", label: hasAccount ? "Com conta de acesso" : "Sem conta de acesso", onClear: () => list.setFilter("hasAccount", undefined) }] : []),
+    ...(lastLoginAt.from || lastLoginAt.to ? [{ key: "login", label: `Último acesso: ${lastLoginAt.from ? formatCivilDate(lastLoginAt.from) : "início"} a ${lastLoginAt.to ? formatCivilDate(lastLoginAt.to) : "hoje"}`, onClear: () => list.setFilter("lastLoginAt", {}) }] : []),
+  ]
 
   const [autoOpen, setAutoOpen] = useAutoOpenFromQuery("new")
   const [tab, setTab] = useState<"list" | "form">("list")
@@ -453,7 +471,10 @@ export function UsersPage({
   const [teamId, setTeamId] = useState<string>("")
   const [matricula, setMatricula] = useState("")
   const [universe, setUniverse] = useState<OperatingUniverse | null>(null)
-  const universeEnforced = useCurrentUserQuery().data?.operatingUniverseEnforced ?? false
+  const currentUser = useCurrentUserQuery().data
+  const universeEnforced = currentUser?.operatingUniverseEnforced ?? false
+  // Sem nenhum papel na organização inteira, deixar a pessoa sem Grupo é sempre recusado pelo servidor.
+  const canLeaveTeam = currentUser?.access.roles.some((entry) => entry.scopeType === "ORGANIZATION") ?? true
   const creationPolicy = useCreationPolicyQuery(tab === "form" && editingUser === null)
   // Com Colaboradores vigente, sem matrícula só dá para cadastrar "Fora da hierarquia"; com matrícula, a base vai assumir.
   const hierarchyLocked = editingUser === null && creationPolicy.data?.hierarchyRequiresMatricula === true && matricula.trim() === ""
@@ -562,7 +583,7 @@ export function UsersPage({
                 <ListSearchInput
                   value={list.filters.search}
                   onChange={(value) => list.setFilter("search", value)}
-                  placeholder="Buscar por nome ou e-mail"
+                  placeholder="Buscar por nome, e-mail ou matrícula"
                   ariaLabel="Buscar usuário"
                   pending={list.isSearchPending}
                 />
@@ -570,6 +591,7 @@ export function UsersPage({
               viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
               hasActiveFilters={list.hasActiveFilters}
               onClearFilters={list.resetFilters}
+              activeFilters={activeFilters}
             >
               <ListMultiSelectFilter label="Nível hierárquico" values={list.filters.role} onChange={(values) => list.setFilter("role", values)} options={ROLE_OPTIONS} />
               <ListMultiSelectFilter
@@ -577,12 +599,11 @@ export function UsersPage({
                 values={list.filters.operatingUniverse ?? []}
                 onChange={(values) => {
                   const operatingUniverse = values as UserFilters["operatingUniverse"]
-                  const teamId = list.filters.teamId && teamsInUniverse(operatingUniverse).some((team) => team.id === list.filters.teamId) ? list.filters.teamId : undefined
-                  list.patchFilters({ operatingUniverse, teamId })
+                  list.patchFilters({ operatingUniverse, ...scopeAfterUniverse(operatingUniverse) })
                 }}
                 options={UNIVERSE_FILTER_OPTIONS}
               />
-              <ListSelectFilter value={list.filters.teamId} onChange={(value) => list.setFilter("teamId", value)} options={teamOptions} allLabel="Qualquer grupo" ariaLabel="Filtrar por grupo" />
+              <TeamSubteamFilters source={SCOPE_SOURCE} universes={universesForUnits(list.filters.operatingUniverse)} value={scopeValue} onChange={(scope) => list.patchFilters(scope)} showChips={false} />
               <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
               <ListBooleanFilter value={list.filters.hasAccount} onChange={(value) => list.setFilter("hasAccount", value)} allLabel="Com ou sem conta" trueLabel="Com conta de acesso" falseLabel="Sem conta de acesso" ariaLabel="Filtrar por conta de acesso" />
               <ListDateRangeFilter label="Último acesso" value={list.filters.lastLoginAt} onChange={(value) => list.setFilter("lastLoginAt", value)} />
@@ -667,18 +688,7 @@ export function UsersPage({
               {editingUser ? null : (
                 <div className="space-y-1.5">
                   <Label htmlFor="user-team">Grupo (opcional)</Label>
-                  <Select value={teamId} onValueChange={setTeamId}>
-                    <SelectTrigger id="user-team" className="w-full">
-                      <SelectValue placeholder="Sem grupo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {teamsQuery.data?.map((team) => (
-                        <SelectItem key={team.id} value={team.id}>
-                          {team.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <OrgUnitCombobox id="user-team" kind="TEAM" source={SCOPE_SOURCE} purpose="reach" eligibility="all" variant="field" value={teamId || null} onChange={(team) => setTeamId(team?.id ?? "")} emptyLabel="Sem grupo" ariaLabel="Grupo" />
                 </div>
               )}
             </div>
@@ -707,10 +717,10 @@ export function UsersPage({
               <PersonBelongsTo
                 detail={detailQuery.data}
                 detailFailed={detailQuery.isError}
-                teams={teamsQuery.data ?? []}
                 teamId={teamId}
                 onTeamChange={setTeamId}
                 teamManagedBy={managedBy?.teamId ?? null}
+                canLeaveTeam={canLeaveTeam}
                 identity={
                   detailQuery.data ? (
                     <PersonSourceIdentity

@@ -7,6 +7,7 @@ export function createServiceMock() {
   return {
     fetchCapabilityCatalog: vi.fn(),
     fetchEditorCatalog: vi.fn().mockResolvedValue(EDITOR_CATALOG),
+    fetchEditorDocuments: vi.fn().mockResolvedValue({ items: [{ id: "doc-1", title: "Procedimento de espera", published: true }], nextCursor: null }),
     fetchInterventionTypes: vi.fn(),
     createInterventionType: vi.fn(),
     saveInterventionTypeDraft: vi.fn(),
@@ -38,10 +39,8 @@ export function createServiceMock() {
 }
 
 export const EDITOR_CATALOG: EditorCatalog = {
-  teams: [{ id: "team-1", name: "Atendimento", operationId: "op-1", subteams: [{ id: "sub-1", teamId: "team-1", name: "Manhã" }] }],
   unrestricted: true,
   indicators: [{ code: "TMA", name: "Tempo médio de atendimento", unit: "SECONDS", active: true, dailySupported: true, officialClosureSupported: true }],
-  documents: [{ id: "doc-1", title: "Procedimento de espera", published: true }],
   flags: [{ channel: "VOICE", flagName: "rechamada", valueType: "BOOLEAN", description: "Cliente voltou a ligar", active: true }],
 }
 

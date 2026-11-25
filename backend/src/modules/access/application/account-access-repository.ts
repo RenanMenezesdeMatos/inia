@@ -43,10 +43,12 @@ export type IdentifiedUser = {
   enableCredential: CredentialProvider
 }
 
-/** Busca e filtros da lista de Acessos: somam-se (E), sempre dentro da visibilidade de quem pede. */
+/** Busca e filtros da lista de Acessos: somam-se (E) e sempre dentro da visibilidade de quem pede. */
 export type IdentifiedUserFilters = {
   search?: string | undefined
   status?: AccountAccessStatus | undefined
+  teamId?: readonly string[] | undefined
+  subteamId?: readonly string[] | undefined
   /** Só quem tem algo no cadastro que impede a entrada pela rede (`networkIssue`). */
   networkIssue?: boolean | undefined
   /** Só quem tem exatamente este login de rede (matrícula normalizada). */

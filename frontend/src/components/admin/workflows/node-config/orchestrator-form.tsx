@@ -10,7 +10,6 @@ import { Switch } from "@/components/ui/switch"
 import { scopesAreCompatible } from "@/lib/admin/scope-compatibility"
 import { fitsUniverse } from "@/lib/operating-universe/hierarchy"
 import { useWorkflowUniverse } from "../workflow-universe-context"
-import type { Team } from "@/schemas/admin/org-structure.schema"
 import type { Orchestrator } from "@/schemas/admin/assistant.schema"
 import { useOrchestratorVersionsQuery } from "@/queries/admin/use-assistant-queries"
 import { PROCESS_ASSESSMENT_HINT, SPECIALIST_OUTPUT_CONTRACT_LABELS, type SpecialistOutputContract, type FlowNode } from "@/schemas/admin/workflow-graph.schema"
@@ -51,14 +50,12 @@ function OrchestratorVersionNote({ orchestrator, versionId, onUseVigente }: { or
 export function OrchestratorForm({
   node,
   orchestrators,
-  teams,
   scope,
   trigger,
   onChange,
 }: {
   node: Extract<FlowNode, { type: "orchestrator" }>
   orchestrators: Orchestrator[]
-  teams: Team[]
   /** Abrangência do rascunho (249): ALL_TEAMS ou GROUPS + `scopeLinks`. */
   scope?: ResourceScopePayload
   trigger?: WorkflowTrigger
@@ -72,7 +69,7 @@ export function OrchestratorForm({
   const workflowOrchestrators = orchestrators.filter(
     (orchestrator) =>
       orchestrator.invocationMode !== "INTERACTIVE" &&
-      (!scope || scopesAreCompatible(teams, scope, orchestrator)) &&
+      (!scope || scopesAreCompatible([], scope, orchestrator)) &&
       (fitsUniverse(orchestrator.operatingUniverse, universe) || orchestrator.id === node.config.orchestratorId),
   )
   const selectedOutOfUniverse = orchestrators.find((candidate) => candidate.id === node.config.orchestratorId && !fitsUniverse(candidate.operatingUniverse, universe))

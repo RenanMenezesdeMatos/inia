@@ -4,9 +4,10 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { PgAnalyticsReadRepository, type AnalyticsReadRepository } from "../../performance-analytics/application/analytics-read-repository.js"
 import { SUPERVISOR_PROVISIONABLE_CODES } from "../domain/schedule-exception.js"
 import { JUSTIFIED_ABSENCE_REASONS, WORKDAY_CLASSIFICATIONS } from "../domain/workday-classification.js"
-import { booleanParam, listParam, paginationQuerySchema, searchParam } from "../../../shared/presentation/list-query.js"
-import { buildTeamCalendar, CALENDAR_ATTENTION_KINDS, cancelForTeam, classificationHistoryForTeam, classifyForTeam, DEFAULT_CALENDAR_PAGE_SIZE, exceptionAuditForTeam, provisionForTeam } from "../application/team-calendar.js"
+import { booleanParam, listParam, paginationQuerySchema, searchParam, unitFilterShape } from "../../../shared/presentation/list-query.js"
+import { buildTeamCalendar, CALENDAR_ATTENTION_KINDS, cancelForTeam, classificationHistoryForTeam, classifyForTeam, DEFAULT_CALENDAR_PAGE_SIZE, exceptionAuditForTeam, provisionForTeam, teamCalendarOptionsReach } from "../application/team-calendar.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { respondScopedOptions, UNIT_AND_PERSON_OPTION_KINDS } from "../../org-structure/presentation/options-query.js"
 
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 // Filtros e paginação no mesmo formato das listagens administrativas (`?jobTitle=a&jobTitle=b`, `page`, `pageSize`).
@@ -15,8 +16,7 @@ const querySchema = paginationQuerySchema.extend({
   to: DATE,
   anchorId: z.string().uuid().optional(),
   search: searchParam,
-  teamId: z.string().uuid().optional(),
-  subteamId: z.string().uuid().optional(),
+  ...unitFilterShape,
   jobTitle: listParam(z.string().max(200)),
   scheduleType: listParam(z.string().max(40)),
   attention: listParam(z.enum(CALENDAR_ATTENTION_KINDS)),
@@ -38,6 +38,16 @@ const historyParamsSchema = z.object({ personId: z.string().uuid(), date: DATE }
  */
 export function createTeamCalendarRouter(db: Database, analytics: AnalyticsReadRepository = new PgAnalyticsReadRepository(db), now: () => Date = () => new Date()) {
   const router = Router()
+
+  router.get("/options", async (request, response, next) => {
+    try {
+      const { anchorId, of } = z.object({ anchorId: z.string().uuid().optional(), of: z.enum(["team", "anchors"]).default("team") }).parse(request.query)
+      const user = sessionUser(request)
+      response.json({ data: await respondScopedOptions(db, user.organizationId, () => teamCalendarOptionsReach(analytics, user, { anchorId: anchorId ?? null, anchors: of === "anchors" }), request.query, { kinds: UNIT_AND_PERSON_OPTION_KINDS }) })
+    } catch (error) {
+      next(error)
+    }
+  })
 
   router.get("/", async (request, response, next) => {
     try {

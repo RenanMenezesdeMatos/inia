@@ -1151,3 +1151,31 @@ Conferido no navegador (Chrome e WebKit, pilha isolada com banco próprio e AD s
 zoom de 200 %, celular emulado; login pela rede inteiro e cortado, CSV em massa, conferir matrícula. Migration 253 conferida em dev (ARQ12-12):
 nenhuma pessoa com cargo de perfil diferente. Abertos e aceitos: R-53. Da 14ª rodada: ARQ-06 (reexecutar o assistente de instalação num banco em
 uso recria cargos renomeados) aceito em R-53; ARQ-12 feito nesta; ARQ-13 e ARQ-14 eram só textos.
+
+## Décima sexta rodada (25/11/2026, run-13: busca e filtros para listas grandes)
+
+Recorte: a entrega dos filtros com várias escolhas e dos seletores com busca no servidor (238 arquivos, sem migration), já unida à `main` com a
+15ª rodada. Quatro revisores independentes, só leitura (autorização e escopo; consultas e abuso; arquitetura; QA das telas); relatórios em
+`~/security-audit-skill/inia/run-13/agents/`. Nada crítico ou alto: nenhuma injeção, nenhum acesso entre organizações, nenhum filtro vazio
+virando "tudo". A junção com a 15ª rodada foi conferida linha a linha (remerge sem diferença). Filtro em SQL comparado com um oráculo
+independente em 400 combinações: 0 divergências.
+
+| Id | Sev. | Achado | Correção |
+|---|---|---|---|
+| R16-01 (CFA-02, CFQ-02) | Média | As rotas de opções de Indicadores de sucesso e do ranking de IA, que só deviam dar Grupo e Subgrupo, aceitavam `kind=PERSON` e listavam nome e matrícula de todo o escopo a quem só tinha, por exemplo, o papel de alinhamentos | Cada rota declara os tipos que aceita; essas (e Equipe e Boas práticas) recusam pessoa com 400 e o alcance delas não traz pessoa |
+| R16-02 (CFQ-01, ARQ13-01) | Média | Calendário e Equipe: com um Subgrupo sem ninguém na lista, o Grupo entrava inteiro (resultado errado, sem vazamento) | `refinedUnits` antes do filtro em memória; a estrutura decide, nunca a lista |
+| R16-03 (CFA-01, CFQ-03) | Baixa | Nos filtros, o Grupo trazido só como pai mostrava a contagem de operadores do Grupo inteiro e revelava Subgrupo irmão de outro universo (regressão do SEA-03 da run-10) | Contagem zerada quando não administrável; universo só pelos Subgrupos do alcance |
+| R16-04 (CFA-03) | Baixa | Matrícula (login de rede) devolvida e pesquisável em telas que não a mostravam | Só na Usabilidade, por opção explícita |
+| R16-05 (CFQ-04) | Baixa | Título de base muito longo travava a paginação do seletor de documentos das políticas | Ordem e cursor pelos 200 primeiros caracteres, com o id desempatando |
+| R16-06 (CFQ-05, ARQ13-04, QAF13-03) | Baixa | Nome com letra fora do português não se achava; busca de bases com acento e fora de ordem | Uma tabela só dos dois lados; bases sem acento, palavra a palavra e por título; Pessoas e Acessos palavra a palavra |
+| R16-07 (ARQ13-02, ARQ13-03) | Média/Baixa | Calendário dizia "fora do seu alcance" para a própria estrutura; histórico da base perdia o nome do Grupo fora do escopo de quem lê | Nome da âncora e nomes do servidor (`scopeNames`) |
+| R16-08 (QAF13-01, 02, 04) | Média | Opção do recorte anterior clicável; rótulo da base diferente da escolhida; marcas rápidas perdidas na Usabilidade (no WebKit, quase sempre) | `keepSameList`; opção guardada ao escolher; pedido só solto quando o endereço confirmado chega |
+| R16-09 (QAF13-13 a 18) | Média/Baixa | Acessibilidade e celular dos seletores: diálogo sem nome, foco perdido ao limpar ou remover, item ativo da outra aba, foco inicial em Dialog, mouse tirando o foco da busca, popover maior que a tela | Corrigidos |
+| R16-10 (ARQ13-05 a 11, QAF13-05 a 12, 19 a 21) | Baixa | Encadeamento, eventos de uso, página ao filtrar, textos, código morto, testes e documentação | Corrigidos, com as exceções do R-54 |
+
+Varredura AppSec (Semgrep CE, Gitleaks, OSV, SBOM): 2 itens novos do Semgrep (`tainted-sql-string` em `agent-router.ts:247` e
+`indicator-rule-router.ts:134`), falso-positivos triados: o texto da consulta só recebe nomes fixos de coluna e marcadores `$n` de
+`SqlFilter.units`; os ids são UUIDs validados e vão como parâmetro.
+
+Provas: 1.012 casos num banco novo. Navegador em pilha isolada (Chrome e WebKit, 320×568 a 1440 px, paisagem, tema escuro). Não testado: aparelho
+físico, leitor de tela e 20 mil pessoas no navegador (custo estimado por plano: 0,16 a 0,3 s por consulta).

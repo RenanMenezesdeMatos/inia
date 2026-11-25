@@ -1,3 +1,4 @@
+import { refinedUnits } from "../../../shared/infrastructure/database/unit-filter.js"
 import { Router, type Request } from "express"
 import { OPERATING_UNIVERSES, optionalOperatingUniverseSchema } from "../../operating-universe/domain/operating-universe.js"
 import { assertUniverseRequiredFor } from "../../operating-universe/application/universe-access.js"
@@ -6,7 +7,7 @@ import { investigationCapabilitySchema, normalizeCapabilities } from "../../inve
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
-import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
+import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter, unitFilterShape } from "../../../shared/presentation/list-query.js"
 import { canManageScope, getManageableScopes, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
 import { loadResourceScope, loadResourceScopeLinks, scopedTargetOf } from "../../org-structure/application/resource-scope-links.js"
 import { resourceScopeLinksJsonSql, resourceScopeOf, type ResourceScope } from "../../../shared/domain/scope-links/resource-scope.js"
@@ -166,8 +167,7 @@ const knowledgeLinksQuerySchema = z.object({
   agentType: z.enum(AGENT_TYPES).optional(),
   universe: z.enum([...OPERATING_UNIVERSES, "PENDING"]).optional(),
   scopeType: z.literal("ALL_TEAMS").optional(),
-  teamId: z.string().uuid().optional(),
-  subteamId: z.string().uuid().optional(),
+  ...unitFilterShape,
   state: z.enum(["PUBLISHED", "NOT_PUBLISHED", "DRAFT_PENDING", "INACTIVE"]).optional(),
   page: z.coerce.number().int().min(1).max(10_000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -243,8 +243,8 @@ export function createAgentRouter(db: Database) {
     }
     // Filtro de Grupo/Subgrupo (249): algum vínculo naquele Subgrupo / Grupo (inteiro ou Subgrupo dele), uma linha por agente (`exists`).
     // Como antes, o filtro de Grupo não traz os de "todos os Grupos" (que têm filtro próprio).
-    if (input.subteamId) filter.add(`exists (select 1 from agent_scope_links fl where fl.agent_id = q.id and fl.subteam_id = ${filter.param(input.subteamId)}::uuid)`)
-    else if (input.teamId) filter.add(`exists (select 1 from agent_scope_links fl where fl.agent_id = q.id and fl.team_id = ${filter.param(input.teamId)}::uuid)`)
+    const units = filter.units({ team: "fl.team_id", subteam: "fl.subteam_id" }, input)
+    if (units) filter.add(`exists (select 1 from agent_scope_links fl where fl.agent_id = q.id and ${units})`)
     else if (input.scopeType === "ALL_TEAMS") filter.add(`q."scopeType" = 'ALL_TEAMS'`)
     const manageable = manageableAgentScopeSql(scopes, (value) => filter.param(value))
     if (manageable) filter.add(manageable)
@@ -267,7 +267,7 @@ export function createAgentRouter(db: Database) {
     const user = sessionUser(request)
     const { knowledgeDocumentId, page, pageSize, ...filter } = knowledgeLinksQuerySchema.parse(request.query)
     const context = await loadKnowledgeLinkContext(db, user, knowledgeDocumentId)
-    const listed = pageKnowledgeLinkCandidates(await loadKnowledgeLinkCandidates(db, user.organizationId, context), filter, page, pageSize)
+    const listed = pageKnowledgeLinkCandidates(await loadKnowledgeLinkCandidates(db, user.organizationId, context), { ...filter, ...(await refinedUnits(db, filter)) }, page, pageSize)
     response.json({ data: { knowledgeDocument: { id: knowledgeDocumentId, title: context.knowledgeTitle, operatingUniverse: context.knowledgeUniverse }, ...listed } })
   })
 

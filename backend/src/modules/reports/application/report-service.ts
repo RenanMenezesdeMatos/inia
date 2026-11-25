@@ -1,3 +1,5 @@
+import type { OptionsCursor, ScopedOptionsRequest } from "../../org-structure/application/scoped-options.js"
+import { foldText } from "../../../shared/infrastructure/database/text-search.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { describePeriod, isRecordTool, resolveRecordPeriod, reportAnalysisSchema, reportAudienceSchema, reportDefinitionSchema, reportScheduleSchema, reportVisualizationSchema, TERM_FIELD_REQUIRED_MESSAGE, toToolCall, type ReportDefinition, type ReportVisualization } from "../domain/report-definition.js"
 import { describeSchedule, nextRunAfter, upcomingRuns } from "../domain/report-schedule.js"
@@ -66,15 +68,13 @@ export async function validateConfig(deps: ReportServiceDeps, actor: ReportActor
     if (!access.distribution) throw new DomainError("Só o papel Report escolhe outros destinatários.", "REPORT_DISTRIBUTION_NOT_ALLOWED", 403)
     const scope = access.distribution
     if (!scope.organizationWide) {
-      const options = await deps.runtime.audienceOptions(actor.organizationId, scope)
-      const teams = new Set(options.teams.map((team) => team.id))
-      const subteams = new Set(options.subteams.map((subteam) => subteam.id))
       if (audience.everyone && scope.teamIds.length === 0 && scope.subteamIds.length === 0) throw new DomainError("Público fora do seu escopo de distribuição.", "AUDIENCE_OUT_OF_SCOPE", 403)
-      if (audience.teamIds.some((id) => !teams.has(id) || !scope.teamIds.includes(id)) || audience.subteamIds.some((id) => !subteams.has(id))) throw new DomainError("Há Grupos ou Subgrupos fora do seu escopo de distribuição.", "AUDIENCE_OUT_OF_SCOPE", 403)
+      const inScope = async (kind: "TEAM" | "SUBTEAM", ids: string[]) => ids.length === 0 || (await deps.runtime.audienceUnitOptions(actor.organizationId, scope, { kind, ids, limit: ids.length })).items.length === new Set(ids).size
+      if (!(await inScope("TEAM", audience.teamIds)) || !(await inScope("SUBTEAM", audience.subteamIds))) throw new DomainError("Há Grupos ou Subgrupos fora do seu escopo de distribuição.", "AUDIENCE_OUT_OF_SCOPE", 403)
     }
     if (audience.personIds.length > 0) {
-      const found = await deps.runtime.searchPeople(actor.organizationId, scope, "", audience.personIds)
-      if (found.length !== new Set(audience.personIds).size) throw new DomainError("Há pessoas fora do seu escopo de distribuição (ou sem conta ativa).", "AUDIENCE_OUT_OF_SCOPE", 403)
+      const found = await deps.runtime.audienceUnitOptions(actor.organizationId, scope, { kind: "PERSON", ids: audience.personIds, limit: audience.personIds.length })
+      if (found.items.length !== new Set(audience.personIds).size) throw new DomainError("Há pessoas fora do seu escopo de distribuição (ou sem conta ativa).", "AUDIENCE_OUT_OF_SCOPE", 403)
     }
   }
   if (definition.structure.mode === "FIXED") {
@@ -223,16 +223,31 @@ export async function reportOptions(deps: ReportServiceDeps, actor: ReportActor)
     capabilities: { canCreateForSelf: access.canCreateForSelf, canDistribute: access.canDistribute },
     timeZone: access.timeZone,
     ownStructure: access.context?.ownStructure ? access.context.ownStructure.ref.label : null,
-    structures: access.context?.structureOptions() ?? [],
     indicators: [{ code: "PRV", name: "PRV (resultado geral)", active: true }, ...catalog.filter((item) => item.active)],
     audience: access.distribution ? { scope: access.distribution, ...(await deps.runtime.audienceOptions(actor.organizationId, access.distribution)) } : null,
   }
 }
 
-export async function searchAudiencePeople(deps: ReportServiceDeps, actor: ReportActor, query: string) {
+/** Grupos, Subgrupos e pessoas do público, em lotes e no escopo de quem distribui. */
+export async function audienceUnitOptions(deps: ReportServiceDeps, actor: ReportActor, request: ScopedOptionsRequest) {
   const access = await requireAccess(deps, actor)
   if (!access.distribution) throw new DomainError("Só o papel Report escolhe outros destinatários.", "REPORT_DISTRIBUTION_NOT_ALLOWED", 403)
-  return deps.runtime.searchPeople(actor.organizationId, access.distribution, query.slice(0, 80))
+  return deps.runtime.audienceUnitOptions(actor.organizationId, access.distribution, request)
+}
+
+/** Estruturas fixas que o escopo ATUAL alcança (líderes, Grupos, Subgrupos), em lotes: nome + id, com a busca sobre todas. */
+export async function reportStructureOptions(deps: ReportServiceDeps, actor: ReportActor, request: { search?: string | undefined; cursor?: OptionsCursor | undefined; limit: number }) {
+  const access = await requireAccess(deps, actor)
+  const words = foldText(request.search ?? "").split(/\s+/).filter(Boolean)
+  const key = (item: { label: string; subjectId: string }) => ({ name: foldText(item.label), id: item.subjectId })
+  const after = (item: { name: string; id: string }, cursor: OptionsCursor) => item.name > cursor.name || (item.name === cursor.name && item.id > cursor.id)
+  const matching = (access.context?.structureOptions() ?? [])
+    .map((item) => ({ item, ...key(item) }))
+    .filter((entry) => words.every((word) => foldText(`${entry.item.label} ${entry.item.description}`).includes(word)) && (!request.cursor || after(entry, request.cursor)))
+    .sort((a, b) => (a.name === b.name ? (a.id < b.id ? -1 : 1) : a.name < b.name ? -1 : 1))
+  const page = matching.slice(0, request.limit)
+  const last = page[page.length - 1]
+  return { items: page.map((entry) => entry.item), nextCursor: matching.length > page.length && last ? { name: last.name, id: last.id } : null }
 }
 
 /** Rascunho de uma proposta do chat (só do dono). Abrir = aceitar a oferta; ativar exige salvar. */

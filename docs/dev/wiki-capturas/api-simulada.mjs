@@ -113,7 +113,8 @@ const server = http.createServer(async (request, response) => {
   if (path === "/api/v1/admin/agents/references") return ok(response, AGENTS.filter((item) => url.searchParams.getAll("ids").includes(item.id)).map((item) => ({ id: item.id, name: item.name, active: true, published: true })))
   if (path === "/api/v1/admin/assistant-orchestrators") return ok(response, ORCHESTRATORS)
   if (path === "/api/v1/admin/intervention-policies/published-summary") return ok(response, POLICIES)
-  if (path.startsWith("/api/v1/admin/users") || path.startsWith("/api/v1/admin/user-accounts")) return ok(response, PEOPLE)
+  if (path.startsWith("/api/v1/admin/users") || path.startsWith("/api/v1/admin/user-accounts")) return ok(response, url.searchParams.has("page") ? { items: PEOPLE, total: PEOPLE.length, page: 1, pageSize: 30 } : PEOPLE)
+  if (path === "/api/v1/admin/scope-units") return ok(response, { items: url.searchParams.get("kind") === "TEAM" ? [{ kind: "TEAM", id: TEAM.id, name: TEAM.name, teamId: null, teamName: null, operatingUniverse: null, productionOperators: 1, eligible: true, manageable: true }] : [], nextCursor: null })
   if (path === "/api/v1/admin/workflows/schedule-preview") {
     // A prévia real vem do mesmo cálculo do agendador; aqui só projeta os horários pedidos nos próximos dias, em horário de Brasília.
     const body = await readBody(request)

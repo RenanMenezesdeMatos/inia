@@ -134,11 +134,11 @@ export async function apiSend<T = undefined>(path: string, method: "PUT" | "PATC
   return readData<T>(response, reference)
 }
 
-/** Serializa parâmetros de query ignorando vazios/undefined — evita `?x=undefined` na URL. */
-export function toQueryString(params: Record<string, string | number | boolean | undefined | null>): string {
+/** Serializa parâmetros de query ignorando vazios/undefined — evita `?x=undefined` na URL. Lista vai numa chave só (`?x=a,b`). */
+export function toQueryString(params: Record<string, string | number | boolean | readonly string[] | undefined | null>): string {
   const search = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === null || value === "") continue
+    if (value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0)) continue
     search.set(key, String(value))
   }
   const serialized = search.toString()

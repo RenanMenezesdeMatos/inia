@@ -7,9 +7,7 @@ import type { FlowGraph, HierarchicalTarget } from "@/schemas/admin/workflow-gra
 
 import { HierarchicalTargetPicker } from "./hierarchical-target-picker"
 
-vi.mock("@/queries/admin/use-user-account-queries", () => ({
-  useUserAccountsQuery: () => ({ data: [{ id: "u-1", name: "Maria Fictícia", email: "maria@exemplo.invalid", role: "SUPERVISOR", teamName: "B2C", active: true }], isLoading: false, isError: false }),
-}))
+vi.mock("@/components/admin/users/user-combobox", () => ({ UserCombobox: ({ value, ariaLabel }: { value: string; ariaLabel: string }) => <button type="button" aria-label={ariaLabel}>{value === "u-1" ? "Maria Fictícia" : "Selecione a pessoa"}</button> }))
 
 afterEach(cleanup)
 
@@ -30,7 +28,7 @@ describe("HierarchicalTargetPicker — rótulos associados aos campos", () => {
 
   it("pessoa específica: escolhe-se pelo nome, nunca digitando um id", () => {
     renderPicker({ type: "SPECIFIC_USER", userId: "u-1" })
-    expect(screen.getByRole("combobox", { name: "Pessoa" })).toHaveTextContent("Maria Fictícia")
+    expect(screen.getByRole("button", { name: "Pessoa" })).toHaveTextContent("Maria Fictícia")
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
   })
 })

@@ -9,7 +9,6 @@ import {
   fetchUsabilityTab,
   fetchUsabilityTimeline,
   reprocessUsability,
-  searchUsabilityPeople,
   unclassifyUsabilityPerson,
   updateUsabilitySettings,
   type UsabilityQuery,
@@ -56,12 +55,6 @@ export function useUsabilityPersonQuery(personId: string, query: UsabilityQuery)
 export function useUsabilityTimelineQuery(personId: string, query: UsabilityQuery, enabled: boolean) {
   const viewer = useViewerKey()
   return useQuery({ queryKey: [...usabilityRoot, ...viewer.key, "timeline", personId, query], queryFn: () => fetchUsabilityTimeline(personId, query), enabled: viewer.ready && enabled, placeholderData: keepPreviousData, retry: false })
-}
-
-export function useUsabilityPeopleSearch(search: string) {
-  const viewer = useViewerKey()
-  const term = search.trim()
-  return useQuery({ queryKey: [...usabilityRoot, ...viewer.key, "people-options", term], queryFn: () => searchUsabilityPeople(term), enabled: viewer.ready && term.length >= 2, staleTime: 30_000 })
 }
 
 const invalidateKey = usabilityRoot

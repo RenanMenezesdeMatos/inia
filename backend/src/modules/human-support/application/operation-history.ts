@@ -20,7 +20,7 @@ import { humanSupportStats } from "./runtime-stats.js"
  * interrupção, o "sem Anjo logado" e a pertinência, desde a 191 — as datas em que cada uma foi aplicada neste banco vão na resposta.
  * Indisponível e offline são o mesmo estado (fora do tempo online).
  */
-export type HistoryQuery = { from: string; to: string; teamId?: string | undefined; subteamId?: string | undefined; anjoPersonId?: string | undefined }
+export type HistoryQuery = { from: string; to: string; teamId?: readonly string[] | undefined; subteamId?: readonly string[] | undefined; anjoPersonId?: string | undefined }
 
 type JourneyView = { days: (JourneyDayResult & { baseMs: number })[]; summary: ReturnType<typeof journeySummary> }
 /** Cargos da linha de chefia usados nos filtros da tabela "Por Anjo". */

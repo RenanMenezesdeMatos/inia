@@ -3,6 +3,7 @@
 import { useId, useState } from "react"
 import { Play } from "lucide-react"
 
+import { OrgUnitCombobox, useOrgUnitLabel } from "@/components/admin/shared/org-unit-combobox"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -13,9 +14,8 @@ import { useCreateAnalysisMutation } from "@/queries/best-practices/use-best-pra
 import type { BestPracticesMeta, CreateAnalysisInput, DataOrigin } from "@/schemas/best-practices/best-practices.schema"
 
 const periodLabel = (period: string) => `${period.slice(5, 7)}/${period.slice(0, 4)}`
-/** Valor do Select para "comparar o Grupo inteiro" (sem Subgrupo). */
-const WHOLE_TEAM = "__GRUPO__"
-const firstSubteamChoice = (team: BestPracticesMeta["manageableTeams"][number] | undefined) => (!team || team.wholeTeam ? WHOLE_TEAM : team.subteams[0]?.id ?? WHOLE_TEAM)
+/** Grupos e Subgrupos que quem pede a análise administra, em lotes. */
+const SCOPE_SOURCE = "configuration.manage"
 
 /**
  * Pedido de análise (quem administra a configuração do Grupo ou do Subgrupo). Real = interações do Grupo — ou só de um Subgrupo dele,
@@ -25,33 +25,30 @@ const firstSubteamChoice = (team: BestPracticesMeta["manageableTeams"][number] |
 export function NewAnalysisDialog({ meta }: { meta: BestPracticesMeta }) {
   const [open, setOpen] = useState(false)
   const create = useCreateAnalysisMutation()
-  const [origin, setOrigin] = useState<DataOrigin>(meta.manageableTeams.length > 0 ? "REAL" : "SYNTHETIC")
-  const [teamId, setTeamId] = useState<string | undefined>(meta.manageableTeams[0]?.id)
-  const [subteamChoice, setSubteamChoice] = useState<string>(firstSubteamChoice(meta.manageableTeams[0]))
+  const [origin, setOrigin] = useState<DataOrigin>(meta.capabilities.canManage ? "REAL" : "SYNTHETIC")
+  const [teamId, setTeamId] = useState<string | undefined>()
+  const [subteamId, setSubteamId] = useState<string | null>(null)
   const [datasetId, setDatasetId] = useState<string | undefined>(meta.datasets[0]?.id)
   const [outcomeSource, setOutcomeSource] = useState<"INDICATOR" | "CALL_SIGNAL">("INDICATOR")
   const [indicatorId, setIndicatorId] = useState<string | undefined>()
   const [signalId, setSignalId] = useState<string | undefined>(meta.signals[0]?.id)
-  const [periods, setPeriods] = useState<string[]>(meta.manageableTeams.length > 0 ? meta.periods.slice(0, 1) : (meta.datasets[0]?.periods ?? []).slice(0, 1))
+  const [periods, setPeriods] = useState<string[]>(meta.capabilities.canManage ? meta.periods.slice(0, 1) : (meta.datasets[0]?.periods ?? []).slice(0, 1))
   const [level, setLevel] = useState<CreateAnalysisInput["contextLevel"]>("SUB_REASON")
   const [comparison, setComparison] = useState(meta.comparisonModes[0]?.mode ?? "TOP_QUARTILE_VS_REST")
   const [modelMode, setModelMode] = useState<CreateAnalysisInput["modelMode"]>("SIMULATED_ANSWER_KEY")
   const fieldId = useId()
   const synthetic = origin === "SYNTHETIC"
   const dataset = meta.datasets.find((item) => item.id === datasetId)
-  const team = meta.manageableTeams.find((item) => item.id === teamId)
-  const chooseTeam = (next: string) => {
-    setTeamId(next)
-    setSubteamChoice(firstSubteamChoice(meta.manageableTeams.find((item) => item.id === next)))
-  }
+  // Quem administra só um Subgrupo vê o Grupo-pai dele, mas pede análise só do Subgrupo.
+  const team = useOrgUnitLabel("TEAM", SCOPE_SOURCE, teamId)
+  const managesWholeTeam = team.unit?.manageable === true
   const chooseOrigin = (next: DataOrigin) => {
     setOrigin(next)
     setPeriods(next === "SYNTHETIC" ? (dataset?.periods ?? []).slice(0, 1) : meta.periods.slice(0, 1))
   }
-  const subteamId = subteamChoice === WHOLE_TEAM ? null : subteamChoice
   const bySignal = outcomeSource === "CALL_SIGNAL"
   const signal = meta.signals.find((item) => item.id === signalId)
-  const ready = (bySignal ? Boolean(signalId) : Boolean(indicatorId)) && periods.length > 0 && (synthetic ? Boolean(datasetId) : Boolean(teamId) && (subteamId !== null || Boolean(team?.wholeTeam)))
+  const ready = (bySignal ? Boolean(signalId) : Boolean(indicatorId)) && periods.length > 0 && (synthetic ? Boolean(datasetId) : Boolean(teamId) && (subteamId !== null || managesWholeTeam))
 
   const submit = () => {
     if (!ready) return
@@ -76,7 +73,7 @@ export function NewAnalysisDialog({ meta }: { meta: BestPracticesMeta }) {
             <div className="space-y-1">
               <Label id={`${fieldId}-origin`}>Dados</Label>
               <RadioGroup aria-labelledby={`${fieldId}-origin`} value={origin} onValueChange={(value) => chooseOrigin(value as DataOrigin)} className="flex gap-4">
-                <label className="flex items-center gap-2 text-sm"><RadioGroupItem value="REAL" disabled={meta.manageableTeams.length === 0} /> Reais</label>
+                <label className="flex items-center gap-2 text-sm"><RadioGroupItem value="REAL" disabled={!meta.capabilities.canManage} /> Reais</label>
                 <label className="flex items-center gap-2 text-sm"><RadioGroupItem value="SYNTHETIC" disabled={meta.datasets.length === 0} /> Sintéticos (teste)</label>
               </RadioGroup>
             </div>
@@ -90,18 +87,12 @@ export function NewAnalysisDialog({ meta }: { meta: BestPracticesMeta }) {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label>Grupo (operação)</Label>
-                <Select value={teamId ?? ""} onValueChange={chooseTeam}><SelectTrigger aria-label="Grupo"><SelectValue placeholder="Escolha" /></SelectTrigger><SelectContent>{meta.manageableTeams.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select>
+                <Label htmlFor={`${fieldId}-team`}>Grupo (operação)</Label>
+                <OrgUnitCombobox id={`${fieldId}-team`} kind="TEAM" source={SCOPE_SOURCE} variant="field" value={teamId} onChange={(unit) => { setTeamId(unit?.id); setSubteamId(null) }} emptyLabel={null} ariaLabel="Grupo" />
               </div>
               <div className="space-y-1">
-                <Label>Subgrupo</Label>
-                <Select value={subteamChoice} onValueChange={setSubteamChoice} disabled={!team || (team.wholeTeam && team.subteams.length === 0)}>
-                  <SelectTrigger aria-label="Subgrupo"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {team?.wholeTeam ? <SelectItem value={WHOLE_TEAM}>Todo o Grupo</SelectItem> : null}
-                    {(team?.subteams ?? []).map((subteam) => <SelectItem key={subteam.id} value={subteam.id}>{subteam.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor={`${fieldId}-subteam`}>Subgrupo</Label>
+                <OrgUnitCombobox id={`${fieldId}-subteam`} kind="SUBTEAM" source={SCOPE_SOURCE} variant="field" teamId={teamId} value={subteamId} onChange={(unit) => { setSubteamId(unit?.id ?? null); if (unit?.teamId) setTeamId(unit.teamId) }} emptyLabel={!teamId ? "Escolha o Grupo ou um Subgrupo" : managesWholeTeam ? "Todo o Grupo" : "Escolha o Subgrupo"} ariaLabel="Subgrupo" />
               </div>
               <p className="text-xs text-muted-foreground sm:col-span-2">Com um Subgrupo, compara os melhores do subgrupo com os demais do subgrupo (mesmo quartil oficial). O feedback usa primeiro a prática do subgrupo da pessoa e, sem ela, a do Grupo.</p>
             </div>

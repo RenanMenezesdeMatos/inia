@@ -288,14 +288,17 @@ describe.skipIf(!ENABLED)("ranking 'Quem mais usa' a IA — prova contra o banco
     const context = async (agent: keyof typeof agents) => (await agents[agent].get("/api/v1/admin/ai/usage/ranking/context")).body.data
     const admin = await context("admin")
     expect(admin.scope).toEqual({ organizationWide: true, labels: ["Organização inteira"] })
-    expect(admin.teams.map((team: { name: string; subteams: { name: string }[] }) => [team.name, team.subteams.map((subteam) => subteam.name)])).toEqual([["Norte", ["N1", "N2"]], ["Sul", ["S1"]]])
+    const units = async (agent: keyof typeof agents, kind: "TEAM" | "SUBTEAM") => (await agents[agent].get("/api/v1/admin/ai/usage/ranking/unit-options").query({ kind })).body.data.items.map((item: { name: string; teamName: string | null }) => (item.teamName ? `${item.teamName} › ${item.name}` : item.name))
+    expect(await units("admin", "TEAM")).toEqual(["Norte", "Sul"])
+    expect(await units("admin", "SUBTEAM")).toEqual(["Norte › N1", "Norte › N2", "Sul › S1"])
     expect(admin.levels.map((level: { label: string }) => level.label)).toEqual(["Diretoria", "Gerência Sênior", "Gerência", "Grupo", "Subgrupo", "Supervisor", "Usuário"])
     const norte = await context("norte")
     expect(norte.scope).toEqual({ organizationWide: false, labels: ["Grupo Norte"] })
-    expect(norte.teams.map((team: { name: string; subteams: { name: string }[] }) => [team.name, team.subteams.map((subteam) => subteam.name)])).toEqual([["Norte", ["N1", "N2"]]])
+    expect(await units("norte", "TEAM")).toEqual(["Norte"])
+    expect(await units("norte", "SUBTEAM")).toEqual(["Norte › N1", "Norte › N2"])
     const n2 = await context("n2")
     expect(n2.scope.labels).toEqual(["Subgrupo N2"])
-    expect(n2.teams.map((team: { name: string; subteams: { name: string }[] }) => [team.name, team.subteams.map((subteam) => subteam.name)])).toEqual([["Norte", ["N2"]]])
+    expect(await units("n2", "SUBTEAM")).toEqual(["Norte › N2"])
   })
 
   it("permissão explícita: Administrador de acessos (sem a permissão) recebe 403 e não vê a aba; filtros inválidos ou texto livre = 400", async () => {

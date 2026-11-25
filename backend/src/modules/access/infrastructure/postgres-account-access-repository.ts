@@ -1,6 +1,8 @@
+import { unitFilterSql } from "../../../shared/infrastructure/database/unit-filter.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { ACCESS_DISABLED_REASONS, type AccessDisabledReason, type AccountAccessRepository, type CredentialTargetRecord, type IdentifiedUser } from "../application/account-access-repository.js"
 import type { VisibilityFilter } from "../application/access-repository.js"
+import { foldedLikeWords, foldSql } from "../../../shared/infrastructure/database/text-search.js"
 import type { AccessScope } from "../domain/access-scope.js"
 import type { NetworkAccessIssue } from "../domain/network-access.js"
 
@@ -96,14 +98,15 @@ export function createPostgresAccountAccessRepository(db: Queryable): AccountAcc
       const params: unknown[] = [organizationId, visibility.organizationWide, visibility.teamIds, visibility.subteamIds]
       const conditions: string[] = []
       if (filters.search) {
-        params.push(filters.search)
-        const term = `lower($${params.length})`
-        conditions.push(`(position(${term} in lower(q.name)) > 0 or position(${term} in lower(coalesce(q.email, ''))) > 0 or position(${term} in lower(coalesce(q.matricula, ''))) > 0)`)
+        const person = foldSql("q.name || ' ' || coalesce(q.email, '') || ' ' || coalesce(q.matricula, '')")
+        for (const word of foldedLikeWords(filters.search)) conditions.push(`${person} like $${params.push(word)}`)
       }
       if (filters.status) { params.push(filters.status); conditions.push(`q.access_status = $${params.length}`) }
       if (filters.networkLogin) { params.push(filters.networkLogin); conditions.push(`q.matricula is not null and upper(btrim(q.matricula)) = $${params.length}`) }
       // Quem saiu da empresa e não tem acesso não é impedimento a resolver: inativa só entra no filtro com a conta ainda habilitada.
       if (filters.networkIssue) conditions.push(`(q.person_active or q.account_active) and ${networkIssueSql("q")} is not null`)
+      const units = unitFilterSql(filters, (value) => `$${params.push(value)}`, { team: "q.team_id", subteam: "q.subteam_id" })
+      if (units) conditions.push(units)
       const people = `with q as (
            select p.id person_id, p.name, p.matricula, p.job_title, p.role level, p.active person_active,
                   t.id team_id, t.name team_name, st.id subteam_id, st.name subteam_name,
@@ -131,6 +134,10 @@ export function createPostgresAccountAccessRepository(db: Queryable): AccountAcc
           order by page.name, page.person_id`,
         [...params, filters.pageSize, (filters.page - 1) * filters.pageSize],
       )
+      // Página além do fim (a lista encolheu): sem linha não há `count(*) over()`, e o total continua sendo o verdadeiro.
+      const total = result.rows[0]
+        ? Number(result.rows[0].total)
+        : filters.page > 1 ? Number((await db.query<{ total: string }>(`${people} select count(*) total ${matching}`, params)).rows[0]?.total ?? 0) : 0
       const items = result.rows.map((row): IdentifiedUser => ({
         personId: row.person_id, name: row.name, matricula: row.matricula, jobTitle: row.job_title, level: row.level, personActive: row.person_active,
         team: row.team_id ? { id: row.team_id, name: row.team_name! } : null,
@@ -145,7 +152,7 @@ export function createPostgresAccountAccessRepository(db: Queryable): AccountAcc
           : null,
         networkIssue: row.network_issue, directoryLogin: row.directory_login ?? null, enableCredential: row.enable_by_network ? "NETWORK" : "LOCAL",
       }))
-      return { items, total: Number(result.rows[0]?.total ?? 0) }
+      return { items, total }
     },
 
     async targetByPerson(organizationId, personId) {

@@ -114,11 +114,12 @@ export type CalendarAttentionKind = (typeof CALENDAR_ATTENTION_KINDS)[number]
 export const CALENDAR_SCHEDULE_NONE = "NONE"
 
 /** Filtros da lista (um valor por seletor — o backend aceita listas, a UI padroniza em seletores simples). */
-export type TeamCalendarListParams = { search?: string; teamId?: string; subteamId?: string; jobTitle?: string; scheduleType?: string; attention?: CalendarAttentionKind; scheduledToday?: boolean; page: number; pageSize: number }
+export type TeamCalendarListParams = { search?: string; teamId?: readonly string[] | undefined; subteamId?: readonly string[] | undefined; jobTitle?: string; scheduleType?: string; attention?: CalendarAttentionKind; scheduledToday?: boolean; page: number; pageSize: number }
 
 export const teamCalendarViewSchema = z.object({
   anchor: z.object({ personId: z.string(), name: z.string(), role: z.string(), roleLabel: z.string() }),
-  availableAnchors: z.array(z.object({ personId: z.string(), name: z.string(), roleLabel: z.string(), teamName: z.string().nullable() })),
+  /** Há outra estrutura para abrir (a escolha vem em lotes). */
+  hasOtherAnchors: z.boolean(),
   range: z.object({ from: z.string(), to: z.string() }),
   today: z.string(),
   timeZone: z.string(),
@@ -127,8 +128,7 @@ export const teamCalendarViewSchema = z.object({
   classifications: z.array(z.object({ code: z.enum(WORKDAY_CLASSIFICATIONS), label: z.string() })),
   justifiedReasons: z.array(z.object({ code: z.enum(JUSTIFIED_ABSENCE_REASONS), label: z.string() })),
   canProvision: z.boolean(),
-  provisionablePeople: z.array(z.object({ personId: z.string(), name: z.string() })),
-  filterOptions: z.object({ teams: z.array(z.object({ id: z.string(), name: z.string(), subteams: z.array(z.object({ id: z.string(), name: z.string() })) })), jobTitles: z.array(z.string()), scheduleTypes: z.array(z.object({ code: z.string(), label: z.string() })), attention: z.array(z.object({ code: z.enum(CALENDAR_ATTENTION_KINDS), label: z.string() })) }),
+  filterOptions: z.object({ jobTitles: z.array(z.string()), scheduleTypes: z.array(z.object({ code: z.string(), label: z.string() })), attention: z.array(z.object({ code: z.enum(CALENDAR_ATTENTION_KINDS), label: z.string() })) }),
   pagination: z.object({ page: z.number().int().positive(), pageSize: z.number().int().positive(), total: z.number().int().nonnegative(), totalPeople: z.number().int().nonnegative() }),
   people: z.array(teamCalendarPersonSchema),
 })

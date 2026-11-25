@@ -1,8 +1,9 @@
 import { Router, type Request } from "express"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { booleanParam, dateParam, listParam, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
+import { booleanParam, dateParam, listParam, respondList, unitFilterShape, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { foldedLikeWords, foldSql } from "../../../shared/infrastructure/database/text-search.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { env } from "../../../config/env.js"
 import { generateTemporaryPassword, temporaryPasswordExpiry } from "../../auth/domain/temporary-password.js"
@@ -43,7 +44,11 @@ const listUsersSchema = z.object({
   search: searchParam,
   role: listParam(z.enum(ROLES)),
   active: booleanParam,
-  teamId: z.string().uuid().optional(),
+  ...unitFilterShape,
+  /** Seletores de pessoa: só quem está num destes Grupos (ex.: a Abrangência do Workflow). */
+  teamIds: listParam(z.string().uuid()),
+  /** Escolhas já feitas (nome fora do lote carregado). */
+  ids: listParam(z.string().uuid()),
   hasAccount: booleanParam,
   /** Com matrícula = veio (ou virá) da base do cliente; sem = cadastro manual. */
   hasMatricula: booleanParam,
@@ -55,7 +60,7 @@ const listUsersSchema = z.object({
 
 const SELECT_USERS = `
   select
-    p.id, p.name, p.role, p.job_title "jobTitle", p.job_position_id "jobPositionId", jpos.name "jobPositionName", p.matricula, p.active, p.team_id "teamId", t.name "teamName", p.subteam_id "subteamId",
+    p.id, p.name, p.role, p.job_title "jobTitle", p.job_position_id "jobPositionId", jpos.name "jobPositionName", p.matricula, p.active, p.team_id "teamId", t.name "teamName", p.subteam_id "subteamId", st.name "subteamName",
     p.current_employment_status "employmentStatus",
     p.operational_capital_code "operationalCapitalCode",
     p.operating_universe "operatingUniverse",
@@ -64,6 +69,7 @@ const SELECT_USERS = `
     ua.id "accountId", ua.email, ua.last_login_at "lastLoginAt"
   from people p
   left join teams t on t.id = p.team_id
+  left join subteams st on st.id = p.subteam_id
   left join job_positions jpos on jpos.id = p.job_position_id
   left join user_accounts ua on ua.person_id = p.id
   where p.organization_id = $1
@@ -269,11 +275,18 @@ export function createUserAccountRouter(db: Database) {
     const input = listUsersSchema.parse(request.query)
     const scopes = await scopesOf(request)
     const filter = new SqlFilter([organizationId])
-      .search(input.search, ["q.name", "q.email", "q.matricula"])
       .in("q.role", input.role)
       .equals("q.active", input.active)
-      .equals('q."teamId"', input.teamId)
+      .in('q."teamId"', input.teamIds, "uuid")
+      .in("q.id", input.ids, "uuid")
       .dateRange('q."lastLoginAt"', input.lastLoginFrom, input.lastLoginTo)
+    const units = filter.units({ team: 'q."teamId"', subteam: 'q."subteamId"' }, input)
+    if (units) filter.add(units)
+    if (input.search) {
+      // Cada palavra precisa aparecer no nome, no e-mail ou na matrícula ("maria silva" acha "Maria da Silva").
+      const person = foldSql("q.name || ' ' || coalesce(q.email, '') || ' ' || coalesce(q.matricula, '')")
+      for (const word of foldedLikeWords(input.search)) filter.add(`${person} like ${filter.param(word)}`)
+    }
     if (input.hasAccount !== undefined) filter.add(`q."accountId" is ${input.hasAccount ? "not null" : "null"}`)
     if (input.hasMatricula !== undefined) filter.add(`q.matricula is ${input.hasMatricula ? "not null" : "null"}`)
     if (input.operatingUniverse?.length) {

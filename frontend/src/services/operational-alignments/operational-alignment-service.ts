@@ -32,7 +32,7 @@ import type { OperatingUniverse } from "@/schemas/operating-universe/operating-u
 
 const BASE = "/api/v1/admin/operational-alignments"
 
-export type AlignmentListParams = ListParams & { state?: AlignmentState; operatingUniverse?: OperatingUniverse; hasDraft?: boolean; scopeType?: "ALL_TEAMS"; teamId?: string; subteamId?: string }
+export type AlignmentListParams = ListParams & { state?: AlignmentState; operatingUniverse?: OperatingUniverse; hasDraft?: boolean; scopeType?: "ALL_TEAMS"; teamId?: readonly string[]; subteamId?: readonly string[] }
 
 export async function fetchAlignmentsPage(params: AlignmentListParams): Promise<PageResult<AlignmentListItem>> {
   return pageResultSchema(alignmentListItemSchema).parse(await adminGet(`${BASE}${toQueryString(params)}`))

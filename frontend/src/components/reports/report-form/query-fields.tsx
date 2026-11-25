@@ -6,6 +6,7 @@ import { isRecordTool, type ReportDefinition, type ReportOptions } from "@/schem
 import { GROUP_BY_LABELS, PERIOD_DISPLAY_LABELS, QUERY_ARG_LABELS, SITUATION_LABELS, SORT_LABELS, TOOL_LABELS, VIEW_LABELS, WINDOW_LABELS, WORKFORCE_STATUS_LABELS } from "../report-labels"
 import { ChipToggleGroup, Field, OptionSelect } from "./form-controls"
 import { switchTool } from "./form-helpers"
+import { StructureField } from "./structure-field"
 
 const options = <K extends string>(labels: Record<K, string>, keys?: K[]) => (keys ?? (Object.keys(labels) as K[])).map((value): { value: K; label: string } => ({ value, label: labels[value] ?? value }))
 
@@ -13,7 +14,6 @@ const options = <K extends string>(labels: Record<K, string>, keys?: K[]) => (ke
 export function QueryFields({ definition, onChange, catalog }: { definition: ReportDefinition; onChange: (definition: ReportDefinition) => void; catalog: ReportOptions }) {
   const set = (patch: Partial<ReportDefinition>) => onChange({ ...definition, ...patch } as ReportDefinition)
   const indicatorOptions = catalog.indicators.map((indicator) => ({ value: indicator.code, label: indicator.name }))
-  const structureValue = definition.structure.mode === "RECIPIENT" ? "RECIPIENT" : `${definition.structure.subjectKind}:${definition.structure.subjectId}`
   const records = definition.tool === "SPAN" || isRecordTool(definition.tool)
   const groupKeys: string[] = definition.tool === "WORKFORCE" ? ["ESTRUTURA", "UNIDADE", "SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER", "TEAM", "SUBTEAM"] : ["ESTRUTURA", "UNIDADE", "SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER", "TEAM", "SUBTEAM", "PESSOA", "COMPETENCIA"]
 
@@ -94,16 +94,7 @@ export function QueryFields({ definition, onChange, catalog }: { definition: Rep
       ) : null}
 
       <Field label="Estrutura" hint={definition.structure.mode === "RECIPIENT" ? "Acompanha a estrutura ATUAL de quem recebe, a cada execução (muda se a equipe mudar)." : "Uma estrutura específica — quem não tiver acesso a ela não recebe."} className="sm:col-span-2">
-        <OptionSelect
-          ariaLabel="Estrutura"
-          value={structureValue}
-          onChange={(value) => {
-            if (value === "RECIPIENT") return set({ structure: { mode: "RECIPIENT" } })
-            const option = catalog.structures.find((item) => `${item.subjectKind}:${item.subjectId}` === value)
-            if (option) set({ structure: { mode: "FIXED", subjectKind: option.subjectKind, subjectId: option.subjectId, label: option.label } })
-          }}
-          options={[{ value: "RECIPIENT", label: catalog.ownStructure ? `Minha estrutura (${catalog.ownStructure}) — a de quem recebe` : "A estrutura de quem recebe" }, ...catalog.structures.map((item) => ({ value: `${item.subjectKind}:${item.subjectId}`, label: `${item.label} — ${item.description}` }))]}
-        />
+        <StructureField value={definition.structure} onChange={(structure) => set({ structure })} ownStructure={catalog.ownStructure} />
       </Field>
 
       <PeriodFields definition={definition} onChange={onChange} />

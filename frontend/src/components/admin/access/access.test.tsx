@@ -5,6 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { chooseUnit, closeUnitField, openUnitField, scopeUnitsServiceFrom } from "@/components/admin/shared/testing/scope-units-fake"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { AppTopBar } from "@/components/layout/top-bar/app-top-bar"
 import { areasFor } from "@/components/layout/top-bar/area-switcher"
@@ -22,6 +23,8 @@ import { UsersAndAccessPage } from "./users-and-access-page"
 
 const service = vi.hoisted(() => ({ fetchIdentifiedUsers: vi.fn(), fetchAccessAccount: vi.fn(), fetchAccessRoles: vi.fn(), fetchScopeOptions: vi.fn(), enableUserAccess: vi.fn(), issueTemporaryPassword: vi.fn(), disableUserAccess: vi.fn(), assignAccessRole: vi.fn(), revokeAccessRole: vi.fn() }))
 vi.mock("@/services/access/access-service", () => service)
+const UNITS = vi.hoisted(() => [{ id: "t-b2b", name: "B2B", subteams: [{ id: "s-contas", name: "Contas" }, { id: "s-tarde-b2b", name: "Tarde" }] }, { id: "t-b2c", name: "B2C", subteams: [{ id: "s-tarde-b2c", name: "Tarde" }] }])
+vi.mock("@/services/scope-units/scope-units-service", () => scopeUnitsServiceFrom(UNITS))
 vi.mock("@/components/admin/users/users-page", () => ({ UsersPage: () => <p>cadastro de pessoas</p> }))
 const session = vi.hoisted(() => ({ fetchCurrentUser: vi.fn(), fetchFeedbackQualityAccess: vi.fn(), refresh: vi.fn() }))
 vi.mock("@/services/auth/auth-service", () => ({ fetchCurrentUser: session.fetchCurrentUser }))
@@ -83,7 +86,7 @@ describe("Usuários e acessos — contas × papéis (V1.5.7)", () => {
     service.fetchIdentifiedUsers.mockResolvedValue(page([identified(JOAO)]))
     service.fetchAccessAccount.mockResolvedValue(JOAO)
     service.fetchAccessRoles.mockResolvedValue(ROLES)
-    service.fetchScopeOptions.mockResolvedValue({ organizationWide: false, teams: [], subteams: [{ id: "s-contas", name: "Contas", teamId: "t-b2b", teamName: "B2B" }] })
+    service.fetchScopeOptions.mockResolvedValue({ organizationWide: false, hasGroups: false, hasSubgroups: true })
     service.assignAccessRole.mockResolvedValue({ id: "as-9" })
     renderWithQuery(<AccessUsersView canManageUsers canAssignRoles />)
     fireEvent.click((await screen.findAllByRole("button", { name: /^Papéis de / }))[0]!)
@@ -100,17 +103,60 @@ describe("Usuários e acessos — contas × papéis (V1.5.7)", () => {
     expect(screen.queryByRole("option", { name: "Toda a organização" })).not.toBeInTheDocument()
     expect(screen.queryByRole("option", { name: "Grupo" })).not.toBeInTheDocument()
     fireEvent.click(await screen.findByRole("option", { name: "Subgrupo" }))
-    fireEvent.click(within(form).getByRole("combobox", { name: "Subgrupo" }))
-    fireEvent.click(await screen.findByRole("option", { name: "B2B › Contas" }))
+    await chooseUnit("Subgrupo", "B2B › Contas")
     fireEvent.click(within(form).getByRole("button", { name: /Atribuir papel/ }))
     await waitFor(() => expect(service.assignAccessRole).toHaveBeenCalledWith("acc-joao", { roleCode: "QA_DE_FEEDBACK", scope: { type: "SUBGROUP", subteamId: "s-contas" } }))
+  })
+
+  it("busca, Grupo e Subgrupo vão juntos para o servidor; mudar um filtro volta à primeira página e cada filtro tem o seu x", async () => {
+    service.fetchIdentifiedUsers.mockImplementation(async (params: { page: number; pageSize: number }) => ({ ...page([identified(JOAO)]), total: 45, page: params.page, pageSize: params.pageSize }))
+    renderWithQuery(<AccessUsersView canManageUsers canAssignRoles />)
+    await screen.findAllByTestId("access-user-row")
+    fireEvent.click(screen.getByLabelText("Próxima página"))
+    await waitFor(() => expect(service.fetchIdentifiedUsers).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 })))
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar pessoa" }), { target: { value: "joão" } })
+    await waitFor(() => expect(service.fetchIdentifiedUsers).toHaveBeenLastCalledWith(expect.objectContaining({ search: "joão", page: 1 })))
+    await chooseUnit("Filtrar por grupo", "B2B")
+    await waitFor(() => expect(service.fetchIdentifiedUsers).toHaveBeenLastCalledWith(expect.objectContaining({ search: "joão", teamId: ["t-b2b"], page: 1 })))
+    // Só os Subgrupos do Grupo escolhido.
+    expect(await openUnitField("Filtrar por subgrupo")).toEqual(["B2B › Contas", "B2B › Tarde"])
+    fireEvent.click(screen.getByRole("option", { name: "B2B › Tarde" }))
+    await waitFor(() => expect(service.fetchIdentifiedUsers).toHaveBeenLastCalledWith(expect.objectContaining({ search: "joão", teamId: ["t-b2b"], subteamId: ["s-tarde-b2b"], page: 1 })))
+    // Marcar não fecha: dá para escolher vários Subgrupos seguidos, e o filtro mostra quantos.
+    fireEvent.click(screen.getByRole("option", { name: "B2B › Contas" }))
+    await waitFor(() => expect(service.fetchIdentifiedUsers).toHaveBeenLastCalledWith(expect.objectContaining({ subteamId: ["s-tarde-b2b", "s-contas"] })))
+    expect(screen.getByRole("button", { name: "Filtrar por subgrupo: 2 subgrupos", hidden: true })).toBeInTheDocument()
+    closeUnitField()
+    fireEvent.click(await screen.findByRole("button", { name: "Remover filtro Subgrupo: B2B › Contas" }))
+    // Limpar o Grupo mantém o Subgrupo (continua válido); trocar por outro Grupo limpa.
+    fireEvent.click(await screen.findByRole("button", { name: "Remover filtro Grupo: B2B" }))
+    await waitFor(() => expect(service.fetchIdentifiedUsers).toHaveBeenLastCalledWith(expect.objectContaining({ teamId: undefined, subteamId: ["s-tarde-b2b"] })))
+    expect(await screen.findByRole("button", { name: "Remover filtro Subgrupo: B2B › Tarde" })).toBeInTheDocument()
+    await chooseUnit("Filtrar por grupo", "B2C")
+    await waitFor(() => expect(service.fetchIdentifiedUsers).toHaveBeenLastCalledWith(expect.objectContaining({ teamId: ["t-b2c"], subteamId: undefined })))
+    // Vários Grupos: vão juntos, e os Subgrupos oferecidos são os dos Grupos escolhidos.
+    await chooseUnit("Filtrar por grupo", "B2B")
+    await waitFor(() => expect(service.fetchIdentifiedUsers).toHaveBeenLastCalledWith(expect.objectContaining({ teamId: ["t-b2c", "t-b2b"], page: 1 })))
+    expect(await openUnitField("Filtrar por subgrupo")).toEqual(expect.arrayContaining(["B2B › Tarde", "B2C › Tarde"]))
+    closeUnitField()
+    fireEvent.click(screen.getByRole("button", { name: "Limpar filtros" }))
+    await waitFor(() => expect(service.fetchIdentifiedUsers).toHaveBeenLastCalledWith(expect.objectContaining({ search: undefined, teamId: undefined, subteamId: undefined, page: 1 })))
+  })
+
+  it("Subgrupo sem escolher Grupo: homônimos aparecem com o Grupo de origem", async () => {
+    service.fetchIdentifiedUsers.mockResolvedValue(page([identified(JOAO)]))
+    renderWithQuery(<AccessUsersView canManageUsers canAssignRoles />)
+    await openUnitField("Filtrar por subgrupo")
+    fireEvent.change(screen.getByRole("combobox", { name: /Buscar subgrupo/ }), { target: { value: "tarde" } })
+    await waitFor(() => expect(screen.getAllByRole("option").map((option) => option.getAttribute("aria-label"))).toEqual(["B2B › Tarde", "B2C › Tarde"]))
+    closeUnitField()
   })
 
   it("erro de delegação do backend aparece para quem atribui (o backend decide)", async () => {
     service.fetchIdentifiedUsers.mockResolvedValue(page([identified(JOAO)]))
     service.fetchAccessAccount.mockResolvedValue(JOAO)
     service.fetchAccessRoles.mockResolvedValue(ROLES)
-    service.fetchScopeOptions.mockResolvedValue({ organizationWide: true, teams: [{ id: "t-b2b", name: "B2B" }], subteams: [] })
+    service.fetchScopeOptions.mockResolvedValue({ organizationWide: true, hasGroups: true, hasSubgroups: false })
     service.assignAccessRole.mockRejectedValue(new AdminApiError("Ninguém pode conceder ou ampliar o próprio acesso — outra pessoa autorizada precisa fazer isso.", "ACCESS_SELF_ASSIGNMENT"))
     renderWithQuery(<AccessUsersView canManageUsers canAssignRoles />)
     fireEvent.click((await screen.findAllByRole("button", { name: /^Papéis de / }))[0]!)
@@ -127,7 +173,7 @@ describe("Usuários e acessos — contas × papéis (V1.5.7)", () => {
     service.fetchIdentifiedUsers.mockResolvedValue(page([identified(MARIA)]))
     service.fetchAccessAccount.mockResolvedValue(MARIA)
     service.fetchAccessRoles.mockResolvedValue(ROLES)
-    service.fetchScopeOptions.mockResolvedValue({ organizationWide: true, teams: [], subteams: [] })
+    service.fetchScopeOptions.mockResolvedValue({ organizationWide: true, hasGroups: false, hasSubgroups: false })
     service.revokeAccessRole.mockResolvedValue(undefined)
     renderWithQuery(<AccessUsersView canManageUsers canAssignRoles />)
     fireEvent.click((await screen.findAllByRole("button", { name: /^Papéis de / }))[0]!)
@@ -196,7 +242,7 @@ describe("Usuários e acessos — o que cada um enxerga vem das capabilities (de
     service.fetchIdentifiedUsers.mockResolvedValue(page([identified(MARIA)]))
     service.fetchAccessAccount.mockResolvedValue(MARIA)
     service.fetchAccessRoles.mockResolvedValue(ROLES)
-    service.fetchScopeOptions.mockResolvedValue({ organizationWide: true, teams: [], subteams: [] })
+    service.fetchScopeOptions.mockResolvedValue({ organizationWide: true, hasGroups: false, hasSubgroups: false })
     service.assignAccessRole.mockResolvedValue({ id: "as-9" })
     service.revokeAccessRole.mockResolvedValue(undefined)
     renderWithQuery(<><Dependents /><AccessUsersView canManageUsers canAssignRoles /></>)
@@ -261,7 +307,7 @@ describe("Conversas com a INIA — acesso na UI", () => {
     service.fetchIdentifiedUsers.mockResolvedValue(page([identified(JOAO)]))
     service.fetchAccessAccount.mockResolvedValue(JOAO)
     service.fetchAccessRoles.mockResolvedValue([...ROLES, ROLE("LEITOR_DE_CONVERSAS_INIA", "Leitor de conversas da INIA", true, ["ORGANIZATION", "GROUP", "SUBGROUP", "MY_STRUCTURE"])])
-    service.fetchScopeOptions.mockResolvedValue({ organizationWide: true, teams: [], subteams: [] })
+    service.fetchScopeOptions.mockResolvedValue({ organizationWide: true, hasGroups: false, hasSubgroups: false })
     service.assignAccessRole.mockResolvedValue({ id: "as-10" })
     renderWithQuery(<AccessUsersView canManageUsers canAssignRoles />)
     fireEvent.click((await screen.findAllByRole("button", { name: /^Papéis de / }))[0]!)

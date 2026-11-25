@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useAgentsQuery } from "@/queries/admin/use-agent-queries"
 import { useOrchestratorsQuery } from "@/queries/admin/use-assistant-queries"
-import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import type { FlowGraph, FlowNode } from "@/schemas/admin/workflow-graph.schema"
 import type { WorkflowTrigger } from "@/schemas/admin/workflow.schema"
 import { TriggerConfigEditor } from "./trigger-fields"
@@ -66,7 +65,6 @@ export function NodeConfigPanel({
   // Universo do Workflow (rascunho; mesmo cache da página do editor): os seletores abaixo só oferecem recursos dele.
   const workflowQuery = useWorkflowQuery(workflowId)
   const universe = workflowQuery.data ? (withDraftConfiguration(workflowQuery.data).operatingUniverse ?? null) : undefined
-  const teamsQuery = useTeamsQuery()
   const agentsById = new Map((agentsQuery.data ?? []).map((agent) => [agent.id, agent]))
   const orchestratorsById = new Map((orchestratorsQuery.data ?? []).map((orchestrator) => [orchestrator.id, orchestrator]))
 
@@ -172,7 +170,7 @@ export function NodeConfigPanel({
         />
       ) : null}
       {node.type === "orchestrator" ? (
-        <OrchestratorForm node={node} orchestrators={orchestratorsQuery.data ?? []} teams={teamsQuery.data ?? []} scope={scope} trigger={trigger} onChange={onChange} />
+        <OrchestratorForm node={node} orchestrators={orchestratorsQuery.data ?? []} scope={scope} trigger={trigger} onChange={onChange} />
       ) : null}
       {node.type === "human_review" ? (
         <HumanReviewForm node={node} graph={graph} agentsById={agentsById} orchestratorsById={orchestratorsById} workflowId={workflowId} onChange={onChange} />

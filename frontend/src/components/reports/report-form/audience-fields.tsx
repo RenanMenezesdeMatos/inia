@@ -1,13 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { X } from "lucide-react"
-
-import { Input } from "@/components/ui/input"
+import { ScopedMultiCombobox } from "@/components/admin/shared/scoped-multi-combobox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
-import { PLATFORM_LEVELS, type AudiencePerson, type ReportAudience, type ReportOptions } from "@/schemas/reports/reports.schema"
-import { searchAudiencePeople } from "@/services/reports/reports-service"
+import { PLATFORM_LEVELS, type ReportAudience, type ReportOptions } from "@/schemas/reports/reports.schema"
+import { REPORT_AUDIENCE_SOURCE } from "@/services/reports/reports-service"
 import { LEVEL_LABELS } from "../report-labels"
 import { ChipToggleGroup, Field } from "./form-controls"
 
@@ -19,29 +16,7 @@ const EMPTY: Distribution = { mode: "DISTRIBUTION", everyone: false, levels: [],
  * Grupos, Subgrupos, pessoas — combinados sem duplicar). Cada pessoa recebe só os dados que o escopo DELA alcança.
  */
 export function AudienceFields({ audience, onChange, catalog, canCreateForSelf }: { audience: ReportAudience; onChange: (audience: ReportAudience) => void; catalog: ReportOptions; canCreateForSelf: boolean }) {
-  const [query, setQuery] = useState("")
-  const [results, setResults] = useState<AudiencePerson[]>([])
-  const [chosen, setChosen] = useState<AudiencePerson[]>([])
   const distribution = audience.mode === "DISTRIBUTION" ? audience : null
-
-  useEffect(() => {
-    if (!catalog.audience || query.trim().length < 2) return
-    // Resposta de uma busca que já foi substituída (o texto mudou) é descartada: a mais lenta não sobrescreve a atual.
-    let ignore = false
-    const handle = setTimeout(() => {
-      void searchAudiencePeople(query.trim())
-        .then((people) => {
-          if (!ignore) setResults(people)
-        })
-        .catch(() => {
-          if (!ignore) setResults([])
-        })
-    }, 250)
-    return () => {
-      ignore = true
-      clearTimeout(handle)
-    }
-  }, [query, catalog.audience])
 
   if (!catalog.audience) return <p className="text-sm text-muted-foreground">Este report é para você: ele chega no seu Acompanhamento, com os dados da sua estrutura atual.</p>
   const set = (patch: Partial<Distribution>) => onChange({ ...(distribution ?? EMPTY), ...patch })
@@ -63,32 +38,13 @@ export function AudienceFields({ audience, onChange, catalog, canCreateForSelf }
             <ChipToggleGroup ariaLabel="Cargos" options={groups.jobTitles.map((value) => ({ value, label: value }))} selected={distribution.jobTitles} onChange={(jobTitles) => set({ jobTitles })} empty="Nenhum cargo cadastrado no escopo." />
           </Field>
           <Field label="Grupos">
-            <ChipToggleGroup ariaLabel="Grupos" options={groups.teams.map((team) => ({ value: team.id, label: team.name }))} selected={distribution.teamIds} onChange={(teamIds) => set({ teamIds })} />
+            <ScopedMultiCombobox kind="TEAM" source={REPORT_AUDIENCE_SOURCE} value={distribution.teamIds} onChange={(teamIds) => set({ teamIds })} />
           </Field>
           <Field label="Subgrupos">
-            <ChipToggleGroup ariaLabel="Subgrupos" options={groups.subteams.map((subteam) => ({ value: subteam.id, label: subteam.name }))} selected={distribution.subteamIds} onChange={(subteamIds) => set({ subteamIds })} />
+            <ScopedMultiCombobox kind="SUBTEAM" source={REPORT_AUDIENCE_SOURCE} value={distribution.subteamIds} onChange={(subteamIds) => set({ subteamIds })} />
           </Field>
-          <Field label="Pessoas específicas" hint="Digite ao menos 2 letras do nome.">
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar pessoa" aria-label="Buscar pessoa" />
-            {query.trim().length >= 2 && results.length > 0 ? (
-              <ul className="mt-1 max-h-40 overflow-auto rounded-md border text-sm">
-                {results.filter((person) => !distribution.personIds.includes(person.personId)).map((person) => (
-                  <li key={person.personId}>
-                    <button type="button" className="w-full px-3 py-1.5 text-left hover:bg-muted" onClick={() => { setChosen([...chosen, person]); set({ personIds: [...distribution.personIds, person.personId] }); setQuery("") }}>{person.name}{person.jobTitle ? ` · ${person.jobTitle}` : ""}</button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {distribution.personIds.length > 0 ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {distribution.personIds.map((id) => (
-                  <span key={id} className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs">
-                    {chosen.find((person) => person.personId === id)?.name ?? "Pessoa selecionada"}
-                    <button type="button" aria-label="Remover pessoa" onClick={() => set({ personIds: distribution.personIds.filter((item) => item !== id) })}><X className="size-3" aria-hidden /></button>
-                  </span>
-                ))}
-              </div>
-            ) : null}
+          <Field label="Pessoas específicas">
+            <ScopedMultiCombobox kind="PERSON" source={REPORT_AUDIENCE_SOURCE} value={distribution.personIds} onChange={(personIds) => set({ personIds })} />
           </Field>
         </div>
       ) : null}

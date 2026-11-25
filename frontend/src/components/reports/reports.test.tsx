@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
+import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
 import { FollowUpEntry } from "@/components/follow-up/follow-up-entry"
 import { areasFor } from "@/components/layout/top-bar/area-switcher"
 import { ReportOfferAction } from "@/components/operator/operator-inia-chat/chat-message-list"
@@ -120,7 +121,7 @@ describe("formulário — consultas de registros e span (vindas do chat)", () =>
 
   it("a proposta do chat com atendimentos é aceita pelo contrato e mostra os parâmetros e o período relativo", () => {
     const definition = reportDefinitionSchema.parse({ tool: "INTERACTIONS", structure: { mode: "RECIPIENT" }, period: { mode: "RELATIVE_DAYS", fromOffset: -7, toOffset: -1 }, queryArgs: { agrupar_por: "SUPERVISOR", medidas: ["ATENDIMENTOS_POR_PESSOA"] } })
-    render(<QueryFields definition={definition} onChange={() => undefined} catalog={options} />)
+    renderWithQuery(<QueryFields definition={definition} onChange={() => undefined} catalog={options} />)
     expect(screen.getByText("Agrupar por:")).toBeInTheDocument()
     expect(screen.getByText(/SUPERVISOR/)).toBeInTheDocument()
     expect(screen.getByLabelText("Dia inicial relativo")).toHaveValue(-7)
@@ -129,7 +130,7 @@ describe("formulário — consultas de registros e span (vindas do chat)", () =>
 
   it("span: organograma da data da execução; registros por dia oferecem evolução, total da estrutura oferece resumo", () => {
     const span = reportDefinitionSchema.parse({ tool: "SPAN", structure: { mode: "RECIPIENT" }, period: { mode: "TODAY" }, queryArgs: { por: "GRUPO" } })
-    render(<QueryFields definition={span} onChange={() => undefined} catalog={options} />)
+    renderWithQuery(<QueryFields definition={span} onChange={() => undefined} catalog={options} />)
     expect(screen.getByText("Organograma na data de cada execução.")).toBeInTheDocument()
     expect(staticCompatibility(span)).toEqual(["TABLE", "BAR"])
     const byDay = reportDefinitionSchema.parse({ tool: "WORKDAY", structure: { mode: "RECIPIENT" }, period: { mode: "CALENDAR", unit: "WEEK", offset: -1 }, queryArgs: { agrupar_por: "DIA" } })

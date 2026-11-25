@@ -1,3 +1,4 @@
+import { type OrgUnitFilter } from "../../../../shared/infrastructure/database/unit-filter.js"
 import type { Database } from "../../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../../shared/domain/domain-error.js"
 import { canManageScope, scopesAreCompatible, type ManageableScopes } from "../../../auth/application/manageable-scopes.js"
@@ -145,13 +146,10 @@ export function applyWorkflowManageableFilter(scopes: ManageableScopes, filter: 
  * Filtro de Grupo/Subgrupo da listagem: algum vínculo PUBLICADO naquele Grupo (inteiro ou um Subgrupo dele) / que alcança aquele
  * Subgrupo (ele mesmo ou o Grupo-pai inteiro). "Todos os Grupos" = só os ALL_TEAMS. Uma linha por Workflow (`exists`).
  */
-export function applyWorkflowScopeListFilter(filter: SqlFilter, input: { scopeType?: string | undefined; teamId?: string | undefined; subteamId?: string | undefined }): void {
-  if (input.subteamId) {
-    const subteamId = filter.param(input.subteamId)
-    filter.add(`exists (select 1 from workflow_scope_links f where f.workflow_id = q.id
-      and (f.subteam_id = ${subteamId}::uuid or (f.subteam_id is null and f.team_id = (select st.team_id from subteams st where st.id = ${subteamId}::uuid))))`)
-  } else if (input.teamId) {
-    filter.add(`exists (select 1 from workflow_scope_links f where f.workflow_id = q.id and f.team_id = ${filter.param(input.teamId)}::uuid)`)
+export function applyWorkflowScopeListFilter(filter: SqlFilter, input: OrgUnitFilter & { scopeType?: string | undefined }): void {
+  const units = filter.units({ team: "f.team_id", subteam: "f.subteam_id", wholeParent: true }, input)
+  if (units) {
+    filter.add(`exists (select 1 from workflow_scope_links f where f.workflow_id = q.id and ${units})`)
   } else if (input.scopeType === "ALL_TEAMS") {
     filter.add(`q."scopeType" = 'ALL_TEAMS'`)
   }

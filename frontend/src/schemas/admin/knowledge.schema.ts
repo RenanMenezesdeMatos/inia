@@ -295,6 +295,8 @@ export const knowledgeVersionDetailSchema = z.object({
   fileId: z.string().nullable(),
   changeSummary: z.string().nullable(),
   publishedAt: z.coerce.string().nullable(),
+  /** Nomes dos Grupos e Subgrupos da configuração, mesmo fora do que quem lê administra. */
+  scopeNames: z.object({ teams: z.record(z.string(), z.string()), subteams: z.record(z.string(), z.string()) }),
 })
 export type KnowledgeVersionDetail = z.infer<typeof knowledgeVersionDetailSchema>
 

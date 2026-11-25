@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Activity, Info, Lock } from "lucide-react"
 
 import { PageHeader } from "@/components/ui/surface"
@@ -22,6 +21,7 @@ import { USABILITY_PATH } from "./usability-route"
 import { UsabilityPanelProvider, type UsabilityPanelContext } from "./usability-shared"
 import { TabError, TabSkeleton } from "./usability-tab-frame"
 import { queryForTab, readUsabilityUrl, toHref, USABILITY_TAB_LABELS, withFilters, withoutFilters, withTab, type FilterKey } from "./usability-url-state"
+import { useUsabilitySearch } from "./use-usability-search"
 import { WorkflowsTab } from "./workflows-tab"
 
 /** Parâmetros do recorte que acompanham o link para o detalhe de uma pessoa (o resto é da lista). */
@@ -32,12 +32,9 @@ const PERSON_CARRY: readonly FilterKey[] = ["period", "from", "to", "compare", "
  * e escopo; a URL guarda aba e filtros (link copiado = mesmo recorte). Sem dados de exemplo em nenhum estado.
  */
 export function UsabilityPage() {
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
   const user = useCurrentUserQuery().data
   const contextQuery = useUsabilityContextQuery()
-  const search = useMemo(() => new URLSearchParams(searchParams.toString()), [searchParams])
+  const { search, navigate } = useUsabilitySearch()
   const state = useMemo(() => readUsabilityUrl(search), [search])
   const capabilities = user?.access.capabilities
   const tabsRef = useRef<HTMLDivElement>(null)
@@ -46,7 +43,6 @@ export function UsabilityPage() {
     tabsRef.current?.querySelector('[role="tab"][data-state="active"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" })
   }, [state.tab, contextQuery.isSuccess])
 
-  const navigate = useCallback((next: URLSearchParams) => router.replace(toHref(pathname, next), { scroll: false }), [router, pathname])
   const setFilters = useCallback((changes: Partial<Record<FilterKey, string | undefined>>) => navigate(withFilters(search, changes)), [navigate, search])
   const openTab = useCallback((tab: UsabilityTab, changes: Partial<Record<FilterKey, string | undefined>> = {}) => navigate(withFilters(withTab(search, tab), changes)), [navigate, search])
 

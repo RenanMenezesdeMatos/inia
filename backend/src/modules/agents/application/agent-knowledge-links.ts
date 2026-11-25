@@ -1,3 +1,4 @@
+import { hasUnitFilter, unitMatcher } from "../../../shared/infrastructure/database/unit-filter.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { canManageScope, getManageableScopes, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
@@ -234,22 +235,20 @@ export type KnowledgeLinkListFilter = {
   universe?: string | undefined
   /** Alcance do agente: só os de todos os Grupos, os com algum vínculo no Grupo (inteiro ou Subgrupo dele) ou com o Subgrupo escolhido. */
   scopeType?: "ALL_TEAMS" | undefined
-  teamId?: string | undefined
-  subteamId?: string | undefined
+  teamId?: readonly string[] | undefined
+  subteamId?: readonly string[] | undefined
   state?: KnowledgeLinkState | undefined
 }
 
 const fold = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR")
 
-/** Filtros da lista (aba, busca pelo nome, tipo, universo, Grupo e situação) — os mesmos para a contagem e para a página. */
+/** Filtros da lista (aba, busca pelo nome, tipo, universo, Grupos/Subgrupos já refinados e situação) — os mesmos para a contagem e para a página. */
 export function matchesKnowledgeLinkFilter(candidate: KnowledgeLinkCandidate, filter: Omit<KnowledgeLinkListFilter, "tab">): boolean {
   if (filter.search && !fold(candidate.name).includes(fold(filter.search))) return false
   if (filter.agentType && candidate.agentType !== filter.agentType) return false
   if (filter.universe && (filter.universe === "PENDING" ? candidate.operatingUniverse !== null : candidate.operatingUniverse !== filter.universe)) return false
-  if (filter.subteamId) {
-    if (!candidate.scopeLinks.some((link) => link.subteamId === filter.subteamId)) return false
-  } else if (filter.teamId) {
-    if (!candidate.scopeLinks.some((link) => link.teamId === filter.teamId)) return false
+  if (hasUnitFilter(filter)) {
+    if (!candidate.scopeLinks.some(unitMatcher(filter))) return false
   } else if (filter.scopeType === "ALL_TEAMS" && candidate.scopeType !== "ALL_TEAMS") return false
   if (filter.state === "PUBLISHED" && !(candidate.published && candidate.active)) return false
   if (filter.state === "NOT_PUBLISHED" && candidate.published) return false

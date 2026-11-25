@@ -1,3 +1,4 @@
+import { hasUnitFilter, type OrgUnitFilter } from "../../../shared/infrastructure/database/unit-filter.js"
 import { assignmentScopesOf, permissionHoldersWithSituation, personIdsWithPermission } from "../../access/application/permission-holders.js"
 import type { AccessScope } from "../../access/domain/access-scope.js"
 import { recordPersonalDataAccess } from "../../data-lifecycle/application/personal-data-access-log.js"
@@ -10,7 +11,7 @@ import { operationalStatusOf } from "../domain/anjo-now.js"
 import { effectiveCapacity, unresponsiveView } from "../domain/presence.js"
 import { nearestRank } from "../domain/queue-history.js"
 import type { AnjoActivity, AnjoNowItem, AnjoScopeView, AnjosNow, QueueNow, QueueWaitingItem, PresenceTimeline, RequestDetail, RequestListItem, SharedContext, UnavailableAttempt } from "../domain/views.js"
-import { assertPanelPeriod, coordinatorScopesOf, coverageClause, coversRecord, decodeListCursor, encodeListCursor, operatorUniverseOf, periodBounds, reachesAnjo, type CoordinatorScopes } from "./coverage.js"
+import { anjoCoversUnits, assertPanelPeriod, coordinatorScopesOf, coverageClause, coversRecord, decodeListCursor, encodeListCursor, operatorUniverseOf, periodBounds, reachesAnjo, type CoordinatorScopes } from "./coverage.js"
 import { loadSettings } from "./eligibility.js"
 import type { Queryable } from "./locks.js"
 import { loadMessageViews } from "./request-views.js"
@@ -22,7 +23,7 @@ import { humanSupportStats } from "./runtime-stats.js"
  * conversa), tentativas sem Anjo em serviço (D4) e a atividade dos Anjos (M18). Fora do alcance = 404. Abrir um pedido grava o
  * registro LGPD para o operador e para cada Anjo dele; abrir a presença de Anjos, uma linha por Anjo exibido — sempre depois de ler.
  */
-export type PanelQuery = { from: string; to: string; teamId?: string | undefined; subteamId?: string | undefined }
+export type PanelQuery = { from: string; to: string; teamId?: readonly string[] | undefined; subteamId?: readonly string[] | undefined }
 type ListQuery = PanelQuery & { search?: string | undefined; status?: string | undefined; origin?: string | undefined; cursor?: string | undefined; limit?: number | undefined }
 
 const notFound = () => new DomainError("Registro não encontrado.", "HUMAN_SUPPORT_NOT_FOUND", 404)
@@ -191,14 +192,13 @@ export async function listUnavailableAttempts(db: Queryable, viewer: Viewer, que
   }
 }
 
-type PanelScopeFilter = { teamId?: string | undefined; subteamId?: string | undefined }
+type PanelScopeFilter = OrgUnitFilter
 
-/** O Anjo atende o Grupo/Subgrupo do filtro do painel (sem filtro = todos). */
+/** O Anjo atende algum Grupo/Subgrupo do filtro do painel (sem filtro = todos). Quem atende o Grupo inteiro atende os Subgrupos dele. */
 async function panelFilterCovers(db: Queryable, filter: PanelScopeFilter): Promise<(list: AccessScope[]) => boolean> {
-  const subteamTeam = filter.subteamId ? ((await db.query<{ team_id: string }>(`select team_id from subteams where id = $1`, [filter.subteamId])).rows[0]?.team_id ?? null) : null
-  const teamId = filter.teamId ?? subteamTeam
-  if (!teamId && !filter.subteamId) return () => true
-  return (list) => list.some((scope) => scope.type === "ORGANIZATION" || (scope.type === "GROUP" && scope.teamId === teamId) || (scope.type === "SUBGROUP" && Boolean(filter.subteamId) && scope.subteamId === filter.subteamId))
+  if (!hasUnitFilter(filter)) return () => true
+  const parents = filter.subteamId?.length ? (await db.query<{ team_id: string }>(`select team_id from subteams where id = any($1::uuid[])`, [[...filter.subteamId]])).rows : []
+  return anjoCoversUnits(filter, parents.map((row) => row.team_id))
 }
 
 /** Anjos que quem lê alcança (D11), filtrados pelo escopo que atendem, quando há filtro. */

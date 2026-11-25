@@ -148,8 +148,18 @@ levantamento, 10/11). Regra geral: o elemento repetido mora no kit (`components/
 - **Filtros e seletores encadeados** (pedido do responsável, 17/11/2026) — todo filtro de lista e todo campo de seleção segue a
   hierarquia organização → universo → Grupo → Subgrupo → pessoa/recurso: o de baixo só oferece o que cabe no de cima, trocar o de
   cima limpa o de baixo que deixou de caber, nunca opção incompatível (em edição, o já salvo incompatível fica visível e marcado).
-  Peças: `ListUniverseFilter` + `ListOrgScopeFilter universe=…` (listas), `OrgScopeSelect universe=…` (formulários), regra em
+  Peças: `ListUniverseFilter` + `ListOrgScopeFilter universe=…` (listas; troca de universo por `useOrgScopeAfterUniverse`/`useUnitsAfterUniverse`), `OrgScopeSelect universe=…` (formulários), regra em
   `lib/operating-universe/hierarchy.ts`. Inventário em `universo-de-atuacao.md` › "Filtros e seletores encadeados".
+- **Busca e filtros para listas grandes** (pedido do responsável, 24/11/2026) — campo com muitos registros (Grupo, Subgrupo, pessoa, base)
+  nunca baixa a lista inteira: busca no servidor sobre tudo o que a conta alcança, 30 por lote, rolagem pede o próximo. Peças (nunca montar
+  outra): `components/ui/remote-combobox.tsx` (`RemoteCombobox`, só desenho: teclado, lotes, erro, vazio, resposta antiga descartada) e, por
+  cima, `TeamSubteamFilters` (Grupo e Subgrupo lado a lado), `ListOrgScopeFilter` (um campo com abas), `OrgUnitMultiFilter` (só um dos dois),
+  `OrgUnitCombobox` (escolha única de formulário), `PersonCombobox`, `KnowledgeCombobox`, `UserCombobox`, `ScopedMultiCombobox`.
+  **Filtro de Grupo/Subgrupo é SEMPRE de múltipla escolha** (pedido do responsável: "como o seletor do Workflow"): caixas de marcação, marcar
+  não fecha, já escolhidos no topo ao abrir, rodapé "N grupos no filtro · Limpar · Concluir", gatilho com o nome (1) ou a contagem (mais) e um
+  selo com "x" por escolha embaixo dos filtros (`ActiveFilterChips`, 8 e "Mostrar mais"). Até 30 escolhas somadas. Formulário de vínculo único
+  (Grupo da pessoa, escopo do papel) continua de escolha única. Regras, rotas e inventário: `alcance-multigrupo.md` › "Busca e filtros para
+  listas grandes".
 - **Editor com lateral de configurações** (17/11/2026) — criar/editar um conteúdo que se publica: título grande e conteúdo num
   `SURFACE_CARD` à esquerda; à direita (no celular, aba "Configurações") seções separadas por linha com `SettingsSection`
   (`components/ui/surface.tsx`, título em caixa alta com ícone, sem cartão dentro de cartão); barra acima com `StatusChip` da situação,

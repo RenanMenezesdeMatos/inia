@@ -5,6 +5,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { chooseUnit, closeUnitField, openUnitField } from "@/components/admin/shared/testing/scope-units-fake"
+import { scopedOptionsServiceFrom } from "@/components/admin/shared/testing/scoped-options-fake"
 import type { TeamCalendarDay, TeamCalendarView as TeamCalendarData } from "@/schemas/team-calendar/team-calendar.schema"
 
 import { describeRange, rangeFor, shiftRange, startOfWeek } from "./calendar-dates"
@@ -12,6 +14,8 @@ import { isUnpublishedScheduleDay, TeamCalendarView } from "./team-calendar-view
 
 const service = vi.hoisted(() => ({ fetchTeamCalendar: vi.fn(), provisionScheduleException: vi.fn(), cancelScheduleException: vi.fn(), fetchScheduleExceptionAudit: vi.fn(), classifyWorkday: vi.fn(), fetchClassificationHistory: vi.fn() }))
 vi.mock("@/services/team-calendar/team-calendar-service", () => service)
+const UNITS = vi.hoisted(() => [{ id: "team-1", name: "Atendimento", subteams: [{ id: "sub-1", name: "Retenção" }] }, { id: "team-2", name: "Vendas", subteams: [] }])
+vi.mock("@/services/scope-units/scoped-options-service", () => scopedOptionsServiceFrom(UNITS, [{ id: "op-1", name: "Joana Esteves", teamId: "team-1", role: "SUPERVISOR" }, { id: "op-2", name: "Caio Lima", teamId: "team-1" }]))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 function day(date: string, patch: Partial<TeamCalendarDay>): TeamCalendarDay {
@@ -44,7 +48,7 @@ function day(date: string, patch: Partial<TeamCalendarDay>): TeamCalendarDay {
 const WEEK = ["2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18", "2026-09-19", "2026-09-20"]
 const DATA: TeamCalendarData = {
   anchor: { personId: "sup-1", name: "Vanessa", role: "SUPERVISOR", roleLabel: "Supervisor" },
-  availableAnchors: [{ personId: "sup-1", name: "Vanessa", roleLabel: "Supervisor", teamName: "Atendimento" }],
+  hasOtherAnchors: false,
   range: { from: "2026-09-14", to: "2026-09-20" },
   today: "2026-09-16",
   timeZone: "America/Fortaleza",
@@ -68,8 +72,7 @@ const DATA: TeamCalendarData = {
     { code: "OTHER_JUSTIFIED", label: "Outro motivo justificado" },
   ],
   canProvision: true,
-  provisionablePeople: [{ personId: "op-1", name: "Joana Esteves" }, { personId: "op-2", name: "Caio Lima" }],
-  filterOptions: { teams: [{ id: "team-1", name: "Atendimento", subteams: [{ id: "sub-1", name: "Retenção" }] }, { id: "team-2", name: "Vendas", subteams: [] }], jobTitles: ["Operador", "Operadora"], scheduleTypes: [{ code: "FIVE_BY_TWO", label: "5x2" }, { code: "NONE", label: "Sem escala configurada" }], attention: [{ code: "MISSING_PRODUCTION", label: "Com pendência (sem produção)" }, { code: "WAITING_FOR_DATA", label: "Aguardando dados" }, { code: "DATA_SOURCE_DELAY", label: "Fonte atrasada" }, { code: "UNJUSTIFIED_ABSENCE", label: "Com falta injustificada" }, { code: "DIVERGENCE", label: "Com divergência (produção fora do plano)" }, { code: "CONFLICT", label: "Com inconsistência (produção em situação não produtiva)" }] },
+  filterOptions: { jobTitles: ["Operador", "Operadora"], scheduleTypes: [{ code: "FIVE_BY_TWO", label: "5x2" }, { code: "NONE", label: "Sem escala configurada" }], attention: [{ code: "MISSING_PRODUCTION", label: "Com pendência (sem produção)" }, { code: "WAITING_FOR_DATA", label: "Aguardando dados" }, { code: "DATA_SOURCE_DELAY", label: "Fonte atrasada" }, { code: "UNJUSTIFIED_ABSENCE", label: "Com falta injustificada" }, { code: "DIVERGENCE", label: "Com divergência (produção fora do plano)" }, { code: "CONFLICT", label: "Com inconsistência (produção em situação não produtiva)" }] },
   pagination: { page: 1, pageSize: 10, total: 2, totalPeople: 2 },
   people: [
     {
@@ -270,6 +273,8 @@ describe("Calendário da equipe — planejado × observado", () => {
     fireEvent.change(screen.getByTestId("provision-from"), { target: { value: "2026-09-21" } })
     fireEvent.change(screen.getByTestId("provision-to"), { target: { value: "2026-09-22" } })
     expect(dialog.textContent).toContain("2 dia(s)")
+    expect(screen.getByTestId("provision-submit")).toBeDisabled()
+    await chooseUnit("Colaborador", "Joana Esteves")
     fireEvent.click(screen.getByTestId("provision-submit"))
     await waitFor(() => expect(service.provisionScheduleException).toHaveBeenCalledWith({ personId: "op-1", code: "DAY_OFF", from: "2026-09-21", to: "2026-09-22" }))
   })
@@ -292,18 +297,17 @@ describe("Calendário da equipe — filtros e paginação (mesmo padrão das lis
     fireEvent.change(screen.getByLabelText("Buscar colaborador"), { target: { value: "  Joana " } })
     await waitFor(() => expect(service.fetchTeamCalendar).toHaveBeenLastCalledWith(expect.objectContaining({ list: expect.objectContaining({ search: "Joana", page: 1 }) })))
 
-    fireEvent.click(screen.getByLabelText("Filtrar por grupo"))
-    fireEvent.click(await screen.findByRole("option", { name: "Atendimento" }))
-    await waitFor(() => expect(service.fetchTeamCalendar).toHaveBeenLastCalledWith(expect.objectContaining({ list: expect.objectContaining({ teamId: "team-1", subteamId: undefined }) })))
-    fireEvent.click(screen.getByLabelText("Filtrar por subgrupo"))
-    fireEvent.click(await screen.findByRole("option", { name: "Retenção" }))
-    await waitFor(() => expect(service.fetchTeamCalendar).toHaveBeenLastCalledWith(expect.objectContaining({ list: expect.objectContaining({ teamId: "team-1", subteamId: "sub-1" }) })))
-    // Trocar o grupo limpa o subgrupo (que pertencia ao grupo anterior).
-    fireEvent.click(screen.getByLabelText("Filtrar por grupo"))
-    fireEvent.click(await screen.findByRole("option", { name: "Vendas" }))
-    await waitFor(() => expect(service.fetchTeamCalendar).toHaveBeenLastCalledWith(expect.objectContaining({ list: expect.objectContaining({ teamId: "team-2", subteamId: undefined }) })))
-    expect(screen.getByLabelText("Filtrar por subgrupo")).toBeDisabled()
-    expect(screen.getByLabelText("Filtrar por subgrupo").textContent).toContain("Sem subgrupos neste grupo")
+    await chooseUnit("Filtrar por grupo", "Atendimento")
+    await waitFor(() => expect(service.fetchTeamCalendar).toHaveBeenLastCalledWith(expect.objectContaining({ list: expect.objectContaining({ teamId: ["team-1"], subteamId: undefined }) })))
+    await chooseUnit("Filtrar por subgrupo", "Atendimento › Retenção")
+    await waitFor(() => expect(service.fetchTeamCalendar).toHaveBeenLastCalledWith(expect.objectContaining({ list: expect.objectContaining({ teamId: ["team-1"], subteamId: ["sub-1"] }) })))
+    // Outro grupo se soma; tirar o primeiro limpa o subgrupo dele.
+    await chooseUnit("Filtrar por grupo", "Vendas")
+    await waitFor(() => expect(service.fetchTeamCalendar).toHaveBeenLastCalledWith(expect.objectContaining({ list: expect.objectContaining({ teamId: ["team-1", "team-2"], subteamId: ["sub-1"] }) })))
+    await chooseUnit("Filtrar por grupo", "Atendimento")
+    await waitFor(() => expect(service.fetchTeamCalendar).toHaveBeenLastCalledWith(expect.objectContaining({ list: expect.objectContaining({ teamId: ["team-2"], subteamId: undefined }) })))
+    expect(await openUnitField("Filtrar por subgrupo")).toEqual([])
+    closeUnitField()
 
     fireEvent.click(screen.getByLabelText("Filtrar por cargo"))
     fireEvent.click(await screen.findByRole("option", { name: "Operadora" }))
@@ -343,9 +347,7 @@ describe("Calendário da equipe — filtros e paginação (mesmo padrão das lis
 
     // Provisionar lista todos os operadores diretos (não só a página corrente).
     fireEvent.click(screen.getByTestId("calendar-provision"))
-    fireEvent.click(await screen.findByTestId("provision-person"))
-    expect(await screen.findByRole("option", { name: "Joana Esteves" })).toBeInTheDocument()
-    expect(screen.getByRole("option", { name: "Caio Lima" })).toBeInTheDocument()
+    expect(await openUnitField("Colaborador")).toEqual(["Joana Esteves", "Caio Lima"])
   })
 
   it("sem resultado para os filtros mostra 'Nenhum colaborador corresponde aos filtros' (≠ equipe sem operadores) com atalho para limpar", async () => {
@@ -355,10 +357,26 @@ describe("Calendário da equipe — filtros e paginação (mesmo padrão das lis
     expect(screen.queryByText("Nenhum operador direto nesta equipe")).not.toBeInTheDocument()
     expect(screen.queryByTestId("calendar-grid")).not.toBeInTheDocument()
 
-    service.fetchTeamCalendar.mockResolvedValue({ ...DATA, people: [], canProvision: false, provisionablePeople: [], filterOptions: { jobTitles: [], scheduleTypes: [], attention: [] }, pagination: { page: 1, pageSize: 10, total: 0, totalPeople: 0 } })
+    service.fetchTeamCalendar.mockResolvedValue({ ...DATA, people: [], canProvision: false, filterOptions: { jobTitles: [], scheduleTypes: [], attention: [] }, pagination: { page: 1, pageSize: 10, total: 0, totalPeople: 0 } })
     cleanup()
     renderWithQuery(<TeamCalendarView state={{ calendarDate: "2026-09-16", calendarPerson: null, calendarAnchor: null }} onStateChange={vi.fn()} />)
     expect(await screen.findByText("Nenhum operador direto nesta equipe")).toBeInTheDocument()
     expect(screen.queryByLabelText("Buscar colaborador")).not.toBeInTheDocument()
+  })
+})
+
+describe("Calendário da equipe — escolha da equipe", () => {
+  it("a própria estrutura (que não é opção da lista) aparece com o nome, e trocar de equipe limpa Grupo e Subgrupo", async () => {
+    service.fetchTeamCalendar.mockResolvedValue({ ...DATA, hasOtherAnchors: true, anchor: { personId: "ger-1", name: "Gerente QA", role: "MANAGER", roleLabel: "Gerente" } })
+    const onStateChange = vi.fn()
+    renderWithQuery(<TeamCalendarView state={{ calendarDate: "2026-09-16", calendarPerson: null, calendarAnchor: null }} onStateChange={onStateChange} />)
+    expect(await screen.findByRole("button", { name: "Equipe: Gerente QA" })).toBeInTheDocument()
+    await chooseUnit("Filtrar por grupo", "Atendimento")
+    await waitFor(() => expect(service.fetchTeamCalendar).toHaveBeenLastCalledWith(expect.objectContaining({ list: expect.objectContaining({ teamId: ["team-1"] }) })))
+    expect(await openUnitField("Equipe")).toContain("Joana Esteves")
+    expect(screen.getByRole("option", { name: "Joana Esteves" })).toHaveAccessibleDescription(/^Supervisor · /)
+    fireEvent.click(screen.getByRole("option", { name: "Joana Esteves" }))
+    expect(onStateChange).toHaveBeenCalledWith({ calendarAnchor: "op-1" })
+    await waitFor(() => expect(service.fetchTeamCalendar).toHaveBeenLastCalledWith(expect.objectContaining({ list: expect.objectContaining({ teamId: undefined, subteamId: undefined }) })))
   })
 })

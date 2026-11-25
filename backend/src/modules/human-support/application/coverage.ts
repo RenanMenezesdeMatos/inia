@@ -1,3 +1,4 @@
+import { unitFilterSql, type OrgUnitFilter } from "../../../shared/infrastructure/database/unit-filter.js"
 import { assignmentScopesOf } from "../../access/application/permission-holders.js"
 import { scopeCovers, type AccessScope } from "../../access/domain/access-scope.js"
 import { ALL_UNIVERSES_PERMISSION, UNRESTRICTED_PERSON_RULE, isUniverseEnforced, personAllowedByUniverse, personUniverse, type PersonUniverseRule } from "../../operating-universe/application/universe-access.js"
@@ -41,7 +42,7 @@ export async function coordinatorScopesOf(db: Queryable, organizationId: string,
  * Cláusula SQL do alcance sobre um registro com `team_id`/`subteam_id` congelados, mais o filtro da tela. `personColumn` = a coluna do
  * registro com quem pediu (`operator_person_id` no pedido, `person_id` na tentativa sem Anjo), para o filtro de universo.
  */
-export function coverageClause(coverage: CoordinatorScopes, alias: string, params: unknown[], filter: { teamId?: string | null | undefined; subteamId?: string | null | undefined }, personColumn: "operator_person_id" | "person_id"): string {
+export function coverageClause(coverage: CoordinatorScopes, alias: string, params: unknown[], filter: OrgUnitFilter, personColumn: "operator_person_id" | "person_id"): string {
   const add = (value: unknown) => `$${params.push(value)}`
   const clauses: string[] = []
   if (!coverage.organizationWide) clauses.push(`(${alias}.team_id = any(${add(coverage.teamIds)}::uuid[]) or ${alias}.subteam_id = any(${add(coverage.subteamIds)}::uuid[]))`)
@@ -50,8 +51,8 @@ export function coverageClause(coverage: CoordinatorScopes, alias: string, param
     const own = universe.own ? [`exists (select 1 from people up where up.id = ${alias}.${personColumn} and up.operating_universe = ${add(universe.own)})`] : []
     clauses.push(`(${[`${alias}.team_id = any(${add(universe.cross.teamIds)}::uuid[])`, `${alias}.subteam_id = any(${add(universe.cross.subteamIds)}::uuid[])`, ...own].join(" or ")})`)
   }
-  if (filter.teamId) clauses.push(`${alias}.team_id = ${add(filter.teamId)}::uuid`)
-  if (filter.subteamId) clauses.push(`${alias}.subteam_id = ${add(filter.subteamId)}::uuid`)
+  const units = unitFilterSql(filter, add, { team: `${alias}.team_id`, subteam: `${alias}.subteam_id` })
+  if (units) clauses.push(units)
   return clauses.length > 0 ? clauses.join(" and ") : "true"
 }
 
@@ -94,4 +95,14 @@ export function decodeListCursor(cursor: string | undefined): { at: string; id: 
   } catch {
     return null
   }
+}
+
+/**
+ * O Anjo com estes escopos atende algum Grupo/Subgrupo do filtro? `subteamTeams` = os Grupos dos Subgrupos escolhidos: quem atende o
+ * Grupo inteiro atende os Subgrupos dele, e o Subgrupo escolhido refina o Grupo escolhido.
+ */
+export function anjoCoversUnits(filter: OrgUnitFilter, subteamTeams: readonly string[]): (scopes: readonly AccessScope[]) => boolean {
+  const teams = new Set([...(filter.teamId ?? []), ...subteamTeams])
+  const subteams = new Set(filter.subteamId ?? [])
+  return (scopes) => scopes.some((scope) => scope.type === "ORGANIZATION" || (scope.type === "GROUP" && teams.has(scope.teamId)) || (scope.type === "SUBGROUP" && subteams.has(scope.subteamId)))
 }

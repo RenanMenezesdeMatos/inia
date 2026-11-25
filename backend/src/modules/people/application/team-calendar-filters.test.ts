@@ -24,11 +24,16 @@ describe("Calendário da equipe — filtros da lista de colaboradores (mesmo pad
     expect(names(applyCalendarFilters(PEOPLE, { search: "ninguém" }))).toEqual([])
   })
 
-  it("grupo e subgrupo por id (subgrupo restringe dentro do grupo)", () => {
-    expect(names(applyCalendarFilters(PEOPLE, { teamId: "team-vendas" }))).toEqual(["Zeca Prado"])
-    expect(names(applyCalendarFilters(PEOPLE, { teamId: "team-ret", subteamId: "sub-ret-b" }))).toEqual(["Bruno Teixeira"])
-    expect(names(applyCalendarFilters(PEOPLE, { subteamId: "sub-ret-a" }))).toEqual(["Joana Esteves", "Caio Lima", "Ângela Souza"])
-    expect(names(applyCalendarFilters(PEOPLE, { teamId: "team-vendas", subteamId: "sub-ret-a" }))).toEqual([])
+  it("vários grupos e subgrupos: o subgrupo refina o grupo dele, os outros grupos entram inteiros", () => {
+    expect(names(applyCalendarFilters(PEOPLE, { teamId: ["team-vendas"] }))).toEqual(["Zeca Prado"])
+    // A escolha chega refinada (`refinedUnits`): o Grupo de um Subgrupo escolhido já saiu.
+    expect(names(applyCalendarFilters(PEOPLE, { teamId: [], subteamId: ["sub-ret-b"] }))).toEqual(["Bruno Teixeira"])
+    // Subgrupo escolhido sem ninguém na lista: ninguém entra pelo Grupo dele.
+    expect(names(applyCalendarFilters(PEOPLE, { teamId: [], subteamId: ["sub-ret-vazio"] }))).toEqual([])
+    expect(names(applyCalendarFilters(PEOPLE, { subteamId: ["sub-ret-a"] }))).toEqual(["Joana Esteves", "Caio Lima", "Ângela Souza"])
+    expect(names(applyCalendarFilters(PEOPLE, { teamId: ["team-vendas"], subteamId: ["sub-ret-b"] }))).toEqual(["Bruno Teixeira", "Zeca Prado"])
+    expect(names(applyCalendarFilters(PEOPLE, { teamId: ["team-vendas", "team-ret"] }))).toEqual(names(applyCalendarFilters(PEOPLE, {})))
+    expect(names(applyCalendarFilters(PEOPLE, { subteamId: ["sub-ret-a", "sub-ret-b"] }))).toEqual(["Joana Esteves", "Caio Lima", "Ângela Souza", "Bruno Teixeira"])
   })
 
   it("cargo = job_title exato (multi); pessoa sem cargo nunca casa um cargo", () => {

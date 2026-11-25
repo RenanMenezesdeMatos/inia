@@ -1,3 +1,5 @@
+import { z } from "zod"
+import { unitFilterShape } from "../../../shared/presentation/list-query.js"
 import { Router } from "express"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { recordPersonalDataAccess } from "../../data-lifecycle/application/personal-data-access-log.js"
@@ -25,6 +27,8 @@ import {
   type ProcessOrder,
 } from "../../feedback-engine/application/leadership-diagnostics.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { reachOfPeople } from "../../org-structure/application/scoped-options.js"
+import { respondScopedOptions, UNIT_AND_PERSON_OPTION_KINDS } from "../../org-structure/presentation/options-query.js"
 
 const LEVEL_ORDER = `case pe.current_level when 'MANAGER' then 5 when 'ACTION_PLAN' then 4 when 'COACH' then 3 when 'ORIENT' then 2 else 1 end`
 
@@ -70,6 +74,11 @@ export function createDiagnosticsRouter(db: Database, deps: { repository?: Analy
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   const text = (value: unknown) => (typeof value === "string" && value.trim().length > 0 ? value.trim() : null)
   const uuid = (value: unknown) => { const candidate = text(value); return candidate && UUID.test(candidate) ? candidate : null }
+  const unitFilterSchema = z.object(unitFilterShape)
+  const unitsOf = (query: Record<string, unknown>) => {
+    const { teamId, subteamId } = unitFilterSchema.parse(query)
+    return { teamId: teamId ?? null, subteamId: subteamId ?? null }
+  }
   const filtersOf = (query: Record<string, unknown>): MemoryFilters => {
     const today = new Date()
     const defaultTo = today.toISOString().slice(0, 10)
@@ -81,7 +90,7 @@ export function createDiagnosticsRouter(db: Database, deps: { repository?: Analy
     const safeTo = to && DATE.test(to) ? to : defaultTo
     const spanDays = (Date.parse(`${safeTo}T00:00:00Z`) - Date.parse(`${safeFrom}T00:00:00Z`)) / 86_400_000
     if (!Number.isFinite(spanDays) || spanDays < 0 || spanDays > 366) throw new DomainError("Escolha um período de até 366 dias (início antes do fim).", "DIAGNOSTICS_PERIOD_INVALID", 400)
-    return { from: safeFrom, to: safeTo, teamId: uuid(query.teamId), subteamId: uuid(query.subteamId), personId: uuid(query.personId), subject: text(query.subject), documentId: uuid(query.documentId), criterionKey: text(query.criterionKey), status: text(query.status), practiceKey: text(query.practiceKey) }
+    return { from: safeFrom, to: safeTo, ...unitsOf(query), personId: uuid(query.personId), subject: text(query.subject), documentId: uuid(query.documentId), criterionKey: text(query.criterionKey), status: text(query.status), practiceKey: text(query.practiceKey) }
   }
   const pageOf = (query: Record<string, unknown>) => {
     const size = Math.min(Math.max(Number(query.pageSize) || 25, 1), 200)
@@ -97,15 +106,24 @@ export function createDiagnosticsRouter(db: Database, deps: { repository?: Analy
   router.get("/memory/filter-options", async (request, response) => {
     const scope = await authorize(repository, sessionUser(request))
     const people = visiblePeople(scope)
-    const [teams, subteams, subjects, documents] = await Promise.all([
-      db.query<{ id: string; name: string }>(`select distinct t.id, t.name from call_assessments a join teams t on t.id = a.team_id where a.organization_id = $1 and a.person_id = any($2::uuid[]) order by t.name`, [scope.organizationId, people]),
-      db.query<{ id: string; name: string; teamId: string }>(`select distinct s.id, s.name, s.team_id "teamId" from call_assessments a join subteams s on s.id = a.subteam_id where a.organization_id = $1 and a.person_id = any($2::uuid[]) order by s.name`, [scope.organizationId, people]),
+    const [subjects, documents] = await Promise.all([
       db.query<{ value: string }>(`select distinct coalesce(subject_canonical, subject_raw) value from call_assessments where organization_id = $1 and person_id = any($2::uuid[]) and coalesce(subject_canonical, subject_raw) is not null order by 1`, [scope.organizationId, people]),
       db.query<{ id: string; title: string }>(`select distinct d.id, d.title from call_criterion_assessments c join knowledge_documents d on d.id = c.document_id where c.organization_id = $1 and c.person_id = any($2::uuid[]) order by d.title`, [scope.organizationId, people]),
     ])
-    const personOptions = [...scope.nodes.values()].filter((node) => node.role === "OPERATOR").map((node) => ({ id: node.id, name: node.name, teamId: node.teamId, subteamId: node.subteamId })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
-    // `teamId` no Subgrupo e `teamId`/`subteamId` na pessoa: a tela encadeia Grupo → Subgrupo → pessoa (só UX; o escopo é este acima).
-    response.json({ data: { teams: teams.rows, subteams: subteams.rows, subjects: subjects.rows.map((row) => row.value), documents: documents.rows, people: personOptions } })
+    response.json({ data: { subjects: subjects.rows.map((row) => row.value), documents: documents.rows } })
+  })
+  /**
+   * Grupo, Subgrupo e pessoa dos filtros, em lotes: Grupos e Subgrupos em que há análise de quem o leitor vê (a estrutura gravada na
+   * análise); pessoas = operadores visíveis. Encadear Grupo → Subgrupo → pessoa é a tela; o escopo é este.
+   */
+  router.get("/memory/unit-options", async (request, response) => {
+    const scope = await authorize(repository, sessionUser(request))
+    response.json({
+      data: await respondScopedOptions(db, scope.organizationId, (query) =>
+        query.kind === "PERSON"
+          ? reachOfPeople([...scope.nodes.values()].filter((node) => node.role === "OPERATOR").map((node) => node.id))
+          : { select: "select distinct a.person_id, a.team_id, a.subteam_id from call_assessments a where a.organization_id = $1 and a.person_id = any($2::uuid[])", params: [scope.organizationId, visiblePeople(scope)] }, request.query, { kinds: UNIT_AND_PERSON_OPTION_KINDS }),
+    })
   })
   router.get("/memory/processes", async (request, response) => {
     const scope = await authorize(repository, sessionUser(request))

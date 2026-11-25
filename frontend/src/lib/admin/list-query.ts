@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import type { OrgUnitIds } from "./unit-selection"
+
 // Contrato compartilhado das listagens administrativas paginadas — espelha o envelope que o
 // backend devolve quando recebe `page`/`pageSize` (ver backend/src/shared/presentation/list-query.ts).
 
@@ -16,9 +18,9 @@ export function pageResultSchema<T extends z.ZodType>(item: T) {
 
 export type ListParams = { page: number; pageSize: number; search?: string }
 
-// Filtro por grupo/subgrupo: sem nada = qualquer grupo; ALL_TEAMS = só registros globais;
-// teamId = grupo (e seus subgrupos); subteamId = só aquele subgrupo.
-export type OrgScopeFilter = { scopeType?: "ALL_TEAMS"; teamId?: string; subteamId?: string }
+// Filtro por Grupos/Subgrupos (vários): sem nada = qualquer grupo; ALL_TEAMS = só registros globais;
+// teamId = Grupos (e seus Subgrupos); subteamId = só aqueles Subgrupos.
+export type OrgScopeFilter = OrgUnitIds & { scopeType?: "ALL_TEAMS" | undefined }
 export type SubjectScopeFilter = { subjectScopeType?: "ALL_SUBJECTS"; subjectId?: string }
 
 // Datas sempre como YYYY-MM-DD (o backend trata o fim como inclusivo).

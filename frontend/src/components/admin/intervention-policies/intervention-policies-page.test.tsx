@@ -5,11 +5,14 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
+import { chooseUnit, scopeUnitsServiceFrom } from "@/components/admin/shared/testing/scope-units-fake"
 import * as service from "@/services/admin/intervention-policy-service"
 
 import { InterventionPoliciesPage } from "./intervention-policies-page"
 import { CAPABILITIES, CATALOG, EDITOR_CATALOG, OBSERVE_TYPE, policyWithDraft } from "./testing/fixtures"
 
+const UNITS = vi.hoisted(() => [{ id: "team-1", name: "Atendimento", subteams: [{ id: "sub-1", name: "Manhã" }] }])
+vi.mock("@/services/scope-units/scope-units-service", () => scopeUnitsServiceFrom(UNITS))
 vi.mock("@/services/admin/intervention-policy-service", async () => (await import("./testing/fixtures")).createServiceMock())
 vi.mock("@/services/admin/indicator-rule-service", async (importOriginal) => ({ ...(await importOriginal<object>()), fetchIndicatorsWithRules: vi.fn().mockResolvedValue([]) }))
 const session = vi.hoisted(() => ({ capabilities: {} as Record<string, boolean> }))
@@ -74,7 +77,7 @@ describe("Políticas de acompanhamento — lista e criação", () => {
     await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/admin/intervention-policies/p-new"))
   })
 
-  it("quem edita com escopo de grupo cria no próprio grupo (os grupos vêm do catálogo do editor, nunca a organização inteira)", async () => {
+  it("quem edita com escopo de grupo cria no próprio grupo (os grupos vêm da rota de alcance, nunca a organização inteira)", async () => {
     mocked.fetchPolicies.mockResolvedValue([])
     mocked.fetchEditorCatalog.mockResolvedValueOnce({ ...EDITOR_CATALOG, unrestricted: false })
     mocked.createPolicy.mockResolvedValue({ id: "p-group" })
@@ -83,8 +86,10 @@ describe("Políticas de acompanhamento — lista e criação", () => {
     fireEvent.click((await screen.findAllByRole("button", { name: /Nova política/ }))[0]!)
     const form = screen.getByTestId("policy-create-form")
     fireEvent.change(within(form).getByLabelText("Nome da política *"), { target: { value: "TMA do grupo" } })
+    await waitFor(() => expect(within(form).queryByText("Todos os grupos")).not.toBeInTheDocument())
+    expect(within(form).getByRole("button", { name: "Criar política" })).toBeDisabled()
+    await chooseUnit("Grupo", "Atendimento")
     await waitFor(() => expect(within(form).getByRole("button", { name: "Criar política" })).toBeEnabled())
-    expect(within(form).queryByText("Todos os grupos")).not.toBeInTheDocument()
     fireEvent.click(within(form).getByRole("button", { name: "Criar política" }))
     await waitFor(() => expect(mocked.createPolicy.mock.calls[0]?.[0]).toEqual({ key: "TMA_DO_GRUPO", name: "TMA do grupo", scopeType: "GROUP", teamId: "team-1", subteamId: null }))
   })

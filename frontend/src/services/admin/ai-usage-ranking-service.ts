@@ -23,8 +23,8 @@ export type AiUsageRankingParams = {
   modelId?: string
   useCase?: string
   source?: AiUsageSource
-  teamId?: string
-  subteamId?: string
+  teamId?: readonly string[] | undefined
+  subteamId?: readonly string[] | undefined
   /** Estrutura de um líder (ele e quem está abaixo) — o "Ver usuários" de uma linha de liderança. */
   leaderId?: string
   sort: AiUsageRankingSort

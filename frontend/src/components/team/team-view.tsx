@@ -10,6 +10,7 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import type { SubjectRef } from "@/lib/analytics/subject-params"
 import { useTeamMembersQuery, useTeamOverviewQuery } from "@/queries/analytics/use-analytics-queries"
 import { GROUPING_LABELS, type AnalyticsContext, type MemberSituation } from "@/schemas/analytics/analytics.schema"
+import { teamUnitOptionsSource } from "@/services/analytics/analytics-service"
 import type { TeamMembersParams } from "@/services/analytics/analytics-service"
 
 import { StructureUnitCard } from "./structure-unit-card"
@@ -149,7 +150,7 @@ export function TeamView({ context, state, onStateChange, employeeHref }: { cont
                   <p className="text-sm text-muted-foreground">Colaboradores sem gestor intermediário entre eles e esta estrutura.</p>
                 </div>
               ) : null}
-              <TeamFilters filters={filters} options={overview.data.filterOptions} onChange={patchFilters} onClear={() => { setFilters(EMPTY_TEAM_FILTERS); setPage(1) }} />
+              <TeamFilters filters={filters} options={overview.data.filterOptions} source={teamUnitOptionsSource(state.subject)} onChange={patchFilters} onClear={() => { setFilters(EMPTY_TEAM_FILTERS); setPage(1) }} />
               <TeamMemberTable
                 query={members}
                 sort={sort}

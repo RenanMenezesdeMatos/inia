@@ -1,8 +1,8 @@
 import type { ReactNode } from "react"
 import { Network } from "lucide-react"
 
+import { OrgUnitCombobox } from "@/components/admin/shared/org-unit-combobox"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCivilDate } from "@/lib/format/date"
 import type { SourceManager, UserDetail } from "@/schemas/admin/user-account.schema"
@@ -17,18 +17,19 @@ import { SourceManagedNotice } from "./source-managed-notice"
 export function PersonBelongsTo({
   detail,
   detailFailed = false,
-  teams,
   teamId,
   onTeamChange,
   teamManagedBy,
+  canLeaveTeam = true,
   identity = null,
 }: {
   detail: UserDetail | undefined
   detailFailed?: boolean
-  teams: { id: string; name: string }[]
   teamId: string
   onTeamChange: (teamId: string) => void
   teamManagedBy: SourceManager | null
+  /** Quem só administra Grupos não deixa a pessoa sem Grupo (o servidor recusa): a opção não aparece. */
+  canLeaveTeam?: boolean
   /** De onde vem o cadastro (base × feito à mão) e, se for o caso, "Vincular à pessoa da base". */
   identity?: ReactNode
 }) {
@@ -46,18 +47,20 @@ export function PersonBelongsTo({
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="user-team">Grupo</Label>
-        <Select value={teamId} onValueChange={onTeamChange} disabled={teamManagedBy !== null}>
-          <SelectTrigger id="user-team" className="w-full" aria-describedby={teamManagedBy ? "user-team-source" : undefined}>
-            <SelectValue placeholder="Sem grupo" />
-          </SelectTrigger>
-          <SelectContent>
-            {teams.map((team) => (
-              <SelectItem key={team.id} value={team.id}>
-                {team.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <OrgUnitCombobox
+          id="user-team"
+          kind="TEAM"
+          source="people.manage"
+          purpose="reach"
+          eligibility="all"
+          variant="field"
+          value={teamId || null}
+          onChange={(team) => onTeamChange(team?.id ?? "")}
+          emptyLabel={canLeaveTeam ? "Sem grupo" : null}
+          disabled={teamManagedBy !== null}
+          ariaLabel="Grupo"
+          ariaDescribedBy={teamManagedBy ? "user-team-source" : undefined}
+        />
         <SourceManagedNotice id="user-team-source" manager={teamManagedBy} />
       </div>
       {detail ? (

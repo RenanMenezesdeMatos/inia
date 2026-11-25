@@ -21,14 +21,14 @@ import {
 import { issuedTemporaryPasswordSchema, type IssuedTemporaryPassword } from "@/schemas/access/access.schema"
 import type { PlatformRole } from "@/schemas/auth/auth.schema"
 
-export async function fetchUserAccounts(): Promise<UserAccount[]> {
-  return z.array(userAccountSchema).parse(await adminGet("/api/v1/admin/users"))
-}
-
 export type UserListParams = ListParams & {
   role: PlatformRole[]
   active?: boolean
-  teamId?: string
+  teamId?: string[] | undefined
+  subteamId?: string[] | undefined
+  /** Seletores: só quem está num destes Grupos / só estas pessoas (nome do escolhido). */
+  teamIds?: string[]
+  ids?: string[]
   hasAccount?: boolean
   /** true = veio da base (tem matrícula); false = cadastrada à mão. */
   hasMatricula?: boolean
@@ -37,10 +37,10 @@ export type UserListParams = ListParams & {
   lastLoginAt: DateRangeFilter
 }
 
-export async function fetchUserAccountsPage(params: UserListParams): Promise<PageResult<UserAccount>> {
+export async function fetchUserAccountsPage(params: UserListParams, signal?: AbortSignal): Promise<PageResult<UserAccount>> {
   const { lastLoginAt, ...rest } = params
   return pageResultSchema(userAccountSchema).parse(
-    await adminGet(`/api/v1/admin/users${toQueryString({ ...rest, lastLoginFrom: lastLoginAt.from, lastLoginTo: lastLoginAt.to })}`),
+    await adminGet(`/api/v1/admin/users${toQueryString({ ...rest, lastLoginFrom: lastLoginAt.from, lastLoginTo: lastLoginAt.to })}`, signal),
   )
 }
 

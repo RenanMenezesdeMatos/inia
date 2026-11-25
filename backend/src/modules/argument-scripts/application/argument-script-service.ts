@@ -1,9 +1,10 @@
+import { type OrgUnitFilter } from "../../../shared/infrastructure/database/unit-filter.js"
 import { assertNewScopeLinksAdmissible } from "../../org-structure/application/scope-unit-admission.js"
 import { z } from "zod"
 import { universeFromBody } from "../../operating-universe/application/universe-access.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
-import { SqlFilter, booleanParam, respondList, searchParam, type PageResult } from "../../../shared/presentation/list-query.js"
+import { SqlFilter, booleanParam, respondList, searchParam, unitFilterShape, type PageResult } from "../../../shared/presentation/list-query.js"
 import { canManageAllLinks, canSeeAnyLink, resolveScopeLinksForWrite, SCOPE_LINK_FAILURE_MESSAGE, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
 import { scopeLinksInputSchema } from "../../../shared/presentation/scope-links-schema.js"
 import { linkKey, type ScopeLink } from "../../../shared/domain/scope-links/scope-links.js"
@@ -75,8 +76,7 @@ export const listQuerySchema = z.object({
   status: z.enum(["ACTIVE", "ARCHIVED"]).optional(),
   businessDomainId: z.string().uuid().optional(),
   scopeType: z.enum(["ALL_TEAMS"]).optional(),
-  teamId: z.string().uuid().optional(),
-  subteamId: z.string().uuid().optional(),
+  ...unitFilterShape,
   conversion: z.enum(["NATIVE", "LEGACY_UNSTRUCTURED"]).optional(),
   hasDraft: booleanParam,
   operatingUniverse: universeListParam,
@@ -156,12 +156,10 @@ function visibilityClause(filter: SqlFilter, scopes: ManageableScopes, parentTea
 }
 
 /** Filtro de Grupo/Subgrupo da lista: argumentários com algum vínculo (vigente ou rascunho) naquele Grupo/Subgrupo; "todos os grupos" à parte. */
-function linkFilterClause(filter: SqlFilter, input: { scopeType?: "ALL_TEAMS" | undefined; teamId?: string | undefined; subteamId?: string | undefined }) {
+function linkFilterClause(filter: SqlFilter, input: OrgUnitFilter & { scopeType?: "ALL_TEAMS" | undefined }) {
   if (input.scopeType === "ALL_TEAMS") return void filter.add(`q."scopeType" = 'ALL_TEAMS'`)
-  if (!input.teamId && !input.subteamId) return
-  const column = input.subteamId ? "l.subteam_id" : "l.team_id"
-  const value = filter.param(input.subteamId ?? input.teamId)
-  filter.add(`exists (select 1 from argument_script_versions vv join argument_script_version_scopes l on l.version_id = vv.id where vv.script_id = q.id and vv.status in ('DRAFT', 'PUBLISHED') and ${column} = ${value}::uuid)`)
+  const units = filter.units({ team: "l.team_id", subteam: "l.subteam_id" }, input)
+  if (units) filter.add(`exists (select 1 from argument_script_versions vv join argument_script_version_scopes l on l.version_id = vv.id where vv.script_id = q.id and vv.status in ('DRAFT', 'PUBLISHED') and ${units})`)
 }
 
 export async function listArgumentScripts(db: Database, organizationId: string, scopes: ManageableScopes, query: Record<string, unknown>) {

@@ -10,7 +10,7 @@ import { renderWithQuery } from "@/components/analytics/testing/render-with-quer
 import { TeamView } from "./team-view"
 
 const service = vi.hoisted(() => ({ fetchTeamOverview: vi.fn(), fetchTeamMembers: vi.fn() }))
-vi.mock("@/services/analytics/analytics-service", () => service)
+vi.mock("@/services/analytics/analytics-service", () => ({ ...service, teamUnitOptionsSource: () => ({ path: "/api/v1/analytics/team/unit-options" }) }))
 
 beforeAll(installJsdomStubs)
 afterEach(() => {

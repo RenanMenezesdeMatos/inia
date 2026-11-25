@@ -2,6 +2,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { LEGACY_EMPLOYMENT_STATUSES, EMPLOYMENT_STATUSES, isOperationallyEligibleStatus } from "../../people/domain/employment-status.js"
 import type { OperatingUniverse } from "../../operating-universe/domain/operating-universe.js"
 import type { ManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { foldedLikeWords, foldSql } from "../../../shared/infrastructure/database/text-search.js"
 
 /**
  * OPÇÕES DE GRUPO E SUBGRUPO para os seletores de alcance (busca + paginação no servidor).
@@ -34,12 +35,6 @@ export type ScopeUnitOption = {
 
 export const PRODUCTION_STATUSES: readonly string[] = [...EMPLOYMENT_STATUSES, ...LEGACY_EMPLOYMENT_STATUSES].filter((status) => isOperationallyEligibleStatus(status))
 
-/** Comparação sem maiúsculas nem acentos (o mesmo nos dois lados), sem depender da extensão `unaccent`. */
-const FROM = "ÁÀÂÃÄÅáàâãäåÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ"
-const TO = "AAAAAAaaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn"
-export const foldSql = (expression: string) => `lower(translate(${expression}, '${FROM}', '${TO}'))`
-export const foldText = (text: string) => text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLocaleLowerCase("pt-BR")
-
 /**
  * Operadores em produção de um Grupo (direto ou pelos Subgrupos dele) ou de um Subgrupo, opcionalmente só de alguns universos.
  * No Grupo são DOIS ramos indexados (`people.team_id`; Subgrupos do Grupo → `people.subteam_id`), o segundo sem quem já contou pelo
@@ -70,8 +65,12 @@ export type ScopeUnitQuery = {
   universes?: readonly OperatingUniverse[] | undefined
   /** Só Subgrupos deste Grupo. */
   teamId?: string | undefined
+  /** Só estes Grupos (e os Subgrupos deles). */
+  withinTeamIds?: readonly string[] | undefined
   /** Só os elegíveis (padrão nas novas escolhas). */
   eligibleOnly: boolean
+  /** Filtros: o Grupo-pai de um Subgrupo do escopo também aparece (nunca vira opção de alcance: `manageable: false`). */
+  includeParentTeams?: boolean | undefined
   /** Só o que a conta administra no escopo da permissão pedida. */
   scopes: ManageableScopes
   cursor?: { name: string; id: string } | undefined
@@ -90,14 +89,26 @@ export async function listScopeUnitOptions(db: Pick<Database, "query">, query: S
   const isTeam = query.kind === "TEAM"
   const unit = isTeam ? "t" : "s"
   const universeExpr = isTeam ? "t.operating_universe" : "coalesce(s.operating_universe, t.operating_universe)"
+  // Nome e, entre Subgrupos de nome igual, o Grupo: os homônimos saem numa ordem que se lê (o id só desempata).
+  const sortExpr = foldSql(isTeam ? "t.name" : "s.name || ' ' || t.name")
   const countExpr = productionCountSql(query.kind, unit, "$2", "$3")
 
   // Escopo de quem pede vale também na consulta por `ids` (run-10 SEA-03): fora dele nada volta — nem nome, nem universo, nem a
   // contagem de operadores. Quem edita um registro precisa administrar todos os vínculos dele, então a edição não perde nada.
+  // Universo do Grupo-pai nos filtros: só pelos Subgrupos que a conta alcança (o irmão de outro universo não aparece nem por inferência).
+  let siblingsInScope = ""
   if (restricted) {
     params.push(teamIds)
     const teamsParam = `$${params.length}::uuid[]`
-    if (isTeam) where.push(`t.id = any(${teamsParam})`)
+    if (isTeam) {
+      // Nos FILTROS (`includeParentTeams`), quem administra só um Subgrupo enxerga também o Grupo-pai dele, para filtrar por Grupo; o
+      // resultado da lista continua restrito ao escopo pelo servidor. No alcance de um cadastro, só o Grupo administrado inteiro.
+      if (query.includeParentTeams) {
+        params.push(subteamIds)
+        siblingsInScope = ` and (su.team_id = any(${teamsParam}) or su.id = any($${params.length}::uuid[]))`
+      }
+      where.push(query.includeParentTeams ? `(t.id = any(${teamsParam}) or exists (select 1 from subteams sp where sp.organization_id = t.organization_id and sp.team_id = t.id and sp.id = any($${params.length}::uuid[])))` : `t.id = any(${teamsParam})`)
+    }
     else {
       params.push(subteamIds)
       where.push(`(s.id = any($${params.length}::uuid[]) or s.team_id = any(${teamsParam}))`)
@@ -109,42 +120,39 @@ export async function listScopeUnitOptions(db: Pick<Database, "query">, query: S
     where.push(`${unit}.id = any($${params.length}::uuid[])`)
   } else {
     // Universo escolhido: só Grupo/Subgrupo classificados nele (Grupo/Subgrupo sem universo não aparece — regra da hierarquia).
-    where.push(`($3::text[] is null or ${universeExpr} = any($3::text[]))`)
+    // Filtro de Grupo: o Grupo de outro universo aparece se tiver Subgrupo do universo escolhido (o Subgrupo pode ter universo próprio).
+    const parentOfUniverse = isTeam && query.includeParentTeams ? ` or exists (select 1 from subteams su where su.organization_id = t.organization_id and su.team_id = t.id and su.operating_universe = any($3::text[])${siblingsInScope})` : ""
+    where.push(`($3::text[] is null or ${universeExpr} = any($3::text[])${parentOfUniverse})`)
     if (query.eligibleOnly) where.push(productionExistsSql(query.kind, unit, "$2", "$3"))
     if (!isTeam && query.teamId) { params.push(query.teamId); where.push(`s.team_id = $${params.length}::uuid`) }
+    if (query.withinTeamIds) { params.push([...query.withinTeamIds]); where.push(`t.id = any($${params.length}::uuid[])`) }
     // Cada palavra da busca precisa aparecer no nome (no Subgrupo, no dele ou no do Grupo-pai): "cobranca tarde" acha "Cobrança › Tarde".
-    const words = foldText(query.search?.trim() ?? "").split(/\s+/).filter(Boolean).slice(0, 8)
-    for (const word of words) {
-      params.push(`%${word.replace(/[\\%_]/g, (match) => `\\${match}`)}%`)
+    for (const word of foldedLikeWords(query.search)) {
+      params.push(word)
       where.push(`${foldSql(isTeam ? "t.name" : "t.name || ' ' || s.name")} like $${params.length}`)
     }
     if (query.cursor) {
       params.push(query.cursor.name, query.cursor.id)
-      where.push(`(${foldSql(`${unit}.name`)}, ${unit}.id) > ($${params.length - 1}::text, $${params.length}::uuid)`)
+      where.push(`(${sortExpr}, ${unit}.id) > ($${params.length - 1}::text, $${params.length}::uuid)`)
     }
   }
   params.push(query.ids ? query.ids.length : query.limit + 1)
   const sql = isTeam
-    ? `select t.id, t.name, null::uuid team_id, null::text team_name, t.operating_universe, ${countExpr} production_operators, ${foldSql("t.name")} sort_name
+    ? `select t.id, t.name, null::uuid team_id, null::text team_name, t.operating_universe, ${countExpr} production_operators, ${sortExpr} sort_name
          from teams t where t.organization_id = $1 and ${where.join(" and ")}
-        order by ${foldSql("t.name")}, t.id limit $${params.length}`
-    : `select s.id, s.name, t.id team_id, t.name team_name, ${universeExpr} operating_universe, ${countExpr} production_operators, ${foldSql("s.name")} sort_name
+        order by ${sortExpr}, t.id limit $${params.length}`
+    : `select s.id, s.name, t.id team_id, t.name team_name, ${universeExpr} operating_universe, ${countExpr} production_operators, ${sortExpr} sort_name
          from subteams s join teams t on t.id = s.team_id and t.organization_id = s.organization_id
         where s.organization_id = $1 and ${where.join(" and ")}
-        order by ${foldSql("s.name")}, s.id limit $${params.length}`
+        order by ${sortExpr}, s.id limit $${params.length}`
   const result = await db.query<Row>(sql, params)
   const rows = query.ids ? result.rows : result.rows.slice(0, query.limit)
-  const items = rows.map((row): ScopeUnitOption => ({
-    kind: query.kind,
-    id: row.id,
-    name: row.name,
-    teamId: row.team_id,
-    teamName: row.team_name,
-    operatingUniverse: row.operating_universe,
-    productionOperators: row.production_operators,
-    eligible: row.production_operators > 0,
-    manageable: query.scopes.unrestricted || query.scopes.allTeams || (isTeam ? query.scopes.teamIds.has(row.id) : query.scopes.subteamIds.has(row.id) || (row.team_id !== null && query.scopes.teamIds.has(row.team_id))),
-  }))
+  const items = rows.map((row): ScopeUnitOption => {
+    const manageable = query.scopes.unrestricted || query.scopes.allTeams || (isTeam ? query.scopes.teamIds.has(row.id) : query.scopes.subteamIds.has(row.id) || (row.team_id !== null && query.scopes.teamIds.has(row.team_id)))
+    // Grupo trazido só como pai (filtro): nome e universo. A contagem é do Grupo inteiro, fora do alcance de quem pede (run-13 CFA-01).
+    const productionOperators = manageable ? row.production_operators : 0
+    return { kind: query.kind, id: row.id, name: row.name, teamId: row.team_id, teamName: row.team_name, operatingUniverse: row.operating_universe, productionOperators, eligible: productionOperators > 0, manageable }
+  })
   const last = rows[rows.length - 1]
   const hasMore = !query.ids && result.rows.length > query.limit
   return { items, nextCursor: hasMore && last ? { name: last.sort_name, id: last.id } : null }

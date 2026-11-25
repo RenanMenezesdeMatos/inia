@@ -41,7 +41,6 @@ export type UsabilityMeta = z.infer<typeof metaSchema>
 export const metricDefinitionSchema = z.object({ id: z.string(), tab: z.string(), label: z.string(), definition: z.string(), formula: z.string(), unit: z.string(), source: z.string(), denominator: z.string().nullable(), dedupe: z.string(), coverage: z.string(), exclusions: z.string(), limitations: z.string() })
 export type MetricDefinition = z.infer<typeof metricDefinitionSchema>
 
-const option = z.object({ id: z.string(), name: z.string() })
 export const contextSchema = z.object({
   meta: metaSchema,
   periods: z.array(z.object({ value: z.string(), label: z.string() })),
@@ -51,11 +50,8 @@ export const contextSchema = z.object({
   dictionary: z.array(metricDefinitionSchema),
   segments: z.object({ people: z.record(z.string(), z.string()), feedbacks: z.record(z.string(), z.string()) }),
   options: z.object({
-    teams: z.array(option),
-    subteams: z.array(option.extend({ teamId: z.string().nullable() })),
     jobTitles: z.array(z.string()),
     accessRoles: z.array(z.object({ code: z.string(), name: z.string() })),
-    leaders: z.array(option).nullable(),
     screens: z.array(z.object({ key: z.string(), label: z.string(), area: z.string(), areaLabel: z.string() })),
     features: z.array(z.object({ key: z.string(), label: z.string() })),
     devices: z.array(z.string()),

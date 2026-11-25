@@ -18,7 +18,7 @@ describe("Equipe do Supervisor", () => {
     expect(overview.units).toEqual([])
     expect(overview.summary).toEqual({ memberCount: 2, withinReference: 0, belowReference: 2, improving: 0, noData: 0, unacknowledgedFollowUps: 3, pendingReviews: 1 })
     expect(overview.filterOptions.indicators.map((indicator) => indicator.code)).toEqual(["TMA", "NOTA_URA"])
-    expect(overview.filterOptions.subteams).toEqual([{ id: IDS.subteamA1, name: "Chat", teamId: IDS.teamA }])
+
   })
 
   it("linha do colaborador: situação, PRV oficial, média (não é PRV), indicadores em atenção, acompanhamentos e pendências", async () => {
@@ -50,7 +50,7 @@ describe("Equipe do Supervisor", () => {
     expect((await buildTeamMembersPage(repository, scope, subject, "2026-09", { ...base, search: "ana" })).items.map((row) => row.name)).toEqual(["Ana Operadora"])
     expect((await buildTeamMembersPage(repository, scope, subject, "2026-09", { ...base, attentionIndicatorCode: "NOTA_URA" })).items.map((row) => row.name)).toEqual(["Bia Operadora"])
     expect((await buildTeamMembersPage(repository, scope, subject, "2026-09", { ...base, pendingOnly: true })).items.map((row) => row.name)).toEqual(["Ana Operadora", "Bia Operadora"])
-    expect((await buildTeamMembersPage(repository, scope, subject, "2026-09", { ...base, subteamId: IDS.subteamA1 })).items.map((row) => row.name)).toEqual(["Ana Operadora"])
+    expect((await buildTeamMembersPage(repository, scope, subject, "2026-09", { ...base, subteamId: [IDS.subteamA1] })).items.map((row) => row.name)).toEqual(["Ana Operadora"])
     expect((await buildTeamMembersPage(repository, scope, subject, "2026-09", { ...base, situation: "WITHIN_REFERENCE" })).total).toBe(0)
   })
 

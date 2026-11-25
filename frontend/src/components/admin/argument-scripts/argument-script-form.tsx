@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 import { Plus, Trash2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import { KnowledgeCombobox } from "@/components/admin/knowledge/knowledge-combobox"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,7 +18,7 @@ import {
   type GuidanceModality,
   type PointGroupMode,
 } from "@/schemas/admin/argument-script.schema"
-import type { KnowledgeDocument } from "@/schemas/admin/knowledge.schema"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 /**
  * Campos do argumentário. Cada seção guarda um SIGNIFICADO diferente (situação, exceção, o que deve/pode ser feito, o que
@@ -142,20 +143,20 @@ export const SECTION_HELP = {
   source: "Opcional. O argumentário complementa o procedimento: não altera prazos, alçadas ou condições definidos na base.",
 } as const
 
-const NO_DOCUMENT = "__none__"
 
 export function ArgumentScriptContentFields({
   value,
   onChange,
-  knowledgeDocuments,
+  universe,
   knowledgeUnavailable = false,
-  currentSourceTitle,
+  currentSource,
 }: {
   value: ContentFormState
   onChange: (next: ContentFormState) => void
-  knowledgeDocuments: KnowledgeDocument[] | undefined
+  /** Só bases do universo do argumentário (ou ainda sem universo); a já escolhida continua à vista. */
+  universe: OperatingUniverse | null
   knowledgeUnavailable?: boolean
-  currentSourceTitle?: string | null
+  currentSource?: { id: string; title: string | null } | null
 }) {
   const set = (patch: Partial<ContentFormState>) => onChange({ ...value, ...patch })
 
@@ -163,8 +164,6 @@ export function ArgumentScriptContentFields({
   const updateGroup = (uid: string, update: (group: PointGroupRow) => PointGroupRow) => set({ requiredPoints: value.requiredPoints.map((group) => (group.uid === uid ? update(group) : group)) })
   const updateAvoid = (uid: string, patch: Partial<AvoidRow>) => set({ avoid: value.avoid.map((row) => (row.uid === uid ? { ...row, ...patch } : row)) })
 
-  const documentOptions = [...(knowledgeDocuments ?? [])].sort((a, b) => a.title.localeCompare(b.title, "pt-BR"))
-  const selectedMissing = value.sourceDocumentId !== null && !documentOptions.some((document) => document.id === value.sourceDocumentId)
 
   return (
     <div className="space-y-4">
@@ -312,24 +311,19 @@ export function ArgumentScriptContentFields({
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="argument-script-source-document">Documento da Base de conhecimento</Label>
-            <Select
-              value={value.sourceDocumentId ?? NO_DOCUMENT}
-              onValueChange={(next) => set({ sourceDocumentId: next === NO_DOCUMENT ? null : next })}
-              disabled={knowledgeDocuments === undefined && !knowledgeUnavailable}
-            >
-              <SelectTrigger id="argument-script-source-document" className="w-full">
-                <SelectValue placeholder="Nenhum" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_DOCUMENT}>Nenhum</SelectItem>
-                {selectedMissing ? <SelectItem value={value.sourceDocumentId!}>{currentSourceTitle ?? "Documento atual"}</SelectItem> : null}
-                {documentOptions.map((document) => (
-                  <SelectItem key={document.id} value={document.id}>
-                    {document.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {knowledgeUnavailable ? null : (
+              <KnowledgeCombobox
+                id="argument-script-source-document"
+                value={value.sourceDocumentId}
+                onChange={(document) => set({ sourceDocumentId: document?.id ?? null })}
+                universe={universe}
+                emptyLabel="Nenhum"
+                current={currentSource ?? null}
+                variant="field"
+                ariaLabel="Documento da Base de conhecimento"
+              />
+            )}
+            {knowledgeUnavailable && value.sourceDocumentId ? <p className="text-sm">{(currentSource?.id === value.sourceDocumentId ? currentSource.title : null) ?? "Documento atual"}</p> : null}
             {knowledgeUnavailable ? <p className="text-xs text-muted-foreground">A lista de documentos não está disponível para o seu perfil — use a referência ao lado.</p> : null}
           </div>
           <div className="space-y-1.5">

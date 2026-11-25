@@ -1,3 +1,5 @@
+import { refinedUnits, unitMatcher } from "../../../shared/infrastructure/database/unit-filter.js"
+import { reachOfPeople, type OptionsReach } from "../../org-structure/application/scoped-options.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
@@ -55,8 +57,8 @@ export const CALENDAR_SCHEDULE_NONE = "NONE"
 
 export type TeamCalendarFilters = {
   search?: string | undefined
-  teamId?: string | undefined
-  subteamId?: string | undefined
+  teamId?: readonly string[] | undefined
+  subteamId?: readonly string[] | undefined
   jobTitles?: readonly string[] | undefined
   scheduleTypes?: readonly string[] | undefined
   attention?: readonly CalendarAttentionKind[] | undefined
@@ -106,7 +108,8 @@ export type TeamCalendarPerson = {
 
 export type TeamCalendarView = {
   anchor: { personId: string; name: string; role: string; roleLabel: string }
-  availableAnchors: { personId: string; name: string; roleLabel: string; teamName: string | null }[]
+  /** Há outra estrutura para abrir (a escolha vem em lotes por `/team-calendar/options`). */
+  hasOtherAnchors: boolean
   range: { from: string; to: string }
   today: string
   timeZone: string
@@ -116,10 +119,8 @@ export type TeamCalendarView = {
   classifications: { code: WorkdayClassificationKind; label: string }[]
   justifiedReasons: { code: JustifiedAbsenceReason; label: string }[]
   canProvision: boolean
-  /** Todos os operadores diretos da âncora (sem filtro/página) — para o seletor de "Provisionar exceção". */
-  provisionablePeople: { personId: string; name: string }[]
-  /** Opções de filtro derivadas da própria equipe: grupos/subgrupos, cargos (`job_title`) e regimes presentes. */
-  filterOptions: { teams: { id: string; name: string; subteams: { id: string; name: string }[] }[]; jobTitles: string[]; scheduleTypes: { code: string; label: string }[]; attention: { code: CalendarAttentionKind; label: string }[] }
+  /** Opções de filtro derivadas da própria equipe: cargos (`job_title`) e regimes presentes (Grupo e Subgrupo vêm em lotes). */
+  filterOptions: { jobTitles: string[]; scheduleTypes: { code: string; label: string }[]; attention: { code: CalendarAttentionKind; label: string }[] }
   /** Página corrente da lista de colaboradores: `total` = após os filtros; `totalPeople` = operadores diretos da âncora. */
   pagination: { page: number; pageSize: number; total: number; totalPeople: number }
   people: TeamCalendarPerson[]
@@ -249,10 +250,11 @@ export async function buildTeamCalendar(db: Database, analytics: AnalyticsReadRe
         },
       }
   })
-  const filtered = applyCalendarFilters(resolvedPeople, input.filters ?? {}, input.filters?.scheduledToday === undefined ? undefined : await eligibleTodayBySubject(db, ids, resolvedPeople, today, timeZone, now))
+  const filters = { ...input.filters, ...(await refinedUnits(db, input.filters ?? {})) }
+  const filtered = applyCalendarFilters(resolvedPeople, filters, input.filters?.scheduledToday === undefined ? undefined : await eligibleTodayBySubject(db, ids, resolvedPeople, today, timeZone, now))
   return {
     anchor: { personId: anchor.id, name: anchor.name, role: anchor.role, roleLabel: personLevelLabel(anchor) },
-    availableAnchors: anchorsWithTeams(scope).map((node) => ({ personId: node.id, name: node.name, roleLabel: personLevelLabel(node), teamName: node.teamName })),
+    hasOtherAnchors: anchorsWithTeams(scope).some((node) => node.id !== anchor.id),
     range: { from: input.from, to: input.to },
     today,
     timeZone,
@@ -261,11 +263,20 @@ export async function buildTeamCalendar(db: Database, analytics: AnalyticsReadRe
     classifications: WORKDAY_CLASSIFICATIONS.map((code) => ({ code, label: WORKDAY_CLASSIFICATION_LABELS[code] })),
     justifiedReasons: JUSTIFIED_ABSENCE_REASONS.map((code) => ({ code, label: JUSTIFIED_ABSENCE_REASON_LABELS[code] })),
     canProvision: people.length > 0,
-    provisionablePeople: people.map((person) => ({ personId: person.id, name: person.name })),
     filterOptions: calendarFilterOptions(resolvedPeople),
     pagination: { page, pageSize, total: filtered.length, totalPeople: resolvedPeople.length },
     people: filtered.slice((page - 1) * pageSize, page * pageSize),
   }
+}
+
+/**
+ * Opções em lotes do calendário: `anchors` = estruturas que o leitor pode abrir (quem lidera operadores diretos, no alcance dele);
+ * senão, os operadores diretos da âncora — os Grupos/Subgrupos deles (filtros) e as pessoas ("Provisionar exceção").
+ */
+export async function teamCalendarOptionsReach(analytics: AnalyticsReadRepository, user: AuthTokenPayload, input: { anchorId: string | null; anchors: boolean }): Promise<OptionsReach> {
+  const scope = await loadViewerScope(analytics, user, "calendar.manage")
+  if (input.anchors) return reachOfPeople(anchorsWithTeams(scope).map((node) => node.id))
+  return reachOfPeople(directOperatorsOf(scope, resolveAnchor(scope, input.anchorId).id).map((person) => person.id))
 }
 
 /**
@@ -297,16 +308,16 @@ function personNeedsAttention(person: TeamCalendarPerson, kind: CalendarAttentio
   }
 }
 
-/** Busca (nome/cargo, sem acento e sem caixa), grupo/subgrupo, cargo, regime e "atenção" (qualquer um dos marcados). Pura — testável sem banco. */
+/** Busca (nome/cargo, sem acento e sem caixa), grupo/subgrupo (já refinados por `refinedUnits`), cargo, regime e "atenção" (qualquer um dos marcados). Pura — testável sem banco. */
 export function applyCalendarFilters(people: TeamCalendarPerson[], filters: TeamCalendarFilters, eligibleToday?: ReadonlyMap<string, boolean>): TeamCalendarPerson[] {
   const term = filters.search ? fold(filters.search) : ""
   const jobTitles = filters.jobTitles?.length ? new Set(filters.jobTitles) : null
   const scheduleTypes = filters.scheduleTypes?.length ? new Set(filters.scheduleTypes) : null
   const attention = filters.attention?.length ? filters.attention : null
+  const inUnits = unitMatcher(filters)
   return people.filter((person) => {
     if (term && !fold(person.name).includes(term) && !(person.jobTitle && fold(person.jobTitle).includes(term))) return false
-    if (filters.teamId && person.teamId !== filters.teamId) return false
-    if (filters.subteamId && person.subteamId !== filters.subteamId) return false
+    if (!inUnits(person)) return false
     if (jobTitles && !(person.jobTitle !== null && jobTitles.has(person.jobTitle))) return false
     if (scheduleTypes && !scheduleTypes.has(person.scheduleType ?? CALENDAR_SCHEDULE_NONE)) return false
     if (attention && !attention.some((kind) => personNeedsAttention(person, kind))) return false
@@ -323,16 +334,7 @@ function calendarFilterOptions(people: TeamCalendarPerson[]): TeamCalendarView["
   const jobTitles = [...new Set(people.map((person) => person.jobTitle).filter((title): title is string => title !== null))].sort((a, b) => a.localeCompare(b, "pt-BR"))
   const present = new Set(people.map((person) => person.scheduleType ?? CALENDAR_SCHEDULE_NONE))
   const scheduleTypes = [...SCHEDULE_TYPES.filter((type): type is ScheduleType => present.has(type)).map((type) => ({ code: type as string, label: SCHEDULE_TYPE_LABELS[type] })), ...(present.has(CALENDAR_SCHEDULE_NONE) ? [{ code: CALENDAR_SCHEDULE_NONE, label: "Sem escala configurada" }] : [])]
-  const teams = new Map<string, { id: string; name: string; subteams: Map<string, string> }>()
-  for (const person of people) {
-    if (!person.teamId) continue
-    const team = teams.get(person.teamId) ?? { id: person.teamId, name: person.teamName ?? person.teamId, subteams: new Map<string, string>() }
-    if (person.subteamId) team.subteams.set(person.subteamId, person.subteamName ?? person.subteamId)
-    teams.set(person.teamId, team)
-  }
-  const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name, "pt-BR")
-  const teamOptions = [...teams.values()].map((team) => ({ id: team.id, name: team.name, subteams: [...team.subteams].map(([id, name]) => ({ id, name })).sort(byName) })).sort(byName)
-  return { teams: teamOptions, jobTitles, scheduleTypes, attention: CALENDAR_ATTENTION_KINDS.map((code) => ({ code, label: CALENDAR_ATTENTION_LABELS[code] })) }
+  return { jobTitles, scheduleTypes, attention: CALENDAR_ATTENTION_KINDS.map((code) => ({ code, label: CALENDAR_ATTENTION_LABELS[code] })) }
 }
 
 function addDays(date: string, days: number): string {

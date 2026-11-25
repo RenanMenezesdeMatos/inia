@@ -52,7 +52,7 @@ describe("Workflow — seletores encadeados pelo universo", () => {
   it("etapa Orquestrador num Workflow B2B: só o Orquestrador B2B é oferecido", async () => {
     render(
       <WorkflowUniverseProvider value="B2B">
-        <OrchestratorForm node={node("")} orchestrators={ORCHESTRATORS} teams={[]} onChange={vi.fn()} />
+        <OrchestratorForm node={node("")} orchestrators={ORCHESTRATORS} onChange={vi.fn()} />
       </WorkflowUniverseProvider>,
     )
     fireEvent.click(screen.getByRole("combobox", { name: "Orquestrador" }))
@@ -63,7 +63,7 @@ describe("Workflow — seletores encadeados pelo universo", () => {
   it("Orquestrador já salvo de outro universo fica visível, marcado e com aviso", () => {
     render(
       <WorkflowUniverseProvider value="B2B">
-        <OrchestratorForm node={node("o-b2c")} orchestrators={ORCHESTRATORS} teams={[]} onChange={vi.fn()} />
+        <OrchestratorForm node={node("o-b2c")} orchestrators={ORCHESTRATORS} onChange={vi.fn()} />
       </WorkflowUniverseProvider>,
     )
     expect(screen.getByRole("combobox", { name: "Orquestrador" })).toHaveTextContent("INIA Consumidor (de outro universo: B2C)")

@@ -23,7 +23,7 @@ const conversation = (id: string, overrides: Partial<MonitoredConversation> = {}
   firstUserMessage: "Como faço mudança de endereço?", lastMessage: { role: "assistant", preview: "Acesse o app e…", channel: "voice" }, owner: OWNER, ...overrides,
 })
 const message = (content: string, role: "user" | "assistant", cursor: string, overrides: Partial<ConversationMessage> = {}): ConversationMessage => ({ id: `m-${cursor}`, channel: "chat", role, content, agentId: null, occurredAt: "2026-09-29T11:00:00.000Z", cursor, supportMaterials: [], ...overrides })
-const PAGE = (items: MonitoredConversation[]) => ({ items, total: items.length, page: 1, pageSize: 20, filterOptions: { operators: [{ id: "p-larissa", name: "Larissa Monteiro" }], teams: [{ id: "t-b2c", name: "B2C" }], subteams: [{ id: "s-at", name: "Atendimento", teamId: "t-b2c" }] } })
+const PAGE = (items: MonitoredConversation[]) => ({ items, total: items.length, page: 1, pageSize: 20 })
 
 beforeAll(installJsdomStubs)
 const NO_REPLIES = { from: "2026-10-12", to: "2026-11-10", replies: 0, averageSeconds: null, medianSeconds: null, p90Seconds: null }

@@ -17,7 +17,7 @@ export function createFakeKnowledgeOptions(all: KnowledgeOption[], groupDefaults
       .filter((item) => !filter.agentUniverse || !item.operatingUniverse || item.operatingUniverse === filter.agentUniverse)
       .filter((item) => !filter.universe || (filter.universe === "PENDING" ? item.operatingUniverse === null : item.operatingUniverse === filter.universe))
       .filter((item) => fitsAgentScope(item, filter.agentScope, undefined))
-      .filter((item) => !filter.teamId || item.orgScopes.some((scope) => scope.teamId === filter.teamId))
+      .filter((item) => !filter.teamId || item.orgScopes.some((scope) => scope.teamId !== null && filter.teamId!.includes(scope.teamId)))
       .filter((item) => !filter.state || item.state === filter.state)
       .filter((item) => !filter.excludeIds?.includes(item.id))
       .filter((item) => !filter.search || foldText([item.title, ...item.subjects, ...item.products].join(" ")).includes(foldText(filter.search)))

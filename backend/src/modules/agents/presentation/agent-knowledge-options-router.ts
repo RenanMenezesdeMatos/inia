@@ -2,7 +2,7 @@ import { Router, type Request } from "express"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
-import { searchParam } from "../../../shared/presentation/list-query.js"
+import { searchParam, unitFilterShape } from "../../../shared/presentation/list-query.js"
 import { getManageableScopes } from "../../auth/application/manageable-scopes.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 import { OPERATING_UNIVERSES } from "../../operating-universe/domain/operating-universe.js"
@@ -40,8 +40,7 @@ const filterSchema = z.object({
   universe: z.enum([...OPERATING_UNIVERSES, "PENDING"]).optional(),
   agentScope: agentScopeSchema.optional(),
   scopeType: z.enum(["ALL_TEAMS"]).optional(),
-  teamId: uuid.optional(),
-  subteamId: uuid.optional(),
+  ...unitFilterShape,
   productId: uuid.optional(),
   subjectScopeType: z.enum(["ALL_SUBJECTS"]).optional(),
   subjectId: uuid.optional(),

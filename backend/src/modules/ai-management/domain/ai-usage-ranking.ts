@@ -1,3 +1,4 @@
+import { unitFilterShape } from "../../../shared/presentation/list-query.js"
 import { z } from "zod"
 import type { HierarchyRole } from "../../performance-analytics/domain/hierarchy-levels.js"
 
@@ -68,8 +69,7 @@ export const aiUsageRankingQuerySchema = z
     modelId: z.uuid().optional(),
     useCase: code(40).optional(),
     source: z.enum(AI_USAGE_SOURCES).optional(),
-    teamId: z.uuid().optional(),
-    subteamId: z.uuid().optional(),
+    ...unitFilterShape,
     /** Estrutura de um líder (ele e quem está abaixo por `reports_to_id`) — o "ver usuários" de uma linha de liderança. */
     leaderId: z.uuid().optional(),
     sort: z.enum(AI_USAGE_RANKING_SORTS).default("REQUESTS"),

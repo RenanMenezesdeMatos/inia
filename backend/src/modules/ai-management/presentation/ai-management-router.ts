@@ -10,8 +10,9 @@ import { createConnection, deleteConnection, getConnection, listConnections, lis
 import { addPricing, createModel, deleteModel, getModel, listModels, listPricing, testModel, updateModel } from "../application/ai-model-service.js"
 import { activateDraft, deactivatePolicy, discardDraft, legacyEnvironmentSummary, listRouting, saveDraft, testRouting } from "../application/ai-policy-service.js"
 import { connectionsHealth, usageDashboard } from "../application/ai-usage-service.js"
-import { usageRanking, usageRankingContext, type RankingViewer } from "../application/ai-usage-ranking-service.js"
+import { usageRanking, usageRankingContext, usageRankingOptionsReach, type RankingViewer } from "../application/ai-usage-ranking-service.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { respondScopedOptions, UNIT_OPTION_KINDS } from "../../org-structure/presentation/options-query.js"
 
 /**
  * /api/v1/admin/ai — administração de Providers, Conexões, Modelos, Roteamento, Custos e
@@ -90,6 +91,10 @@ export function createAiManagementRouter(context: Omit<AiAdminContext, "db"> & {
   // Pessoa = a da CONTA lida do banco neste request (escopo "Minha estrutura"), não a foto do JWT.
   const rankingViewer = (request: Request): RankingViewer => ({ organizationId: sessionUser(request).organizationId, personId: request.access!.personId, access: request.access! })
   router.get("/usage/ranking/context", can("AI_USAGE_RANKING_READ"), async (request, response) => response.json({ data: await usageRankingContext(context, rankingViewer(request)) }))
+  router.get("/usage/ranking/unit-options", can("AI_USAGE_RANKING_READ"), async (request, response) => {
+    const viewer = rankingViewer(request)
+    response.json({ data: await respondScopedOptions(context.db, viewer.organizationId, () => usageRankingOptionsReach(viewer), request.query, { kinds: UNIT_OPTION_KINDS }) })
+  })
   router.get("/usage/ranking", can("AI_USAGE_RANKING_READ"), async (request, response) => response.json({ data: await usageRanking(context, rankingViewer(request), request.query) }))
 
   // Conexões

@@ -5,7 +5,8 @@ import { ArrowLeft, Bot, ChevronDown, Link2Off, Loader2, Save, SearchX, Send, Un
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { ListOrgScopeFilter, ListSearchInput, ListSelectFilter, ListToolbar, ListUniverseFilter, optionsFromLabels, universeChoiceOf } from "@/components/admin/shared/list/list-filters"
+import { ListSearchInput, ListSelectFilter, ListToolbar, ListUniverseFilter, optionsFromLabels, universeChoiceOf } from "@/components/admin/shared/list/list-filters"
+import { ListOrgScopeFilter } from "@/components/admin/shared/list/org-scope-filter"
 import { ListPagination } from "@/components/admin/shared/list/list-pagination"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -20,9 +21,9 @@ import type { UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
 import { cn } from "@/lib/utils"
 import { useAgentKnowledgeLinksPreviewQuery, useAgentKnowledgeLinksQuery, useApplyAgentKnowledgeLinksMutation } from "@/queries/admin/use-agent-queries"
 import { adminQueryKeys } from "@/queries/admin/admin-query-keys"
-import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import { AGENT_TYPE_LABELS, type AgentType } from "@/schemas/admin/agent.schema"
+import { hasOrgUnits } from "@/lib/admin/unit-selection"
 import {
   KNOWLEDGE_LINK_STATE_LABELS,
   knowledgeLinkChangesOf,
@@ -56,7 +57,6 @@ const plural = (count: number, one: string, many: string) => `${count} ${count =
  */
 export function KnowledgeAgentsPicker({ documentId, title, baseInUse, className }: { documentId: string; title: string; baseInUse: boolean; className?: string }) {
   const canManageAgents = (useCurrentUserQuery().data?.access.permissions ?? []).includes("agents.manage")
-  const teamsQuery = useTeamsQuery()
   const [tab, setTab] = useState<KnowledgeLinkTab>("LINKED")
   const [search, setSearch] = useState("")
   const [agentType, setAgentType] = useState<AgentType | undefined>(undefined)
@@ -84,7 +84,7 @@ export function KnowledgeAgentsPicker({ documentId, title, baseInUse, className 
     ...(debouncedSearch ? { search: debouncedSearch } : {}),
     ...(agentType ? { agentType } : {}),
     ...(universe ? { universe } : {}),
-    ...(orgScope.subteamId ? { subteamId: orgScope.subteamId } : orgScope.teamId ? { teamId: orgScope.teamId } : orgScope.scopeType ? { scopeType: "ALL_TEAMS" as const } : {}),
+    ...(hasOrgUnits(orgScope) ? { teamId: orgScope.teamId, subteamId: orgScope.subteamId } : orgScope.scopeType ? { scopeType: "ALL_TEAMS" as const } : {}),
     ...(state ? { state } : {}),
   }
   // Filtro ou aba novos: volta à primeira página (ajuste na renderização, sem render extra).
@@ -111,7 +111,7 @@ export function KnowledgeAgentsPicker({ documentId, title, baseInUse, className 
   const pendingPublish = data?.pendingPublish ?? []
   const draftChanges = knowledgeLinkChangesOf(choices, pendingPublish, "DRAFT")
   const publishChanges = knowledgeLinkChangesOf(choices, pendingPublish, "PUBLISH")
-  const hasFilters = Boolean(debouncedSearch || agentType || universe || orgScope.teamId || orgScope.subteamId || orgScope.scopeType || state)
+  const hasFilters = Boolean(debouncedSearch || agentType || universe || hasOrgUnits(orgScope) || orgScope.scopeType || state)
   const clearFilters = () => {
     setSearch("")
     setAgentType(undefined)
@@ -199,7 +199,7 @@ export function KnowledgeAgentsPicker({ documentId, title, baseInUse, className 
           >
             <ListSelectFilter<AgentType> value={agentType} onChange={setAgentType} options={optionsFromLabels(AGENT_TYPE_LABELS)} allLabel="Qualquer tipo" ariaLabel="Filtrar por tipo de agente" />
             <ListUniverseFilter value={universe} onChange={(next) => { setUniverse(next); setOrgScope({}) }} />
-            <ListOrgScopeFilter value={orgScope} onChange={setOrgScope} teams={teamsQuery.data} universe={universeChoiceOf(universe)} globalLabel="Só de todos os grupos" />
+            <ListOrgScopeFilter value={orgScope} onChange={setOrgScope} permission="agents.manage" universe={universeChoiceOf(universe)} globalLabel="Só de todos os grupos" />
             <ListSelectFilter<KnowledgeLinkState> value={state} onChange={setState} options={optionsFromLabels(KNOWLEDGE_LINK_STATE_LABELS)} allLabel="Qualquer situação" ariaLabel="Filtrar por situação do agente" />
           </ListToolbar>
 

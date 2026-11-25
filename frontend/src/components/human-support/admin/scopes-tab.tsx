@@ -14,12 +14,12 @@ import { useSupportScopesQuery, useSupportSettingsQuery } from "@/queries/human-
 import type { ScopeNode } from "@/schemas/human-support/admin.schema"
 
 import { ScopeDetail } from "./scope-detail"
-import type { ScopeFilterValue } from "./scope-filter"
+import type { OrgUnitIds } from "@/lib/admin/unit-selection"
 import { findNode, originText } from "./scope-rules"
 
 const ORGANIZATION = "__organization__"
 
-type Props = { onShowAnjos: (filter: ScopeFilterValue) => void; onOpenSettings: () => void; canGrantRoles: boolean }
+type Props = { onShowAnjos: (filter: OrgUnitIds) => void; onOpenSettings: () => void; canGrantRoles: boolean }
 
 /**
  * Escopos do Anjo: à esquerda, a hierarquia Organização › Grupo › Subgrupo com o estado EM VIGOR de cada um e de onde ele vem; à
@@ -104,7 +104,7 @@ export function ScopesTab({ onShowAnjos, onOpenSettings, canGrantRoles }: Props)
               masterOn={masterOn}
               canGrantRoles={canGrantRoles}
               onOpenSettings={onOpenSettings}
-              onShowAnjos={() => onShowAnjos(selected.parent ? { teamId: selected.parent.id, subteamId: selected.node.id } : { teamId: selected.node.id })}
+              onShowAnjos={() => onShowAnjos(selected.parent ? { teamId: [selected.parent.id], subteamId: [selected.node.id] } : { teamId: [selected.node.id] })}
             />
           ) : (
             <OrganizationDetail tree={tree} masterOn={masterOn} onOpenSettings={onOpenSettings} />

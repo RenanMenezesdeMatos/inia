@@ -148,14 +148,10 @@ export const evidenceCallSchema = z.object({ operatorLabel: z.string(), context:
 export type EvidenceCall = z.infer<typeof evidenceCallSchema>
 
 const labelsSchema = z.record(z.string(), z.string())
-const teamWithSubteamsSchema = z.object({ id: z.string(), name: z.string(), subteams: z.array(z.object({ id: z.string(), name: z.string() })).default([]) })
 export const metaSchema = z.object({
   indicators: z.array(z.object({ id: z.string(), code: z.string(), name: z.string(), unit: z.string(), direction: z.string() })),
   /** Sinais da chamada com chamada boa × ruim cadastrada (podem ser o resultado da análise). */
   signals: z.array(z.object({ id: z.string(), name: z.string(), good: z.string(), bad: z.string() })).default([]),
-  teams: z.array(teamWithSubteamsSchema),
-  /** `wholeTeam` = administra o Grupo inteiro (pede análise do Grupo ou de qualquer Subgrupo); senão, só dos Subgrupos listados. */
-  manageableTeams: z.array(teamWithSubteamsSchema.extend({ wholeTeam: z.boolean().default(true) })),
   datasets: z.array(z.object({ id: z.string(), key: z.string(), label: z.string(), description: z.string(), version: z.number(), hasAnswerKey: z.boolean(), calls: z.number(), operators: z.number(), operatorList: z.array(z.object({ ref: z.string(), name: z.string() })).default([]), periods: z.array(z.string()).default([]) })),
   periods: z.array(z.string()),
   capabilities: z.object({ canManage: z.boolean(), canRunSynthetic: z.boolean() }),
@@ -230,7 +226,7 @@ export type RelevantPractice = z.infer<typeof relevantPracticeSchema>
 export const previewSchema = z.object({ items: z.array(guidanceItemSchema), text: z.string() })
 export type GuidancePreview = z.infer<typeof previewSchema>
 
-export const patternFiltersSchema = z.object({ indicatorId: z.string().optional(), teamId: z.string().optional(), origin: dataOriginSchema.optional(), reviewStatus: reviewStatusSchema.optional(), available: z.boolean().optional(), context: z.string().optional(), search: z.string().optional(), page: z.number(), pageSize: z.number() })
+export const patternFiltersSchema = z.object({ indicatorId: z.string().optional(), teamId: z.array(z.string()).optional(), origin: dataOriginSchema.optional(), reviewStatus: reviewStatusSchema.optional(), available: z.boolean().optional(), context: z.string().optional(), search: z.string().optional(), page: z.number(), pageSize: z.number() })
 export type PatternFilters = z.infer<typeof patternFiltersSchema>
 export const createAnalysisInputSchema = z.object({ origin: dataOriginSchema, syntheticDatasetId: z.string().nullable().optional(), teamId: z.string().nullable().optional(), subteamId: z.string().nullable().optional(), outcomeSource: z.enum(["INDICATOR", "CALL_SIGNAL"]).optional(), indicatorDefinitionId: z.string().nullable().optional(), channelFlagId: z.string().nullable().optional(), referencePeriods: z.array(z.string()).min(1), contextLevel: z.enum(["REASON", "SUB_REASON"]), comparison: z.string(), modelMode: z.enum(["REAL", "SIMULATED_ANSWER_KEY"]) })
 export type CreateAnalysisInput = z.infer<typeof createAnalysisInputSchema>

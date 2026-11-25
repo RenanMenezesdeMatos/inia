@@ -1,3 +1,4 @@
+import { type OrgUnitFilter } from "../../../shared/infrastructure/database/unit-filter.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { resourceScopeOf, type ResourceScope } from "../../../shared/domain/scope-links/resource-scope.js"
@@ -48,9 +49,9 @@ export function applyOrchestratorManageableFilter(scopes: ManageableScopes, filt
 }
 
 /** Filtros de Grupo/Subgrupo da lista: Grupo = algum vínculo naquele Grupo (inteiro ou Subgrupo dele); Subgrupo = vínculo naquele Subgrupo. */
-export function applyOrchestratorScopeListFilter(filter: SqlFilter, input: { scopeType?: string | undefined; teamId?: string | undefined; subteamId?: string | undefined }, alias = "q") {
-  if (input.subteamId) filter.add(`exists (select 1 from assistant_orchestrator_scope_links l where l.orchestrator_id = ${alias}.id and l.subteam_id = ${filter.param(input.subteamId)}::uuid)`)
-  else if (input.teamId) filter.add(`exists (select 1 from assistant_orchestrator_scope_links l where l.orchestrator_id = ${alias}.id and l.team_id = ${filter.param(input.teamId)}::uuid)`)
+export function applyOrchestratorScopeListFilter(filter: SqlFilter, input: OrgUnitFilter & { scopeType?: string | undefined }, alias = "q") {
+  const units = filter.units({ team: "l.team_id", subteam: "l.subteam_id" }, input)
+  if (units) filter.add(`exists (select 1 from assistant_orchestrator_scope_links l where l.orchestrator_id = ${alias}.id and ${units})`)
   else if (input.scopeType === "ALL_TEAMS") filter.add(`${alias}."scopeType" = 'ALL_TEAMS'`)
 }
 

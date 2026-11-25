@@ -41,8 +41,10 @@ export function createOrgStructureRouter(db: Database) {
   // filtro, que segue correto pra elas. `unrestricted` diz ao frontend se deve oferecer a opção
   // "Todos os grupos" — reaproveita getManageableScopes, nunca uma segunda lógica de permissão.
   router.get("/teams/manageable", async (request, response) => {
-    const allTeams = await fetchTeamsWithSubteams(db, sessionUser(request).organizationId)
     const scopes = await getManageableScopes(db, sessionUser(request), "configuration.manage")
+    // `summary=true`: só se alcança a organização inteira; as opções vêm em lotes de `/admin/scope-units`.
+    if (request.query.summary === "true") return response.json({ data: { teams: [], unrestricted: coversOrganization(scopes) } })
+    const allTeams = await fetchTeamsWithSubteams(db, sessionUser(request).organizationId)
     if (scopes.unrestricted || scopes.allTeams) {
       return response.json({ data: { teams: allTeams, unrestricted: true } })
     }

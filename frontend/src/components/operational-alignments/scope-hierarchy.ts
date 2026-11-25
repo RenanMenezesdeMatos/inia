@@ -15,15 +15,3 @@ export function teamsForUniverse(teams: readonly ScopeTeam[], universe: Operatin
     .map((team) => ({ ...team, subteams: team.subteams.filter((subteam) => fits(subteam.operatingUniverse, universe)) }))
     .filter((team) => (team.manageable && fits(team.operatingUniverse, universe)) || team.subteams.length > 0)
 }
-
-export function subteamsOf(teams: readonly ScopeTeam[], teamId: string | null | undefined) {
-  return teams.find((team) => team.id === teamId)?.subteams ?? []
-}
-
-/** O que sobrevive de uma escolha de Grupo/Subgrupo depois de mudar o universo (ou o Grupo). */
-export function keepCompatibleScope(teams: readonly ScopeTeam[], universe: OperatingUniverse | null | undefined, teamId: string | null | undefined, subteamId: string | null | undefined) {
-  const allowed = teamsForUniverse(teams, universe)
-  const team = allowed.find((entry) => entry.id === teamId) ?? null
-  const subteam = team?.subteams.find((entry) => entry.id === subteamId) ?? null
-  return { teamId: team?.id ?? null, subteamId: subteam?.id ?? null }
-}

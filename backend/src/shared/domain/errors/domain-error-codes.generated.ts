@@ -10518,7 +10518,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "Posição da lista inválida — recarregue as opções."
     ],
     "refs": [
-      "backend/src/modules/org-structure/presentation/scope-unit-options-router.ts"
+      "backend/src/modules/org-structure/presentation/options-query.ts"
     ]
   },
   {

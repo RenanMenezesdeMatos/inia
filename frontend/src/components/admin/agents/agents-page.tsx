@@ -20,26 +20,27 @@ import {
   ListBooleanFilter,
   ListDateRangeFilter,
   ListMultiSelectFilter,
-  ListOrgScopeFilter,
   ListUniverseFilter,
   universeChoiceOf,
   ListSearchInput,
-  ListSelectFilter,
   ListToolbar,
   optionsFromLabels,
 } from "@/components/admin/shared/list/list-filters"
+import { KnowledgeCombobox } from "@/components/admin/knowledge/knowledge-combobox"
+import { ListOrgScopeFilter, useOrgScopeAfterUniverse } from "@/components/admin/shared/list/org-scope-filter"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
 import { useAgentsPageQuery, useToggleAgentActiveMutation } from "@/queries/admin/use-agent-queries"
 import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
-import { useKnowledgeDocumentsQuery } from "@/queries/admin/use-knowledge-queries"
-import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
+import { useKnowledgeOptionQuery } from "@/queries/admin/use-knowledge-queries"
 import type { OrgScopeFilter } from "@/lib/admin/list-query"
-import { filterByUniverse, orgScopeAfterUniverseChange, orgScopePatch, scopesFitOrgScope } from "@/lib/operating-universe/hierarchy"
+import { fitsUniverse, orgScopePatch, scopesFitOrgScope } from "@/lib/operating-universe/hierarchy"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import type { AgentListParams } from "@/services/admin/agent-service"
 import { resourceScopeLabel } from "@/lib/scope-links/scope-links"
 import { AGENT_TYPE_COLORS, AGENT_TYPE_LABELS, agentPublicationLabel, type Agent } from "@/schemas/admin/agent.schema"
+import type { SubteamParents } from "@/lib/admin/unit-selection"
+import { parentsOf, useSelectedOrgUnits } from "@/components/admin/shared/list/org-unit-multi-filter"
 
 import { AGENT_TYPE_ICONS } from "./agent-visuals"
 import { DeleteAgentDialog } from "./agent-lifecycle/delete-agent-dialog"
@@ -205,18 +206,18 @@ const DEFAULT_FILTERS: AgentFilters = { search: "", agentType: [], createdAt: {}
 const AGENT_TYPE_OPTIONS = optionsFromLabels(AGENT_TYPE_LABELS)
 
 export function AgentsPage() {
-  const teamsQuery = useTeamsQuery()
-  const knowledgeQuery = useKnowledgeDocumentsQuery()
   const list = useAdminListState({ storageKey: "agents", defaultFilters: DEFAULT_FILTERS })
   const pageQuery = useAgentsPageQuery(list.params)
   const canManageInactive = useCurrentUserQuery().data?.access.capabilities.canManageInactiveAgents ?? false
   // Hierarquia universo → Grupo/Subgrupo → base: cada filtro só oferece o que cabe nos de cima; trocar um de cima limpa os de baixo.
   const universeChoice = universeChoiceOf(list.filters.operatingUniverse)
   const currentScope: OrgScopeFilter = { scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }
-  const knowledgeOptions = (universe: OperatingUniverse | undefined, scope: OrgScopeFilter) =>
-    filterByUniverse(knowledgeQuery.data ?? [], universe).filter((document) => scopesFitOrgScope(document.orgScopes, scope, teamsQuery.data))
-  const keepKnowledge = (id: string | undefined, universe: OperatingUniverse | undefined, scope: OrgScopeFilter) =>
-    id && knowledgeOptions(universe, scope).some((document) => document.id === id) ? id : undefined
+  const scopeAfterUniverse = useOrgScopeAfterUniverse("agents.manage", currentScope)
+  const scopeParents = parentsOf(useSelectedOrgUnits("agents.manage", "SUBTEAM", currentScope.subteamId ?? []).units)
+  const chosenKnowledge = useKnowledgeOptionQuery(list.filters.knowledgeDocumentId).data
+  // A base que deixou de caber no universo ou no Grupo/Subgrupo sai do filtro (a que ainda não chegou fica: o servidor é quem filtra).
+  const keepKnowledge = (id: string | undefined, universe: OperatingUniverse | undefined, scope: OrgScopeFilter, parents: SubteamParents) =>
+    id && chosenKnowledge && (!fitsUniverse(chosenKnowledge.operatingUniverse, universe) || !scopesFitOrgScope(chosenKnowledge.orgScopes, scope, parents)) ? undefined : id
 
   return (
     <section className="space-y-4">
@@ -256,23 +257,23 @@ export function AgentsPage() {
               value={list.filters.operatingUniverse}
               onChange={(operatingUniverse) => {
                 const universe = universeChoiceOf(operatingUniverse)
-                const scope = orgScopeAfterUniverseChange(currentScope, teamsQuery.data, universe)
-                list.patchFilters({ operatingUniverse, ...orgScopePatch(scope), knowledgeDocumentId: keepKnowledge(list.filters.knowledgeDocumentId, universe, scope) })
+                const scope = scopeAfterUniverse(universe)
+                list.patchFilters({ operatingUniverse, ...orgScopePatch(scope), knowledgeDocumentId: keepKnowledge(list.filters.knowledgeDocumentId, universe, scope, scopeParents) })
               }}
             />
             <ListOrgScopeFilter
-              teams={teamsQuery.data}
+              permission="agents.manage"
               universe={universeChoice}
               value={currentScope}
-              onChange={(scope) => list.patchFilters({ ...orgScopePatch(scope), knowledgeDocumentId: keepKnowledge(list.filters.knowledgeDocumentId, universeChoice, scope) })}
+              onChange={(scope, parents) => list.patchFilters({ ...orgScopePatch(scope), knowledgeDocumentId: keepKnowledge(list.filters.knowledgeDocumentId, universeChoice, scope, parents) })}
             />
-            <ListSelectFilter
+            <KnowledgeCombobox
               value={list.filters.knowledgeDocumentId}
-              onChange={(value) => list.setFilter("knowledgeDocumentId", value)}
-              options={knowledgeOptions(universeChoice, currentScope).map((document) => ({ value: document.id, label: document.title }))}
-              allLabel="Qualquer base de conhecimento"
+              onChange={(document) => list.setFilter("knowledgeDocumentId", document?.id)}
+              universe={universeChoice}
+              scope={currentScope}
+              emptyLabel="Qualquer base de conhecimento"
               ariaLabel="Filtrar por base de conhecimento"
-              className="sm:max-w-64"
             />
             <ListDateRangeFilter label="Criado em" value={list.filters.createdAt} onChange={(value) => list.setFilter("createdAt", value)} />
           </ListToolbar>

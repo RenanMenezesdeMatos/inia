@@ -5,6 +5,8 @@ import { Inbox, Lock, SearchX, ShieldAlert } from "lucide-react"
 
 import { AnalyticsCard, AnalyticsEmptyState, AnalyticsErrorState, TableSkeleton } from "@/components/analytics/analytics-states"
 import { ListDateRangeFilter, ListSearchInput, ListSelectFilter, ListToolbar } from "@/components/admin/shared/list/list-filters"
+import { OrgUnitMultiFilter } from "@/components/admin/shared/list/org-unit-multi-filter"
+import { PersonCombobox } from "@/components/admin/shared/person-combobox"
 import { ListPagination } from "@/components/admin/shared/list/list-pagination"
 import { FeedbackReviewSheet } from "@/components/feedback-review/feedback-review-sheet"
 import { Badge } from "@/components/ui/badge"
@@ -13,8 +15,9 @@ import type { DateRangeFilter } from "@/lib/admin/list-query"
 import { formatDateTime } from "@/lib/format/date"
 import { useFeedbackQualityAccessQuery, useFeedbackReviewsQuery } from "@/queries/feedback-review/use-feedback-reviews"
 import { SECTION_LABELS, STATUS_FILTER_LABELS, type FeedbackReviewListParams, type FeedbackReviewQueueItem, type FeedbackReviewStatus } from "@/schemas/feedback-review/feedback-review.schema"
+import { idsOrUndefined } from "@/lib/admin/unit-selection"
 
-type Filters = { search: string; status: FeedbackReviewStatus | "ALL" | undefined; collaboratorId: string | undefined; teamId: string | undefined; section: "STRENGTH" | "OPPORTUNITY" | undefined; period: DateRangeFilter }
+type Filters = { search: string; status: FeedbackReviewStatus | "ALL" | undefined; collaboratorId: string | undefined; teamId: string[] | undefined; section: "STRENGTH" | "OPPORTUNITY" | undefined; period: DateRangeFilter }
 const DEFAULT_FILTERS: Filters = { search: "", status: undefined, collaboratorId: undefined, teamId: undefined, section: undefined, period: {} }
 const STATUS_OPTIONS = (["APPROVED_UNCHANGED", "APPROVED_EDITED", "REJECTED", "ALL"] as const).map((value) => ({ value, label: STATUS_FILTER_LABELS[value] }))
 const SECTION_OPTIONS = (["STRENGTH", "OPPORTUNITY"] as const).map((value) => ({ value, label: SECTION_LABELS[value] }))
@@ -36,6 +39,9 @@ export function FeedbackReviewView({ openReviewId, onOpenReview }: { openReviewI
   }
   return <FeedbackQualityQueue openReviewId={openReviewId} onOpenReview={onOpenReview} scopeLabel={access.data.scopes.map((scope) => scope.label).join(" · ")} />
 }
+
+/** Colaboradores e equipes com item de QA no escopo, em lotes. */
+const OPTIONS_SOURCE = { path: "/api/v1/feedback-quality-reviews/filter-options" }
 
 function FeedbackQualityQueue({ openReviewId, onOpenReview, scopeLabel }: { openReviewId: string | null; onOpenReview: (reviewId: string | null) => void; scopeLabel: string }) {
   const list = useAdminListState({ storageKey: "feedback-review", defaultFilters: DEFAULT_FILTERS, defaultPageSize: 20 })
@@ -63,8 +69,8 @@ function FeedbackQualityQueue({ openReviewId, onOpenReview, scopeLabel }: { open
           onClearFilters={list.resetFilters}
         >
           <ListSelectFilter value={list.filters.status} onChange={(value) => list.setFilter("status", value)} options={STATUS_OPTIONS} allLabel={STATUS_FILTER_LABELS.PENDING_REVIEW} ariaLabel="Filtrar por status" />
-          <ListSelectFilter value={list.filters.collaboratorId} onChange={(value) => list.setFilter("collaboratorId", value)} options={(data?.filterOptions.collaborators ?? []).map((entry) => ({ value: entry.id, label: entry.name }))} allLabel="Todos os colaboradores" ariaLabel="Filtrar por colaborador" />
-          {(data?.filterOptions.teams.length ?? 0) > 1 ? <ListSelectFilter value={list.filters.teamId} onChange={(value) => list.setFilter("teamId", value)} options={(data?.filterOptions.teams ?? []).map((entry) => ({ value: entry.id, label: entry.name }))} allLabel="Todas as equipes" ariaLabel="Filtrar por equipe" /> : null}
+          <PersonCombobox source={OPTIONS_SOURCE} value={list.filters.collaboratorId} onChange={(person) => list.setFilter("collaboratorId", person?.id)} teamId={list.filters.teamId} emptyLabel="Todos os colaboradores" emptyText="Nenhum colaborador com item de QA no seu escopo." ariaLabel="Filtrar por colaborador" />
+          <OrgUnitMultiFilter kind="TEAM" source={OPTIONS_SOURCE} value={list.filters.teamId ?? []} onChange={(ids) => list.setFilter("teamId", idsOrUndefined(ids))} anyLabel="Todas as equipes" ariaLabel="Filtrar por equipe" showChips />
           <ListSelectFilter value={list.filters.section} onChange={(value) => list.setFilter("section", value)} options={SECTION_OPTIONS} allLabel="Todos os tipos de ponto" ariaLabel="Filtrar por tipo de ponto" />
           <ListDateRangeFilter label="Data do atendimento" value={list.filters.period} onChange={(value) => list.setFilter("period", value)} />
         </ListToolbar>

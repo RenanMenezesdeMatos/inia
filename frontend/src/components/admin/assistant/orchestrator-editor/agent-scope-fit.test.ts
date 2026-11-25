@@ -34,9 +34,13 @@ describe("Agent × alcance do Orquestrador com vários Grupos (espelho de scopes
 
   it("filtro da lista: Grupo = algum vínculo nele; Subgrupo = o próprio ou o Grupo-pai inteiro, nunca o irmão", () => {
     const legacy = () => false
-    expect(agentFitsListScope(groups("a"), { teamId: "a" }, TEAMS, legacy)).toBe(true)
-    expect(agentFitsListScope(groups("a"), { subteamId: "a1" }, TEAMS, legacy)).toBe(true)
-    expect(agentFitsListScope({ scopeType: "GROUPS", scopeLinks: [{ teamId: "a", subteamId: "a2" }] }, { subteamId: "a1" }, TEAMS, legacy)).toBe(false)
-    expect(agentFitsListScope(groups("b"), { teamId: "a" }, TEAMS, legacy)).toBe(false)
+    const parents = new Map([["a1", "a"], ["a2", "a"], ["b1", "b"]])
+    const onlyA2 = { scopeType: "GROUPS", scopeLinks: [{ teamId: "a", subteamId: "a2" }] }
+    expect(agentFitsListScope(groups("a"), { teamId: ["a"] }, parents, legacy)).toBe(true)
+    expect(agentFitsListScope(groups("a"), { subteamId: ["a1"] }, parents, legacy)).toBe(true)
+    expect(agentFitsListScope(onlyA2, { subteamId: ["a1"] }, parents, legacy)).toBe(false)
+    expect(agentFitsListScope(groups("b"), { teamId: ["a"] }, parents, legacy)).toBe(false)
+    expect(agentFitsListScope(groups("b"), { teamId: ["a", "b"] }, parents, legacy)).toBe(true)
+    expect(agentFitsListScope(onlyA2, { teamId: ["b"], subteamId: ["a1", "a2"] }, parents, legacy)).toBe(true)
   })
 })

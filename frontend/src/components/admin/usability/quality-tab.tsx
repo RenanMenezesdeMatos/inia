@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react"
 
+import { PersonCombobox } from "@/components/admin/shared/person-combobox"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,7 +15,6 @@ import {
   useReprocessUsabilityMutation,
   useUnclassifyUsabilityPersonMutation,
   useUpdateUsabilitySettingsMutation,
-  useUsabilityPeopleSearch,
   useUsabilityTabQuery,
 } from "@/queries/admin/use-usability-queries"
 import type { Coverage, MetricDefinition, UsabilityQuality } from "@/schemas/admin/usability.schema"
@@ -38,6 +38,8 @@ const INSTRUMENTATION_LABELS: Record<string, string> = { INSTRUMENTED: "Instrume
 const TIMESTAMP_LABELS: Record<string, string> = { OK: "No horário", LATE: "Chegou atrasado (> 10 min)", CLIENT_CLOCK_CORRECTED: "Relógio do aparelho corrigido" }
 const CLASSIFICATION_LABELS: Record<string, string> = { TEST: "Teste", DEMO: "Demonstração", AUTOMATION: "Automação" }
 const RUN_LABELS: Record<string, string> = { ACTIVITY: "Sessões e tempo ativo", ELIGIBILITY: "Elegibilidade", RETENTION: "Retenção" }
+
+const PEOPLE_SOURCE = { path: "/api/v1/admin/usability/users/options" }
 
 export function QualityTab({ query }: { query: UsabilityQuery }) {
   const result = useUsabilityTabQuery("quality", query)
@@ -231,13 +233,11 @@ function ManageCard({ collection, classifications }: { collection: Collection; c
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
   const [reprocessReason, setReprocessReason] = useState("")
-  const [search, setSearch] = useState("")
   const [person, setPerson] = useState<{ id: string; name: string } | null>(null)
   const [kind, setKind] = useState<"TEST" | "DEMO" | "AUTOMATION">("TEST")
   const [classifyReason, setClassifyReason] = useState("")
   const [removing, setRemoving] = useState<string | null>(null)
   const [removeReason, setRemoveReason] = useState("")
-  const results = useUsabilityPeopleSearch(person ? "" : search)
 
   function saveSettings(event: FormEvent) {
     event.preventDefault()
@@ -250,7 +250,7 @@ function ManageCard({ collection, classifications }: { collection: Collection; c
   function addClassification(event: FormEvent) {
     event.preventDefault()
     if (!person) return
-    classify.mutate({ personId: person.id, classification: kind, reason: classifyReason }, { onSuccess: () => { setPerson(null); setSearch(""); setClassifyReason("") } })
+    classify.mutate({ personId: person.id, classification: kind, reason: classifyReason }, { onSuccess: () => { setPerson(null); setClassifyReason("") } })
   }
 
   return (
@@ -305,31 +305,8 @@ function ManageCard({ collection, classifications }: { collection: Collection; c
           <p className="text-sm font-medium">Contas de teste, demonstração e automação</p>
           <p className="text-xs text-muted-foreground">Ficam fora dos números por padrão (há filtro para incluí-las).</p>
           <form className="space-y-2" onSubmit={addClassification} aria-label="Classificar pessoa">
-            {person ? (
-              <div className="flex items-center justify-between rounded-md border px-3 py-1.5 text-sm">
-                {person.name}
-                <Button type="button" variant="ghost" size="sm" onClick={() => setPerson(null)}>
-                  Trocar
-                </Button>
-              </div>
-            ) : (
-              <>
-                <Label htmlFor="usability-classify-search" className="text-xs">Pessoa</Label>
-                <Input id="usability-classify-search" type="search" placeholder="Nome ou matrícula" value={search} onChange={(event) => setSearch(event.target.value)} autoComplete="off" />
-                {search.trim().length >= 2 ? (
-                  <ul className="max-h-36 overflow-y-auto rounded-md border" aria-label="Pessoas encontradas">
-                    {results.data?.map((option) => (
-                      <li key={option.id}>
-                        <button type="button" className="w-full px-3 py-1.5 text-left text-sm hover:bg-muted" onClick={() => setPerson({ id: option.id, name: option.name })}>
-                          {option.name} <span className="text-xs text-muted-foreground">{option.matricula ?? ""}</span>
-                        </button>
-                      </li>
-                    ))}
-                    {results.data?.length === 0 ? <li className="px-3 py-1.5 text-xs text-muted-foreground">Ninguém encontrado.</li> : null}
-                  </ul>
-                ) : null}
-              </>
-            )}
+            <Label htmlFor="usability-classify-person" className="text-xs">Pessoa</Label>
+            <PersonCombobox id="usability-classify-person" source={PEOPLE_SOURCE} variant="field" value={person?.id} onChange={(next) => setPerson(next ? { id: next.id, name: next.name } : null)} emptyLabel="Escolha a pessoa" ariaLabel="Pessoa" searchesMatricula />
             <Select value={kind} onValueChange={(value) => setKind(value as typeof kind)}>
               <SelectTrigger aria-label="Classificação">
                 <SelectValue />

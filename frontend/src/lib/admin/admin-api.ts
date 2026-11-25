@@ -23,8 +23,8 @@ async function parseError(response: Response): Promise<AdminApiError> {
   }
 }
 
-export async function adminGet<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, { credentials: "include", cache: "no-store" })
+export async function adminGet<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, { credentials: "include", cache: "no-store", ...(signal ? { signal } : {}) })
   if (!response.ok) throw await parseError(response)
   const payload = (await response.json()) as { data: T }
   return payload.data

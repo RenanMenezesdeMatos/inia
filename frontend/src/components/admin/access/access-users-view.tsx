@@ -7,13 +7,14 @@ import { toast } from "sonner"
 import { AnalyticsEmptyState, AnalyticsErrorState, TableSkeleton } from "@/components/analytics/analytics-states"
 import { ListSearchInput, ListSelectFilter, ListToolbar, optionsFromLabels } from "@/components/admin/shared/list/list-filters"
 import { ListPagination } from "@/components/admin/shared/list/list-pagination"
+import { TeamSubteamFilters, useTeamSubteamActiveFilters, type OrgUnitChange } from "@/components/admin/shared/list/team-subteam-filters"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useAdminListState } from "@/hooks/use-admin-list-state"
+import { useAdminListState, useClampListPage } from "@/hooks/use-admin-list-state"
 import { DISABLED_REASON_LABELS, NETWORK_ISSUE_LABELS, networkSignals } from "@/lib/access/network-access-labels"
 import { formatDateTime } from "@/lib/format/date"
 import { useDisableUserAccessMutation, useEnableUserAccessMutation, useIdentifiedUsersQuery, useIssueTemporaryPasswordMutation } from "@/queries/access/use-access"
@@ -26,7 +27,9 @@ import { NetworkLoginCheckDialog } from "./network-login-check-dialog"
 import { NetworkSignalList } from "./network-signal-list"
 import { TemporaryPasswordDialog } from "./temporary-password-dialog"
 
-const DEFAULT_FILTERS: { search: string; status: AccessStatus | undefined; networkIssue: boolean | undefined } = { search: "", status: undefined, networkIssue: undefined }
+type AccessFilters = { search: string; status: AccessStatus | undefined; networkIssue: boolean | undefined; teamId: string[] | undefined; subteamId: string[] | undefined }
+const DEFAULT_FILTERS: AccessFilters = { search: "", status: undefined, networkIssue: undefined, teamId: undefined, subteamId: undefined }
+const SCOPE_SOURCE = "access.users.view"
 const STATUS_OPTIONS = optionsFromLabels(ACCESS_STATUS_LABELS)
 // Só com o login pela rede ligado: cadastro sem matrícula, matrícula inválida ou repetida, pessoa inativa.
 const ISSUE_OPTIONS = [{ value: "true" as const, label: "Com impedimento para entrar" }]
@@ -43,7 +46,7 @@ export type AccessFocus = { search: string; personId: string | null }
  */
 export function AccessUsersView({ canManageUsers, canAssignRoles, focus = null }: { canManageUsers: boolean; canAssignRoles: boolean; focus?: AccessFocus | null }) {
   const list = useAdminListState({ storageKey: "access-users", defaultFilters: DEFAULT_FILTERS, initialFilters: focus ? { ...DEFAULT_FILTERS, search: focus.search } : undefined, defaultPageSize: 20 })
-  const query = useIdentifiedUsersQuery({ search: list.params.search || undefined, status: list.params.status, networkIssue: list.params.networkIssue, page: list.params.page, pageSize: list.params.pageSize })
+  const query = useIdentifiedUsersQuery({ search: list.params.search || undefined, status: list.params.status, networkIssue: list.params.networkIssue, teamId: list.params.teamId, subteamId: list.params.subteamId, page: list.params.page, pageSize: list.params.pageSize })
   const [openAccountId, setOpenAccountId] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingAction>(null)
   // Chamada pelo "Novo usuário" com uma matrícula que já existe: abre "Habilitar acesso" da pessoa assim que ela aparece na
@@ -63,6 +66,18 @@ export function AccessUsersView({ canManageUsers, canAssignRoles, focus = null }
     if (result.credential === "TEMPORARY_PASSWORD") setIssued(result)
     else toast.success(`Acesso de ${result.name} habilitado. Login: ${result.matricula} e a senha do Windows.`)
   }
+  // A lista encolheu (ex.: acesso desabilitado com a situação filtrada) e a página ficou vazia: volta para a última que existe.
+  useClampListPage(query.data, list.page, list.pageSize, list.setPage)
+  const scopeValue = { teamId: list.filters.teamId, subteamId: list.filters.subteamId }
+  const setScope: OrgUnitChange = (scope) => list.patchFilters(scope)
+  const scopeFilters = useTeamSubteamActiveFilters(SCOPE_SOURCE, scopeValue, setScope)
+  const status = list.filters.status
+  const activeFilters = [
+    ...(list.filters.search.trim() ? [{ key: "search", label: `Busca: ${list.filters.search.trim()}`, onClear: () => list.setFilter("search", "") }] : []),
+    ...scopeFilters,
+    ...(status ? [{ key: "status", label: `Situação: ${ACCESS_STATUS_LABELS[status]}`, onClear: () => list.setFilter("status", undefined) }] : []),
+    ...(list.filters.networkIssue ? [{ key: "networkIssue", label: "Com impedimento para entrar", onClear: () => list.setFilter("networkIssue", undefined) }] : []),
+  ]
   const ttlHours = query.data?.temporaryPasswordTtlHours ?? null
   return (
     <section className="space-y-4">
@@ -79,13 +94,15 @@ export function AccessUsersView({ canManageUsers, canAssignRoles, focus = null }
         search={<ListSearchInput value={list.filters.search} onChange={(value) => list.setFilter("search", value)} placeholder="Buscar por nome, e-mail ou matrícula" ariaLabel="Buscar pessoa" pending={list.isSearchPending} />}
         hasActiveFilters={list.hasActiveFilters}
         onClearFilters={list.resetFilters}
+        activeFilters={activeFilters}
       >
+        <TeamSubteamFilters source={SCOPE_SOURCE} value={scopeValue} onChange={setScope} showChips={false} />
         <ListSelectFilter value={list.filters.status} onChange={(value) => list.setFilter("status", value)} options={STATUS_OPTIONS} allLabel="Qualquer situação" ariaLabel="Filtrar por situação do acesso" />
         {networkLogin ? <ListSelectFilter value={list.filters.networkIssue ? "true" : undefined} onChange={(value) => list.setFilter("networkIssue", value ? true : undefined)} options={ISSUE_OPTIONS} allLabel="Com e sem impedimento" ariaLabel="Filtrar por impedimento para entrar pela rede" /> : null}
       </ListToolbar>
       {query.isPending ? <TableSkeleton rows={5} /> : null}
       {query.isError ? <AnalyticsErrorState error={query.error} onRetry={() => void query.refetch()} /> : null}
-      {query.data && query.data.items.length === 0 ? <AnalyticsEmptyState icon={list.hasActiveFilters ? SearchX : KeyRound} title={list.hasActiveFilters ? "Ninguém com esse filtro" : "Nenhuma pessoa no seu escopo"} /> : null}
+      {query.data && query.data.total === 0 ? <AnalyticsEmptyState icon={list.hasActiveFilters ? SearchX : KeyRound} title={list.hasActiveFilters ? "Ninguém com essa busca ou esses filtros" : "Nenhuma pessoa no seu escopo"} action={list.hasActiveFilters ? <Button size="sm" variant="outline" onClick={list.resetFilters}>Limpar filtros</Button> : undefined} /> : null}
       {query.data && query.data.items.length > 0 ? (
         <>
           <ul className="divide-y divide-border rounded-xl border" aria-label="Pessoas e acessos">

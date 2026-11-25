@@ -1,3 +1,4 @@
+import { unitFilterSql, type OrgUnitFilter } from "../../../shared/infrastructure/database/unit-filter.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { CHAT_DISLIKE_REASON_LABELS, CHAT_DISLIKE_REASONS, type ChatDislikeReason } from "../domain/assistant-interaction-rating.js"
@@ -27,7 +28,7 @@ export type ReplyFunnel = { period: { from: string; to: string }; cutoffs: { dis
 /** Recorte de quem lê: a organização inteira ou listas de Grupos e Subgrupos (Grupo cobre os Subgrupos dele). Nunca "Minha estrutura". */
 export type FunnelPlacement = { kind: "ORGANIZATION" } | { kind: "UNITS"; teamIds: readonly string[]; subteamIds: readonly string[] }
 /** Filtro da tela, dentro do recorte. */
-export type FunnelFilter = { teamId?: string | null; subteamId?: string | null }
+export type FunnelFilter = OrgUnitFilter
 
 /** Contagens do período (o que o banco devolve). */
 export type FunnelCounts = {
@@ -128,8 +129,8 @@ export async function replyFunnel(db: Pick<Database, "query">, organizationId: s
   const inTeam = (param: string) => `(p.team_id = any(${param}::uuid[]) or st.team_id = any(${param}::uuid[]))`
   const clauses: string[] = []
   if (placement.kind === "UNITS") clauses.push(`(${inTeam(add([...placement.teamIds]))} or p.subteam_id = any(${add([...placement.subteamIds])}::uuid[]))`)
-  if (filter.teamId) clauses.push(inTeam(add([filter.teamId])))
-  if (filter.subteamId) clauses.push(`p.subteam_id = ${add(filter.subteamId)}::uuid`)
+  const units = unitFilterSql(filter, add, { team: ["p.team_id", "st.team_id"], subteam: "p.subteam_id" })
+  if (units) clauses.push(units)
   const placed = clauses.length > 0 ? clauses.join(" and ") : "true"
   const row = (
     await db.query<CountsRow>(

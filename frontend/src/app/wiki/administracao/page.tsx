@@ -168,6 +168,8 @@ export default function AdministrationPage() {
         <p>
           <strong className="font-medium text-foreground">Liberação de acesso.</strong> A aba Acessos lista as pessoas que a plataforma já identifica
           com a situação do login: <em>Desabilitado</em> (sem conta ou conta desabilitada), <em>Aguardando troca de senha</em> ou <em>Ativo</em>.{" "}
+          Em Acessos e em Pessoas, a busca procura em todas as pessoas do seu escopo e se soma aos filtros de Grupo e Subgrupo, que aceitam várias
+          escolhas (o Subgrupo refina o Grupo dele; os outros Grupos entram inteiros).{" "}
           <strong className="font-medium text-foreground">Habilitar acesso</strong> cria só a conta de login da pessoa (pede o e-mail quando ela
           ainda não tem conta — nunca um cadastro novo, nunca um papel) e gera uma senha temporária aleatória, mostrada uma única vez para ser copiada e
           entregue; ela vale por tempo limitado. No primeiro login com essa senha, a pessoa só consegue criar a própria senha (Nova senha e Confirmar

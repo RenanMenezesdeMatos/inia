@@ -128,14 +128,11 @@ export function createIndicatorRuleRouter(db: Database) {
     }
     // Grupo/Subgrupo: o ALCANCE do indicador (250) chega lá — "Todos", o Grupo inteiro, ou o próprio Subgrupo (Subgrupo não leva os
     // irmãos) — ou alguma regra de cálculo viva é daquele Grupo/Subgrupo. Uma linha por indicador (`exists`).
-    if (input.subteamId) {
-      const subteam = filter.param(input.subteamId)
-      filter.add(`(q."scopeType" = 'ALL_TEAMS' or exists (select 1 from indicator_scope_links l where l.indicator_id = q.id and (l.subteam_id = ${subteam}::uuid or (l.subteam_id is null and l.team_id = (select st.team_id from subteams st where st.id = ${subteam}::uuid))))
-        or exists (select 1 from indicator_calculation_rules r where r.indicator_definition_id = q.id and r.deleted_at is null and r.subteam_id = ${subteam}::uuid))`)
-    } else if (input.teamId) {
-      const team = filter.param(input.teamId)
-      filter.add(`(q."scopeType" = 'ALL_TEAMS' or exists (select 1 from indicator_scope_links l where l.indicator_id = q.id and l.team_id = ${team}::uuid)
-        or exists (select 1 from indicator_calculation_rules r where r.indicator_definition_id = q.id and r.deleted_at is null and r.team_id = ${team}::uuid))`)
+    const linkUnits = filter.units({ team: "l.team_id", subteam: "l.subteam_id", wholeParent: true }, input)
+    const ruleUnits = filter.units({ team: "r.team_id", subteam: "r.subteam_id" }, input)
+    if (linkUnits && ruleUnits) {
+      filter.add(`(q."scopeType" = 'ALL_TEAMS' or exists (select 1 from indicator_scope_links l where l.indicator_id = q.id and ${linkUnits})
+        or exists (select 1 from indicator_calculation_rules r where r.indicator_definition_id = q.id and r.deleted_at is null and ${ruleUnits}))`)
     } else if (input.scopeType === "ALL_TEAMS") {
       filter.add(`(q."scopeType" = 'ALL_TEAMS' or exists (select 1 from indicator_calculation_rules r where r.indicator_definition_id = q.id and r.deleted_at is null and r.scope_type = 'ALL_TEAMS'))`)
     }

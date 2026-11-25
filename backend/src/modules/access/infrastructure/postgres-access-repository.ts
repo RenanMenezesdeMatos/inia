@@ -114,15 +114,13 @@ export function createPostgresAccessRepository(db: Queryable): AccessRepository 
       const row = result.rows[0]
       return row ? { id: row.id, accountId: row.user_account_id, roleCode: row.role_code, scope: toScope(row), revoked: row.revoked_at !== null } : null
     },
-    async scopeOptions(organizationId, visibility) {
-      const [teams, subteams] = await Promise.all([
-        db.query<{ id: string; name: string }>(`select t.id, t.name from teams t where t.organization_id = $1 and ($2::boolean or t.id = any($3::uuid[])) order by t.name`, [organizationId, visibility.organizationWide, visibility.teamIds]),
-        db.query<{ id: string; name: string; team_id: string; team_name: string }>(
-          `select st.id, st.name, st.team_id, t.name team_name from subteams st join teams t on t.id = st.team_id where t.organization_id = $1 and ($2::boolean or st.team_id = any($3::uuid[]) or st.id = any($4::uuid[])) order by t.name, st.name`,
-          [organizationId, visibility.organizationWide, visibility.teamIds, visibility.subteamIds],
-        ),
-      ])
-      return { teams: teams.rows, subteams: subteams.rows.map((row) => ({ id: row.id, name: row.name, teamId: row.team_id, teamName: row.team_name })) }
+    async scopeReach(organizationId, visibility) {
+      const result = await db.query<{ has_groups: boolean; has_subgroups: boolean }>(
+        `select exists (select 1 from teams t where t.organization_id = $1 and ($2::boolean or t.id = any($3::uuid[]))) has_groups,
+                exists (select 1 from subteams st where st.organization_id = $1 and ($2::boolean or st.team_id = any($3::uuid[]) or st.id = any($4::uuid[]))) has_subgroups`,
+        [organizationId, visibility.organizationWide, visibility.teamIds, visibility.subteamIds],
+      )
+      return { hasGroups: result.rows[0]!.has_groups, hasSubgroups: result.rows[0]!.has_subgroups }
     },
 
     async createAssignment({ organizationId, accountId, roleCode, scope, grantedByAccountId, actorPersonId, permissions, at }) {

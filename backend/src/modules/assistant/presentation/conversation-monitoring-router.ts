@@ -1,3 +1,4 @@
+import { unitFilterShape } from "../../../shared/presentation/list-query.js"
 import { Router } from "express"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
@@ -7,15 +8,15 @@ import { visibleCards } from "../../leadership-analytics/application/leadership-
 import type { LeadershipCard } from "../../leadership-analytics/domain/view-models.js"
 import { PgAnalyticsReadRepository } from "../../performance-analytics/application/analytics-read-repository.js"
 import { loadViewerScope } from "../../performance-analytics/application/viewer-scope.js"
-import { listMonitoredConversations, loadMonitoredMessages, monitoredResponseTimes, MONITORING_ORIGIN_FILTERS, MONITORING_STATUS_FILTERS, requireMonitoredConversation, type MonitoringViewer, type ReaderCardFilter } from "../application/conversation-monitoring.js"
+import { listMonitoredConversations, loadMonitoredMessages, monitoredResponseTimes, monitoringOptionsReach, MONITORING_ORIGIN_FILTERS, MONITORING_STATUS_FILTERS, requireMonitoredConversation, type MonitoringViewer, type ReaderCardFilter } from "../application/conversation-monitoring.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { respondScopedOptions, UNIT_AND_PERSON_OPTION_KINDS } from "../../org-structure/presentation/options-query.js"
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const listSchema = z.object({
   search: z.string().trim().max(100).optional(),
   ownerPersonId: z.string().uuid().optional(),
-  teamId: z.string().uuid().optional(),
-  subteamId: z.string().uuid().optional(),
+  ...unitFilterShape,
   status: z.enum(MONITORING_STATUS_FILTERS).optional(),
   origin: z.enum(MONITORING_ORIGIN_FILTERS).optional(),
   from: localDate.optional(),
@@ -61,7 +62,11 @@ export function createConversationMonitoringRouter(db: Database, deps: { readerC
     const result = await listMonitoredConversations(db, viewerOf(request), filters)
     response.json({ data: { ...result, page: filters.page, pageSize: filters.pageSize } })
   })
-  // Antes de "/:conversationId": "response-times" não é id de conversa.
+  // Antes de "/:conversationId": "filter-options" e "response-times" não são ids de conversa.
+  router.get("/filter-options", async (request, response) => {
+    const viewer = viewerOf(request)
+    response.json({ data: await respondScopedOptions(db, viewer.organizationId, () => monitoringOptionsReach(viewer), request.query, { kinds: UNIT_AND_PERSON_OPTION_KINDS }) })
+  })
   router.get("/response-times", async (request, response) => {
     response.json({ data: await monitoredResponseTimes(db, viewerOf(request), responseTimesSchema.parse(request.query)) })
   })
