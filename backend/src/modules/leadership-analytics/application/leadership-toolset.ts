@@ -16,7 +16,7 @@ import { WORKDAY_CLASSIFICATION_LABELS } from "../../people/domain/workday-class
 import { RESOLVED_WORKDAY_STATE_LABELS } from "../../people/domain/workday-resolution.js"
 import { PERSON_GROUPINGS, STATISTICS, TIME_GROUPINGS } from "./fact-query.js"
 import { ARITHMETIC_OPERATIONS, calculate, CALCULATION_TRACE, parseCalculations, renderCalculations } from "./arithmetic.js"
-import { executeHierarchyTool, HIERARCHY_LEADERSHIP_DECLARATION, HIERARCHY_TOOL } from "./org-hierarchy.js"
+import { executeHierarchyTool, HIERARCHY_DECLARATION, HIERARCHY_LEADERSHIP_DECLARATION, HIERARCHY_TOOL } from "./org-hierarchy.js"
 import { buildWorkforce, WORKFORCE_STATUS_FILTERS, type StatusFreshness, type StatusLoader } from "./workforce.js"
 import { buildIndicatorDiagnosis, type HireDatesLoader, type InteractionStatsLoader } from "./indicator-diagnosis.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
@@ -397,14 +397,19 @@ export type LeadershipToolDependencies = {
   loadDomainFacts?: DomainFactsLoader
   /** Onde a CONTA tem a permissão da tela de origem dos domínios restritos (uso da INIA, Apoio com Anjo). Ausente = sem permissão. */
   domainAccess?: DomainAccess
+  /** Vê inativos e a situação funcional na hierarquia da organização (`canViewVacations`). Ausente = só o organograma aberto. */
+  seesOrganizationSituations?: boolean
 }
 
-/** Ferramentas declaradas ao modelo para ESTA conta: as dos domínios restritos só entram com a permissão da tela de origem. */
-export function leadershipDeclarationsFor(domainAccess: DomainAccess | undefined): FunctionDeclaration[] {
+/**
+ * Ferramentas declaradas ao modelo para ESTA conta: as dos domínios restritos só entram com a permissão da tela de origem, e a hierarquia
+ * com inativos e situação funcional só para quem pode vê-la (os outros recebem o organograma aberto).
+ */
+export function leadershipDeclarationsFor(domainAccess: DomainAccess | undefined, seesOrganizationSituations = false): FunctionDeclaration[] {
   return LEADERSHIP_TOOL_DECLARATIONS.filter((declaration) => {
     const domain = DOMAIN_OF_TOOL[declaration.name]
     return !domain || domainAllowed(domainAccess, domain)
-  })
+  }).map((declaration) => (declaration.name === HIERARCHY_TOOL && !seesOrganizationSituations ? HIERARCHY_DECLARATION : declaration))
 }
 
 /** `issue` = pedido não resolvido (ambíguo, fora do escopo/inexistente, inválido): o chat repassa ao modelo, a rota vira 422. */
@@ -423,10 +428,11 @@ function clarification<T>(outcome: ReferenceOutcome<T>, what: string): Leadershi
 export async function executeLeadershipTool(deps: LeadershipToolDependencies, name: string, args: Record<string, unknown>): Promise<LeadershipToolResult> {
   const { repository, scope, closure } = deps
   try {
-    // Hierarquia: organograma da organização inteira, aberto a todos — NÃO passa pelo escopo de acesso (ver `org-hierarchy.ts`). Na
-    // liderança, com ativos e inativos no cadastro e a situação funcional de hoje (decisão de 21/11/2026).
+    // Hierarquia: organograma da organização inteira, aberto a todos — NÃO passa pelo escopo de acesso (ver `org-hierarchy.ts`). Para quem
+    // ocupa cargo de gestão (ou é Administrador geral), com ativos e inativos no cadastro e a situação funcional de hoje (decisões de
+    // 21 e 25/11/2026: a mesma regra das férias no organograma; `indicators.view` num Grupo não basta).
     if (name === HIERARCHY_TOOL) {
-      const leadership = deps.loadStatuses ? { loadStatuses: deps.loadStatuses, date: localDateOf(closure.now, closure.timeZone) } : undefined
+      const leadership = deps.loadStatuses && deps.seesOrganizationSituations ? { loadStatuses: deps.loadStatuses, date: localDateOf(closure.now, closure.timeZone) } : undefined
       return executeHierarchyTool(repository, { organizationId: scope.organizationId, viewer: scope.viewer, args, now: closure.now, ...(leadership ? { leadership } : {}) })
     }
     if (name === "leadership_calculate") {

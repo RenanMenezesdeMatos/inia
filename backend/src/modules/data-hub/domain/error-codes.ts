@@ -45,6 +45,7 @@ export const DATA_RECORD_ERROR_CODES = {
   DATA_INTERACTION_NOT_FOUND: "Interação não encontrada.",
   DATA_FLAG_NOT_FOUND: "Flag de canal não cadastrada.",
   DATA_DUPLICATE: "Registro duplicado dentro da mesma carga.",
+  DATA_NAME_IN_USE: "O nome já é de outro Grupo ou Subgrupo — a INIA reconhece pelo código e não junta por nome.",
   DATA_CONTRACT_VIOLATION: "O registro viola uma regra do contrato.",
   DATA_INDICATOR_CAPABILITY: "O indicador não suporta esta granularidade/capacidade.",
   DATA_COMPONENT_MISSING: "Componente exigido pela estratégia do indicador ausente.",

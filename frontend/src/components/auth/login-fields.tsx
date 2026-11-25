@@ -9,7 +9,8 @@ import { Separator } from "@/components/ui/separator"
 import { AuthFeedback } from "@/components/auth/auth-feedback"
 import { PasswordInput } from "@/components/auth/password-input"
 import { loadSessionDocument } from "@/lib/auth/session-navigation"
-import { CREATE_PASSWORD_ROUTE, fetchCurrentUser, landingRouteFor, login } from "@/services/auth/auth-service"
+import { loginInputSchema, looksLikeEmail, networkLoginInputSchema } from "@/schemas/auth/auth.schema"
+import { fetchCurrentUser, landingRouteFor, login, sessionNotKeptMessage } from "@/services/auth/auth-service"
 
 /**
  * `returnTo`: caminho interno já validado (`safeReturnPath`) para onde voltar depois de entrar. `optionsUnavailable`: não foi
@@ -31,17 +32,26 @@ export function LoginFields({ returnTo, networkLogin = false, optionsUnavailable
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    // Só o que o servidor também exige: nenhuma tentativa é gasta com campo vazio ou com o e-mail no lugar da matrícula.
+    const input = network ? networkLoginInputSchema.safeParse({ matricula, password }) : loginInputSchema.safeParse({ email, password })
+    const problem = network && looksLikeEmail(matricula) ? "Digite a sua matrícula de rede (a mesma do computador), não o e-mail." : input.success ? null : (input.error.issues[0]?.message ?? "Confira os dados.")
+    if (problem !== null || !input.success) {
+      setFeedback({ type: "error", message: problem ?? "Confira os dados." })
+      return
+    }
     setIsSubmitting(true)
     setFeedback(null)
 
     try {
-      const user = await login(network ? { matricula, password } : { email, password })
+      const user = await login(input.data)
       setFeedback({ type: "success", message: user.passwordChangeRequired ? "Senha temporária aceita. Agora crie a sua senha." : `Bem-vindo(a), ${user.name}.` })
       // Destino decidido pelo ACESSO da conta (/auth/me), nunca só pelo nível hierárquico (V1.5.8).
       const current = await fetchCurrentUser()
+      // Senha aceita e sessão não guardada: sem isto a pessoa via "Bem-vindo" e voltava ao login sem explicação.
+      if (!current) throw new Error(sessionNotKeptMessage())
       // Documento novo (lib/auth/session-navigation.ts): nada que uma conta anterior abriu nesta aba sobrevive na sessão nova.
       // Primeiro acesso (senha temporária): a única tela possível é a de criar a senha.
-      loadSessionDocument(current && !user.passwordChangeRequired ? returnTo ?? landingRouteFor(current) : current ? landingRouteFor(current) : user.passwordChangeRequired ? CREATE_PASSWORD_ROUTE : "/supervisor")
+      loadSessionDocument(user.passwordChangeRequired ? landingRouteFor(current) : returnTo ?? landingRouteFor(current))
     } catch (error) {
       setFeedback({
         type: "error",
@@ -67,7 +77,9 @@ export function LoginFields({ returnTo, networkLogin = false, optionsUnavailable
             value={matricula}
             onChange={(event) => setMatricula(event.target.value)}
             aria-invalid={feedback?.type === "error" ? true : undefined}
+            aria-describedby="matricula-help"
           />
+          <p id="matricula-help" className="text-xs text-muted-foreground">A matrícula que você usa para entrar no computador.</p>
         </div>
       ) : (
         <div className="space-y-2">

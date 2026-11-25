@@ -13,6 +13,8 @@ import { VoiceWaveform } from "./chat-visuals"
 
 type ChatComposerProps = {
   sessionOpen: boolean
+  /** Painel baixo: campo enxuto (o aviso de rodapé vira só leitura de tela), para sobrar conversa. */
+  dense?: boolean
   readOnlyConversation: ConversationSummary | null
   feedbackCompleted: boolean
   composerRef: React.RefObject<HTMLDivElement | null>
@@ -41,14 +43,14 @@ type ChatComposerProps = {
  * Campo de mensagem com microfone, envio e (na sessão de feedback) o botão de silenciar a INIA. O pulso do microfone e as barras
  * da onda são pintados direto no DOM pelo chat (`micPulseRef`, `waveformBarRefs`) — nunca por estado.
  */
-export function ChatComposer({ sessionOpen, readOnlyConversation, feedbackCompleted, composerRef, micOpen, waveformBarRefs, textareaRef, question, setQuestion, textReplyPending, onStopReply, conversationState, send, composerLocked, callActive, toggleVoiceMuted, voiceMuted, handleMicClick, micDisabled, micLabel, micPulseRef, voiceError }: ChatComposerProps) {
+export function ChatComposer({ sessionOpen, dense = false, readOnlyConversation, feedbackCompleted, composerRef, micOpen, waveformBarRefs, textareaRef, question, setQuestion, textReplyPending, onStopReply, conversationState, send, composerLocked, callActive, toggleVoiceMuted, voiceMuted, handleMicClick, micDisabled, micLabel, micPulseRef, voiceError }: ChatComposerProps) {
   const composerPlaceholder = readOnlyConversation
     ? "Conversa encerrada — volte à atual ou inicie uma nova"
     : sessionOpen
       ? feedbackCompleted ? "Tire uma dúvida sobre este feedback…" : "Converse com a INIA sobre este feedback…"
       : "Pergunte algo para a INIA..."
-  return <div className={sessionOpen ? "px-4 py-3 sm:px-5" : "p-3"}>
-    <div ref={composerRef} className="flex items-end gap-1 rounded-2xl bg-muted p-1 transition-shadow duration-150" style={micOpen ? MIC_GLOW_REST_STYLE : undefined}>
+  return <div className={sessionOpen ? "px-4 py-3 sm:px-5" : dense ? "px-3 py-1.5" : "p-3"}>
+    <div ref={composerRef} className="flex items-end gap-1 rounded-2xl bg-muted p-1 transition-shadow duration-150 has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-ring" style={micOpen ? MIC_GLOW_REST_STYLE : undefined}>
       {micOpen ? <VoiceWaveform barRefs={waveformBarRefs}/> : (
         <Textarea
           ref={textareaRef}
@@ -64,7 +66,7 @@ export function ChatComposer({ sessionOpen, readOnlyConversation, feedbackComple
           aria-label={composerPlaceholder}
           disabled={composerLocked}
           rows={1}
-          className="max-h-32 min-h-9 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm shadow-none focus-visible:ring-0"
+          className={cn(dense ? "max-h-16" : "max-h-32", "min-h-9 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm shadow-none focus-visible:ring-0")}
         />
       )}
       <div className="flex shrink-0 items-center gap-1 pb-0.5">
@@ -106,7 +108,7 @@ export function ChatComposer({ sessionOpen, readOnlyConversation, feedbackComple
     </div>
     {micOpen && sessionOpen ? <p className="mt-1.5 flex items-center justify-center gap-1.5 text-[11px] font-medium text-destructive" role="status"><span className="size-1.5 animate-pulse rounded-full bg-destructive motion-reduce:animate-none" aria-hidden/>Microfone ativo — toque no quadrado para enviar</p> : null}
     {voiceError ? <p className="mt-1.5 text-center text-[11px] text-destructive">{voiceError}</p> : null}
-    <p className="mt-1.5 text-center text-[11px] text-muted-foreground" data-testid={sessionOpen && feedbackCompleted ? "feedback-followup-hint" : undefined}>
+    <p className={dense ? "sr-only" : "mt-1.5 text-center text-[11px] text-muted-foreground"} data-testid={sessionOpen && feedbackCompleted ? "feedback-followup-hint" : undefined}>
       {sessionOpen && feedbackCompleted ? "Suas dúvidas ficam registradas à parte: não reabrem a aplicação nem contam como ciência." : "A INIA pode cometer erros. Confirme orientações críticas."}
     </p>
   </div>

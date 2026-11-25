@@ -24,6 +24,10 @@ import { cn } from "@/lib/utils"
 
 export type { AvatarView }
 
+type AttributionPlacement = "bottom" | "top" | "below-strip"
+/** `below-strip`: 60 px = a faixa mais alta (20 px de recuo + botão de 36 px no toque) e folga; centrado sob o botão da ponta. */
+const ATTRIBUTION_CORNER: Record<AttributionPlacement, string> = { bottom: "right-2 bottom-2", top: "top-2 right-2", "below-strip": "top-15 right-4" }
+
 export type IniaHumanoidAvatar3DProps = {
   modelUrl: string
   /** Só para o rótulo acessível/chip de estado; a animação lê `driver.state`. */
@@ -48,8 +52,9 @@ export type IniaHumanoidAvatar3DProps = {
    * que foi modificado). Só desligue onde o modelo não for o da INIA.
    */
   attribution?: boolean
-  /** Canto do "i" do crédito: embaixo (padrão) ou em cima — no painel, embaixo ficam os controles da chamada. */
-  attributionPlacement?: "bottom" | "top"
+  /** Canto do "i" do crédito: embaixo (padrão), em cima, ou logo abaixo da faixa do alto — na imagem da chamada, o alto é da etiqueta e dos
+   * botões e embaixo ficam os controles: nos dois o crédito ficaria coberto. */
+  attributionPlacement?: AttributionPlacement
   /** Estado mostrado no selo quando não é um estado da conversa (ex.: "Preparando a voz…"). Padrão: o rótulo de `state`. */
   statusLabel?: string | null
   /** Padrão "studio" (fundo claro próprio). "none" = transparente: a INIA aparece sobre o palco de quem a exibe. */
@@ -162,7 +167,7 @@ export function IniaHumanoidAvatar3D({
  * O crédito do modelo base, escondido num "i" quase transparente no canto do palco. Abre ao passar o mouse e também ao
  * tocar ou pelo teclado (Enter/Espaço) — hover sozinho deixaria o crédito inacessível no toque.
  */
-function AvatarCredit({ placement }: { placement: "bottom" | "top" }) {
+function AvatarCredit({ placement }: { placement: AttributionPlacement }) {
   const [open, setOpen] = useState(false)
   const hoverRef = useRef(false)
   const closeTimerRef = useRef<number | null>(null)
@@ -210,15 +215,15 @@ function AvatarCredit({ placement }: { placement: "bottom" | "top" }) {
           onPointerLeave={onPointerLeave}
           onClick={onClick}
           className={cn(
-            "absolute right-2 flex size-5 items-center justify-center rounded-full text-foreground/20 transition-colors hover:text-foreground/55 focus-visible:text-foreground/55 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:text-foreground/55",
-            placement === "top" ? "top-2" : "bottom-2",
+            "absolute flex size-5 items-center justify-center rounded-full text-foreground/20 transition-colors hover:text-foreground/55 focus-visible:text-foreground/55 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:text-foreground/55",
+            ATTRIBUTION_CORNER[placement],
           )}
         >
           <Info className="size-3" aria-hidden />
         </button>
       </PopoverTrigger>
       <PopoverContent
-        side={placement === "top" ? "bottom" : "top"}
+        side={placement === "bottom" ? "top" : "bottom"}
         align="end"
         className="w-64 text-xs leading-relaxed"
         onPointerEnter={cancelClose}

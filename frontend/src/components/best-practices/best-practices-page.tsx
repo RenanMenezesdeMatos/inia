@@ -31,7 +31,7 @@ export function BestPracticesPage() {
   const showPreview = (meta.data?.datasets.length ?? 0) > 0
 
   return (
-    <main className="mx-auto w-full max-w-7xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
+    <main className="mx-auto w-full max-w-[90rem] space-y-5 px-4 py-6 sm:px-6">
       <PageHeader icon={Lightbulb} title="Boas práticas" description="Comportamentos observados com mais frequência nas chamadas dos operadores com melhores resultados do que no grupo de referência, no mesmo contexto. Não é cumprimento de processo — isso fica no Diagnóstico." />
 
       <Collapsible className="rounded-lg border border-border bg-card/60 px-3 py-2 text-sm">

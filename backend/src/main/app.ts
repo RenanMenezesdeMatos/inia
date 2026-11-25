@@ -172,7 +172,7 @@ export type RateLimitSettings = {
    * limita quantas a mesma conta mantém vivas ao mesmo tempo (achado AI-09 da auditoria de 17/10/2026).
    */
   voiceSessionsPerAccountHalfHour: number
-  /** Ações administrativas que chamam IA ou abrem conexão externa (testar Agent/modelo/conexão, simular, QA Lab, executar agora), por conta, por minuto. */
+  /** Ações administrativas que chamam IA, abrem conexão externa (testar Agent/modelo/conexão, simular, QA Lab, executar agora) ou avaliam acessos em massa (CSV, conferir matrícula), por conta, por minuto. */
   adminCostlyActionsPerAccount: number
   /** Envio de foto/capa do perfil (até 2 imagens de 8 MB em memória cada) por conta, por minuto (AUTH-17). */
   profileWritesPerAccount: number
@@ -420,7 +420,8 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/inia-scenes", requireAuth, createIniaSceneRouter(database))
   app.use("/api/v1/supervision-cases", requireAuth, createCaseRouter(new PgCaseRepository(database), (request) => loadCaseVisibility(database, request.user!), (organizationId, caseId) => loadCaseAgentRecords(database, organizationId, caseId)))
   app.use("/api/v1/feedbacks", requireAuth, createFeedbackRouter(database))
-  app.use("/api/v1/admin/access", requireAuth, createAccessRouter(database))
+  // Habilitar por CSV (cada linha avalia escopo, custódia e estrutura liderada) e conferir matrícula: mesmo teto das ações caras (CFA-06).
+  app.use("/api/v1/admin/access", requireAuth, costly(/^\/(users\/network-enable(\/preview)?|network-login-check)$/), createAccessRouter(database))
   // Login pela rede (AD): situação, conferência dos servidores e o interruptor da organização (access.users.manage, organização inteira).
   app.use("/api/v1/admin/network-login", createNetworkLoginAdminRouter(database))
   app.use("/api/v1/admin/knowledge", can("knowledge.manage"), previews, createKnowledgeRouter(database, options.knowledgeInlineProcessing === undefined ? {} : { inlineProcessing: options.knowledgeInlineProcessing }))

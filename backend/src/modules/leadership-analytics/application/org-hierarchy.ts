@@ -19,8 +19,8 @@ import type { StatusLoader } from "./workforce.js"
  * com escopo). Quem está inativo no cadastro não é contado nem listado; um líder inativo no meio da cadeia aparece pelo nome (sem marca de situação) e
  * não interrompe a contagem de quem está abaixo dele.
  *
- * VISÃO DA LIDERANÇA (decisão do produto, 21/11/2026 — revê o SL-03 da run-8 só para a liderança): quem consulta pelo caminho da liderança
- * vê a hierarquia inteira de ATIVOS E INATIVOS no cadastro (`cadastro`: ATIVOS, padrão das contagens; INATIVOS; TODOS), com a marca de
+ * VISÃO DA LIDERANÇA (decisão do produto, 21/11/2026 — revê o SL-03 da run-8 só para a liderança): quem ocupa cargo de gestão (ou é
+ * Administrador geral — a regra única `canViewVacations`, 25/11/2026; `indicators.view` num Grupo não basta) vê a hierarquia inteira de ATIVOS E INATIVOS no cadastro (`cadastro`: ATIVOS, padrão das contagens; INATIVOS; TODOS), com a marca de
  * inativo e a SITUAÇÃO FUNCIONAL vigente hoje de cada pessoa (mesma leitura da força de trabalho). O afastamento sensível (INSS,
  * maternidade, paternidade) aparece sempre como "Afastamento (motivo protegido)" — a hierarquia alcança a organização inteira, além da
  * cadeia de quem pergunta, e lá o tipo nunca sai pessoa a pessoa (AI-04). Situação ausente = "Não informada", nunca "Em produção" por

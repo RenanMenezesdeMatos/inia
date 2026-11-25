@@ -1,4 +1,5 @@
 import type { PlatformRole } from "../infrastructure/jwt.js"
+import type { LoginAttemptReason } from "../domain/login-attempt.js"
 import type { SessionAccountState } from "../domain/session-state.js"
 
 /** Conta como o login a enxerga (identidade do token + estado da credencial). */
@@ -14,6 +15,8 @@ export type LoginAccount = SessionAccountState & {
   jobTitle: string | null
   teamId: string | null
   teamName: string | null
+  /** A conta não entra porque a PESSOA está inativa no cadastro (a conta em si pode estar habilitada). */
+  personInactive?: boolean
   /** Matrícula da pessoa (login de rede quando o login pela rede está ligado). */
   matricula: string | null
   /** O login pela rede está ligado na organização da conta. */
@@ -33,7 +36,10 @@ export type PasswordState = SessionAccountState & { email: string; passwordHash:
  */
 export interface CredentialStore {
   findByLogin(login: string): Promise<LoginAccount | null>
-  /** Conta pela matrícula de rede JÁ normalizada, só em organização com o login pela rede ligado; ambígua = null. */
+  /**
+   * Conta pela matrícula de rede JÁ normalizada, só em organização com o login pela rede ligado. A mesma matrícula em mais de um
+   * cadastro: vale a ÚNICA que pode entrar (conta habilitada e pessoa ativa); duas que podem = ambígua = null.
+   */
   findByNetworkLogin(networkLogin: string): Promise<LoginAccount | null>
   /**
    * Login pela rede bem-sucedido: marca o login e, se a conta ainda esperava a troca da senha temporária (e não é de
@@ -64,8 +70,16 @@ export interface CredentialStore {
    * ordem cronológica. `limit` = só as N mais recentes (a trava da matrícula lê 24 h).
    */
   recentFailures(identifierHash: string, since: Date, excludeAttemptId?: string | null, options?: { limit?: number }): Promise<Date[]>
-  /** Resultado da tentativa reservada (ou uma tentativa nova, sem reserva). */
-  resolveAttempt(input: { attemptId: string | null; identifierHash: string; accountId: string | null; outcome: LoginAttemptOutcome; at: Date }): Promise<void>
+  /**
+   * Resultado da tentativa reservada (ou uma tentativa nova, sem reserva). `redatedTo`: a falha passa a valer a partir deste instante (o AD
+   * só viu a senha depois da reserva).
+   */
+  resolveAttempt(input: { attemptId: string | null; identifierHash: string; accountId: string | null; outcome: LoginAttemptOutcome; at: Date; reason?: LoginAttemptReason | null; directoryCode?: string | null; redatedTo?: Date | null }): Promise<void>
+  /** Login do AD por que esta conta já entrou (formatos sem o último dígito); null = ainda não se sabe. */
+  directoryLoginOf(accountId: string): Promise<string | null>
+  rememberDirectoryLogin(accountId: string, login: string): Promise<void>
+  /** Destas matrículas (normalizadas), quais são de pessoas ATIVAS do cadastro. */
+  registeredMatriculas(normalized: readonly string[]): Promise<string[]>
   markLoggedIn(input: { accountId: string; identifierHash: string; at: Date }): Promise<void>
   passwordState(organizationId: string, accountId: string): Promise<PasswordState | null>
   /**

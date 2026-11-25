@@ -102,7 +102,7 @@ export function AnjoWorkspace({ embedded = false, visible = true }: { embedded?:
     // 401 na chamada de estado: tentar de novo não adianta. Sem a área aberta a conexão do Anjo cai; depois da carência o servidor o
     // deixa Indisponível e devolve os atendimentos à fila (regra da distribuição).
     return (
-      <div className={embedded ? "space-y-6" : "mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:py-8"}>
+      <div className={embedded ? "space-y-6" : "mx-auto w-full max-w-[90rem] space-y-6 px-4 py-6 sm:py-8"}>
         {embedded ? null : <WorkspaceTitle />}
         <div role="alert" className={cn(toneSurface("warning"), "p-5")}>
           <p className="font-medium">Sua sessão terminou</p>
@@ -119,7 +119,7 @@ export function AnjoWorkspace({ embedded = false, visible = true }: { embedded?:
 
   if (blocked) {
     return (
-      <div className={embedded ? "space-y-6" : "mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:py-8"}>
+      <div className={embedded ? "space-y-6" : "mx-auto w-full max-w-[90rem] space-y-6 px-4 py-6 sm:py-8"}>
         {embedded ? null : <WorkspaceTitle />}
         <div role="alert" className={cn(toneSurface("warning"), "p-5")}>
           <p className="font-medium">A área do Anjo está aberta em outra aba</p>
@@ -137,7 +137,7 @@ export function AnjoWorkspace({ embedded = false, visible = true }: { embedded?:
   const awaitingResponse = attention.awaitingResponse
 
   return (
-    <div className={embedded ? "space-y-6" : "mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:py-8"}>
+    <div className={embedded ? "space-y-6" : "mx-auto w-full max-w-[90rem] space-y-6 px-4 py-6 sm:py-8"}>
       <header className="flex flex-col gap-5">
         {embedded ? (
           reconnecting ? (

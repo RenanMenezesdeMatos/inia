@@ -172,7 +172,7 @@ describe("org_hierarchy — visão da liderança: ativos, inativos e situação 
     const scope = await loadViewerScope(repository, leaderUser(L.sara, "SUPERVISOR"))
     const dates: string[] = []
     const result = await executeLeadershipTool(
-      { repository, scope, closure: CLOSURE, loadPendingActions: async () => ({ pending: [], history: [], pendingCount: 0 }), loadStatuses: async (ids, date) => { dates.push(date); return new Map(ids.map((id) => [id, "FERIAS"])) } },
+      { repository, scope, closure: CLOSURE, loadPendingActions: async () => ({ pending: [], history: [], pendingCount: 0 }), loadStatuses: async (ids, date) => { dates.push(date); return new Map(ids.map((id) => [id, "FERIAS"])) }, seesOrganizationSituations: true },
       HIERARCHY_TOOL,
       { pessoa: "Hugo Reis" },
     )

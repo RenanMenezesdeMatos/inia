@@ -43,12 +43,12 @@ export function createPostgresNetworkLoginRepository(db: Queryable): NetworkLogi
     },
 
     async ambiguousMatriculas(organizationId) {
-      // A MESMA comparação do login (`findByNetworkLogin`: contas da organização, `upper(btrim(p.matricula))`). O índice de
-      // expressão sobre `upper(btrim(matricula))` vem na migration 248.
+      // A MESMA comparação do login (`findByNetworkLogin`: `upper(btrim(p.matricula))` e só contas que podem entrar — a repetida
+      // desabilitada não tranca ninguém). O índice de expressão sobre `upper(btrim(matricula))` vem na migration 248.
       const result = await db.query<{ matricula: string; accounts: string | number }>(
         `select upper(btrim(p.matricula)) matricula, count(*) accounts
            from user_accounts ua join people p on p.id = ua.person_id
-          where ua.organization_id = $1 and p.matricula is not null and btrim(p.matricula) <> ''
+          where ua.organization_id = $1 and ua.active and p.active and p.matricula is not null and btrim(p.matricula) <> ''
           group by upper(btrim(p.matricula))
          having count(*) > 1
           order by 1

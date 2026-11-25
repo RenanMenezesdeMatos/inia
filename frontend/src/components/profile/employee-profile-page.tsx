@@ -41,7 +41,7 @@ const TABS = [
  */
 export function EmployeeProfilePage({ detail, context, capabilities = NO_ACCESS_CAPABILITIES }: { detail: SupervisorOperatorDetail; context: AnalyticsContext | null; capabilities?: AccessCapabilities }) {
   return (
-    <Suspense fallback={<Skeleton className="mx-auto mt-6 h-64 w-full max-w-7xl rounded-2xl" />}>
+    <Suspense fallback={<Skeleton className="mx-auto mt-6 h-64 w-full max-w-[90rem] rounded-2xl" />}>
       <EmployeeProfileContent detail={detail} context={context} capabilities={capabilities} />
     </Suspense>
   )
@@ -85,7 +85,7 @@ function EmployeeProfileContent({ detail, context, capabilities }: { detail: Sup
 
   return (
     <div className="min-h-screen overflow-x-clip bg-muted text-foreground">
-      <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
+      <div className="mx-auto flex w-full max-w-[90rem] flex-col px-4 py-4 sm:px-6 sm:py-5">
         <ProfileHeader person={visited} isOwn={false} attached actions={backAction} />
         <main className="min-h-0">
           <Tabs value={activeTab} onValueChange={(value) => update({ tab: value as ProfileTab })} className="min-w-0">

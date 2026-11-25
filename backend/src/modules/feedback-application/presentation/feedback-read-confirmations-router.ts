@@ -56,7 +56,7 @@ export function createFeedbackReadConfirmationsRouter(db: Database, deps: { now?
   })
 
   router.post("/", async (request, response) => {
-    const input = attemptSchema.extend({ login: z.string().max(320), password: z.string().max(200), agreement: readAgreementInputSchema }).parse(request.body)
+    const input = attemptSchema.extend({ login: z.string().max(320), password: z.string().min(1).max(200), agreement: readAgreementInputSchema }).parse(request.body)
     response.json({ data: await confirmFeedbackReading(db, scopeOf(request), input, now(), { verifyPassword: verify, verifyNetworkPassword }) })
   })
 

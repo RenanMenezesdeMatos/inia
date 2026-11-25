@@ -127,12 +127,14 @@ export default function FollowUpPage() {
 
       <WikiSection id="inia-no-acompanhamento" title="Avatar e chat da INIA" eyebrow="Interfaces de consumo">
         <p>
-          A INIA (avatar 3D e chat de texto/voz) fica disponível como apoio dentro do Acompanhamento do operador: uma interface conversacional que
+          A INIA (avatar 3D e chat de texto/voz) fica disponível num painel ao lado da página, em todas as abas do próprio perfil: uma interface conversacional que
           responde perguntas sobre indicadores e procedimentos por meio do orquestrador que atende o chat/voz. Avatar e chat são{" "}
           <strong className="font-medium text-foreground">superfícies de consumo</strong> — nunca gatilhos de Workflow.
         </p>
-        <FieldRow label="Disposição na tela" value="A página rola até o Acompanhamento e a INIA pararem logo abaixo das abas; a partir daí, cada coluna rola por conta própria. A partir de 1024 px eles ficam lado a lado, com a largura ajustável pelo divisor. Em telas menores aparece uma coluna por vez, com a alternância “Acompanhamento” e “INIA”; trocar de coluna não perde a conversa nem a posição de leitura." />
-        <FieldRow label="Avatar" value="Compacto por padrão, com o estado e os controles da chamada ao lado. O botão “Ampliar a INIA” dá a ela uma área própria, acima das mensagens, para falar por voz ou vídeo; ela nunca fica por cima da conversa. “Compactar a INIA” volta ao tamanho menor. Trocar o tamanho não interrompe a voz." />
+        <FieldRow label="Disposição na tela" value="O painel da INIA flutua ao lado da página em todas as abas do perfil e abre expandido; a borda esquerda dele ajusta a largura. A conversa e a página rolam cada uma por conta própria, com o campo de digitação sempre à vista. Em telas estreitas (ou com muito zoom) o painel cobre a página e sai ao recolher; quem chega por um item ou por outra aba começa com ele recolhido. Trocar de aba não perde a conversa, o rascunho nem a chamada." />
+        <FieldRow label="Recolher e reabrir" value="“Recolher o painel” deixa uma aba na borda da tela e a INIA numa janela pequena, que dá para mover, redimensionar, aumentar (“INIA maior, flutuando”) ou guardar na aba. A aba, “Encaixar no painel”, “Trazer para cá” ou soltar a janela sobre o painel trazem tudo de volta, com a mesma conversa. Nada reabre sozinho. Durante a chamada a janela fica à vista, com os controles; a chamada só termina em “Encerrar chamada”, ao trocar de conversa ou ao sair do perfil." />
+        <FieldRow label="Acompanhar a resposta" value="Quem está no fim da conversa acompanha a resposta enquanto ela chega. Ao rolar para cima, a posição fica onde está e “Ir para a resposta mais recente” aparece flutuando sobre o texto." />
+        <FieldRow label="Avatar" value="Sempre na horizontal, como numa chamada de vídeo, com os controles sobre a parte de baixo da imagem: voz, câmera, microfone, legendas e “Encerrar chamada”. As legendas aparecem enquanto ela fala, quando a voz entrega o texto da fala, e dá para desligar. Quando ela escuta, as ondas no campo de mensagem mostram a voz da pessoa. Na chamada, você aparece num quadro no canto inferior direito (a foto do perfil, sem câmera), que dá para fechar e reabrir. “Reduzir a INIA” abre espaço para a conversa; em janelas baixas isso acontece sozinho. Mudar o tamanho ou o lugar não interrompe a chamada." />
       </WikiSection>
 
       <WikiSection id="alinhamentos" title="Alinhamentos no Acompanhamento" eyebrow="Conteúdo da liderança">

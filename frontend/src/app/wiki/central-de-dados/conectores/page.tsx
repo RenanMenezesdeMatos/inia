@@ -173,7 +173,7 @@ export default function DataHubConnectorsPage() {
           <li>Senha cifrada e nunca exibida; em branco na edição = manter a guardada. Criptografia (TLS) e instância nomeada (SQL Server) ficam nas opções avançadas.</li>
           <li>Uma conexão alimenta vários conjuntos: &quot;Adicionar outro conjunto desta conexão&quot; começa direto na escolha da tabela.</li>
           <li>Cada carga confere a tabela de novo: coluna mapeada que sumiu = DATA_SCHEMA_CHANGED; permissão retirada = DATA_SOURCE_PERMISSION_DENIED; certificado recusado = DATA_SOURCE_TLS_FAILED.</li>
-          <li>No conjunto de dados, &quot;Ler tudo de novo na próxima carga&quot; zera a posição — o upsert evita duplicar.</li>
+          <li>No conjunto de dados, em Conector e frequência, &quot;Reiniciar leitura&quot; faz a próxima carga reler tudo: nada é apagado nem duplicado.</li>
         </ul>
       </WikiSection>
 

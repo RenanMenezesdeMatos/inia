@@ -90,6 +90,10 @@ Onde cada origem grava:
 | Tela quebrada no servidor da interface | digest numérico | `logs\INIA-Interface*.err.log` (`interface_error`) |
 | Proxy (IIS sem a API) | o `x-request-id` enviado pelo navegador | log do IIS (`sc-status` 502/503/504) |
 
+**Login pela rede (AD)** — a recusa de uma pessoa aparece em Administração › Acessos (motivo da última tentativa); nos logs da API só ficam
+as falhas do caminho, sem matrícula e sem senha: `network_login_unavailable` (o servidor do AD não respondeu: rede, certificado, prazo) e
+`network_identity_unreadable` (o AD aceitou a senha, mas a ID funcional não pôde ser conferida).
+
 ## 3. Saúde dos serviços, do proxy e do banco
 
 ```powershell

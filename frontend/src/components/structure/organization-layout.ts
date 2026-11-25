@@ -18,11 +18,11 @@ export const NODE_WIDTH = {
 
 /** Alturas estimadas antes da medição real (compacto ≈ header; expandido ≈ header + detalhes). */
 export const ESTIMATED_HEIGHT = {
-  manager: 76,
-  focalExpanded: 250,
-  focalCompact: 92,
-  report: 84,
-  reportExpanded: 300,
+  manager: 80,
+  focalExpanded: 256,
+  focalCompact: 98,
+  report: 88,
+  reportExpanded: 304,
 } as const
 
 export const LAYOUT_GAP = {

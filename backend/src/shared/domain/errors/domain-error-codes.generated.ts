@@ -35,9 +35,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     "statuses": [
       409
     ],
-    "messages": [
-      "O acesso desta pessoa já está habilitado. Para uma nova senha, use “Gerar nova senha temporária”."
-    ],
+    "messages": [],
     "refs": [
       "backend/src/modules/access/application/account-access-service.ts"
     ]
@@ -69,6 +67,71 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
+    "code": "ACCESS_CSV_EMPTY",
+    "module": "access",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O arquivo não tem nenhuma matrícula. Preencha uma por linha na coluna “matricula” do modelo."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/network-enable-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_CSV_INVALID",
+    "module": "access",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Este arquivo não é um CSV. Na planilha, use “Salvar como” e escolha CSV."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/network-enable-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_CSV_NO_MATRICULA_COLUMN",
+    "module": "access",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Não encontrei a coluna “matricula” no arquivo. Use o modelo: a primeira linha precisa ter o nome das colunas."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/network-enable-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_CSV_TOO_LARGE",
+    "module": "access",
+    "statuses": [
+      413
+    ],
+    "messages": [
+      "O arquivo é grande demais. Divida em arquivos menores."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/network-enable-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_CSV_TOO_MANY_ROWS",
+    "module": "access",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O arquivo passa de ${NETWORK_ENABLE_CSV_MAX_ROWS.toLocaleString(\"pt-BR\")} linhas. Divida em arquivos menores."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/network-enable-service.ts"
+    ]
+  },
+  {
     "code": "ACCESS_DISABLED",
     "module": "auth",
     "statuses": [
@@ -88,10 +151,12 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       422
     ],
     "messages": [
-      "Informe o e-mail que a pessoa vai usar para entrar."
+      "Informe o e-mail que a pessoa vai usar para entrar.",
+      "Informe um e-mail para identificar a conta desta pessoa."
     ],
     "refs": [
-      "backend/src/modules/access/application/account-access-service.ts"
+      "backend/src/modules/access/application/account-access-service.ts",
+      "backend/src/modules/users/presentation/user-account-router.ts"
     ]
   },
   {
@@ -109,6 +174,62 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "backend/src/modules/access/application/access-service.ts",
       "backend/src/modules/access/application/account-access-service.ts",
       "backend/src/modules/users/presentation/user-account-router.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_MATRICULA_DUPLICATED",
+    "module": "access",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Outra conta habilitada tem a mesma matrícula. Desabilite a conta repetida ou corrija a matrícula antes: com duas, ninguém entra por ela."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/account-access-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_MATRICULA_INVALID",
+    "module": "access",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A matrícula do cadastro tem espaço ou símbolo que não existe num login de rede. Corrija a matrícula na base antes de habilitar.",
+      "A matrícula tem espaço ou símbolo que não existe num login de rede. Confira e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/account-access-service.ts",
+      "backend/src/modules/users/presentation/user-account-router.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_MATRICULA_REQUIRED",
+    "module": "access",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Esta pessoa não tem matrícula no cadastro. Com o login pela rede ligado, é pela matrícula que ela entra — informe a matrícula antes de habilitar.",
+      "Com o login pela rede ligado, a pessoa entra pela matrícula: informe a matrícula de rede dela."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/account-access-service.ts",
+      "backend/src/modules/users/presentation/user-account-router.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_NETWORK_LOGIN_OFF",
+    "module": "access",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O login pela rede está desligado: habilite cada pessoa em “Habilitar acesso”, com senha temporária."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/network-enable-service.ts"
     ]
   },
   {
@@ -189,17 +310,6 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "refs": [
       "backend/src/modules/access/application/access-service.ts"
-    ]
-  },
-  {
-    "code": "ACCESS_TARGET_LEADS_OUTSIDE_SCOPE",
-    "module": "access",
-    "statuses": [
-      403
-    ],
-    "messages": [],
-    "refs": [
-      "backend/src/modules/access/application/account-access-service.ts"
     ]
   },
   {
@@ -3710,6 +3820,17 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
+    "code": "DATA_NAME_IN_USE",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "O nome já é de outro Grupo ou Subgrupo — a INIA reconhece pelo código e não junta por nome."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
     "code": "DATA_NO_VALID_RECORDS",
     "module": "data-hub",
     "statuses": [],
@@ -5043,10 +5164,10 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     "refs": [
       "backend/src/modules/access/application/access-service.ts",
       "backend/src/modules/access/application/account-access-service.ts",
+      "backend/src/modules/access/application/network-check-service.ts",
+      "backend/src/modules/access/application/network-enable-service.ts",
       "backend/src/modules/access/presentation/require-permission.ts",
-      "backend/src/modules/ai-management/application/ai-usage-ranking-service.ts",
-      "backend/src/modules/ai-management/presentation/ai-management-router.ts",
-      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
+      "backend/src/modules/ai-management/application/ai-usage-ranking-service.ts"
     ]
   },
   {
@@ -6567,7 +6688,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "messages": [
       "E-mail ou senha inválidos.",
-      "Matrícula ou senha de rede inválidas. Atenção: várias senhas erradas bloqueiam a sua conta de rede."
+      "Não foi possível entrar com esta matrícula e senha de rede. Confira as duas; se estiverem certas, peça ao administrador da INIA para conferir se o seu acesso está habilitado. Atenção: várias senhas erradas bloqueiam a…"
     ],
     "refs": [
       "backend/src/modules/auth/presentation/auth-router.ts"
@@ -7467,7 +7588,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "messages": [
       "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente.",
-      "Muitas tentativas com senha errada. Aguarde alguns minutos antes de tentar de novo — insistir pode bloquear a sua conta de rede."
+      "Muitas tentativas sem sucesso com esta matrícula. Aguarde antes de tentar de novo — insistir com a senha errada pode bloquear a sua conta de rede. Se a senha está certa, peça ao administrador da INIA para conferir o s…"
     ],
     "refs": [
       "backend/src/modules/auth/presentation/auth-router.ts"
@@ -7547,6 +7668,19 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     "refs": [
       "backend/src/modules/auth/presentation/auth-router.ts",
       "backend/src/modules/feedback-application/application/read-confirmation-service.ts"
+    ]
+  },
+  {
+    "code": "NETWORK_IDENTITY_UNREADABLE",
+    "module": "auth",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Sua senha de rede foi aceita, mas a INIA não conseguiu confirmar a sua ID no AD. Procure o administrador da INIA."
+    ],
+    "refs": [
+      "backend/src/modules/auth/presentation/auth-router.ts"
     ]
   },
   {

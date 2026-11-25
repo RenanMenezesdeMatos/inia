@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs"
 import { connect as tlsConnect, type ConnectionOptions, type PeerCertificate } from "node:tls"
-import { Client, InvalidCredentialsError } from "ldapts"
+import { Client, EqualityFilter, InvalidCredentialsError, OrFilter } from "ldapts"
 import { env } from "../../../config/env.js"
-import { classifyInvalidCredentials, type DirectoryVerdict } from "../domain/network-login.js"
+import { classifyInvalidCredentials, fullLoginsBehind, identityVerdict, parseShortLoginFormats, shortNetworkLoginOf, type AccountIdentity, type DirectoryVerdict, type ShortLoginFormat } from "../domain/network-login.js"
 import { unconfiguredDirectory, type DirectoryAuthenticator, type DirectoryServerProbe } from "../application/directory-authenticator.js"
 
 export type LdapDirectoryConfig = {
@@ -12,6 +12,8 @@ export type LdapDirectoryConfig = {
   ca: string | null
   allowWeakKey: boolean
   timeoutMs: number
+  /** Formatos de matrícula cujo login do AD pode estar sem o último dígito (`AD_LOGIN_WITHOUT_LAST_DIGIT`). */
+  shortLoginFormats?: readonly ShortLoginFormat[]
   /** Troca a conexão TLS nos testes. */
   createSecureConnection?: typeof tlsConnect
 }
@@ -63,13 +65,34 @@ export function passwordMayHaveBeenSent(error: unknown): boolean {
 
 const describeError = (error: unknown) => (error instanceof Error ? (error as Error & { code?: unknown }).code ? `${String((error as Error & { code?: unknown }).code)}: ${error.message}` : error.message : String(error)).slice(0, 200)
 
+/** `empresa.com.br` → `DC=empresa,DC=com,DC=br` (o domínio só tem letras, números, ponto e hífen — config/env.ts). */
+const baseDnOf = (domain: string) => domain.split(".").filter(Boolean).map((part) => `DC=${part}`).join(",")
+
+/** ID funcional (`employeeID`) da PRÓPRIA conta que acabou de entrar, lida com a conexão dela. Só lê: quem decide é `identityVerdict`. */
+async function readOwnIdentity(client: Client, domain: string, networkLogin: string): Promise<AccountIdentity> {
+  const { searchEntries } = await client.search(baseDnOf(domain), {
+    // O AD aceita o bind pelo login (sAMAccountName) OU pelo nome completo explícito (userPrincipalName): se outra conta tem este nome
+    // completo, vêm DUAS fichas e não dá para provar qual entrou (o `sizeLimit` só corta da quarta em diante).
+    scope: "sub", filter: new OrFilter({ filters: [new EqualityFilter({ attribute: "sAMAccountName", value: networkLogin }), new EqualityFilter({ attribute: "userPrincipalName", value: `${networkLogin}@${domain}` })] }),
+    attributes: ["sAMAccountName", "employeeID"], sizeLimit: 3,
+  })
+  if (searchEntries.length > 1) return { kind: "NOT_PROVABLE" }
+  const entry = searchEntries[0]
+  if (!entry || typeof entry.employeeID !== "string" || entry.employeeID.trim() === "") return { kind: "UNREADABLE" }
+  return { kind: "READ", employeeId: entry.employeeID, ownLogin: String(entry.sAMAccountName ?? "").toUpperCase() === networkLogin }
+}
+
 export function createLdapDirectoryAuthenticator(config: LdapDirectoryConfig): DirectoryAuthenticator {
   if (config.urls.length === 0 || !config.domain) return unconfiguredDirectory
   return {
     configured: true,
     domain: config.domain,
 
-    async verify(networkLogin, password) {
+    shortLoginOf: (networkLogin) => shortNetworkLoginOf(networkLogin, config.shortLoginFormats ?? []),
+
+    fullLoginsBehind: (networkLogin) => fullLoginsBehind(networkLogin, config.shortLoginFormats ?? []),
+
+    async verify(networkLogin, password, identity) {
       // Senha vazia faria o LDAP cair em bind anônimo, que responde SUCESSO: nunca chega ao servidor.
       if (!networkLogin || !password) return { kind: "INVALID" }
       let lastProblem = "NO_SERVER"
@@ -78,7 +101,14 @@ export function createLdapDirectoryAuthenticator(config: LdapDirectoryConfig): D
         const client = new Client({ url, timeout: config.timeoutMs, connectTimeout: config.timeoutMs, tlsOptions: directoryTlsOptions(config, hostname), ...(config.createSecureConnection ? { createSecureConnection: config.createSecureConnection } : {}) })
         try {
           await client.bind(`${networkLogin}@${config.domain}`, password)
-          return { kind: "OK" } satisfies DirectoryVerdict
+          if (!identity) return { kind: "OK" } satisfies DirectoryVerdict
+          // Senha certa: falta provar de quem é a conta. Falha de leitura nunca vira entrada onde a ID é obrigatória.
+          const found = await readOwnIdentity(client, config.domain, networkLogin).catch((error: unknown): AccountIdentity => {
+            console.error(JSON.stringify({ event: "network_identity_unreadable", server: hostname, reason: describeError(error) }))
+            return { kind: "UNREADABLE" }
+          })
+          const verdict = identityVerdict(identity, found)
+          return verdict.kind === "UNAVAILABLE" ? { ...verdict, reason: `${hostname}: ${verdict.reason}` } : verdict
         } catch (error) {
           // Senha recusada é a resposta do AD: NUNCA tenta o próximo servidor (seriam duas falhas no bloqueio da conta de rede).
           if (error instanceof InvalidCredentialsError || (error as { code?: unknown })?.code === 49) return classifyInvalidCredentials((error as Error).message)
@@ -126,6 +156,6 @@ export function directoryFromEnv(): DirectoryAuthenticator {
   if (cached) return cached
   const urls = parseLdapUrls(env.AD_LDAP_URLS)
   const ca = env.AD_CA_FILE ? readFileSync(env.AD_CA_FILE, "utf8") : null
-  cached = createLdapDirectoryAuthenticator({ urls, domain: env.AD_DOMAIN ?? "", ca, allowWeakKey: env.AD_TLS_ALLOW_WEAK_KEY === "true", timeoutMs: env.AD_TIMEOUT_MS })
+  cached = createLdapDirectoryAuthenticator({ urls, domain: env.AD_DOMAIN ?? "", ca, allowWeakKey: env.AD_TLS_ALLOW_WEAK_KEY === "true", timeoutMs: env.AD_TIMEOUT_MS, shortLoginFormats: parseShortLoginFormats(env.AD_LOGIN_WITHOUT_LAST_DIGIT) })
   return cached
 }

@@ -22,7 +22,7 @@ const POWERFUL = { person: "10000000-0000-4000-8000-000000000005", account: "200
 const LIVE_FEED = { source_name: "RH Corporativo", feed_name: "Colaboradores" }
 
 type Person = { matricula: string | null; active: boolean; account: string | null }
-type Options = { feeds?: (typeof LIVE_FEED)[]; actorRoles?: "GENERAL" | "GROUP" }
+type Options = { feeds?: (typeof LIVE_FEED)[]; networkLogin?: boolean; actorRoles?: "GENERAL" | "GROUP"; takenElsewhere?: string }
 
 function fakeDatabase(options: Options = {}) {
   const people: Record<string, Person> = {
@@ -51,7 +51,9 @@ function fakeDatabase(options: Options = {}) {
     }
     if (sql.includes("select team_id, subteam_id from people")) return rows([{ team_id: TEAM_A, subteam_id: null }])
     if (sql.includes("from data_feeds f join data_sources s")) return rows(options.feeds ?? [])
-    if (sql.includes("select known.id from people known")) return rows(Object.entries(people).filter(([, entry]) => entry.matricula === params[1]).map(([id]) => ({ id })))
+    if (sql.includes("o.network_login_changed_at")) return rows([{ network_login_enabled: options.networkLogin === true, network_login_changed_at: null, changed_by: null }])
+    if (sql.includes("from people twin")) return rows([{ taken: options.takenElsewhere !== undefined && params[0] === options.takenElsewhere }])
+    if (sql.includes("select known.id from people known")) return rows(Object.entries(people).filter(([, entry]) => entry.matricula?.toUpperCase() === String(params[1]).trim().toUpperCase()).map(([id]) => ({ id })))
     // Transação do vínculo.
     if (sql.includes("for update")) return rows((params[1] as string[]).filter((id) => people[id]).map((id) => ({ id, matricula: people[id]!.matricula, active: people[id]!.active, account_id: people[id]!.account })))
     if (sql.trim().startsWith("update user_accounts set person_id")) return rows(people[String(params[1])]?.account ? [{ id: people[String(params[1])]!.account }] : [])
@@ -133,10 +135,43 @@ describe("Novo usuário — uma porta só para a hierarquia", () => {
     expect(inserted(statements)).toBeUndefined()
   })
 
+  it("matrícula que só muda a caixa da que já existe: 409 (nunca um segundo cadastro da mesma pessoa)", async () => {
+    const { server, statements } = app({ feeds: [LIVE_FEED] })
+    expect((await request(server).post("/").send(newUser({ matricula: " op-10234 " }))).body.error).toMatchObject({ code: "PERSON_MATRICULA_IN_USE" })
+    expect(inserted(statements)).toBeUndefined()
+  })
+
+  it("login pela rede ligado: exige matrícula utilizável, não gera senha e o e-mail é opcional só se o domínio do AD identificar a conta", async () => {
+    const missing = app({ networkLogin: true })
+    expect((await request(missing.server).post("/").send(newUser({ role: "ADMIN" }))).body.error.code).toBe("ACCESS_MATRICULA_REQUIRED")
+    expect((await request(missing.server).post("/").send(newUser({ role: "ADMIN", matricula: "G 123" }))).body.error.code).toBe("ACCESS_MATRICULA_INVALID")
+    expect(inserted(missing.statements)).toBeUndefined()
+    const ok = app({ networkLogin: true })
+    const response = await request(ok.server).post("/").send(newUser({ matricula: "g0099999" }))
+    expect(response.status).toBe(201)
+    expect(response.body.data.issued).toBeNull()
+    expect(JSON.stringify(response.body)).not.toMatch(/temporaryPassword/)
+    const account = ok.statements.find((entry) => entry.sql.includes("insert into user_accounts"))!
+    expect(account.params.slice(4)).toEqual([null, null, false])
+    // Sem AD_DOMAIN na instalação de teste, o e-mail é pedido.
+    expect((await request(app({ networkLogin: true }).server).post("/").send(newUser({ matricula: "g0099998", email: undefined }))).body.error.code).toBe("ACCESS_EMAIL_REQUIRED")
+  })
+
+  it("login pela rede ligado: matrícula já habilitada em outra conta (de qualquer organização) é recusada como no Habilitar; sem a rede, nada muda (CFA-05 da run-12)", async () => {
+    const network = app({ networkLogin: true, takenElsewhere: "G0099999" })
+    const response = await request(network.server).post("/").send(newUser({ matricula: " g0099999 " }))
+    expect(response.status).toBe(409)
+    expect(response.body.error).toEqual({ code: "ACCESS_MATRICULA_DUPLICATED", message: expect.stringContaining("Outra conta habilitada tem a mesma matrícula") })
+    expect(inserted(network.statements)).toBeUndefined()
+    const local = app({ takenElsewhere: "G0099999" })
+    expect((await request(local.server).post("/").send(newUser({ matricula: "g0099999" }))).status).toBe(201)
+    expect(local.statements.some((entry) => entry.sql.includes("from people twin"))).toBe(false)
+  })
+
   it("a política de cadastro diz se a hierarquia exige matrícula e de qual base ela vem", async () => {
     const live = await request(app({ feeds: [LIVE_FEED] }).server).get("/creation-policy")
-    expect(live.body.data).toEqual({ hierarchyRequiresMatricula: true, sources: [{ sourceName: "RH Corporativo", feedName: "Colaboradores" }] })
-    expect((await request(app().server).get("/creation-policy")).body.data).toEqual({ hierarchyRequiresMatricula: false, sources: [] })
+    expect(live.body.data).toEqual({ hierarchyRequiresMatricula: true, sources: [{ sourceName: "RH Corporativo", feedName: "Colaboradores" }], networkLogin: false })
+    expect((await request(app().server).get("/creation-policy")).body.data).toEqual({ hierarchyRequiresMatricula: false, sources: [], networkLogin: false })
   })
 })
 

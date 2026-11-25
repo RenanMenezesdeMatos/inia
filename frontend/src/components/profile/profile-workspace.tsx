@@ -5,8 +5,9 @@ import { Building2 } from "lucide-react"
 
 import { AnalyticsEmptyState, AnalyticsErrorState } from "@/components/analytics/analytics-states"
 import { StructureFollowUpFeed } from "@/components/follow-up/structure-follow-up-feed"
-import { FollowupWorkspaceShell } from "@/components/operator/followup-workspace-shell"
-import { OperatorFollowupWorkspace } from "@/components/operator/operator-followup-workspace"
+import { FollowupFeedArea } from "@/components/operator/followup-feed-area"
+import { IniaPanelShell } from "@/components/operator/inia-panel/inia-panel-shell"
+import { OperatorDailyFeedbackFeed } from "@/components/operator/operator-daily-feedback-feed"
 import { OperatorIniaChat } from "@/components/operator/operator-inia-chat"
 import { PendingActionsView } from "@/components/pending/pending-actions-view"
 import { ProfileHeader, type ProfileHeaderPerson } from "@/components/profile/profile-header"
@@ -83,9 +84,15 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
   // Comunicados: o botão só para quem tem a permissão (o servidor confere de novo e calcula o público).
   const canPublishCommunications = capabilities.canPublishTeamCommunications || capabilities.canPublishOrganizationCommunications
 
+  // O painel da INIA fica acima das abas: trocar de aba não desmonta o chat (conversa, rascunho e chamada continuam, e o Canvas do avatar não
+  // passa pelo ciclo de desmontagem do Radix). Quem não tem estrutura (Apoio) não tem o painel.
+  const renderChat = !context ? undefined
+    : operatorSurface ? (chat: { hidden: boolean }) => <OperatorIniaChat indicators={operatorSurface.indicators} operator={profile} {...chat} />
+      : context.defaultSubject ? (chat: { hidden: boolean }) => <OperatorIniaChat indicators={EMPTY_INDICATORS} operator={profile} context="team" {...chat} /> : undefined
+
   return (
     <div className="min-h-screen overflow-x-clip bg-muted text-foreground">
-      <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
+      <IniaPanelShell renderChat={renderChat} feedbackInvites={operatorSurface !== null} startClosedOnNarrow={activeTab !== "followup" || state.item !== null} destination={`${state.tab}:${state.item ?? ""}`} feedVisible={activeTab === "followup"} onShowFeed={() => update({ tab: "followup" })}>
         <ProfileHeader person={ownHeaderPerson(baseProfile, me)} isOwn attached={!contextQuery.isError || Boolean(context)} actions={canPublishCommunications ? <PublishButton /> : undefined} />
         <main className="min-h-0">
           {contextQuery.isPending && !context ? <TabsSkeleton /> : null}
@@ -93,33 +100,15 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
           {context ? (
             <Tabs value={activeTab} onValueChange={(value) => update({ tab: value as ProfileTab })} className="min-w-0">
               <ProfileTabsList tabs={tabs} active={activeTab} />
-              {/* Acompanhamento do próprio operador: o feed à esquerda e o painel da INIA à direita. Fora dele o painel sai da árvore
-                  no mesmo commit da troca de aba (ver o comentário do Acompanhamento abaixo). */}
-              {/* A página rola: o cabeçalho sai de cena e a área para logo abaixo das abas fixas, ocupando o resto da janela
-                  (janela − barra global 56 − abas 48 − margem 16 − respiro do fim 20). O piso vale para janelas muito baixas. */}
-              {operatorSurface && activeTab === "followup" ? (
-                <div role="tabpanel" aria-label={tabs.find((tab) => tab.value === activeTab)?.label} className="mt-4 h-[calc(100dvh-8.75rem)] min-h-[28rem]">
-                  <OperatorFollowupWorkspace indicators={operatorSurface.indicators} operator={profile} highlightItemKey={state.item} />
-                </div>
-              ) : null}
-              {/* A Surface só é renderizada enquanto a aba está ativa, e não via o ciclo de
-                  desmontagem do Radix Presence: ela carrega o Canvas WebGL do avatar, que precisa
-                  sair da árvore no MESMO commit da troca de aba — no ciclo adiado do Presence o
-                  R3F ainda recebe uma remedição de tamanho e reconfigura um canvas prestes a
-                  morrer (ver inia-humanoid-avatar-3d.tsx). No perfil do operador este painel fica vazio (a área dele é a de cima) e não
-                  pode ocupar espaço: margem + respiro vazios somavam 48 px à faixa em branco no fim da página. */}
-              <TabsContent value="followup" className={cn("mt-4", context.defaultSubject ? "pb-5" : "pb-8", operatorSurface && "hidden")}>
-                {activeTab !== "followup" || operatorSurface ? null : !context.defaultSubject ? (
+              <TabsContent value="followup" className={cn("mt-4", !operatorSurface && !context.defaultSubject && "pb-8")}>
+                {activeTab !== "followup" ? null : operatorSurface ? (
+                  <FollowupFeedArea><OperatorDailyFeedbackFeed indicators={operatorSurface.indicators} highlightItemKey={state.item} /></FollowupFeedArea>
+                ) : !context.defaultSubject ? (
                   <NoStructureState support={context?.viewer.role === "STAFF"} />
                 ) : (
-                  // Mesmo formato do Acompanhamento do operador (18/11/2026): área que para logo abaixo das abas, chat recolhível ao lado.
-                  <div className="h-[calc(100dvh-8.75rem)] min-h-[28rem]">
-                  <FollowupWorkspaceShell
-                    docked
-                    feed={<StructureFollowUpFeed subject={null} description="Feedbacks, resultados de workflow e escalonamentos da sua estrutura" employeeHref={(personId) => employeeProfileHref(personId, "followup")} unacknowledgedOnly={state.ackPending} onUnacknowledgedOnlyChange={(value) => update({ ackPending: value })} highlightItemId={state.item} audienceFilter />}
-                    renderChat={({ onCollapse, hidden }) => <OperatorIniaChat indicators={EMPTY_INDICATORS} operator={profile} context="team" onCollapse={onCollapse} hidden={hidden} />}
-                  />
-                  </div>
+                  <FollowupFeedArea>
+                    <StructureFollowUpFeed subject={null} description="Feedbacks, resultados de workflow e escalonamentos da sua estrutura" employeeHref={(personId) => employeeProfileHref(personId, "followup")} unacknowledgedOnly={state.ackPending} onUnacknowledgedOnlyChange={(value) => update({ ackPending: value })} highlightItemId={state.item} audienceFilter />
+                  </FollowupFeedArea>
                 )}
               </TabsContent>
               {isAnjo ? (
@@ -180,7 +169,7 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
             </Tabs>
           ) : null}
         </main>
-      </div>
+      </IniaPanelShell>
     </div>
   )
 }
@@ -212,7 +201,7 @@ function TabsSkeleton() {
 function WorkspaceSkeleton({ person }: { person: ProfileHeaderPerson }) {
   return (
     <div className="min-h-screen overflow-x-clip bg-muted text-foreground">
-      <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
+      <div className="mx-auto flex w-full max-w-[90rem] flex-col px-4 py-4 sm:px-6 sm:py-5">
         <ProfileHeader person={person} isOwn attached />
         <TabsSkeleton />
       </div>

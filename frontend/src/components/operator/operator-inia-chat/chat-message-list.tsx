@@ -6,7 +6,8 @@ import { PersonAvatar } from "@/components/profile/person-avatar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Bubble, BubbleContent, BubbleReactions } from "@/components/ui/bubble"
 import { Button } from "@/components/ui/button"
-import { Message, MessageAvatar, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message"
+import { cn } from "@/lib/utils"
+import { Message, MessageAvatar, MessageContent, MessageHeader } from "@/components/ui/message"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { AvatarConversationState } from "@/lib/avatar/animation/types"
 import type { ConversationSummary } from "@/lib/realtime/gemini-text-client"
@@ -25,6 +26,8 @@ import type { FeedbackReturn } from "./feedback-session-model"
 import { FollowUpSeparator, PresentationText, TypingBubble } from "./chat-visuals"
 
 type ChatMessageListProps = {
+  /** Painel baixo: menos respiro, mais conversa. */
+  dense?: boolean
   sessionApplication: FeedbackApplicationDetail | null
   messages: ChatMessage[]
   messagesContentRef: React.RefObject<HTMLDivElement | null>
@@ -70,7 +73,7 @@ type ChatMessageListProps = {
 const daySeparator = (label: string) => <div className="flex justify-center" role="separator" aria-label={label}><span className="rounded-full bg-muted px-3 py-0.5 text-[11px] font-medium text-muted-foreground">{label}</span></div>
 
 /** Mensagens da conversa exibida: a geral no painel; a da aplicação de feedback (e a complementar) na sessão. */
-export function ChatMessageList({ sessionApplication, messages, messagesContentRef, sessionOpen, loadState, readOnlyConversation, openPastConversation, loadCurrentConversation, olderCursor, loadOlderMessages, loadingOlder, olderError, operator, greeting, stageHiddenIds, feedbackCompleted, workflowConversation, rate, resumeMarkerId, conversationState, liveAssistantText, textReplyPending, liveTextReply, activityLabel = null, askSuggestion, switchToGeneralConversation, askQuestion, answerClarification, saveDislike, onRequestSupport, renderSupportSuggestion }: ChatMessageListProps) {
+export function ChatMessageList({ dense = false, sessionApplication, messages, messagesContentRef, sessionOpen, loadState, readOnlyConversation, openPastConversation, loadCurrentConversation, olderCursor, loadOlderMessages, loadingOlder, olderError, operator, greeting, stageHiddenIds, feedbackCompleted, workflowConversation, rate, resumeMarkerId, conversationState, liveAssistantText, textReplyPending, liveTextReply, activityLabel = null, askSuggestion, switchToGeneralConversation, askQuestion, answerClarification, saveDislike, onRequestSupport, renderSupportSuggestion }: ChatMessageListProps) {
   const busy = textReplyPending || conversationState !== "idle"
   // Escolher no formulário enquanto a INIA FALA é como falar por cima dela (a fala é interrompida e a escolha segue): o formulário só
   // espera enquanto ela PENSA (uma consulta em andamento) ou uma resposta escrita está a caminho.
@@ -80,7 +83,7 @@ export function ChatMessageList({ sessionApplication, messages, messagesContentR
   const suggestions = sessionApplication?.script?.suggestions ?? []
   const firstFollowUpIndex = messages.findIndex((message) => message.segment === "followup")
   const emptyView = loadState === "ready" && !readOnlyConversation && !sessionOpen && messages.length === 0
-  return <div ref={messagesContentRef} className={sessionOpen ? "space-y-6 pt-5" : "space-y-6 px-5 py-6"} data-testid={sessionOpen ? "feedback-session-messages" : undefined}>
+  return <div ref={messagesContentRef} className={sessionOpen ? "space-y-6 pt-5" : dense ? "space-y-3 px-3 py-3" : "space-y-4 px-4 py-4"} data-testid={sessionOpen ? "feedback-session-messages" : undefined}>
     {loadState === "loading" ? (
       <div className="space-y-4" aria-label="Carregando conversa"><Skeleton className="h-12 w-3/4 rounded-2xl"/><Skeleton className="ml-auto h-10 w-1/2 rounded-2xl"/><Skeleton className="h-16 w-4/5 rounded-2xl"/></div>
     ) : loadState === "error" && !sessionOpen ? (
@@ -109,22 +112,25 @@ export function ChatMessageList({ sessionApplication, messages, messagesContentR
       // Registro original de uma aplicação concluída: só consulta (sem avaliação de resposta).
       const closedRecord = sessionOpen && feedbackCompleted && message.segment !== "followup"
       // Descurtida com motivo: só nas respostas gravadas do chat livre (nunca na sessão de feedback nem num recado de Workflow).
+      const ratable = assistant && !message.localError && !readOnlyConversation && !closedRecord
       const dislikeForm = assistant && saveDislike && !sessionOpen && !workflowConversation && !message.origin && message.interactionId ? message.interactionId : null
-      return <div key={message.id} className="space-y-6">
+      return <div key={message.id} className={sessionOpen ? "space-y-6" : "space-y-4"}>
       {index === firstFollowUpIndex ? <FollowUpSeparator/> : null}
       {showSeparator ? daySeparator(dateSeparatorLabel(message.occurredAt)) : null}
       {/* `data-message-id`: onde a fala da INIA pousa no palco (a mensagem inteira nasce do balão). */}
       {/* `data-support-signals`: sinais calculados pelo servidor (Apoio com Anjo) — a sugestão de falar com um Anjo parte deles. */}
       <Message align={assistant ? "start" : "end"} data-message-id={message.id} data-support-signals={message.signals && message.signals.length > 0 ? message.signals.join(",") : undefined}>
         <MessageAvatar>{assistant ? <Avatar className="size-8"><AvatarImage src={operator.assistantImage} alt="INIA"/><AvatarFallback className="bg-primary text-primary-foreground"><Bot className="size-4"/></AvatarFallback></Avatar> : <PersonAvatar name={operator.displayName ?? operator.name} avatarUrl={operator.avatarUrl} className="size-8" fallbackClassName="bg-secondary"/>}</MessageAvatar>
-        <MessageContent className="max-w-[88%]">
-          <MessageHeader className="flex items-center gap-1.5 px-1">{assistant ? "INIA" : operator.displayName ?? operator.name}{fromWorkflow ? <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground"><Sparkles className="size-3" aria-hidden/>Recado</span> : null}{presentation ? <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground"><Sparkles className="size-3" aria-hidden/>Apresentação do feedback</span> : null}</MessageHeader>
-          <Bubble variant={assistant ? "muted" : "default"} className={fromWorkflow ? "max-w-full border border-primary/40 bg-primary/10" : "max-w-full"} data-origin={fromWorkflow ? "workflow" : presentation ? "feedback-presentation" : undefined}><BubbleContent className="space-y-2 px-4 py-3">{fromWorkflow && workflowConversation ? <p className="text-sm font-semibold text-primary dark:text-chart-4">{workflowConversation.title}</p> : null}{presentation ? <PresentationText text={message.text} compact={sessionOpen}/> : assistant ? <RichContent text={message.clarification ? clarificationBubbleText(message.text, message.clarification) : message.text}/> : message.text}</BubbleContent>{message.rating ? <BubbleReactions side="bottom" align="end">{message.rating === "up" ? "👍" : "👎"}</BubbleReactions> : null}</Bubble>
+        <MessageContent className="max-w-[88%] gap-1">
+          <MessageHeader className="flex items-center gap-1.5 px-1"><span className="truncate">{assistant ? "INIA" : operator.displayName ?? operator.name}</span><span aria-hidden className="text-muted-foreground/50">|</span><span className="shrink-0 font-normal tabular-nums">{message.time}</span>{message.channel === "voice" ? <span className="inline-flex shrink-0 items-center gap-0.5 font-normal" aria-label="Por voz"><Mic className="size-3" aria-hidden/>voz</span> : null}{message.saveState === "failed" ? <span className="font-normal text-destructive" role="status">Não salva no histórico</span> : null}{fromWorkflow ? <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground"><Sparkles className="size-3" aria-hidden/>Recado</span> : null}{presentation ? <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground"><Sparkles className="size-3" aria-hidden/>Apresentação do feedback</span> : null}</MessageHeader>
+          <Bubble variant={assistant ? "muted" : "default"} className={cn("max-w-full", fromWorkflow && "border border-primary/40 bg-primary/10", ratable && "mb-3")} data-origin={fromWorkflow ? "workflow" : presentation ? "feedback-presentation" : undefined}><BubbleContent className="space-y-2 px-4 py-3">{fromWorkflow && workflowConversation ? <p className="text-sm font-semibold text-primary dark:text-chart-4">{workflowConversation.title}</p> : null}{presentation ? <PresentationText text={message.text} compact={sessionOpen}/> : assistant ? <RichContent text={message.clarification ? clarificationBubbleText(message.text, message.clarification) : message.text}/> : message.text}</BubbleContent>{ratable ? (
+            // Na borda de baixo do balão, onde a leitura termina: avaliar não custa uma linha nem obriga a voltar ao começo da resposta.
+            <BubbleReactions side="bottom" align="end" className="translate-y-1/2 gap-0 border border-border bg-card p-0 ring-0 pointer-coarse:[&_button]:size-8" role="group" aria-label="Avaliar esta resposta"><Button variant="ghost" size="icon-xs" aria-label="Resposta útil" aria-pressed={message.rating === "up"} className="aria-pressed:bg-primary/10 aria-pressed:text-primary" onClick={() => rate(message.id, "up")}><ThumbsUp/></Button>{dislikeForm && saveDislike ? <DislikeControl interactionId={dislikeForm} disliked={message.rating === "down"} initial={message.ratingDetails ?? null} onSubmit={(input) => saveDislike(message.id, input)} onRemove={async () => { await saveDislike(message.id, null) }} {...(onRequestSupport ? { onRequestSupport } : {})}/> : <Button variant="ghost" size="icon-xs" aria-label="Resposta não foi útil" aria-pressed={message.rating === "down"} className="aria-pressed:bg-destructive/10 aria-pressed:text-destructive" onClick={() => rate(message.id, "down")}><ThumbsDown/></Button>}</BubbleReactions>
+          ) : message.rating ? <BubbleReactions side="bottom" align="end">{message.rating === "up" ? "👍" : "👎"}</BubbleReactions> : null}</Bubble>
           {assistant && message.clarification ? <KnowledgeClarificationBlock view={message.clarification} interactive={message.id === latestClarificationId && !readOnlyConversation && !sessionOpen && Boolean(answerClarification)} busy={clarificationBusy} {...(answerClarification ? { onAnswer: answerClarification } : {})} /> : null}
           {assistant ? <SupportMaterialsSection materials={message.supportMaterials} className="mt-2" /> : null}
           {assistant ? <LeadershipCards collapsible cards={message.analytics} {...(askQuestion && !readOnlyConversation && !busy ? { onAsk: askQuestion } : {})} /> : null}
           {assistant && message.reportOffer ? <ReportOfferAction offer={message.reportOffer} /> : null}
-          <MessageFooter className="gap-1 px-1"><span className="mr-1 font-normal">{message.time}{message.channel === "voice" ? <span className="ml-1 inline-flex items-center gap-0.5" aria-label="Por voz"><Mic className="size-3" aria-hidden/>voz</span> : null}{message.saveState === "failed" ? <span className="ml-1 text-destructive" role="status"> · Não salva no histórico</span> : !assistant ? " · Enviada" : ""}</span>{assistant && !message.localError && !readOnlyConversation && !closedRecord ? <><Button variant="ghost" size="icon-xs" aria-label="Resposta útil" onClick={() => rate(message.id, "up")}><ThumbsUp/></Button>{dislikeForm && saveDislike ? <DislikeControl interactionId={dislikeForm} disliked={message.rating === "down"} initial={message.ratingDetails ?? null} onSubmit={(input) => saveDislike(message.id, input)} onRemove={async () => { await saveDislike(message.id, null) }} {...(onRequestSupport ? { onRequestSupport } : {})}/> : <Button variant="ghost" size="icon-xs" aria-label="Resposta não foi útil" onClick={() => rate(message.id, "down")}><ThumbsDown/></Button>}</> : null}</MessageFooter>
           {renderSupportSuggestion && !readOnlyConversation ? renderSupportSuggestion(message) : null}
         </MessageContent>
       </Message>
@@ -147,7 +153,6 @@ export function ChatMessageList({ sessionApplication, messages, messagesContentR
         <Button type="button" size="xs" variant="ghost" className="h-auto rounded-full py-1 text-primary dark:text-chart-4" onClick={() => switchToGeneralConversation("CURRENT_RESULTS")}><BarChart3 aria-hidden/>Conversar sobre meus resultados atuais</Button>
       </div>
     ) : null}
-    {loadState === "ready" && !readOnlyConversation && !sessionOpen ? <p className="pl-10 text-xs text-muted-foreground">INIA está pronta para ajudar.</p> : null}
   </div>
 }
 

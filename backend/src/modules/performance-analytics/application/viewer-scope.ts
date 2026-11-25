@@ -173,6 +173,15 @@ export function canViewManagementMetrics(scope: Pick<ViewerScope, "role" | "acce
   return leader ? accessCovers(scope.access, leader) : hasAccessGrant(scope.access)
 }
 
+/**
+ * Quem vê FÉRIAS por pessoa no organograma (decisão do responsável, 25/11/2026): quem ocupa cargo de gestão, em qualquer estrutura que
+ * navegar, e quem tem `structure.vacations.view` na organização inteira (só o Administrador geral). O Operador nunca — nem as próprias —, e
+ * o nível legado "ADMIN" sem o papel também não.
+ */
+export function canViewVacations(scope: Pick<ViewerScope, "role">, access: VisibilityFilter): boolean {
+  return isHierarchyRole(scope.role) || access.organizationWide
+}
+
 /** A ficha do colaborador (`/supervisor/operators/:id`) continua aceitando SÓ operadores ativos
  * VISÍVEIS (subárvore ∪ escopo de `indicators.view`) — a mesma regra de `resolveSubject(EMPLOYEE)`, sem o próprio viewer (que já está no
  * próprio perfil). Capability INDEPENDENTE de `structureSubjectInScope`: um Gerente pode navegar
@@ -262,7 +271,10 @@ export function buildBreadcrumb(scope: ViewerScope, subject: AnalyticsSubject): 
     // Ancestrais entre o viewer e a âncora, do mais alto pro mais baixo, cada um como estrutura.
     const chain: PersonNode[] = []
     let cursor = scope.nodes.get(anchorId)?.reportsToId ?? null
-    while (cursor && cursor !== scope.viewer.id) {
+    // Gestores em círculo na base (A responde a B e B a A): para ao repetir, nunca prende o processo.
+    const visited = new Set<string>()
+    while (cursor && cursor !== scope.viewer.id && !visited.has(cursor)) {
+      visited.add(cursor)
       const node = scope.nodes.get(cursor)
       if (!node) break
       chain.unshift(node)

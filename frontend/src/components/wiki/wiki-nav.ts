@@ -175,7 +175,7 @@ export const WIKI_SECTIONS: WikiSection[] = [
     icon: Database,
     description: "A porta única de entrada dos dados do cliente: fontes, feeds, contratos de dados, mapeamento, cargas, quarentena, linhagem, saúde × atualidade.",
     pages: [
-      { href: "/wiki/central-de-dados", title: "Central de Dados", description: "Conceito, princípio 'sem integração por indicador', camadas, Fonte, Feed, Contrato de Dados, catálogo, mapeamento, validação, writers, cargas, quarentena, linhagem, saúde × atualidade, consulta de dados e segurança." },
+      { href: "/wiki/central-de-dados", title: "Central de Dados", description: "Conceito, princípio 'sem integração por indicador', camadas, Fonte, Feed, Contrato de Dados, catálogo, mapeamento, validação, writers, cargos, universo de atuação, cargas, quarentena, linhagem, saúde × atualidade, consulta de dados e segurança." },
       { href: "/wiki/central-de-dados/conectores", title: "Conectores", description: "CSV, Excel, API Pull (auth, paginação, checkpoint), API Push (endpoint, token, Idempotency-Key), SFTP (host key, padrão, dedup) e o wizard Nova fonte." },
       { href: "/wiki/central-de-dados/banco-do-cliente", title: "Tabelas no banco do cliente", shortTitle: "Banco do cliente", description: "O que criar no banco do cliente para a INIA ler os dados: como a INIA consulta, o SQL das tabelas, o usuário de leitura e o que é cada campo." },
       { href: "/wiki/central-de-dados/guias", title: "Guias e troubleshooting", shortTitle: "Guias", description: "Como importar um CSV, conectar uma API, conectar um SFTP, entender uma carga com erros e os códigos de erro." },

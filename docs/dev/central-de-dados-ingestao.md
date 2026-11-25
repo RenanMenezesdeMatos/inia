@@ -337,3 +337,12 @@ pessoa herda do Grupo/Subgrupo); coluna NÃO mapeada = mantém a exceção atual
 `DATA_OPERATING_UNIVERSE_REQUIRED` para operador novo sem universo resolvido E para operador que já existe quando a linha muda o
 Grupo/Subgrupo, o nível (ex.: supervisor → operador) ou tira a exceção e o resultado fica sem universo — o cadastro atual dele fica
 (UB-02); operador já pendente em que nada disso muda continua passando. Detalhe em `docs/dev/memoria/universo-de-atuacao.md`.
+
+## Cargos e nomes repetidos — 24/11/2026 (migrations 252 e 253)
+
+- **Nível hierárquico = cargo do cliente**: o contrato Colaboradores aceita o nome do cargo como vem da base. `job_positions` (cadastro da
+  organização, tela Cargos) liga cada nome a um PERFIL fechado do código; `STAFF` (Apoio) é o perfil de quem não é operador nem lidera.
+  Cargo sem cadastro recusa a linha com `DATA_JOB_POSITION_UNKNOWN` e a própria Central mostra os nomes a cadastrar. Cargo não concede acesso.
+- **Nome de Grupo ou Subgrupo já em uso** recusa só a linha, com `DATA_NAME_IN_USE` (antes derrubava a carga). A identidade continua sendo
+  o código; nada é juntado por nome. Lote só com linhas recusadas continua falhando por `DATA_NO_VALID_RECORDS` (R-53).
+- Detalhe e decisões: `docs/dev/memoria/central-de-dados-e-instalacao.md`, seções "Cargos" e "Nome repetido".

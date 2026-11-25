@@ -45,7 +45,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   }
 
   return (
-    <div className="relative mx-auto w-full max-w-7xl" style={{ contain: "layout" }}>
+    <div className="relative mx-auto w-full max-w-[90rem]" style={{ contain: "layout" }}>
       {/* Um fundo só (o da página): sem a faixa de cor do variant "inset" nem o conteúdo como painel flutuante com sombra. */}
       <SidebarProvider className="has-data-[variant=inset]:bg-transparent">
         <AdminSidebar capabilities={{ ...user.access.capabilities, canViewUsability, canPublishTeamCommunications: canPublishCommunications }} />

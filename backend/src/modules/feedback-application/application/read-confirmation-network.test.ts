@@ -73,6 +73,16 @@ describe("ciência pela rede", () => {
     expect(fake.events).toEqual([{ event: "FAILED", failureReason: "WRONG_LOGIN" }])
   })
 
+  it("cadastro fora do formato do login (DOMINIO\\X ou X@dominio): nunca confere a senha da conta X (CFA-07 da run-12)", async () => {
+    for (const matricula of ["EMPRESA\\G0055350", "G0055350@empresa.local"]) {
+      const fake = fakeDatabase({ matricula, network: true })
+      let calls = 0
+      const verifyNetworkPassword: NetworkPasswordVerifier = async () => { calls += 1; return "OK" }
+      await expect(confirmFeedbackReading(fake.database, scope, { ...attempt, login: "G0055350", password: "x", agreement: AGREE }, NOW, { verifyPassword, verifyNetworkPassword })).rejects.toMatchObject({ code: "READ_CONFIRMATION_INVALID_CREDENTIALS" })
+      expect(calls, matricula).toBe(0)
+    }
+  })
+
   it("senha de rede errada: FAILED (WRONG_PASSWORD), mensagem da rede e sem 'restam N tentativas'", async () => {
     const fake = fakeDatabase({ matricula: "G0055350", network: true })
     const error = await confirmFeedbackReading(fake.database, scope, { ...attempt, login: "G0055350", password: "errada", agreement: AGREE }, NOW, { verifyPassword, verifyNetworkPassword: async () => "INVALID" }).catch((caught: unknown) => caught)

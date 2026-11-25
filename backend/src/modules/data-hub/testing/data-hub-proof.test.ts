@@ -134,6 +134,33 @@ describe.skipIf(!ENABLED)("Central de Dados — prova de contrato contra o banco
     expect(again.recordsInserted).toBe(0)
   })
 
+  it("nome repetido de Grupo/Subgrupo: só a linha vai para a quarentena e o resto da carga entra (antes derrubava tudo com DATA_INTERNAL_ERROR)", async () => {
+    const source = await createSource(ctx, ORG, null, { name: "TC Nomes repetidos", config: { kind: "FILE_UPLOAD" } })
+    const groupsFeed = await activeFeed(source, { feedKey: "grupos-nomes", name: "Grupos nomes", contractKey: "GROUPS", connectorConfig: fileFeedConfig(), mapping: identity(["externalCode", "name"]) })
+    const header = ["externalCode", "name"]
+    const first = await uploadAndRun(groupsFeed, csv([header, ["TC_NOME_A", "TC · Nome A"], ["TC_NOME_B", "TC · Nome B"], ["TC_NOME_C", "TC · Nome A"]]), "tc-nomes-1.csv")
+    expect(first).toMatchObject({ status: "PARTIAL", recordsInserted: 2, recordsRejected: 1, errorCode: null })
+    expect(await rejectionsOf(first.id)).toEqual([{ code: "DATA_NAME_IN_USE", field: "name", key: "TC_NOME_C" }])
+
+    // Código novo com o nome de um Grupo que não veio na carga: recusado, e o Grupo existente continua como estava.
+    const second = await uploadAndRun(groupsFeed, csv([header, ["TC_NOME_D", "TC · Nome B"], ["TC_NOME_E", "TC · Nome E"]]), "tc-nomes-2.csv")
+    expect(second).toMatchObject({ status: "PARTIAL", recordsInserted: 1, recordsRejected: 1 })
+    expect(await rejectionsOf(second.id)).toEqual([{ code: "DATA_NAME_IN_USE", field: "name", key: "TC_NOME_D" }])
+
+    // O nome liberado na mesma carga pode ser usado, mesmo por uma linha que vem antes.
+    const third = await uploadAndRun(groupsFeed, csv([header, ["TC_NOME_D", "TC · Nome B"], ["TC_NOME_B", "TC · Nome B (antigo)"]]), "tc-nomes-3.csv")
+    expect(third).toMatchObject({ status: "COMPLETED", recordsInserted: 1, recordsUpdated: 1 })
+    const groups = await db.query<{ external_code: string; name: string }>(`select external_code, name from teams where organization_id = $1 and external_code like 'TC_NOME_%' order by external_code`, [ORG])
+    expect(groups.rows.map((row) => `${row.external_code}=${row.name}`)).toEqual(["TC_NOME_A=TC · Nome A", "TC_NOME_B=TC · Nome B (antigo)", "TC_NOME_D=TC · Nome B", "TC_NOME_E=TC · Nome E"])
+
+    const subgroupsFeed = await activeFeed(source, { feedKey: "subgrupos-nomes", name: "Subgrupos nomes", contractKey: "SUBGROUPS", connectorConfig: fileFeedConfig(), mapping: identity(["externalCode", "groupExternalCode", "name"]) })
+    const sub = await uploadAndRun(subgroupsFeed, csv([["externalCode", "groupExternalCode", "name"], ["TC_NOME_A/1", "TC_NOME_A", "Voz"], ["TC_NOME_A/2", "TC_NOME_A", "Voz"], ["TC_NOME_B/1", "TC_NOME_B", "Voz"]]), "tc-nomes-sub.csv")
+    expect(sub).toMatchObject({ status: "PARTIAL", recordsInserted: 2, recordsRejected: 1 })
+    expect(await rejectionsOf(sub.id)).toEqual([{ code: "DATA_NAME_IN_USE", field: "name", key: "TC_NOME_A/2" }])
+    const message = await db.query<{ message: string }>(`select message from data_ingestion_rejections where run_id = $1`, [sub.id])
+    expect(message.rows[0]!.message).toContain('"TC_NOME_A/1"')
+  })
+
   it("EMPLOYEES por CSV (25 colaboradores): insert, update, idempotência, gestor na mesma carga, quarentena por referência", async () => {
     employeesFeed = await activeFeed(groupsSource, {
       feedKey: "colaboradores",

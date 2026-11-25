@@ -1,7 +1,11 @@
+import { spawnSync } from "node:child_process"
 import { Duplex } from "node:stream"
 import type { connect as tlsConnect } from "node:tls"
-import { describe, expect, it } from "vitest"
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { createLdapDirectoryAuthenticator, directoryTlsOptions, parseLdapUrls, passwordMayHaveBeenSent } from "./ldap-directory-authenticator.js"
+import type { IdentityCheck } from "../application/directory-authenticator.js"
+import type { DirectoryAuthenticator } from "../application/directory-authenticator.js"
+import { startFakeLdapsServer, type FakeDirectoryUser, type FakeLdapsServer } from "../testing/fake-ldaps-server.js"
 
 describe("configuração do AD", () => {
   it("só aceita ldaps:// (senha de rede nunca trafega aberta)", () => {
@@ -64,5 +68,46 @@ describe("conferência da senha", () => {
     expect(passwordMayHaveBeenSent(new Error("BindRequest: Operation timed out"))).toBe(true)
     expect(passwordMayHaveBeenSent(new Error("Connection closed before message response was received. Message type: BindRequest (0x60)"))).toBe(true)
     expect(passwordMayHaveBeenSent(new Error("algo desconhecido"))).toBe(true)
+  })
+})
+
+/** Adaptador real contra o AD de mentira em LDAPS (TLS, bind e pesquisa de verdade); precisa do `openssl` para o certificado. */
+describe.skipIf(spawnSync("openssl", ["version"]).status !== 0)("de quem é a conta que entrou (CFA-01 da run-12)", () => {
+  let ad: FakeLdapsServer
+  let directory: DirectoryAuthenticator
+  beforeAll(async () => {
+    ad = await startFakeLdapsServer({ domain: "empresa.local" })
+    directory = createLdapDirectoryAuthenticator({ urls: [ad.url], domain: "empresa.local", ca: ad.ca, allowWeakKey: false, timeoutMs: 3000 })
+  })
+  afterAll(async () => { await ad.close() })
+  beforeEach(() => { ad.users.clear(); const log = vi.spyOn(console, "error").mockImplementation(() => undefined); return () => log.mockRestore() })
+  const verify = (users: Record<string, FakeDirectoryUser>, login: string, identity: IdentityCheck) => {
+    for (const [key, user] of Object.entries(users)) ad.users.set(key, user)
+    return directory.verify(login, "minha", identity)
+  }
+  const WHOLE: IdentityCheck = { employeeIdOf: "R7000701", whenUnreadable: "ALLOW" }
+  const CUT: IdentityCheck = { employeeIdOf: "R7000701", whenUnreadable: "REFUSE" }
+  const unreadable = { kind: "UNAVAILABLE", identityUnreadable: true }
+
+  it("inteiro do formato, conta de OUTRA pessoa achada pelo nome completo, com ID legível e diferente: recusa", async () => {
+    expect(await verify({ z1: { password: "minha", employeeId: "00000001", upn: "R7000701" } }, "R7000701", WHOLE)).toEqual({ kind: "INVALID", identityMismatch: true })
+  })
+  it("duas fichas (a do dono e a do nome completo): não dá para provar qual entrou, recusa também no inteiro", async () => {
+    expect(await verify({ z1: { password: "minha", employeeId: "07000701", upn: "R7000701" }, r7000701: { password: "outra", employeeId: "07000701" } }, "R7000701", WHOLE)).toMatchObject(unreadable)
+  })
+  it("legítimos entram: ID igual pelo login e ID igual pelo nome completo (login cortado com nome completo inteiro)", async () => {
+    expect(await verify({ r7000701: { password: "minha", employeeId: "07000701" } }, "R7000701", WHOLE)).toEqual({ kind: "OK" })
+    ad.users.clear()
+    expect(await verify({ r700070: { password: "minha", employeeId: "07000701", upn: "R7000701" } }, "R7000701", WHOLE)).toEqual({ kind: "OK" })
+  })
+  it("só \"não consegui ler\" (sem permissão ou sem o atributo) segue a regra de quem pediu: o inteiro entra como antes, o cortado não", async () => {
+    for (const patch of [{ searchDenied: true, employeeId: "07000701" }, {}]) {
+      expect(await verify({ r7000701: { password: "minha", ...patch } }, "R7000701", WHOLE)).toEqual({ kind: "OK" })
+      expect(await verify({ r700070: { password: "minha", ...patch } }, "R700070", CUT)).toMatchObject(unreadable)
+      ad.users.clear()
+    }
+  })
+  it("login que pode ser o cortado de outra pessoa do cadastro: ficha de outro login não prova nada, recusa", async () => {
+    expect(await verify({ z1: { password: "minha", employeeId: "00000001", upn: "R700070" } }, "R700070", { notEmployeeIdOf: ["R7000701"], whenUnreadable: "REFUSE" })).toMatchObject(unreadable)
   })
 })

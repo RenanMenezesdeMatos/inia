@@ -52,7 +52,9 @@ export default function MyStructurePage() {
       <WikiSection id="card" title="O card: três perguntas" eyebrow="Sem misturar conceitos">
         <p>
           O cabeçalho do card nunca muda ao trocar de seção. No card compacto de quem lidera aparece uma linha de resumo (“30 diretos · 26 em
-          produção” para a gestão; só “30 diretos” para o operador). No card expandido, cada seção responde uma pergunta diferente — em cards
+          produção” para a gestão; só “30 diretos” para o operador). O cargo aparece num selo colorido, uma cor por nível da hierarquia, sempre com o
+          nome do cargo escrito; a mesma cor contorna a foto. Borda verde com o selo “Férias” marca quem está de férias hoje; só
+          gestores (de Supervisor a Diretor) e quem tem o papel Administrador geral veem isso. No card expandido, cada seção responde uma pergunta diferente — em cards
           estreitos as seções viram ícones, com o nome completo disponível ao passar o mouse e para leitores de tela:
         </p>
         <WikiTable caption="As seções do card expandido.">
@@ -103,7 +105,7 @@ export default function MyStructurePage() {
               </TableRow>
               <TableRow>
                 <TableCell className="font-medium">Situação atual</TableCell>
-                <TableCell>Quantas pessoas da estrutura estão hoje (data local da organização) em produção, de férias, no INSS, em licença-maternidade e em licença-paternidade — quantidade e percentual com uma casa decimal. Outras situações (transferido, piloto, aposentado, atividade off) somam em “Outras situações”. É a situação funcional do cadastro, agregada; nunca a situação de uma pessoa específica.</TableCell>
+                <TableCell>Quantas pessoas da estrutura estão hoje (data local da organização) em produção, de férias, no INSS, em licença-maternidade e em licença-paternidade — quantidade e percentual com uma casa decimal. Outras situações (transferido, piloto, aposentado, atividade off) somam em “Outras situações”. É a situação funcional do cadastro, agregada.</TableCell>
                 <TableCell>Em produção 26 · 86,7% · Férias 2 · 6,7% · INSS 1 · 3,3% · Maternidade 1 · 3,3% · Paternidade 0 · 0,0%.</TableCell>
               </TableRow>
               <TableRow>
@@ -139,7 +141,8 @@ export default function MyStructurePage() {
           apenas somados como “Afastamento (motivo protegido)”, com o aviso “Detalhamento de afastamentos indisponível para estruturas pequenas”,
           quando a estrutura tem menos de 5 operadores ou quando a contagem apontaria alguém — um caso isolado de um tipo, ou um tipo só (a lista de
           quem está afastado diria o motivo de cada um). O afastamento de um líder nunca aparece pelo motivo: entra sempre nessa linha somada. Nenhum
-          card mostra a situação individual de uma pessoa — a seção é sempre agregada.
+          card mostra INSS, maternidade, paternidade ou qualquer outra situação de uma pessoa. A única situação individual do organograma é
+          férias, e só gestores e o Administrador geral a veem. Sem o selo, nada se conclui sobre a pessoa.
         </WarningCallout>
       </WikiSection>
 
@@ -297,7 +300,7 @@ export default function MyStructurePage() {
       <WikiSection id="o-que-nao-e" title="O que a aba não é" eyebrow="Limites conscientes">
         <ul className="list-inside list-disc space-y-1">
           <li>Não é a árvore completa da empresa: cada tela mostra o gestor imediato, uma pessoa e os subordinados diretos dela (a cadeia completa fica em “Ver cadeia de liderança”) — a navegação é progressiva.</li>
-          <li>Não mostra performance de ninguém: sem PRV, quartil, atingimento, feedbacks ou situação funcional individual de terceiros.</li>
+          <li>Não mostra performance de ninguém: sem PRV, quartil, atingimento ou feedbacks. Da situação funcional individual, só férias, e só para gestores e o Administrador geral.</li>
           <li>Não avalia gestores: não existe span ideal, score, ranking de gestores, alerta de span alto ou baixo nem recomendação de reorganização.</li>
           <li>Não mostra dados pessoais (telefone, endereço, salário, dado médico).</li>
           <li>Não edita nada: sem alterar gestor, Grupo ou Subgrupo.</li>

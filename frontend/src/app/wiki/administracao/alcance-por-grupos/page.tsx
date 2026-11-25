@@ -205,7 +205,7 @@ export default function MultiGroupScopePage() {
         <p>
           Valer para vários Grupos, sozinho, não libera nada além disso. Tudo o que já filtrava o conteúdo continua filtrando, no mesmo lugar de antes:
         </p>
-        <FieldRow label="Universo de atuação" value={<>Um alinhamento só alcança quem está no universo dele, e cada Grupo do público precisa ser desse universo. Ver <WikiLink href="/wiki/estrutura">Pessoas e Estrutura</WikiLink>.</>} />
+        <FieldRow label="Universo de atuação" value={<>Um alinhamento só alcança quem está no universo dele, e cada Grupo do público precisa ser desse universo. Ver <WikiLink href="/wiki/central-de-dados#universo">onde cadastrar o universo</WikiLink>.</>} />
         <FieldRow label="Produto (Vale para)" value={<>O produto é outra dimensão, escolhida à parte. Uma base do Grupo A só para o produto X vale para quem está no Grupo A e nas chamadas do produto X. Ver <WikiLink href="/wiki/bases-conhecimento#produtos">Produtos e aplicabilidade</WikiLink>.</>} />
         <FieldRow label="Agents" value="Pôr uma base em mais um Grupo não liga a base a nenhum Agent: o vínculo Agent ↔ base continua explícito, em Admin › Agentes. Uma base com alcance em um Subgrupo conta para o Agent do Grupo daquele Subgrupo. Tirar um Grupo do alcance tira a base da busca dos Agents daquele Grupo já na consulta seguinte." />
         <FieldRow label="Situação e permissões" value="Rascunho, arquivado, encerrado, fora da vigência e excluído continuam fora, e cada tela mantém a sua permissão própria." />

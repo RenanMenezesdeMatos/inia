@@ -115,7 +115,9 @@ export function collectUnits(scope: ViewerScope, resolved: ResolvedSubject, subj
 /** Operador "direto" = nenhum gestor intermediário entre ele e a âncora do sujeito. */
 export function isDirectMember(scope: ViewerScope, anchorId: string | null, member: PersonNode): boolean {
   let cursor = member.reportsToId
-  while (cursor && cursor !== anchorId && cursor !== scope.viewer.id) {
+  const visited = new Set<string>()
+  while (cursor && cursor !== anchorId && cursor !== scope.viewer.id && !visited.has(cursor)) {
+    visited.add(cursor)
     const node = scope.nodes.get(cursor)
     if (!node) break
     if (isHierarchyRole(node.role)) return false

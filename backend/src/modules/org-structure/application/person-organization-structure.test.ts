@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { SYSTEM_ROLES } from "../../access/domain/roles.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 import { fixtureOrg, IDS } from "../../performance-analytics/testing/fixture-org.js"
 import { InMemoryAnalyticsRepository, type InMemoryOrg, ORG, person } from "../../performance-analytics/testing/in-memory-analytics-repository.js"
@@ -68,6 +69,7 @@ function setup(freshness: EmploymentStatusFreshness = NO_FEED, nodes: PersonNode
   const avatarCalls: string[][] = []
   /** Cada chamada do carregador de métricas = UM lote de raízes (número de chamadas = número de consultas em lote). */
   const metricsCalls: string[][] = []
+  const vacationCalls: string[][] = []
   const below = (personId: string): PersonNode[] => {
     const result: PersonNode[] = []
     const queue = nodes.filter((node) => node.reportsToId === personId)
@@ -103,9 +105,10 @@ function setup(freshness: EmploymentStatusFreshness = NO_FEED, nodes: PersonNode
         }),
       )
     },
+    peopleOnVacation: async (_organizationId, ids) => (vacationCalls.push(ids), new Set(ids.filter((id) => ["FERIAS", "VACATION"].includes(STATUS[id] ?? "")))),
     now: () => new Date(`${TODAY}T12:00:00.000Z`),
   }
-  return { deps, analytics, hierarchyCalls, emailCalls, avatarCalls, metricsCalls }
+  return { deps, analytics, hierarchyCalls, emailCalls, avatarCalls, metricsCalls, vacationCalls }
 }
 
 function user(personId: string, role: AuthTokenPayload["role"]): AuthTokenPayload {
@@ -351,8 +354,8 @@ describe("Estrutura — navegação ascendente (política 2026-09-17: ancestrais
     expect(JSON.stringify(result)).not.toContain("Eva Inativa")
     expect(result.breadcrumb.map((entry) => entry.name)).toEqual(["Ana Operadora", "Vanessa Supervisora"])
     // Leituras pontuais, nunca a subárvore da Supervisora.
-    // (+ as duas leituras de acesso da conta: indicators.view — ficha — e structure.metrics.view — dados de gestão.)
-    expect(analytics.calls).toEqual(["loadPerson", "loadAccessVisibility", "loadAccessVisibility", "loadDescendants", "loadPeopleInVisibility", "loadPerson", "loadDirectReports", "countActiveDirectReports"])
+    // (+ as três leituras de acesso da conta: indicators.view — ficha —, structure.metrics.view — dados de gestão — e structure.vacations.view — férias.)
+    expect(analytics.calls).toEqual(["loadPerson", "loadAccessVisibility", "loadAccessVisibility", "loadAccessVisibility", "loadDescendants", "loadPeopleInVisibility", "loadPerson", "loadDirectReports", "countActiveDirectReports"])
   })
 
   it("Operador → Supervisor de OUTRA gerência: permitido (organograma aberto), sem ficha de ninguém e sem métricas gerenciais; a trilha é a ancestralidade real", async () => {
@@ -528,6 +531,47 @@ describe("Estrutura — métricas gerenciais (cargos de gestão ou structure.met
   })
 })
 
+describe("Estrutura — férias (a única situação individual: cargos de gestão e Administrador geral)", () => {
+  it("Supervisora vê férias em toda estrutura que navega (equipe, cadeia acima, outra árvore); INSS e maternidade nunca saem por pessoa", async () => {
+    const { deps, vacationCalls } = setup()
+    const own = await buildPersonOrganizationStructure(deps, user(IDS.vanessa, "SUPERVISOR"), IDS.vanessa)
+    expect(own.directReports.map((report) => [report.personId, report.onVacation])).toEqual([[IDS.op1, false], [IDS.op2, true]])
+    expect(own.managementChain.map((entry) => entry.onVacation)).toEqual(own.managementChain.map(() => false))
+    expect(vacationCalls).toHaveLength(1)
+    // Outra gerência: legado VACATION (Fábio) também é férias; op3 (INSS) e op4 (maternidade) dizem o mesmo `false` de quem está em produção.
+    const other = await buildPersonOrganizationStructure(deps, user(IDS.vanessa, "SUPERVISOR"), IDS.bruno)
+    expect(other.directReports.map((report) => report.onVacation)).toEqual([false, false])
+    expect(JSON.stringify(other.directReports)).not.toMatch(/INSS|MATERNIDADE/)
+    for (const [personId, role] of [[IDS.coordinator, "COORDINATOR"], [IDS.managerA, "MANAGER"], [IDS.senior, "SENIOR_MANAGER"], [IDS.director, "DIRECTOR"]] as const) {
+      const seen = await buildPersonOrganizationStructure(deps, user(personId, role), IDS.vanessa)
+      expect(seen.directReports.find((report) => report.personId === IDS.op2)?.onVacation).toBe(true)
+    }
+  })
+
+  it("Operador não vê férias de ninguém — nem as próprias — e a consulta não é feita", async () => {
+    const { deps, vacationCalls } = setup()
+    for (const focal of [IDS.op2, IDS.vanessa, IDS.bruno]) {
+      const result = await buildPersonOrganizationStructure(deps, user(IDS.op2, "OPERATOR"), focal)
+      expect(JSON.stringify(result)).not.toContain("onVacation")
+    }
+    expect(vacationCalls).toEqual([])
+  })
+
+  it("fora da cadeia de gestão: só com a permissão do Administrador geral; nível ADMIN, Indicadores ou dados de gestão não bastam", async () => {
+    const sees = async (access: InMemoryOrg["access"]) => {
+      const result = await buildPersonOrganizationStructure(setup(NO_FEED, people(), undefined, access).deps, user(EXTRA.admin, "ADMIN"), IDS.vanessa)
+      return result.directReports.find((report) => report.personId === IDS.op2)?.onVacation
+    }
+    expect(await sees({})).toBeUndefined()
+    expect(await sees({ acc: { "indicators.view": { organizationWide: true }, "structure.metrics.view": { organizationWide: true } } })).toBeUndefined()
+    expect(await sees({ acc: { "structure.vacations.view": { organizationWide: true } } })).toBe(true)
+  })
+
+  it("a permissão é só do Administrador geral, sempre na organização inteira", () => {
+    expect(SYSTEM_ROLES.filter((role) => role.permissions.includes("structure.vacations.view")).map((role) => [role.code, role.allowedScopes])).toEqual([["ADMINISTRADOR_GERAL", ["ORGANIZATION"]]])
+  })
+})
+
 describe("Estrutura — caminho organizacional do viewer (metadata do 'caminho até você')", () => {
   it("Operadora: cadeia real topo → viewer por reports_to_id, igual em qualquer focal (própria, ancestral ou outra árvore) — sem nível inventado", async () => {
     const { deps } = setup()
@@ -552,7 +596,7 @@ describe("Estrutura — consultas e origem", () => {
     for (const [id, role] of [[IDS.op1, "OPERATOR"], [IDS.managerA, "MANAGER"], [IDS.director, "DIRECTOR"]] as const) {
       const { deps, analytics, hierarchyCalls, emailCalls } = setup()
       const result = await buildPersonOrganizationStructure(deps, user(id, role), id)
-      expect(analytics.calls).toEqual(["loadPerson", "loadAccessVisibility", "loadAccessVisibility", "loadDescendants", "loadPeopleInVisibility"])
+      expect(analytics.calls).toEqual(["loadPerson", "loadAccessVisibility", "loadAccessVisibility", "loadAccessVisibility", "loadDescendants", "loadPeopleInVisibility"])
       expect(hierarchyCalls.filter((call) => call === "loadAncestors")).toHaveLength(1)
       expect(hierarchyCalls.filter((call) => call === "countActiveOperators").length).toBeLessThanOrEqual(1)
       expect(hierarchyCalls).not.toContain("loadDescendants")

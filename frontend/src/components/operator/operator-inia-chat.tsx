@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useReducer } from "react"
 import { createPortal } from "react-dom"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
-import { History, MessageCircle, PanelRightClose, Play, RotateCcw, SquarePen, Square } from "lucide-react"
+import { ArrowDown, ChevronDown, ChevronUp, History, MessageCircle, Mic, PanelRightClose, Play, RotateCcw, SquarePen, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { ConfirmReadingControl } from "@/components/feedbacks/confirm-reading/confirm-reading-control"
@@ -13,7 +13,6 @@ import type { ReadConfirmationResult } from "@/schemas/feedback-read-confirmatio
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { AvatarConversationState } from "@/lib/avatar/animation/types"
 import type { FarewellSpeech } from "@/lib/avatar/avatar-driver"
 import { fetchEphemeralSession, fetchVoiceReading, GeminiRealtimeTransport, recordVoiceTurn, type RealtimeCallState, type VoiceConversationResult } from "@/lib/realtime/gemini-realtime-transport"
@@ -36,7 +35,12 @@ import { AvatarHostManager, AvatarSlot } from "./feedback-application/avatar-hos
 import { FeedbackSessionContent, FeedbackSessionMaterials } from "./feedback-application/feedback-session-content"
 import { FeedbackSessionDialog } from "./feedback-application/feedback-session-dialog"
 import { IniaSceneBackdrop } from "@/components/inia-scenes/inia-scene-backdrop"
-import { IniaCallControls, IniaCallEndedCompact, IniaCallExpandToggle, IniaCallPlaceholder, IniaCallStatus, IniaCallTile } from "./inia-call-tile"
+import { IniaCameraOff } from "./inia-panel/inia-camera-off"
+import { PanelAction } from "./inia-panel/panel-action"
+import { FLOATING_SHADOW } from "./inia-panel/floating-window"
+import { IniaStage } from "./inia-panel/inia-stage"
+import { useIniaStage } from "./inia-panel/use-inia-stage"
+import { usePanelHeight } from "./inia-panel/use-panel-height"
 import { NO_VOICE_ACTIVITY, THINKING_LABEL, nextVoiceActivity, voiceActivityLabel } from "./operator-inia-chat/voice-activity"
 import { useCurrentIniaScene } from "@/queries/inia-scenes/use-inia-scenes"
 import { FeedbackInviteCard } from "./feedback-application/feedback-invite-card"
@@ -51,7 +55,7 @@ import { SupportRoom } from "@/components/human-support/operator/support-room"
 import { SUPPORT_ROOM_PARAM, useHumanSupportState, useRegisterSupportChat } from "@/queries/human-support/use-human-support-state"
 import { FAREWELL_TEXT, TEXT_REPLY_FALLBACK_TEXT } from "./operator-inia-chat/voice-context"
 import { ENTRY_OF_MODE, FEEDBACK_PRESENTATION_CUE, LIVE_PRESENTATION_START_TIMEOUT_MS, PRESENT_GESTURE_DELAY_MS, presentationAudioKey, type FeedbackReturn, type FeedbackSession, type LivePresentationHooks, type PresentationPhase, type SessionEntry } from "./operator-inia-chat/feedback-session-model"
-import { createReadingClock, READ_HOLD_MS, READ_WORD_MS, wordsIn } from "./operator-inia-chat/stage-speech"
+import { createReadingClock, READ_HOLD_MS, READ_WORD_MS, STAGE_WORD_MS, wordsIn } from "./operator-inia-chat/stage-speech"
 import { plainTextOf } from "@/lib/format/plain-text"
 import { MIC_PULSE_REST_STYLE, micGlow, normalizedMicLevel, WAVEFORM_BAR_COUNT } from "./operator-inia-chat/mic-level"
 import { useStageSpeech } from "./operator-inia-chat/use-stage-speech"
@@ -63,13 +67,10 @@ import { withoutLiveSourceMarkers, type ClarificationAnswer } from "@/schemas/kn
 import { PanelConversationBanners } from "./operator-inia-chat/panel-conversation-banners"
 import { MicConsentDialog } from "./operator-inia-chat/mic-consent-dialog"
 import { ChatComposer } from "./operator-inia-chat/chat-composer"
+import { useFollowLatest } from "./operator-inia-chat/use-follow-latest"
 import { publicAsset } from "@/lib/assets/public-asset"
 import { useBrowserIdle } from "@/lib/browser/use-browser-idle"
 
-// Tile compacto do painel (operador e liderança): o avatar num quadrado à esquerda, o estado e os controles ao lado.
-const AVATAR_COMPACT_HEIGHT = "h-20 sm:h-24"
-const AVATAR_COMPACT_SLOT = "absolute inset-y-0 left-0 w-20 sm:w-24"
-const AVATAR_COMPACT_CONTROLS_OFFSET = "left-20 sm:left-24"
 // Resposta retomada (a pessoa saiu e voltou no meio): de quanto em quanto tempo a tela busca se ela já chegou.
 export const RESUME_POLL_MS = 2_000
 const avatarStagePlaceholder = <div aria-hidden className="h-full rounded-2xl bg-muted/40"/>
@@ -82,13 +83,16 @@ const IniaHumanoidAvatar3D = dynamic(() => import("./inia-humanoid-avatar-3d").t
 // (cache imutável: o navegador baixa os 6,6 MB uma vez por versão).
 const avatarModelUrl = process.env.NEXT_PUBLIC_INIA_AVATAR_MODEL_URL ?? publicAsset("/models/inia-mentora.glb")
 
-export function OperatorIniaChat({ indicators, operator, onCollapse, context = "operator", hidden = false }: { indicators: OperatorIndicatorsData; operator: OperatorProfile; onCollapse?: () => void; context?: "operator" | "team"; hidden?: boolean }) {
+export function OperatorIniaChat({ indicators, operator, context = "operator", hidden = false }: {
+  indicators: OperatorIndicatorsData
+  operator: OperatorProfile
+  context?: "operator" | "team"
+  /** Painel recolhido: o chat continua montado, com a conversa, o rascunho e a chamada (a INIA vai para a janela ou para a aba da borda). */
+  hidden?: boolean
+}) {
   // Espaço de trabalho do Acompanhamento: o motor de voz é UM só (acima do chat) — o clique no feed libera o áudio no gesto.
   const workspace = useFeedbackWorkspace()
-  // No painel (operador e liderança, 18/11/2026) a INIA fica compacta (a conversa é o foco); ampliar é um pedido explícito e ela ganha
-  // uma área só dela, acima das mensagens. O tamanho muda só o lugar (o Canvas é o mesmo, nunca remonta); voz, microfone e câmera não dependem dele.
-  const [avatarExpanded, setAvatarExpanded] = useState(false)
-  const avatarCompact = !avatarExpanded
+  const panelRef = useRef<HTMLElement>(null)
   // Navegação pedida pelo backend (aceite da oferta de report) — por ref: os callbacks da voz nascem uma vez por sessão.
   const router = useRouter()
   const routerRef = useRef(router)
@@ -97,8 +101,9 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   }, [router])
   const feedbackEnabled = context === "operator" && workspace !== null
   const [question, setQuestion] = useState("")
-  const [callActive, setCallActive] = useState(true)
   const [cameraOn, setCameraOn] = useState(true)
+  /** Depois de "Encerrar chamada", a pergunta digitada é respondida por escrito até a pessoa falar com ela de novo. */
+  const [callActive, setCallActive] = useState(true)
   const [conversationState, setConversationState] = useState<AvatarConversationState>("idle")
   // Motor de voz desta instância do chat (o shell monta um chat no desktop e outro no mobile, cada
   // um com o seu): reprodução + lip-sync + o driver que o avatar lê a cada quadro. Estáveis pela
@@ -111,6 +116,12 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   const [micConsentGranted, setMicConsentGranted] = useState(false)
   const [showMicConsent, setShowMicConsent] = useState(false)
   const [sessionConnected, setSessionConnected] = useState(false)
+  /** Abrindo a sessão de voz (o clique já foi dado; a chamada ainda não começou). */
+  const [connecting, setConnecting] = useState(false)
+  // Legenda da chamada: o texto do que ela está dizendo (chega antes do áudio) e o relógio da voz. Só existe quando a voz entrega o texto.
+  const [captionsOn, setCaptionsOn] = useState(true)
+  const [spokenText, setSpokenText] = useState("")
+  const speakingSinceRef = useRef(0)
   const [liveAssistantText, setLiveAssistantText] = useState<string | null>(null)
   const [textReplyPending, setTextReplyPending] = useState(false)
   // Kept fully separate from `liveAssistantText` (voice) even though the
@@ -311,8 +322,11 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     return messagesContentRef.current?.closest<HTMLElement>('[data-slot="scroll-area-viewport"], [data-chat-scroll]') ?? null
   }
 
+  // No painel, a lista acompanha a resposta de quem está no fim (a sessão de feedback tem a rolagem dela).
+  const { viewport: messagesViewport, setViewport: setMessagesViewport, away: awayFromLatest, followLatest } = useFollowLatest()
   const scrollAfterLoadRef = useRef(false)
   const scrollToLatest = () => {
+    followLatest()
     requestAnimationFrame(() => {
       const viewport = viewportElement()
       if (viewport) viewport.scrollTop = viewport.scrollHeight
@@ -1220,6 +1234,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
           setSessionConnected(connected)
           if (!connected) livePresentationRef.current?.dropped()
           if (!connected) {
+            setSpokenText("")
             // Queda com o microfone aberto: a fala parcial vira bolha agora, nunca o começo da
             // próxima conversa.
             flushUserTranscript()
@@ -1228,6 +1243,9 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
         },
         onStateChange: (state: RealtimeCallState) => {
           applyConversationState(state)
+          // Legenda: cada turno começa do zero (o texto dele chega a partir daqui, antes do áudio).
+          if (state === "thinking" || state === "listening") setSpokenText("")
+          if (state === "speaking") speakingSinceRef.current = performance.now()
           // Palco: o áudio começou = a fala entra no balão; terminou de soar (ou ela foi interrompida) = pousa na conversa.
           if (stageOpen()) {
             const active = stageUtteranceRef.current && !stageUtteranceRef.current.ended
@@ -1278,6 +1296,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
             return
           }
           pendingAssistantTranscriptRef.current += text
+          setSpokenText((current) => current + text)
           // Com especialista no turno, o balão dele já é a resposta: a fala não ganha legenda paralela.
           if (!specialistAnsweredThisTurnRef.current) setLiveAssistantText((current) => (current ?? "") + text)
           // Dica para sorriso/gestos: cada fragmento como chegou (o avatar acumula; nunca por quadro).
@@ -1355,16 +1374,20 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       return
     }
     if (!sessionConnected) {
+      setConnecting(true)
       try {
         await transport.connect({ conversationId: startFresh ? null : conversationIdRef.current })
       } catch {
         return
+      } finally {
+        setConnecting(false)
       }
     }
     await transport.startTurn()
   }
 
   const handleMicClick = () => {
+    if (!callActive) setCallActive(true)
     // A apresentação do feedback tocando dá lugar à fala do colaborador (como interromper a INIA para falar).
     if (presentationRef.current) presentationRef.current.stop()
     // Must happen synchronously, inside the click itself — see
@@ -1670,7 +1693,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   })
 
   const endCall = () => {
-    // Recado ou apresentação tocando: "Encerrar avatar" é uma interrupção (registrada como tal), antes da despedida.
+    // Recado ou apresentação tocando: "Encerrar chamada" é uma interrupção (registrada como tal), antes da despedida.
     recadoPlaybackRef.current?.stop()
     presentationRef.current?.stop()
     const transport = transportRef.current
@@ -1741,12 +1764,6 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     // Voltar a ouvir é um clique: libera o áudio aqui (política de autoplay).
     if (!next) voice.playback.prime()
     setVoiceMuted(next)
-  }
-
-  const startCall = () => {
-    setCallActive(true)
-    setCameraOn(true)
-    applyConversationState("idle")
   }
 
   /** Pergunta sugerida (escolhida pelo colaborador; nada é enviado sozinho). */
@@ -1878,7 +1895,8 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     if (request) void openFeedbackApplication(request)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingRequestId])
-  // Painel oculto (desktop recolhido): nada fala nem escuta no painel. A sessão de feedback (card central) não depende dele.
+  // Painel recolhido: a CHAMADA continua (a INIA vai para a janela, com os controles); só o recado tocando para, porque os controles dele
+  // ficam no painel. A sessão de feedback (card central) não depende do painel.
   const feedbackModeRef = useRef(false)
   useLayoutEffect(() => {
     feedbackModeRef.current = feedbackMode
@@ -1892,8 +1910,6 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   useEffect(() => {
     if (!hidden || feedbackModeRef.current) return
     recadoPlaybackRef.current?.stop()
-    closeVoiceSessionForSwitch()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hidden])
   // Convite da vez: só sem conversa em andamento (voz conectada, resposta pendente, digitando, feedback aberto ou recado tocando).
   const conversationBusy = sessionConnected || textReplyPending || conversationState !== "idle" || question.trim().length > 0 || feedbackMode || recadoLive
@@ -1953,23 +1969,18 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   const activityLabel = textReplyPending
     ? liveTextReply === null ? textReplyStatus || THINKING_LABEL : null
     : liveAssistantText === null ? voiceActivityLabel(voiceActivity, conversationState, { fallback: !sessionOpen }) : null
-  const callStatus = <IniaCallStatus inline={avatarCompact} state={textReplyPending && liveTextReply === null && conversationState === "idle" ? "thinking" : conversationState} muted={voiceMuted} activity={activityLabel}/>
-  const callControls = <IniaCallControls
-    compact={avatarCompact}
-    micOpen={micOpen}
-    micDisabled={micDisabled}
-    micLabel={micLabel}
-    onMic={handleMicClick}
-    micPulseRef={(element) => { micPulseRefs.current[0] = element }}
-    micPulseStyle={MIC_PULSE_REST_STYLE}
-    muted={voiceMuted}
-    onToggleMute={toggleVoiceMuted}
-    cameraOn={cameraOn}
-    onToggleCamera={() => setCameraOn((value) => !value)}
-    onEnd={endCall}
-  />
-  // Ampliar tira altura das mensagens: quem estava vendo o fim da conversa continua vendo o fim.
-  const avatarPinToEndRef = useRef(false)
+  const inCall = sessionConnected || connecting || farewellActive || micOpen
+  const panelHeight = usePanelHeight(panelRef)
+  const shortPanel = panelHeight === "short"
+  const stage = useIniaStage({ short: shortPanel, inCall })
+  const callState = textReplyPending && liveTextReply === null && conversationState === "idle" ? "thinking" : conversationState
+  // Palavras já ouvidas: o alinhamento da boca no instante ouvido (o mesmo relógio do balão do palco); sem ele, o tempo.
+  const [heardWords] = useState(() => () => {
+    const at = voice.playback.heardTime()
+    const aligned = at === null ? 0 : (voice.lipsync.heardWordCount?.(at) ?? 0)
+    return aligned > 0 ? aligned : Math.floor((performance.now() - speakingSinceRef.current) / STAGE_WORD_MS)
+  })
+  const caption = conversationState === "speaking" && !farewellActive && !voiceMuted && spokenText ? { text: spokenText, heardWords } : null
   // As mensagens só aparecem com a conversa pronta: o quadro pedido antes disso (`scrollToLatest`) às vezes rolava uma lista ainda vazia,
   // e a conversa abria no começo.
   useLayoutEffect(() => {
@@ -1978,32 +1989,6 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     const viewport = messagesContentRef.current?.closest<HTMLElement>('[data-slot="scroll-area-viewport"], [data-chat-scroll]')
     if (viewport) viewport.scrollTop = viewport.scrollHeight
   }, [loadState])
-  useLayoutEffect(() => {
-    if (!avatarPinToEndRef.current) return
-    avatarPinToEndRef.current = false
-    const viewport = messagesContentRef.current?.closest<HTMLElement>('[data-slot="scroll-area-viewport"], [data-chat-scroll]')
-    if (viewport) viewport.scrollTop = viewport.scrollHeight
-  }, [avatarExpanded])
-  const toggleAvatarSize = () => {
-    const viewport = viewportElement()
-    avatarPinToEndRef.current = viewport !== null && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 32
-    setAvatarExpanded((value) => !value)
-  }
-  const avatarToggle = avatarModelUrl ? <IniaCallExpandToggle expanded={avatarExpanded} onToggle={toggleAvatarSize}/> : null
-  // Compacta: o avatar à esquerda (em `AVATAR_COMPACT_SLOT`) e, ao lado, o estado e os mesmos controles. Ampliada: como numa chamada.
-  const panelAvatarControls = !avatarModelUrl ? null : avatarCompact ? (
-    <div className={`absolute inset-y-0 right-0 z-10 flex min-w-0 flex-col justify-center gap-1 py-1.5 pr-2 pl-1 ${AVATAR_COMPACT_CONTROLS_OFFSET}`}>
-      {callActive ? <>
-        <div className="flex min-w-0 items-center justify-between gap-1.5">{callStatus}{avatarToggle}</div>
-        {callControls}
-      </> : <IniaCallEndedCompact onCall={startCall} toggle={avatarToggle}/>}
-    </div>
-  ) : <>
-    {callActive ? <>{callStatus}{callControls}</> : null}
-    {avatarToggle ? <div className="absolute top-2.5 right-2.5 z-10">{avatarToggle}</div> : null}
-  </>
-
-
   // Mensagens da conversa exibida (geral no painel; a da aplicação — e a complementar — na sessão).
   /** A sala de apoio fica no lugar da conversa com a INIA. Abrir ENCERRA a sessão de voz (não só silencia): a sala nunca passa pela voz. */
   const openSupportRoom = () => {
@@ -2036,6 +2021,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     return <SupportSuggestion signals={message.signals} onRequest={() => setSupportSource({ interactionId, ratingId: null })} onOpenRoom={openSupportRoom} />
   }
   const messageItems = <ChatMessageList
+    dense={shortPanel && !sessionOpen}
     sessionApplication={sessionApplication}
     messages={messages}
     messagesContentRef={messagesContentRef}
@@ -2073,6 +2059,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   // Campo de mensagem: no painel ou, com a sessão aberta, no card central (um lugar por vez).
   const composer = <ChatComposer
     sessionOpen={sessionOpen}
+    dense={shortPanel && !sessionOpen}
     readOnlyConversation={readOnlyConversation}
     feedbackCompleted={feedbackCompleted}
     composerRef={composerRef}
@@ -2110,7 +2097,9 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       <Button type="button" size="sm" variant="outline" className="rounded-full" onClick={() => { const request = feedbackError.request; setFeedbackError(null); handleFeedbackRequest(request) }}>Tentar novamente</Button>
       <Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={exitFeedbackForNow}>Fechar</Button>
     </>
-  ) : sessionApplication && !feedbackCompleted && sessionApplication.script ? (
+  ) : micOpen ? (
+    <Button type="button" size="sm" className="rounded-full" onClick={handleMicClick}><Square className="fill-current" aria-hidden/>Terminei</Button>
+  ) : sessionApplication ? <>{!feedbackCompleted && sessionApplication.script ? (
     presentationPhase === "preparing" ? (
       <Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => presentationRef.current?.stop()}>Cancelar</Button>
     ) : presentationPhase === "playing" ? (
@@ -2121,15 +2110,13 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
         {presentationPhase === "blocked" || presentationPhase === "failed" ? "Tentar novamente" : heard ? "Repetir apresentação" : "Ouvir apresentação"}
       </Button>
     )
-  ) : null
+  ) : null}<Button type="button" size="sm" variant={heard || feedbackCompleted ? "default" : "outline"} className="rounded-full" onClick={handleMicClick} disabled={micDisabled} data-usage-element="chat.mic"><Mic aria-hidden/>{canBargeIn || presentationPhase === "playing" ? "Interromper" : "Falar"}</Button></> : null
   // O avatar (um Canvas), renderizado por portal no nó estável do `AvatarHostManager`: no card central, meio corpo; no painel, busto.
   const avatarVisual = !avatarModelUrl ? (
     <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl bg-muted/50 text-center">
       <Skeleton className="size-16 rounded-full"/>
-      <div className={avatarCompact && !sessionOpen ? "sr-only" : undefined}><p className="text-sm font-medium">Avatar 3D não configurado</p><p className="mt-1 max-w-64 text-xs text-muted-foreground">Adicione um modelo VRM local preparado para visualizar a INIA.</p></div>
+      <div className={sessionOpen ? undefined : "sr-only"}><p className="text-sm font-medium">Avatar 3D não configurado</p><p className="mt-1 max-w-64 text-xs text-muted-foreground">Adicione um modelo VRM local preparado para visualizar a INIA.</p></div>
     </div>
-  ) : !callActive ? (
-    <IniaCallPlaceholder image={operator.assistantImage} variant="ended" onCall={startCall} rounded={!sessionOpen} compact={avatarCompact && !sessionOpen}/>
   ) : cameraOn && !avatarAllowed ? (
     avatarStagePlaceholder
   ) : cameraOn ? (
@@ -2137,21 +2124,21 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       modelUrl={avatarModelUrl}
       state={conversationState}
       driver={voice.driver}
-      // No palco, meio corpo e sem fundo próprio; no painel, de frente (busto).
-      view={sessionOpen && sessionLayout === "desktop" ? "presenting" : "chat"}
+      // No palco, meio corpo e sem fundo próprio; na chamada, de frente, na altura dos olhos (o uniforme embaixo recebe os controles).
+      view={sessionOpen ? (sessionLayout === "desktop" ? "presenting" : "chat") : stage.mode === "reduced" ? "chat" : "call"}
       // No palco ela fica virada para o feedback enquanto o MOSTRA (a chegada, a espera pela voz, os avisos sobre ele) e se vira
       // de frente para a pessoa quando FALA com ela, a ouve, pensa ou espera a pergunta — olhos, cabeça e depois o corpo.
       facing={sessionOpen && sessionSpeech.kind !== "say" ? "viewer" : "forward"}
       statusLabel={null}
       backdrop={sessionOpen || scene ? "none" : "studio"}
-      // No painel o nome e o estado dela vêm do tile da chamada. O crédito do modelo fica embaixo, no canto: no alto à direita fica o
-      // botão de ampliar.
+      // No painel o estado dela vem da etiqueta da chamada. O crédito do modelo fica abaixo da faixa do alto (a etiqueta e os botões o
+      // cobririam) e longe dos controles; no palco e na imagem reduzida não há faixa: no canto do alto.
       showStatus={false}
-      attributionPlacement="bottom"
-      className={sessionOpen ? "h-full rounded-none" : "h-full rounded-xl"}
+      attributionPlacement={sessionOpen || stage.mode === "reduced" ? "top" : "below-strip"}
+      className="h-full rounded-none"
     />
   ) : (
-    <IniaCallPlaceholder image={operator.assistantImage} variant="camera-off" rounded={!sessionOpen} compact={avatarCompact && !sessionOpen}/>
+    <IniaCameraOff image={operator.assistantImage} compact={!sessionOpen && (stage.mode === "reduced" || stage.mode === "mini")}/>
   )
 
   // Sem o registro, o feedback não é exibido (o balão dela diz o que houve, com nova tentativa).
@@ -2206,30 +2193,45 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   ) : null
 
   return <>
-  <section className="flex h-full min-h-0 flex-col bg-card" data-usage-screen={hidden ? undefined : "followup.chat_panel"}>
-    <header className="flex items-center gap-2 px-5 py-3">
+  {/* Regiões próprias, uma embaixo da outra: cabeçalho · INIA · mensagens (com a rolagem delas) · campo. Nenhuma fica por cima
+      de outra; quem cede espaço é a INIA, nunca a conversa nem o campo. */}
+  <section ref={panelRef} className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl bg-card" aria-label="Chat da INIA" data-usage-screen={hidden ? undefined : "followup.chat_panel"}>
+    <header className="flex h-12 shrink-0 items-center gap-0.5 pr-2 pl-4">
       <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">INIA</h2>
-      <Button type="button" variant="outline" size="sm" onClick={() => void newConversation()} disabled={startingNew || sessionOpen} className="rounded-full" data-usage-element="chat.new_conversation"><SquarePen/>Nova conversa</Button>
-      <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => setHistoryOpen(true)} aria-label="Conversas anteriores" disabled={sessionOpen} data-usage-element="chat.history.open"><History/></Button></TooltipTrigger><TooltipContent side="bottom" className="inia-tooltip-genie">Conversas anteriores</TooltipContent></Tooltip>
-      {onCollapse ? <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={onCollapse} aria-label="Recolher chat"><PanelRightClose/></Button></TooltipTrigger><TooltipContent side="left" className="inia-tooltip-genie">Recolher chat</TooltipContent></Tooltip> : null}
+      <PanelAction label="Nova conversa" onClick={() => void newConversation()} disabled={startingNew || sessionOpen} usageElement="chat.new_conversation"><SquarePen/></PanelAction>
+      <PanelAction label="Conversas anteriores" onClick={() => setHistoryOpen(true)} disabled={sessionOpen} usageElement="chat.history.open"><History/></PanelAction>
+      {stage.inPanel && !shortPanel && !supportRoomOpen ? <PanelAction label={stage.reduced ? "Mostrar a INIA maior" : "Reduzir a INIA"} onClick={stage.toggleReduced} pressed={stage.reduced}>{stage.reduced ? <ChevronDown/> : <ChevronUp/>}</PanelAction> : null}
+      {stage.panel ? <PanelAction label={inCall ? "Recolher o painel (a chamada continua)" : "Recolher o painel"} onClick={() => stage.collapse()} collapse><PanelRightClose/></PanelAction> : null}
     </header>
-    <Separator/>
+    <div className="flex min-h-0 flex-1 flex-col">
     {/* Com a sala de apoio aberta (a voz já foi encerrada ao abrir), o avatar da INIA sai de cena e a conversa com o Anjo ocupa o
         painel — só por CSS: o Canvas continua montado (regra do Canvas do R3F no CLAUDE.md) e volta ao fechar a sala. */}
-    {/* Ampliada, a INIA divide a altura com as mensagens, cada uma na sua área: nada fica por cima da conversa. */}
-    <div className={cn("shrink-0 px-4 pt-3", avatarExpanded && "h-[45%] min-h-36", supportRoomOpen && "hidden")} data-testid="inia-avatar-stage" data-avatar-size={avatarExpanded ? "expanded" : "compact"}>
-      <IniaCallTile speaking={!sessionOpen && callActive && conversationState === "speaking" && !voiceMuted} className={avatarCompact ? AVATAR_COMPACT_HEIGHT : "h-full"}>
-        {scene && !sessionOpen ? <IniaSceneBackdrop imageUrl={scene.imageUrl} blur={scene.blur} dim={scene.dim} variant="panel"/> : null}
-        <AvatarSlot manager={avatarHost} priority={1} className={avatarCompact ? AVATAR_COMPACT_SLOT : "h-full"}/>
-        {sessionOpen ? <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-muted/60 px-6 text-center text-xs text-muted-foreground">A INIA está na sessão de feedback.</div> : panelAvatarControls}
-      </IniaCallTile>
-    </div>
+    <IniaStage
+      stage={stage}
+      panelHeight={panelHeight}
+      hidden={supportRoomOpen}
+      backdrop={scene && !sessionOpen ? <IniaSceneBackdrop imageUrl={scene.imageUrl} blur={scene.blur} dim={scene.dim} variant="panel"/> : null}
+      avatar={<AvatarSlot manager={avatarHost} priority={1} className="absolute! inset-0"/>}
+      overlay={sessionOpen ? <div className="absolute inset-0 flex items-center justify-center bg-muted/60 px-6 text-center text-xs text-muted-foreground">A INIA está na sessão de feedback.</div> : !avatarModelUrl ? <span className="hidden"/> : undefined}
+      status={{ connecting, activity: activityLabel }}
+      speaking={!sessionOpen && conversationState === "speaking" && !voiceMuted}
+      caption={sessionOpen ? null : caption}
+      person={{ name: operator.displayName ?? operator.name, avatarUrl: operator.avatarUrl }}
+      assistantImage={operator.assistantImage}
+      unread={messages.length > 0}
+      call={{
+        inCall, state: callState, micOpen, micDisabled, micLabel, onMic: handleMicClick,
+        micPulseRef: (element) => { micPulseRefs.current[0] = element }, micPulseStyle: MIC_PULSE_REST_STYLE,
+        muted: voiceMuted, onToggleMute: toggleVoiceMuted, cameraOn, onToggleCamera: () => setCameraOn((value) => !value),
+        captionsOn, onToggleCaptions: () => setCaptionsOn((value) => !value), onEnd: endCall,
+      }}
+    />
     {sessionOpen ? (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 p-6 text-center text-sm text-muted-foreground" role="status">
         <p className="font-medium text-foreground">Sessão de feedback aberta</p>
         <p className="max-w-72">{sessionTitle}</p>
       </div>
-    ) : <>
+    ) : <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="inia-conversation">
       {/* Avisos e convites nunca tomam o lugar das mensagens: em janelas baixas, rolam dentro de um teto próprio. */}
       <div className="max-h-[40%] shrink-0 overflow-y-auto empty:hidden">
       {showFeedbackInvite && invite ? (
@@ -2264,10 +2266,25 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       </div>
       {supportRoomOpen ? <SupportRoom onBack={() => setSupportRoomOpen(false)} hidden={hidden} /> : <>
         <SupportStatusPill onOpenRoom={openSupportRoom} />
-        <ScrollArea className="min-h-0 flex-1">{messageItems}</ScrollArea>
-        <Separator/>
-        {composer}
+        {/* Rolagem independente e alcançável pelo teclado (setas, Page Up/Down, Home/End). */}
+        <div className="relative mt-2 flex min-h-0 flex-1 flex-col">
+        <ScrollArea className="min-h-0 flex-1" viewportProps={{
+          ref: setMessagesViewport, tabIndex: 0, role: "region", "aria-label": "Mensagens da conversa com a INIA",
+          // Chegar ao topo ou ao fim da conversa não passa a rolagem para a página (ela sai de debaixo das abas e o chat encolhe no meio da leitura).
+          className: "overscroll-contain focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        }}>{messageItems}</ScrollArea>
+        {/* Flutua sobre o texto, sem faixa própria: só um esmaecer quase imperceptível embaixo. Escondido, não recebe foco nem clique. */}
+        <div inert={!awayFromLatest} className={cn("pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center bg-linear-to-t from-card/50 to-transparent pt-8 transition-opacity duration-300 motion-reduce:transition-none", shortPanel ? "pb-1.5" : "pb-3", awayFromLatest ? "opacity-100" : "opacity-0")} data-testid="inia-follow-latest">
+          <Button type="button" size="sm" variant="outline" className={cn("rounded-full pointer-coarse:h-9 dark:bg-card dark:hover:bg-muted", FLOATING_SHADOW, awayFromLatest && "pointer-events-auto")} onClick={() => { followLatest(); messagesViewport?.focus({ preventScroll: true }) }}><ArrowDown aria-hidden/>Ir para a resposta mais recente</Button>
+        </div>
+        </div>
       </>}
+    </div>}
+    </div>
+    {sessionOpen || supportRoomOpen ? null : <>
+      <Separator/>
+      {/* Só no toque: botões maiores e letra de 16 px no celular (com menos, o iPhone dá zoom sozinho ao tocar no campo). */}
+      <div className="shrink-0 max-sm:[&_textarea]:text-base pointer-coarse:[&_button]:size-9">{composer}</div>
     </>}
     <IniaConversationHistorySheet open={historyOpen} onOpenChange={setHistoryOpen} currentConversationId={readOnlyConversation ? null : conversationId} onSelect={(summary) => void openPastConversation(summary)} />
   </section>

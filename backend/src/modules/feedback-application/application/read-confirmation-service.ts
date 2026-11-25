@@ -222,7 +222,8 @@ async function verifyReadConfirmationCredentials(
         return { kind: "FAILED", remaining: Math.max(0, throttle.remaining - 1), network: true }
       }
       if (!deps.verifyNetworkPassword) return { kind: "NETWORK", problem: "UNAVAILABLE" }
-      return { kind: "CHECK_NETWORK", normalized: normalizeNetworkLogin(account.matricula ?? "")! }
+      // Igual à do cadastro (conferida acima), já no formato do login.
+      return { kind: "CHECK_NETWORK", normalized: normalizeNetworkLogin(input.login)! }
     }
     const loginMatches = account ? loginMatchesAccount(input.login, account.email) : false
     // A senha é sempre conferida contra a PRÓPRIA conta (nunca contra a conta do login digitado).
@@ -243,7 +244,7 @@ async function verifyReadConfirmationCredentials(
   return inTransaction(db, async (client): Promise<CredentialVerdict> => {
     await lockCredential(client, scope)
     const current = await loadCredentialAccount(client, scope)
-    const unchanged = current?.network === true && current.active && normalizeNetworkLogin(current.matricula ?? "") === first.normalized
+    const unchanged = current?.network === true && current.active && networkLoginMatches(first.normalized, current.matricula)
     switch (check) {
       case "OK":
         return unchanged ? { kind: "OK" } : { kind: "CHANGED" }

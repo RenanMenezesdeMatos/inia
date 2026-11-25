@@ -10,10 +10,10 @@ import { cn } from "@/lib/utils"
  * numa resposta alargava a lista inteira além do painel e cortava a borda direita de TODAS as mensagens (sem barra horizontal, o
  * excesso fica escondido). Como bloco, o conteúdo tem a largura do viewport e quem é largo rola dentro de si (`overflow-x-auto`).
  */
-function ScrollArea({ className, children, ...props }: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+function ScrollArea({ className, children, viewportProps, ...props }: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & { /** Da área que rola de fato (ref, foco pelo teclado, nome acessível). */ viewportProps?: Omit<React.ComponentProps<typeof ScrollAreaPrimitive.Viewport>, "children" | "nonce"> }) {
   // O Viewport do Radix escreve um <style> (esconde a barra nativa): a CSP só o aceita com o nonce da página (R-07).
   const nonce = useCspNonce()
-  return <ScrollAreaPrimitive.Root data-slot="scroll-area" className={cn("inia-scroll-fade relative", className)} {...props}><ScrollAreaPrimitive.Viewport data-slot="scroll-area-viewport" nonce={nonce} className="size-full rounded-[inherit] outline-none [&>div]:block!">{children}</ScrollAreaPrimitive.Viewport><ScrollBar/><ScrollAreaPrimitive.Corner/></ScrollAreaPrimitive.Root>
+  return <ScrollAreaPrimitive.Root data-slot="scroll-area" className={cn("inia-scroll-fade relative", className)} {...props}><ScrollAreaPrimitive.Viewport data-slot="scroll-area-viewport" nonce={nonce} {...viewportProps} className={cn("size-full rounded-[inherit] outline-none [&>div]:block!", viewportProps?.className)}>{children}</ScrollAreaPrimitive.Viewport><ScrollBar/><ScrollAreaPrimitive.Corner/></ScrollAreaPrimitive.Root>
 }
 
 function ScrollBar({ className, orientation = "vertical", ...props }: React.ComponentProps<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>) {

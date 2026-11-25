@@ -1624,7 +1624,7 @@ já diz a regra; a família do status diz como investigar.
 
 **Recuperação:** Restabelecer a dependência; repetir a ação. **Escalar para:** Infraestrutura da VM (servidor, IIS, PostgreSQL). Sem solução em 30 min: equipe de desenvolvimento da INIA com a referência, o horário UTC e as linhas do log.
 
-## Códigos dos módulos (1003)
+## Códigos dos módulos (1013)
 
 ### Módulo `access`
 
@@ -1632,19 +1632,27 @@ já diz a regra; a família do status diz como investigar.
 | --- | --- | --- | --- | --- |
 | `ACCESS_ACCOUNT_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Conta não encontrada. | `backend/src/modules/access/application/access-service.ts` |
 | `ACCESS_ALREADY_DISABLED` | 409 | FAMILIA-CONFLITO | O acesso desta pessoa já está desabilitado. | `backend/src/modules/access/application/account-access-service.ts` |
-| `ACCESS_ALREADY_ENABLED` | 409 | FAMILIA-CONFLITO | O acesso desta pessoa já está habilitado. Para uma nova senha, use “Gerar nova senha temporária”. | `backend/src/modules/access/application/account-access-service.ts` |
+| `ACCESS_ALREADY_ENABLED` | 409 | FAMILIA-CONFLITO | (mensagem montada no código) | `backend/src/modules/access/application/account-access-service.ts` |
 | `ACCESS_ASSIGNMENT_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Atribuição não encontrada. | `backend/src/modules/access/application/access-service.ts` |
 | `ACCESS_CONCURRENT_CHANGE` | 409 | FAMILIA-CONFLITO | Outra pessoa alterou este acesso agora há pouco. Atualize a lista e tente de novo. | `backend/src/modules/access/application/account-access-service.ts` |
-| `ACCESS_EMAIL_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Informe o e-mail que a pessoa vai usar para entrar. | `backend/src/modules/access/application/account-access-service.ts` |
+| `ACCESS_CSV_EMPTY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O arquivo não tem nenhuma matrícula. Preencha uma por linha na coluna “matricula” do modelo. | `backend/src/modules/access/application/network-enable-service.ts` |
+| `ACCESS_CSV_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Este arquivo não é um CSV. Na planilha, use “Salvar como” e escolha CSV. | `backend/src/modules/access/application/network-enable-service.ts` |
+| `ACCESS_CSV_NO_MATRICULA_COLUMN` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Não encontrei a coluna “matricula” no arquivo. Use o modelo: a primeira linha precisa ter o nome das colunas. | `backend/src/modules/access/application/network-enable-service.ts` |
+| `ACCESS_CSV_TOO_LARGE` | 413 | FAMILIA-LIMITE | O arquivo é grande demais. Divida em arquivos menores. | `backend/src/modules/access/application/network-enable-service.ts` |
+| `ACCESS_CSV_TOO_MANY_ROWS` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O arquivo passa de ${NETWORK_ENABLE_CSV_MAX_ROWS.toLocaleString("pt-BR")} linhas. Divida em arquivos menores. | `backend/src/modules/access/application/network-enable-service.ts` |
+| `ACCESS_EMAIL_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Informe o e-mail que a pessoa vai usar para entrar. | `backend/src/modules/access/application/account-access-service.ts`<br>`backend/src/modules/users/presentation/user-account-router.ts` |
 | `ACCESS_LAST_TENANT_ADMIN` | 409 | FAMILIA-CONFLITO | Este é o último Administrador geral ativo — conceda o papel a outra pessoa antes de revogar. | `backend/src/modules/access/application/access-service.ts`<br>`backend/src/modules/access/application/account-access-service.ts`<br>`backend/src/modules/users/presentation/user-account-router.ts` |
+| `ACCESS_MATRICULA_DUPLICATED` | 409 | FAMILIA-CONFLITO | Outra conta habilitada tem a mesma matrícula. Desabilite a conta repetida ou corrija a matrícula antes: com duas, ninguém entra por ela. | `backend/src/modules/access/application/account-access-service.ts` |
+| `ACCESS_MATRICULA_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A matrícula do cadastro tem espaço ou símbolo que não existe num login de rede. Corrija a matrícula na base antes de habilitar. | `backend/src/modules/access/application/account-access-service.ts`<br>`backend/src/modules/users/presentation/user-account-router.ts` |
+| `ACCESS_MATRICULA_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Esta pessoa não tem matrícula no cadastro. Com o login pela rede ligado, é pela matrícula que ela entra — informe a matrícula antes de habilitar. | `backend/src/modules/access/application/account-access-service.ts`<br>`backend/src/modules/users/presentation/user-account-router.ts` |
+| `ACCESS_NETWORK_LOGIN_OFF` | 409 | FAMILIA-CONFLITO | O login pela rede está desligado: habilite cada pessoa em “Habilitar acesso”, com senha temporária. | `backend/src/modules/access/application/network-enable-service.ts` |
 | `ACCESS_NOT_ENABLED` | 409 | FAMILIA-CONFLITO | O acesso desta pessoa está desabilitado — use “Habilitar acesso”. | `backend/src/modules/access/application/account-access-service.ts` |
 | `ACCESS_PASSWORD_MANAGED_BY_NETWORK` | 409 | FAMILIA-CONFLITO | A senha desta conta é gerenciada pelo Active Directory: a pessoa entra com a matrícula e a senha de rede. Para trocar ou desbloquear, procure o suporte da rede. | `backend/src/modules/access/application/account-access-service.ts` |
 | `ACCESS_PERSON_INACTIVE` | 409 | FAMILIA-CONFLITO | Esta pessoa está inativa no cadastro — reative-a antes de habilitar o acesso. | `backend/src/modules/access/application/account-access-service.ts` |
 | `ACCESS_PERSON_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Pessoa não encontrada. | `backend/src/modules/access/application/access-service.ts`<br>`backend/src/modules/access/application/account-access-service.ts` |
 | `ACCESS_ROLE_ALREADY_ASSIGNED` | 409 | FAMILIA-CONFLITO | Esta conta já tem este papel com o mesmo escopo. | `backend/src/modules/access/application/access-service.ts` |
 | `ACCESS_SCOPE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escopo inválido para esta organização. | `backend/src/modules/access/application/access-service.ts` |
-| `ACCESS_TARGET_LEADS_OUTSIDE_SCOPE` | 403 | FAMILIA-ACESSO | (mensagem montada no código) | `backend/src/modules/access/application/account-access-service.ts` |
-| `FORBIDDEN` | 403, 422 | FAMILIA-ACESSO | Você não tem permissão para esta ação. | `backend/src/modules/access/application/access-service.ts`<br>`backend/src/modules/access/application/account-access-service.ts`<br>`backend/src/modules/access/presentation/require-permission.ts`<br>`backend/src/modules/ai-management/application/ai-usage-ranking-service.ts`<br>`backend/src/modules/ai-management/presentation/ai-management-router.ts`<br>`backend/src/modules/argument-scripts/application/argument-script-service.ts` |
+| `FORBIDDEN` | 403, 422 | FAMILIA-ACESSO | Você não tem permissão para esta ação. | `backend/src/modules/access/application/access-service.ts`<br>`backend/src/modules/access/application/account-access-service.ts`<br>`backend/src/modules/access/application/network-check-service.ts`<br>`backend/src/modules/access/application/network-enable-service.ts`<br>`backend/src/modules/access/presentation/require-permission.ts`<br>`backend/src/modules/ai-management/application/ai-usage-ranking-service.ts` |
 | `UNKNOWN_ROLE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/access/application/access-service.ts` |
 
 ### Módulo `auth`
@@ -1657,6 +1665,7 @@ já diz a regra; a família do status diz como investigar.
 | `LOGIN_TOO_MANY_ATTEMPTS` | 429 | FAMILIA-LIMITE | Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente. | `backend/src/modules/auth/presentation/auth-router.ts` |
 | `NETWORK_ACCOUNT_DISABLED` | 403 | FAMILIA-ACESSO | Sua conta de rede está desativada ou sem permissão de acesso agora. Procure o suporte de TI. | `backend/src/modules/auth/presentation/auth-router.ts`<br>`backend/src/modules/feedback-application/application/read-confirmation-service.ts` |
 | `NETWORK_ACCOUNT_LOCKED` | 403 | FAMILIA-ACESSO | Sua conta de rede está bloqueada. Procure o suporte de TI para desbloquear. | `backend/src/modules/auth/presentation/auth-router.ts`<br>`backend/src/modules/feedback-application/application/read-confirmation-service.ts` |
+| `NETWORK_IDENTITY_UNREADABLE` | 403 | FAMILIA-ACESSO | Sua senha de rede foi aceita, mas a INIA não conseguiu confirmar a sua ID no AD. Procure o administrador da INIA. | `backend/src/modules/auth/presentation/auth-router.ts` |
 | `NETWORK_LOGIN_AMBIGUOUS_MATRICULA` | 409 | FAMILIA-CONFLITO | Há matrículas repetidas com grafias diferentes (maiúscula ou espaço). Corrija o cadastro dessas pessoas antes de ligar: com a matrícula repetida, ninguém consegue entrar por ela. | `backend/src/modules/auth/application/network-login-settings.ts` |
 | `NETWORK_LOGIN_EMERGENCY_ACCOUNT_REQUIRED` | 409 | FAMILIA-CONFLITO | Antes de ligar, é preciso ao menos uma conta de emergência habilitada (crie com npm run admin:create). | `backend/src/modules/auth/application/network-login-settings.ts` |
 | `NETWORK_LOGIN_HTTPS_REQUIRED` | 409 | FAMILIA-CONFLITO | Ligue o HTTPS antes: a senha de rede não pode passar por uma conexão sem criptografia. | `backend/src/modules/auth/application/network-login-settings.ts` |
@@ -2406,6 +2415,7 @@ já diz a regra; a família do status diz como investigar.
 | `DATA_INVALID_NUMBER` | — | FAMILIA-DEPENDENCIA | Número inválido. | `backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_JOB_POSITION_UNKNOWN` | — | FAMILIA-DEPENDENCIA | Cargo não cadastrado ou desativado — cadastre em Central de Dados › Cargos e reprocesse a carga. | `backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_MAPPING_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O mapeamento está incompleto: ${problems.join(" ")} | `backend/src/modules/data-hub/application/feed-service.ts`<br>`backend/src/modules/data-hub/domain/error-codes.ts` |
+| `DATA_NAME_IN_USE` | — | FAMILIA-DEPENDENCIA | O nome já é de outro Grupo ou Subgrupo — a INIA reconhece pelo código e não junta por nome. | `backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_NO_VALID_RECORDS` | — | FAMILIA-DEPENDENCIA | Nenhum registro da carga é válido. | `backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_OPERATING_UNIVERSE_REQUIRED` | — | FAMILIA-DEPENDENCIA | Colaborador novo sem universo de atuação (B2B, B2C ou B2X) depois que a organização ativou a exigência — mapeie o campo na carga. | `backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_PERSON_LINK_ACCESS_DISABLED` | — | FAMILIA-DEPENDENCIA | Pessoa ligada pelo e-mail foi para outro Grupo ou nível de liderança: o acesso foi desabilitado até quem administra o lugar novo liberar de novo (registro aplicado; veja a mensagem). | `backend/src/modules/data-hub/domain/error-codes.ts` |

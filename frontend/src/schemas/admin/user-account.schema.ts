@@ -123,7 +123,7 @@ export type UserDetail = z.infer<typeof userDetailSchema>
 export const jobPositionOptionSchema = z.object({ id: z.string(), name: z.string(), level: platformRoleSchema, levelLabel: z.string() })
 export type JobPositionOption = z.infer<typeof jobPositionOptionSchema>
 
-export const creationPolicySchema = z.object({ hierarchyRequiresMatricula: z.boolean(), sources: z.array(sourceManagerSchema) })
+export const creationPolicySchema = z.object({ hierarchyRequiresMatricula: z.boolean(), sources: z.array(sourceManagerSchema), networkLogin: z.boolean().default(false) })
 export type CreationPolicy = z.infer<typeof creationPolicySchema>
 
 export const personLinkResultSchema = z.object({ fromPersonId: z.string(), toPersonId: z.string(), matricula: z.string(), accountId: z.string().nullable(), sessionsRevoked: z.boolean() })

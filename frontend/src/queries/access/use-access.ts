@@ -3,17 +3,18 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 
+import { adminQueryKeys } from "@/queries/admin/admin-query-keys"
 import { currentUserKeys } from "@/queries/auth/use-current-user"
 import { feedbackReviewKeys } from "@/queries/feedback-review/feedback-review-query-keys"
 
 import type { AccessStatus, AssignRoleInput } from "@/schemas/access/access.schema"
-import { assignAccessRole, disableUserAccess, enableUserAccess, fetchAccessAccount, fetchAccessRoles, fetchIdentifiedUsers, fetchScopeOptions, issueTemporaryPassword, revokeAccessRole } from "@/services/access/access-service"
+import { applyNetworkEnable, assignAccessRole, checkNetworkLogin, disableUserAccess, enableUserAccess, fetchAccessAccount, fetchAccessRoles, fetchIdentifiedUsers, fetchScopeOptions, issueTemporaryPassword, previewNetworkEnable, revokeAccessRole } from "@/services/access/access-service"
 
 const keys = { all: ["admin-access"] as const, users: (params: object) => ["admin-access", "users", params] as const, account: (id: string) => ["admin-access", "account", id] as const, roles: ["admin-access", "roles"] as const, scopes: ["admin-access", "scopes"] as const }
 /** Raiz das queries de acesso — para quem muda contas fora daqui (ex.: vincular a pessoa da base) invalidar. */
 export const accessQueryRootKey = keys.all
 
-export const useIdentifiedUsersQuery = (params: { search?: string | undefined; status?: AccessStatus | undefined; page: number; pageSize: number }) => useQuery({ queryKey: keys.users(params), queryFn: () => fetchIdentifiedUsers(params), placeholderData: keepPreviousData })
+export const useIdentifiedUsersQuery = (params: { search?: string | undefined; status?: AccessStatus | undefined; networkIssue?: boolean | undefined; page: number; pageSize: number }) => useQuery({ queryKey: keys.users(params), queryFn: () => fetchIdentifiedUsers(params), placeholderData: keepPreviousData })
 export const useAccessAccountQuery = (accountId: string | null) => useQuery({ queryKey: keys.account(accountId ?? ""), queryFn: () => fetchAccessAccount(accountId!), enabled: accountId !== null })
 export const useAccessRolesQuery = () => useQuery({ queryKey: keys.roles, queryFn: fetchAccessRoles })
 export const useScopeOptionsQuery = (enabled: boolean) => useQuery({ queryKey: keys.scopes, queryFn: fetchScopeOptions, enabled })
@@ -30,6 +31,8 @@ function useInvalidateAccess() {
   return async () => {
     await Promise.all([
       client.invalidateQueries({ queryKey: keys.all }),
+      // O cadastro de Pessoas mostra a conta de cada um.
+      client.invalidateQueries({ queryKey: adminQueryKeys.users() }),
       client.invalidateQueries({ queryKey: currentUserKeys.me }),
       client.invalidateQueries({ queryKey: feedbackReviewKeys.all() }),
     ])
@@ -58,4 +61,10 @@ export function useDisableUserAccessMutation() {
   const invalidate = useInvalidateAccess()
   return useMutation({ mutationFn: (accountId: string) => disableUserAccess(accountId), onSuccess: () => void invalidate() })
 }
-
+// Habilitar em massa pela rede: a prévia não muda nada; aplicar recarrega acessos (e o cadastro de Pessoas, que mostra a conta).
+export const usePreviewNetworkEnableMutation = () => useMutation({ mutationFn: previewNetworkEnable })
+export function useApplyNetworkEnableMutation() {
+  const invalidate = useInvalidateAccess()
+  return useMutation({ mutationFn: applyNetworkEnable, onSuccess: () => void invalidate() })
+}
+export const useCheckNetworkLoginMutation = () => useMutation({ mutationFn: checkNetworkLogin })

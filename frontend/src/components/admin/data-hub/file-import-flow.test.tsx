@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { adminQueryKeys } from "@/queries/admin/admin-query-keys"
 import type { DataContract, Preview, UploadResult } from "@/schemas/admin/data-hub.schema"
 
 const service = vi.hoisted(() => ({
@@ -130,6 +131,24 @@ describe("Importar arquivo — nome do novo feed", () => {
     expect(screen.getByRole("combobox", { name: "Tipo de dado (contrato)" })).toHaveTextContent("Selecione")
     chooseContract(/Interações/)
     expect(feedName()).toHaveValue("Interações (CSV)")
+  })
+
+  it("conjunto criado e importação recusada: as listas da Central são recarregadas mesmo assim (QAF-10, run-12)", async () => {
+    const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries")
+    service.importFile.mockRejectedValue(new Error("Sem conexão."))
+    renderFlow()
+    await upload(uploaded("colaboradores.csv"))
+    chooseContract(/Colaboradores/)
+    fireEvent.click(next())
+    fireEvent.click(next())
+    await waitFor(() => expect(next()).toBeEnabled())
+    fireEvent.click(next())
+    await waitFor(() => expect(next()).toBeEnabled())
+    fireEvent.click(next())
+    fireEvent.click(screen.getByRole("button", { name: /Importar agora/ }))
+    await waitFor(() => expect(service.importFile).toHaveBeenCalled())
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: adminQueryKeys.dataHub() })
+    invalidate.mockRestore()
   })
 
   it("carga que cancelou ausências (Vigente? = não) mostra 'Desativados' no resumo", async () => {

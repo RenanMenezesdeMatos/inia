@@ -38,7 +38,7 @@ export function VoiceWaveform({ barRefs }: { barRefs: React.RefObject<(HTMLSpanE
 export function TypingBubble({ align, name, avatarSrc, muted, children }: { align: "start" | "end"; name: string; avatarSrc?: string; muted: boolean; children: React.ReactNode }) {
   return <Message align={align}>
     <MessageAvatar><Avatar className="size-8">{avatarSrc ? <AvatarImage src={avatarSrc} alt={name}/> : null}<AvatarFallback className={muted ? "bg-primary text-primary-foreground" : "bg-secondary"}>{muted ? <Bot className="size-4"/> : name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</AvatarFallback></Avatar></MessageAvatar>
-    <MessageContent className="max-w-[88%]">
+    <MessageContent className="max-w-[88%] gap-1">
       <MessageHeader className="px-1">{name}</MessageHeader>
       <Bubble variant={muted ? "muted" : "default"} className="max-w-full"><BubbleContent className="px-4 py-3">{children}</BubbleContent></Bubble>
     </MessageContent>

@@ -3,7 +3,7 @@ import { authenticate, type AuthenticateDeps } from "./authenticate.js"
 import type { CredentialStore, LoginAccount, LoginAttemptOutcome } from "./credential-store.js"
 import { defineFirstPassword } from "./define-first-password.js"
 import { authenticateNetwork, type NetworkAuthenticateDeps } from "./authenticate-network.js"
-import type { DirectoryAuthenticator } from "./directory-authenticator.js"
+import type { DirectoryAuthenticator, IdentityCheck } from "./directory-authenticator.js"
 import type { DirectoryVerdict } from "../domain/network-login.js"
 
 const NOW = new Date("2026-10-06T12:00:00Z")
@@ -13,6 +13,8 @@ const ORG = "00000000-0000-4000-8000-000000000001"
 function memoryStore(account: Partial<LoginAccount> | null) {
   const attempts: { id: string; identifierHash: string; accountId: string | null; outcome: LoginAttemptOutcome; at: Date }[] = []
   const events: string[] = []
+  const registered: string[] = []
+  let directoryLogin: string | null = null
   let current: LoginAccount | null = account
     ? { id: "acc-1", organizationId: ORG, personId: "p-1", name: "Larissa", role: "OPERATOR", email: "larissa@inia.local", passwordHash: "hash:Kq7m-Pz4x-Wn9r", active: true, sessionVersion: 2, passwordChangeRequired: true, temporaryPasswordExpiresAt: new Date(NOW.getTime() + 3_600_000), avatarUrl: null, jobTitle: null, teamId: null, teamName: null, matricula: null, networkLoginEnabled: false, emergencyLocalAccess: false, ...account }
     : null
@@ -34,6 +36,9 @@ function memoryStore(account: Partial<LoginAccount> | null) {
       entry.accountId = accountId
       entry.outcome = outcome
     },
+    async registeredMatriculas(normalized) { return normalized.filter((matricula) => registered.includes(matricula)) },
+    async directoryLoginOf() { return directoryLogin },
+    async rememberDirectoryLogin(_accountId, login) { directoryLogin = login },
     async markLoggedIn() {},
     async findByNetworkLogin(networkLogin) { return current && current.networkLoginEnabled && current.matricula?.toUpperCase() === networkLogin ? current : null },
     async completeNetworkLogin({ retiredPasswordHash }) {
@@ -51,7 +56,7 @@ function memoryStore(account: Partial<LoginAccount> | null) {
       return { sessionVersion: current.sessionVersion }
     },
   }
-  return { store, attempts, events, get account() { return current } }
+  return { store, attempts, events, registered, get account() { return current }, get directoryLogin() { return directoryLogin }, set directoryLogin(value: string | null) { directoryLogin = value } }
 }
 const verifyPassword = async (plain: string, hash: string) => hash === `hash:${plain}`
 const deps = (store: CredentialStore, now = NOW): AuthenticateDeps => ({ store, verifyPassword, identifierHash: (login) => `id:${login.trim().toLowerCase()}`, now: () => now })
@@ -171,7 +176,7 @@ const networkAccount = { matricula: "G0055350", networkLoginEnabled: true, passw
 
 describe("login pela rede", () => {
   it("matrícula + senha de rede entram; a matrícula é normalizada (minúsculas, prefixo de domínio)", async () => {
-    for (const login of ["G0055350", " g0055350 ", "EMPRESA\\g0055350"]) {
+    for (const login of ["G0055350", " g0055350 ", "EMPRESA\\g0055350", "g0055350@empresa.local", "\u200bG0055350\u00a0"]) {
       const memory = memoryStore(networkAccount)
       const ad = fakeDirectory()
       expect(await authenticateNetwork(networkDeps(memory.store, ad.directory), { login, password: "Rede#2026" })).toMatchObject({ kind: "SUCCEEDED", account: { id: "acc-1" } })
@@ -191,10 +196,10 @@ describe("login pela rede", () => {
     expect((await authenticateNetwork(networkDeps(memory.store, ad.directory), { login: "G0055350", password: "Rede#2026" })).kind).toBe("INVALID_CREDENTIALS")
     expect(ad.binds).toEqual([])
   })
-  it("formato inválido (@, espaço, vírgula) é recusado sem AD", async () => {
+  it("formato inválido (espaço, vírgula, símbolo) é recusado sem AD", async () => {
     const memory = memoryStore(networkAccount)
     const ad = fakeDirectory()
-    for (const login of ["g0055350@empresa.local", "G00 55350", "cn=admin,dc=x", "*"]) {
+    for (const login of ["G00 55350", "g0055350@empresa@local", "cn=admin,dc=x", "*"]) {
       expect((await authenticateNetwork(networkDeps(memory.store, ad.directory), { login, password: "Rede#2026" })).kind).toBe("INVALID_CREDENTIALS")
     }
     expect(ad.binds).toEqual([])
@@ -234,11 +239,11 @@ describe("login pela rede", () => {
     expect(adMax).toBeLessThanOrEqual(3)
     expect(adMax).toBeLessThan(10)
   })
-  it("falhas espaçadas por mais de 15 min nunca formam cadeia: cada tentativa segue liberada", async () => {
+  it("falhas espaçadas por mais que a rodada do AD nunca formam cadeia: cada tentativa segue liberada", async () => {
     const memory = memoryStore(networkAccount)
     const ad = fakeDirectory()
     const results = []
-    for (let index = 0; index < 5; index += 1) results.push((await authenticateNetwork(networkDeps(memory.store, ad.directory, new Date(NOW.getTime() + index * 16 * 60_000)), { login: "G0055350", password: "errada" })).kind)
+    for (let index = 0; index < 5; index += 1) results.push((await authenticateNetwork(networkDeps(memory.store, ad.directory, new Date(NOW.getTime() + index * 17 * 60_000)), { login: "G0055350", password: "errada" })).kind)
     expect(results).toEqual(Array(5).fill("INVALID_CREDENTIALS"))
     expect(ad.binds).toHaveLength(5)
   })
@@ -295,6 +300,134 @@ describe("login pela rede", () => {
     const directory: DirectoryAuthenticator = { ...fakeDirectory().directory, configured: false }
     expect((await authenticateNetwork(networkDeps(memory.store, directory), { login: "G0055350", password: "Rede#2026" })).kind).toBe("NETWORK_UNAVAILABLE")
     expect(memory.attempts).toEqual([])
+  })
+})
+
+describe("login sem o último dígito (R + 7 números)", () => {
+  const account = { ...networkAccount, matricula: "R4567891" }
+  const FULL: IdentityCheck = { employeeIdOf: "R4567891", whenUnreadable: "ALLOW" }
+  const SHORT: IdentityCheck = { employeeIdOf: "R4567891", whenUnreadable: "REFUSE" }
+  const ofMatricula = (memory: ReturnType<typeof memoryStore>) => memory.attempts.filter((entry) => entry.identifierHash === "id:matricula:R4567891")
+  /** AD falso: responde por login; registra cada conferência com a matrícula cuja ID foi pedida. */
+  function directoryWith(answers: Record<string, DirectoryVerdict>) {
+    const calls: [string, IdentityCheck | undefined][] = []
+    const directory: DirectoryAuthenticator = {
+      configured: true, domain: "empresa.local",
+      shortLoginOf: (login) => (/^R\d{7}$/.test(login) ? login.slice(0, -1) : null),
+      fullLoginsBehind: (login) => (/^R\d{6}$/.test(login) ? Array.from({ length: 10 }, (_, digit) => `${login}${digit}`) : []),
+      async verify(login, _password, identity) { calls.push([login, identity]); return answers[login] ?? { kind: "INVALID", code: "52e" } },
+      async probe() { return [] },
+    }
+    return { directory, calls }
+  }
+  const attempt = async (answers: Record<string, DirectoryVerdict>, times = 1) => {
+    const memory = memoryStore(account)
+    const ad = directoryWith(answers)
+    const results = []
+    for (let index = 0; index < times; index += 1) results.push((await authenticateNetwork(networkDeps(memory.store, ad.directory, new Date(NOW.getTime() + index * 1000)), { login: "R4567891", password: "Rede#2026" })).kind)
+    return { results, calls: ad.calls, memory }
+  }
+  it("inteira primeiro; recusada, tenta sem o último dígito exigindo a ID da matrícula digitada", async () => {
+    const { results, calls, memory } = await attempt({ R456789: { kind: "OK" } })
+    expect(results).toEqual(["SUCCEEDED"])
+    expect(calls).toEqual([["R4567891", FULL], ["R456789", SHORT]])
+    expect(memory.events).toEqual(["NETWORK_LOGIN"])
+  })
+  it("a inteira existe no AD: nunca chega à segunda (aceita, bloqueada, vencida, desativada ou sem resposta)", async () => {
+    for (const verdict of [{ kind: "OK" }, { kind: "ACCOUNT_LOCKED" }, { kind: "PASSWORD_EXPIRED" }, { kind: "ACCOUNT_DISABLED" }, { kind: "UNAVAILABLE", reason: "x" }, { kind: "UNAVAILABLE", reason: "x", passwordSent: true }] as DirectoryVerdict[]) {
+      expect((await attempt({ R4567891: verdict, R456789: { kind: "OK" } })).calls, verdict.kind).toEqual([["R4567891", FULL]])
+    }
+  })
+  it("outro formato nunca corta: A, G e R de 7 continuam com uma conferência só", async () => {
+    for (const matricula of ["A0012345", "G0055350", "R345678"]) {
+      const memory = memoryStore({ ...networkAccount, matricula })
+      const ad = directoryWith({})
+      expect((await authenticateNetwork(networkDeps(memory.store, ad.directory), { login: matricula, password: "x" })).kind).toBe("INVALID_CREDENTIALS")
+      expect(ad.calls).toEqual([[matricula, undefined]])
+    }
+  })
+  it("a conta é de outra ID: não entra, e a resposta é a mesma da senha errada", async () => {
+    const { results, memory } = await attempt({ R456789: { kind: "INVALID", identityMismatch: true } })
+    expect(results).toEqual(["INVALID_CREDENTIALS"])
+    expect(memory.events).toEqual([])
+  })
+  it("ID ilegível: não entra e não conta na trava (a senha estava certa)", async () => {
+    const { results, memory } = await attempt({ R456789: { kind: "UNAVAILABLE", reason: "dc1: IDENTITY_UNREADABLE", identityUnreadable: true } }, 4)
+    expect(results).toEqual(Array(4).fill("NETWORK_IDENTITY_UNREADABLE"))
+    expect(ofMatricula(memory).every((entry) => entry.outcome !== "INVALID_CREDENTIALS")).toBe(true)
+  })
+  it("cada envio é UMA falha na trava, e os dois logins somam no máximo 5 senhas (no AD podem ser a MESMA conta)", async () => {
+    const { results, calls } = await attempt({}, 4)
+    expect(results).toEqual(["INVALID_CREDENTIALS", "INVALID_CREDENTIALS", "LOCKED", "LOCKED"])
+    expect(calls).toHaveLength(5)
+  })
+  it("um erro e depois a senha certa, na primeira vez: entra", async () => {
+    const memory = memoryStore(account)
+    const wrong = directoryWith({})
+    expect((await authenticateNetwork(networkDeps(memory.store, wrong.directory), { login: "R4567891", password: "errada" })).kind).toBe("INVALID_CREDENTIALS")
+    const right = directoryWith({ R456789: { kind: "OK" } })
+    expect((await authenticateNetwork(networkDeps(memory.store, right.directory, new Date(NOW.getTime() + 5_000)), { login: "R4567891", password: "Rede#2026" })).kind).toBe("SUCCEEDED")
+  })
+  it("a inteira foi aceita mas é de OUTRA ID: recusa e não tenta a cortada", async () => {
+    const { results, calls, memory } = await attempt({ R4567891: { kind: "INVALID", identityMismatch: true }, R456789: { kind: "OK" } })
+    expect(results).toEqual(["INVALID_CREDENTIALS"])
+    expect(calls.map(([login]) => login)).toEqual(["R4567891"])
+    expect(memory.directoryLogin).toBeNull()
+  })
+  it("o login digitado pode ser o CORTADO de outra pessoa do cadastro: a ID dela não entra nesta conta; sem essa pessoa, nada muda", async () => {
+    const run = async (registered: string[]) => {
+      const memory = memoryStore({ ...networkAccount, matricula: "R456789" })
+      memory.registered.push(...registered)
+      const ad = directoryWith({ R456789: { kind: "OK" } })
+      await authenticateNetwork(networkDeps(memory.store, ad.directory), { login: "R456789", password: "x" })
+      return ad.calls
+    }
+    expect(await run(["R4567891", "R4567893"])).toEqual([["R456789", { notEmployeeIdOf: ["R4567891", "R4567893"], whenUnreadable: "REFUSE" }]])
+    expect(await run([])).toEqual([["R456789", undefined]])
+  })
+  it("servidor caiu depois de a inteira ser recusada: conta como falha", async () => {
+    const { memory } = await attempt({ R456789: { kind: "UNAVAILABLE", reason: "ECONNREFUSED" } })
+    expect(ofMatricula(memory).map((entry) => entry.outcome)).toEqual(["INVALID_CREDENTIALS"])
+  })
+  it("memoriza o login da primeira entrada: daí em diante só ele é tentado, e entrar muitas vezes seguidas nunca trava quem acerta", async () => {
+    const memory = memoryStore(account)
+    const ad = directoryWith({ R456789: { kind: "OK" } })
+    const enter = (minute: number, password = "Rede#2026") => authenticateNetwork(networkDeps(memory.store, ad.directory, new Date(NOW.getTime() + minute * 60_000)), { login: "R4567891", password })
+    for (let minute = 0; minute < 30; minute += 1) expect((await enter(minute)).kind, `minuto ${minute}`).toBe("SUCCEEDED")
+    expect(memory.directoryLogin).toBe("R456789")
+    expect(ad.calls.filter(([login]) => login === "R4567891")).toHaveLength(1)
+    // E no sentido contrário: entrou pela inteira, a cortada nunca mais recebe senha.
+    const whole = memoryStore(account)
+    const other = directoryWith({ R4567891: { kind: "OK" } })
+    await authenticateNetwork(networkDeps(whole.store, other.directory), { login: "R4567891", password: "x" })
+    expect(whole.directoryLogin).toBe("R4567891")
+    const wrong = directoryWith({})
+    await authenticateNetwork(networkDeps(whole.store, wrong.directory, new Date(NOW.getTime() + 60_000)), { login: "R4567891", password: "errada" })
+    expect(wrong.calls).toEqual([["R4567891", FULL]])
+  })
+  it("login memorizado de outra matrícula não vale (o cadastro mudou)", async () => {
+    const memory = memoryStore(account)
+    memory.directoryLogin = "R999999"
+    const ad = directoryWith({ R456789: { kind: "OK" } })
+    expect((await authenticateNetwork(networkDeps(memory.store, ad.directory), { login: "R4567891", password: "Rede#2026" })).kind).toBe("SUCCEEDED")
+    expect(ad.calls.map(([login]) => login)).toEqual(["R4567891", "R456789"])
+  })
+  it("ID de outra matrícula nunca é memorizada", async () => {
+    const { memory } = await attempt({ R456789: { kind: "INVALID", identityMismatch: true } })
+    expect(memory.directoryLogin).toBeNull()
+  })
+  it("sem conseguir gravar a reserva do teto, a senha não sai da INIA", async () => {
+    const memory = memoryStore(networkAccount)
+    const ad = fakeDirectory()
+    const store = { ...memory.store, reserveAttempt: async (input: { identifierHash: string; at: Date }) => { if (input.identifierHash.startsWith("id:ad:")) throw new Error("banco fora"); return memory.store.reserveAttempt(input) } }
+    await expect(authenticateNetwork(networkDeps(store, ad.directory), { login: "G0055350", password: "x" })).rejects.toThrow("banco fora")
+    expect(ad.binds).toEqual([])
+  })
+  it("matrícula sem conta na INIA continua sem chegar ao AD", async () => {
+    const memory = memoryStore(account)
+    const ad = directoryWith({ R456789: { kind: "OK" } })
+    expect((await authenticateNetwork(networkDeps(memory.store, ad.directory), { login: "R4567895", password: "Rede#2026" })).kind).toBe("INVALID_CREDENTIALS")
+    expect(ad.calls).toEqual([])
   })
 })
 

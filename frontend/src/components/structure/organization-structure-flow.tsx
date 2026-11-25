@@ -1,7 +1,7 @@
 "use client"
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { applyNodeChanges, BaseEdge, Handle, Panel, Position, ReactFlow, ReactFlowProvider, useReactFlow, type Edge, type EdgeProps, type Node, type NodeChange, type NodeProps } from "@xyflow/react"
+import { applyNodeChanges, Background, BaseEdge, Handle, Panel, Position, ReactFlow, ReactFlowProvider, useReactFlow, type Edge, type EdgeProps, type Node, type NodeChange, type NodeProps } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { Crosshair, Minus, Plus } from "lucide-react"
 
@@ -18,7 +18,7 @@ import { StructurePersonCard, type CardSection, type CardSectionRequest } from "
  * (`@xyflow/react`, tema via `useReactFlowColorMode`) — reaproveitamos canvas, viewport, pan,
  * zoom, fitView e medição de nodes; NÃO reaproveitamos nada do domínio de Workflow (nodes,
  * edges, validação, paleta). Aqui não existe editor: nodes não arrastam, não conectam, não são
- * apagados; handles são invisíveis; sem grade de fundo, sem minimapa. O usuário enxerga uma
+ * apagados; handles são invisíveis; fundo tingido de leve com pontos (os cards brancos se destacam), sem minimapa. O usuário enxerga uma
  * hierarquia de pessoas: gestor imediato → focal → subordinados diretos em linhas balanceadas.
  *
  * Estado: `selectedId` (card expandido) é do chamador — clicar num card NÃO troca a focal nem
@@ -110,7 +110,6 @@ const OrgPersonNodeView = memo(function OrgPersonNodeView({ data }: NodeProps<Or
         onSelect={(person, section) => data.onSelect(person.personId, section)}
         onOpenStructure={data.onOpenStructure}
         profileHref={data.profileHref}
-        className={data.variant === "root" ? "ring-primary/60 shadow-md" : undefined}
       />
       {data.variant !== "node" ? <Handle type="source" position={Position.Bottom} className={HIDDEN_HANDLE} isConnectable={false} /> : null}
     </div>
@@ -136,7 +135,7 @@ function OrgEdgeView({ sourceX, sourceY, targetX, targetY, data, animated }: Edg
   // Destaque = edge em viagem (sinal transitório) ou trecho do caminho do viewer (persistente — inclusive
   // estático com reduced motion); a edge comum é discreta e sem animação.
   const highlighted = animated || data?.viewerPath === true
-  return <BaseEdge path={path} className={highlighted ? "!stroke-primary" : "!stroke-muted-foreground/45"} style={{ strokeWidth: highlighted ? 2 : 1.25 }} interactionWidth={0} />
+  return <BaseEdge path={path} className={highlighted ? "!stroke-primary" : "!stroke-[color-mix(in_oklab,var(--foreground)_30%,var(--muted))]"} style={{ strokeWidth: highlighted ? 2.5 : 1.5 }} interactionWidth={0} />
 }
 
 const NODE_TYPES = { person: OrgPersonNodeView }
@@ -514,7 +513,7 @@ function OrganizationStructureFlowInner({ data, selectedId, onSelect, onOpenStru
     // A altura vem das classes responsivas do chamador; o `minHeight` inline é a rede de segurança:
     // o React Flow é absoluto dentro do container, então sem altura explícita (ex.: folha de estilo
     // antiga em cache do navegador, que foi o "canvas vazio" visto no Safari) o canvas colapsaria a 0px.
-    <div ref={containerRef} data-testid="structure-canvas" data-travel-edge={travel?.edgeId} data-travel-direction={travel?.direction} data-arrival={arrival?.personId} data-viewer-path-edge={viewerPath.edgeId ?? undefined} data-viewer-path-next={viewerPath.nextId ?? undefined} data-viewer-path-motion={viewerPath.edgeId ? (reducedMotion ? "static" : "animated") : undefined} style={{ minHeight: "32rem" }} className={cn("relative overflow-hidden rounded-xl bg-card", transitioning && "opacity-70 transition-opacity", className)}>
+    <div ref={containerRef} data-testid="structure-canvas" data-travel-edge={travel?.edgeId} data-travel-direction={travel?.direction} data-arrival={arrival?.personId} data-viewer-path-edge={viewerPath.edgeId ?? undefined} data-viewer-path-next={viewerPath.nextId ?? undefined} data-viewer-path-motion={viewerPath.edgeId ? (reducedMotion ? "static" : "animated") : undefined} style={{ minHeight: "32rem" }} className={cn("inia-org-canvas relative overflow-hidden rounded-xl border border-border", transitioning && "opacity-70 transition-opacity", className)}>
       <ReactFlow<OrgPersonNode, OrgEdge>
         colorMode={colorMode}
         nodes={nodes}
@@ -550,6 +549,7 @@ function OrganizationStructureFlowInner({ data, selectedId, onSelect, onOpenStru
         className="!bg-transparent"
         aria-label="Organograma"
       >
+        <Background gap={22} size={1.5} color="var(--org-canvas-dot)" />
         <Panel position="bottom-right" className="!m-3 flex flex-col overflow-hidden rounded-lg bg-card shadow-sm ring-1 ring-border" role="group" aria-label="Controles do organograma">
           <CanvasControl label="Aproximar" onClick={() => void zoomIn({ duration: 200 })}>
             <Plus className="size-4" aria-hidden />

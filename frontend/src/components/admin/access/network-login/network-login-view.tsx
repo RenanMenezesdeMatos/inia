@@ -82,6 +82,7 @@ export function NetworkLoginView() {
             <p className="text-xs text-muted-foreground">
               {data.configured ? <>Domínio <span className="font-medium text-foreground">{data.domain}</span>. Definidos na instalação (AD_LDAP_URLS); a INIA tenta na ordem e só passa ao seguinte se o anterior não responder.</> : "Nenhum servidor configurado nesta instalação (AD_LDAP_URLS e AD_DOMAIN no ambiente da API)."}
             </p>
+            {data.shortLoginFormats.length > 0 ? <p className="text-xs text-muted-foreground">Matrículas {data.shortLoginFormats.join("; ")}: se o AD recusar a matrícula inteira, a INIA confere sem o último dígito e só deixa entrar se a ID funcional da conta for a da matrícula.</p> : null}
             {data.weakKeyAllowed ? <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldAlert className="size-3.5 text-amber-600 dark:text-amber-400" aria-hidden />Chave RSA de 1024 bits aceita só na conexão com o AD (risco aceito; a cadeia e o nome do servidor continuam conferidos).</p> : null}
           </div>
           {data.configured ? <Button variant="outline" onClick={() => probe.mutate()} disabled={probe.isPending}>{probe.isPending ? "Conferindo…" : "Conferir servidores"}</Button> : null}

@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto"
 import type { AccessRepository, VisibilityFilter } from "../application/access-repository.js"
 import type { AccountAccessRepository } from "../application/account-access-repository.js"
+import { networkAccessIssueOf, networkLoginOf } from "../domain/network-access.js"
 import { accountAccessStatusOf } from "../domain/account-access-status.js"
 import type { AccessScope } from "../domain/access-scope.js"
 
-export type MemPerson = { id: string; organizationId: string; name: string; jobTitle: string | null; level: string; active: boolean; teamId: string | null; subteamId: string | null; reportsToId?: string | null }
-export type MemAccount = { id: string; organizationId: string; personId: string; email: string; active: boolean; sessionVersion?: number; passwordHash?: string; passwordChangeRequired?: boolean; temporaryPasswordIssuedAt?: Date | null; temporaryPasswordExpiresAt?: Date | null; accessDisabledAt?: Date | null; credentialProvider?: "LOCAL" | "NETWORK" }
+export type MemPerson = { id: string; organizationId: string; name: string; jobTitle: string | null; level: string; active: boolean; teamId: string | null; subteamId: string | null; reportsToId?: string | null; matricula?: string | null }
+export type MemAccount = { directoryLogin?: string | null; id: string; organizationId: string; personId: string; email: string; active: boolean; sessionVersion?: number; passwordHash?: string; passwordChangeRequired?: boolean; temporaryPasswordIssuedAt?: Date | null; temporaryPasswordExpiresAt?: Date | null; accessDisabledAt?: Date | null; credentialProvider?: "LOCAL" | "NETWORK" }
 export type MemAssignment = { id: string; organizationId: string; accountId: string; roleCode: string; scope: AccessScope; grantedByAccountId: string | null; grantedAt: Date; revokedAt: Date | null; revokedByAccountId: string | null; reason: string | null }
 export type MemAudit = { organizationId: string; actorPersonId: string | null; action: string; entityId: string; payload: Record<string, unknown> }
 
@@ -81,9 +82,12 @@ export function createInMemoryAccessRepository(seed: { people: MemPerson[]; acco
 }
 
 /** Liberação de acesso em memória sobre o MESMO estado (pessoas, contas, papéis, auditoria) — mesma semântica do Postgres. */
-export function createInMemoryAccountAccessRepository(memory: ReturnType<typeof createInMemoryAccessRepository>, seed: { teams: { id: string; name: string }[]; subteams: { id: string; name: string }[] }): AccountAccessRepository {
+export function createInMemoryAccountAccessRepository(memory: ReturnType<typeof createInMemoryAccessRepository>, seed: { teams: { id: string; name: string }[]; subteams: { id: string; name: string }[]; networkLogin?: { enabled: boolean } }): AccountAccessRepository {
   const { people, accounts, assignments, audit } = memory
   const visible = (visibility: VisibilityFilter, person: MemPerson) => visibility.organizationWide || (person.teamId !== null && visibility.teamIds.includes(person.teamId)) || (person.subteamId !== null && visibility.subteamIds.includes(person.subteamId))
+  const networkOn = () => seed.networkLogin?.enabled === true
+  const duplicated = (person: MemPerson) => networkLoginOf(person.matricula ?? null) !== null && people.some((twin) => twin.id !== person.id && twin.active && networkLoginOf(twin.matricula ?? null) === networkLoginOf(person.matricula ?? null) && accounts.some((account) => account.personId === twin.id && account.active))
+  const loginOf = (person: MemPerson) => person.matricula?.trim().toUpperCase() ?? null
   const rolesOf = (accountId: string) => assignments.filter((entry) => entry.accountId === accountId && !entry.revokedAt)
   const target = (person: MemPerson | undefined) => {
     if (!person) return null
@@ -92,7 +96,7 @@ export function createInMemoryAccountAccessRepository(memory: ReturnType<typeof 
     const queue = [person.id]
     while (queue.length) { const current = queue.shift()!; for (const entry of people) if (entry.organizationId === person.organizationId && entry.reportsToId === current && !led.includes(entry) && entry.id !== person.id) { led.push(entry); queue.push(entry.id) } }
     const ledPlacements = [...new Map(led.filter((entry) => entry.active).map((entry) => [`${entry.teamId}|${entry.subteamId}`, { teamId: entry.teamId, subteamId: entry.subteamId }])).values()]
-    return { personId: person.id, name: person.name, personActive: person.active, teamId: person.teamId, subteamId: person.subteamId, ledPlacements, account: account ? { accountId: account.id, email: account.email, active: account.active, sessionVersion: account.sessionVersion ?? 0, passwordChangeRequired: account.passwordChangeRequired === true, credentialProvider: account.credentialProvider ?? "LOCAL", assignments: rolesOf(account.id).map((entry) => ({ roleCode: entry.roleCode, scope: entry.scope })) } : null }
+    return { personId: person.id, name: person.name, personActive: person.active, matricula: person.matricula ?? null, networkLoginEnabled: networkOn(), matriculaDuplicated: duplicated(person), teamId: person.teamId, subteamId: person.subteamId, ledPlacements, account: account ? { accountId: account.id, email: account.email, active: account.active, sessionVersion: account.sessionVersion ?? 0, passwordChangeRequired: account.passwordChangeRequired === true, credentialProvider: account.credentialProvider ?? "LOCAL", assignments: rolesOf(account.id).map((entry) => ({ roleCode: entry.roleCode, scope: entry.scope })) } : null }
   }
   const mutate = (organizationId: string, accountId: string, expected: number, when: (account: MemAccount) => boolean, change: (account: MemAccount) => void, auditEntry: { actorPersonId: string | null; action: string; payload: Record<string, unknown> }) => {
     const account = accounts.find((entry) => entry.id === accountId && entry.organizationId === organizationId)
@@ -107,14 +111,17 @@ export function createInMemoryAccountAccessRepository(memory: ReturnType<typeof 
       const all = people
         .filter((person) => person.organizationId === organizationId && visible(visibility, person))
         .map((person) => ({ person, account: accounts.find((entry) => entry.personId === person.id) ?? null }))
-        .filter(({ person, account }) => (!filters.search || `${person.name} ${account?.email ?? ""}`.toLowerCase().includes(filters.search.toLowerCase())) && (!filters.status || accountAccessStatusOf(account ? { active: account.active, passwordChangeRequired: account.passwordChangeRequired === true } : null) === filters.status))
+        .filter(({ person, account }) => (!filters.search || `${person.name} ${account?.email ?? ""}`.toLowerCase().includes(filters.search.toLowerCase())) && (!filters.status || accountAccessStatusOf(account ? { active: account.active, passwordChangeRequired: account.passwordChangeRequired === true, credentialProvider: account.credentialProvider ?? "LOCAL" } : null) === filters.status))
         .sort((a, b) => a.person.name.localeCompare(b.person.name))
       const items = all.map(({ person, account }) => ({
-        personId: person.id, name: person.name, matricula: null, jobTitle: person.jobTitle, level: person.level, personActive: person.active,
+        personId: person.id, name: person.name, matricula: person.matricula ?? null, jobTitle: person.jobTitle, level: person.level, personActive: person.active,
         team: person.teamId ? { id: person.teamId, name: seed.teams.find((team) => team.id === person.teamId)?.name ?? "" } : null,
         subteam: person.subteamId ? { id: person.subteamId, name: seed.subteams.find((subteam) => subteam.id === person.subteamId)?.name ?? "" } : null,
-        account: account ? { accountId: account.id, email: account.email, active: account.active, lastLoginAt: null, passwordChangeRequired: account.passwordChangeRequired === true, temporaryPasswordIssuedAt: account.temporaryPasswordIssuedAt ?? null, temporaryPasswordExpiresAt: account.temporaryPasswordExpiresAt ?? null, accessDisabledAt: account.accessDisabledAt ?? null, roleCodes: rolesOf(account.id).map((entry) => entry.roleCode), credentialProvider: account.credentialProvider ?? "LOCAL" } : null,
-      }))
+        account: account ? { accountId: account.id, email: account.email, active: account.active, lastLoginAt: null, passwordChangeRequired: account.passwordChangeRequired === true, temporaryPasswordIssuedAt: account.temporaryPasswordIssuedAt ?? null, temporaryPasswordExpiresAt: account.temporaryPasswordExpiresAt ?? null, accessDisabledAt: account.accessDisabledAt ?? null, roleCodes: rolesOf(account.id).map((entry) => entry.roleCode), credentialProvider: account.credentialProvider ?? "LOCAL", disabledReason: null } : null,
+        networkIssue: networkOn() && (account?.credentialProvider ?? "NETWORK") === "NETWORK" ? networkAccessIssueOf({ personActive: person.active, matricula: person.matricula ?? null, duplicated: duplicated(person) }) : null,
+        directoryLogin: account?.directoryLogin ?? null,
+        enableCredential: networkOn() && (account?.credentialProvider ?? "NETWORK") === "NETWORK" ? ("NETWORK" as const) : ("LOCAL" as const),
+      })).filter((item) => (!filters.networkIssue || (item.networkIssue !== null && (item.personActive || item.account?.active === true))) && (!filters.networkLogin || networkLoginOf(item.matricula) === filters.networkLogin))
       return { items: items.slice((filters.page - 1) * filters.pageSize, filters.page * filters.pageSize), total: items.length }
     },
     async targetByPerson(organizationId, personId) { return target(people.find((entry) => entry.id === personId && entry.organizationId === organizationId)) },
@@ -132,13 +139,42 @@ export function createInMemoryAccountAccessRepository(memory: ReturnType<typeof 
     },
     async enableWithTemporaryPassword(input) {
       if (input.email && accounts.some((entry) => entry.id !== input.accountId && entry.email.toLowerCase() === input.email!.toLowerCase())) return { ok: false, error: "EMAIL_IN_USE" }
-      return mutate(input.organizationId, input.accountId, input.expectedSessionVersion, (account) => !account.active, (account) => Object.assign(account, { active: true, email: input.email ?? account.email, passwordHash: input.passwordHash, passwordChangeRequired: true, temporaryPasswordIssuedAt: input.issuedAt, temporaryPasswordExpiresAt: input.expiresAt, accessDisabledAt: null }), { actorPersonId: input.actorPersonId, action: "ACCESS_ENABLED", payload: { personId: input.personId, accountCreated: false, temporaryPasswordExpiresAt: input.expiresAt.toISOString(), sessionsRevoked: true, actorAccountId: input.actorAccountId } })
+      return mutate(input.organizationId, input.accountId, input.expectedSessionVersion, (account) => !account.active, (account) => Object.assign(account, { active: true, email: input.email ?? account.email, passwordHash: input.passwordHash, directoryLogin: null, passwordChangeRequired: true, temporaryPasswordIssuedAt: input.issuedAt, temporaryPasswordExpiresAt: input.expiresAt, accessDisabledAt: null }), { actorPersonId: input.actorPersonId, action: "ACCESS_ENABLED", payload: { personId: input.personId, accountCreated: false, temporaryPasswordExpiresAt: input.expiresAt.toISOString(), sessionsRevoked: true, actorAccountId: input.actorAccountId } })
     },
     async issueTemporaryPassword(input) {
       return mutate(input.organizationId, input.accountId, input.expectedSessionVersion, (account) => account.active && account.credentialProvider !== "NETWORK", (account) => Object.assign(account, { passwordHash: input.passwordHash, passwordChangeRequired: true, temporaryPasswordIssuedAt: input.issuedAt, temporaryPasswordExpiresAt: input.expiresAt }), { actorPersonId: input.actorPersonId, action: "ACCESS_TEMPORARY_PASSWORD_ISSUED", payload: { personId: input.personId, temporaryPasswordExpiresAt: input.expiresAt.toISOString(), sessionsRevoked: true, actorAccountId: input.actorAccountId } })
     },
+    async enableForNetwork(input) {
+      const enabled = new Map<string, { accountId: string }>()
+      for (const row of input.create) {
+        const person = people.find((entry) => entry.id === row.personId && entry.organizationId === input.organizationId)
+        if (!networkOn() || !person?.active || accounts.some((entry) => entry.personId === row.personId || entry.email.toLowerCase() === row.email)) continue
+        const account: MemAccount = { id: randomUUID(), organizationId: input.organizationId, personId: row.personId, email: row.email, active: true, sessionVersion: 0, passwordHash: input.retiredPasswordHash, passwordChangeRequired: false, credentialProvider: "NETWORK" }
+        accounts.push(account)
+        audit.push({ organizationId: input.organizationId, actorPersonId: input.actorPersonId, action: "ACCESS_ENABLED", entityId: account.id, payload: { personId: row.personId, accountCreated: true, email: row.email, credential: "NETWORK", actorAccountId: input.actorAccountId, ...(input.batchId ? { batchId: input.batchId } : {}) } })
+        enabled.set(row.personId, { accountId: account.id })
+      }
+      for (const row of input.reenable) {
+        const result = mutate(input.organizationId, row.accountId, row.expectedSessionVersion, (account) => !account.active && account.credentialProvider === "NETWORK" && networkOn(), (account) => Object.assign(account, { active: true, passwordHash: input.retiredPasswordHash, directoryLogin: null, passwordChangeRequired: false, temporaryPasswordIssuedAt: null, temporaryPasswordExpiresAt: null, accessDisabledAt: null }), { actorPersonId: input.actorPersonId, action: "ACCESS_ENABLED", payload: { personId: row.personId, accountCreated: false, credential: "NETWORK", actorAccountId: input.actorAccountId, ...(input.batchId ? { batchId: input.batchId } : {}) } })
+        if (result.ok) enabled.set(row.personId, { accountId: result.accountId })
+      }
+      return enabled
+    },
+    async targetsByNetworkLogin(organizationId, networkLogins) {
+      return people.filter((entry) => entry.organizationId === organizationId && networkLogins.includes(entry.matricula?.trim().toUpperCase() ?? "")).map((entry) => target(entry)!)
+    },
+    async networkLoginTaken(networkLogin) { return networkOn() && people.some((entry) => entry.active && loginOf(entry) === networkLogin && accounts.some((account) => account.personId === entry.id && account.active)) },
+    async matriculaInOtherOrganization(organizationId, networkLogin) { return people.some((entry) => entry.organizationId !== organizationId && loginOf(entry) === networkLogin) },
+    async emailsInUse(emails) { return new Set(accounts.map((entry) => entry.email.toLowerCase()).filter((email) => emails.includes(email))) },
+    async similarMatriculas(organizationId, visibility, networkLogins) {
+      const digits = (value: string) => value.replace(/\D/g, "").replace(/^0+/, "")
+      return new Map(networkLogins.flatMap((wanted) => {
+        const found = people.filter((entry) => entry.organizationId === organizationId && entry.active && entry.matricula && visible(visibility, entry) && digits(wanted).length >= 3 && digits(entry.matricula) === digits(wanted) && entry.matricula.trim().toUpperCase() !== wanted).map((entry) => entry.matricula!.trim())
+        return found.length > 0 ? [[wanted, [...new Set(found)].sort().slice(0, 5)] as const] : []
+      }))
+    },
     async disable(input) {
-      return mutate(input.organizationId, input.accountId, input.expectedSessionVersion, (account) => account.active, (account) => Object.assign(account, { active: false, accessDisabledAt: input.at, passwordChangeRequired: false, temporaryPasswordIssuedAt: null, temporaryPasswordExpiresAt: null }), { actorPersonId: input.actorPersonId, action: "ACCESS_DISABLED", payload: { personId: input.personId, sessionsRevoked: true, actorAccountId: input.actorAccountId } })
+      return mutate(input.organizationId, input.accountId, input.expectedSessionVersion, (account) => account.active, (account) => Object.assign(account, { active: false, accessDisabledAt: input.at, directoryLogin: null, passwordChangeRequired: false, temporaryPasswordIssuedAt: null, temporaryPasswordExpiresAt: null }), { actorPersonId: input.actorPersonId, action: "ACCESS_DISABLED", payload: { personId: input.personId, sessionsRevoked: true, actorAccountId: input.actorAccountId } })
     },
   }
 }

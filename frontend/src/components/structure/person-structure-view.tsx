@@ -17,6 +17,7 @@ import { usePersonStructureQuery } from "@/queries/org-structure/use-person-stru
 import type { PersonOrganizationStructure, StructurePerson } from "@/schemas/org-structure/person-structure.schema"
 
 import { OrganizationStructureFlow, resolveViewerPath } from "./organization-structure-flow"
+import { roleColorClass } from "./structure-appearance"
 import { StructureTreeSkeleton } from "./structure-tree-skeleton"
 
 export const STRUCTURE_HELP_TEXT = "Um organograma interativo: arraste para navegar, use a roda do mouse, a pinça ou os controles para aproximar ou afastar, clique numa pessoa para abrir o card dela (Dados do colaborador, Dados da estrutura para quem lidera, Reporta-se à), use “Abrir estrutura” para focar a estrutura de quem lidera e clique no gestor acima para subir um nível. Numa estrutura acima da sua, o ramo que leva até você fica sempre destacado — “Ir até mim” percorre a cadeia. Todo mundo explora o organograma da organização; cada papel vê só os dados que está autorizado a ver."
@@ -284,8 +285,8 @@ export function LeadershipChainList({ chain, subject, viewerId, onOpenStructure 
           const isSubject = entry.personId === subject.personId
           const canOpen = !isSubject && entry.capabilities.hasReports && entry.capabilities.canViewStructure
           return (
-            <li key={entry.personId} className={cn("flex items-center gap-2 rounded-md px-1.5 py-1", isSubject && "bg-muted/60")} style={{ marginLeft: `${Math.min(index, 4) * 0.5}rem` }}>
-              <PersonAvatar name={entry.name} avatarUrl={entry.avatarUrl} className="size-7 shrink-0" fallbackClassName="text-[10px]" />
+            <li key={entry.personId} className={cn("flex items-center gap-2 rounded-md px-1.5 py-1", roleColorClass(entry.role), isSubject && "bg-muted/60")} style={{ marginLeft: `${Math.min(index, 4) * 0.5}rem` }}>
+              <PersonAvatar name={entry.name} avatarUrl={entry.avatarUrl} className="size-7 shrink-0 ring-[1.5px] ring-[color-mix(in_oklab,var(--cargo)_50%,transparent)]" fallbackClassName="text-[10px]" />
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1 text-xs font-medium">
                   <span className="truncate">{entry.name}</span>

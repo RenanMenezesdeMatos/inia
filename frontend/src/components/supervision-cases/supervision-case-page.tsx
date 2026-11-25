@@ -26,7 +26,7 @@ type Props = { caseId: string; item: SupervisionCase | null }
 export function SupervisionCasePage({ caseId, item }: Props) {
   if (!item) {
     return (
-      <main className="mx-auto w-full max-w-7xl space-y-4 px-4 py-4 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-[90rem] space-y-4 px-4 py-4 sm:px-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">Caso de supervisão</CardTitle>
@@ -46,7 +46,7 @@ export function SupervisionCasePage({ caseId, item }: Props) {
   const evidenceText = (evidence: SupervisionCase["evidences"][number]) => (evidence.type === "INDICATOR" ? formatRawMeasures(evidence.description) : evidence.description)
 
   return (
-    <main className="mx-auto w-full max-w-7xl space-y-4 px-4 py-4 sm:px-6 lg:px-8">
+    <main className="mx-auto w-full max-w-[90rem] space-y-4 px-4 py-4 sm:px-6">
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">

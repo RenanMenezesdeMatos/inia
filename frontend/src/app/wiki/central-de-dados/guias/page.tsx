@@ -85,7 +85,7 @@ export default function DataHubGuidesPage() {
             { title: "Linha do tempo", detail: "Conectou · Baixou · Leu · Mapeou · Validou · Aplicou — com duração e detalhe de cada etapa. Onde parou diz muito: falhou em Mapeando = esquema/mapeamento; em Validando = dados; em Aplicando = banco." },
             { title: "Métricas", detail: "Recebidos vs. válidos vs. rejeitados; inseridos/atualizados/inalterados dizem se a carga mudou algo. 'Último dado de negócio recebido' diz até quando os dados chegaram." },
             { title: "Quarentena", detail: "Erros agrupados por código (800 × DATA_EMPLOYEE_NOT_FOUND…), filtro por código, busca por chave/campo/mensagem, paginação e Exportar CSV." },
-            { title: "Corrigir e reprocessar", detail: "Erro de mapeamento: ajuste no feed e clique em Reprocessar (usa o conteúdo retido com o mapeamento novo). Erro de referência: carregue o dado-pai (colaborador, grupo, interação) e reprocesse. Erro na origem: corrija lá e envie de novo." },
+            { title: "Corrigir e reprocessar", detail: "Erro de mapeamento: ajuste no feed e clique em Reprocessar (usa o conteúdo retido com o mapeamento novo). No banco de dados, o conteúdo retido só tem as colunas mapeadas na época: para trazer coluna nova, use Sincronizar agora com Leitura completa. Erro de referência: carregue o dado-pai (colaborador, grupo, interação) e reprocesse. Erro na origem: corrija lá e envie de novo; no banco de dados, sincronize de novo (em leitura incremental, a data de atualização da linha precisa mudar)." },
           ]}
         />
       </WikiSection>
@@ -119,6 +119,11 @@ export default function DataHubGuidesPage() {
                 <TableCell>Central mostra &quot;Situação funcional: Fonte atrasada&quot; com a conexão OK</TableCell>
                 <TableCell>O feed de Colaboradores/Ausências (autoritativo, se houver) não teve carga bem-sucedida dentro da cadência. Não é erro de conexão: é confiança do estado funcional.</TableCell>
                 <TableCell>Sincronize o feed; até lá, dias após a última carga ficam presumidos (Workflows respondem &quot;situação funcional desatualizada&quot; em vez de &quot;não produziu&quot;).</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Corrigiu na base e a INIA não mudou</TableCell>
+                <TableCell>Leitura incremental sem mudar a data de atualização da linha, coluna sem mapeamento, ou Reprocessar no lugar de Sincronizar agora.</TableCell>
+                <TableCell>Confira o mapeamento, use Leitura completa ou Reiniciar leitura e sincronize. Para universo, veja <WikiLink href="/wiki/central-de-dados#universo">onde cadastrar</WikiLink>.</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell>Linha de Colaboradores rejeitada com DATA_EMPLOYMENT_STATUS_UNKNOWN</TableCell>

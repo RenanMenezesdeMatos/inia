@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ExampleCard, SeeAlso, WarningCallout, WikiArticle, WikiFlow, WikiLink, WikiPageHeader, WikiSection, WikiTable } from "@/components/wiki/wiki-primitives"
+import { ExampleCard, SeeAlso, StepList, WarningCallout, WikiArticle, WikiFlow, WikiLink, WikiPageHeader, WikiSection, WikiTable } from "@/components/wiki/wiki-primitives"
 import type { WikiTocEntry } from "@/components/wiki/wiki-toc"
 import { DATA_HUB_CONTRACTS, DATA_HUB_RUN_STATES } from "@/components/wiki/data-hub-catalog-data"
 
@@ -24,6 +24,7 @@ const TOC: WikiTocEntry[] = [
   { id: "writer", label: "Domain Writer e efeitos" },
   { id: "master-event", label: "Dado mestre × dado de evento" },
   { id: "cargos", label: "Cargos" },
+  { id: "universo", label: "Universo de atuação" },
   { id: "situacao-funcional", label: "Situação funcional" },
   { id: "escalas", label: "Escalas de trabalho" },
   { id: "cargas", label: "Cargas (Runs)" },
@@ -366,6 +367,113 @@ export default function DataHubPage() {
         </WarningCallout>
       </WikiSection>
 
+      <WikiSection id="universo" title="Universo de atuação: onde cadastrar" eyebrow="Vem do Grupo">
+        <p>
+          O universo (B2B, B2C ou B2X) se cadastra no <strong>Grupo</strong>. Quem está nele herda. Para cada pessoa, a INIA usa o primeiro que existir:
+        </p>
+        <ol className="list-inside list-decimal space-y-1">
+          <li><strong>Exceção da pessoa</strong>, só quando ela atende um universo diferente do Grupo.</li>
+          <li><strong>Subgrupo</strong>, só quando ele difere do Grupo. Vazio é o normal.</li>
+          <li><strong>Grupo</strong>.</li>
+        </ol>
+        <p>Sem nenhum dos três, a pessoa fica pendente. Liderança e Apoio não precisam de universo.</p>
+        <h3 className="pt-2 text-base font-bold text-foreground">O que mapear em cada carga</h3>
+        <WikiTable>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Carga</TableHead>
+                <TableHead>Mapear “Universo de atuação”?</TableHead>
+                <TableHead>O que acontece</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell className="font-medium">Grupos</TableCell>
+                <TableCell>Sim</TableCell>
+                <TableCell>As pessoas do Grupo são atualizadas na hora, sem recarregar Colaboradores. Linha vazia mantém o universo atual.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">Subgrupos</TableCell>
+                <TableCell>Só se algum difere do Grupo</TableCell>
+                <TableCell>Linha vazia mantém o atual, ou herda do Grupo se nunca teve um.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">Colaboradores</TableCell>
+                <TableCell>Só se a base manda exceções</TableCell>
+                <TableCell>O valor vira exceção e passa na frente do Grupo. Coluna mapeada e vazia limpa a exceção.</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </WikiTable>
+        <h3 className="pt-2 text-base font-bold text-foreground">Passo a passo pela base (banco de dados)</h3>
+        <StepList
+          steps={[
+            { title: "Preencha a coluna na tabela de Grupos", detail: "B2B, B2C ou B2X. O nome da coluna é livre: o que conta é o mapeamento." },
+            { title: "Libere a configuração", detail: <>Em Central de Dados, abra o conjunto de Grupos e informe a <WikiLink href="/wiki/central-de-dados#configurar-com-senha">senha da fonte</WikiLink>.</> },
+            { title: "Busque a amostra", detail: "Na aba Mapeamento, clique em Buscar amostra da fonte para ver as colunas atuais da tabela." },
+            { title: "Mapeie", detail: "Em Universo de atuação, escolha a coluna. Se a base usa outros textos, em Transformações clique em Adicionar e use Mapear códigos. Sugerir por nome refaz o mapeamento inteiro: confira tudo antes de salvar, se usar." },
+            { title: "Valide e salve", detail: "Validar com a amostra mostra o universo de cada linha. Depois, Salvar feed." },
+            { title: "Releia a tabela inteira", detail: "Em Conector e frequência, use Leitura completa. Se a leitura precisa ser Incremental, use Reiniciar leitura." },
+            { title: "Sincronize", detail: "Clique em Sincronizar agora e confira o resultado em Consultar dados › Grupos e Colaboradores." },
+          ]}
+        />
+        <ExampleCard title="Sem a coluna na base: classificar à mão">
+          Em Administração › Dados › <strong>Universo de atuação</strong>, o cartão Grupos e Subgrupos mostra os pendentes (Mostrar todos traz os demais). Grupo e Subgrupo cujo
+          universo vem da base aparecem travados: altere na origem. A exceção de uma pessoa fica na ficha dela, em Usuários e acessos. A mesma tela classifica bases, Workflows e
+          demais recursos, e liga a exigência e o filtro por universo. Enquanto estão desligados, nada é filtrado.
+        </ExampleCard>
+        <h3 className="pt-2 text-base font-bold text-foreground">O universo não apareceu</h3>
+        <WikiTable>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>O que você vê</TableHead>
+                <TableHead>Causa provável</TableHead>
+                <TableHead>O que fazer</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell>Vazio em Grupos e em Colaboradores</TableCell>
+                <TableCell>A coluna não está mapeada em Grupos, ou a tabela está sem o valor.</TableCell>
+                <TableCell>Siga o passo a passo. Corrigir só a tabela de colaboradores não resolve.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>A coluna não aparece na lista do mapeamento</TableCell>
+                <TableCell>A tela ainda não conhece as colunas atuais da tabela.</TableCell>
+                <TableCell>Busque a amostra da fonte. Se não aparecer, a coluna não existe nessa tabela ou visão, ou o tipo dela não é aceito.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>A carga leu 0 linhas</TableCell>
+                <TableCell>Leitura incremental, e a correção na base não mudou a data de atualização.</TableCell>
+                <TableCell>Leitura completa ou Reiniciar leitura, e sincronize.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Reprocessou e continua vazio</TableCell>
+                <TableCell>Reprocessar usa o conteúdo guardado, que no banco de dados só tem as colunas mapeadas na época.</TableCell>
+                <TableCell>Use Sincronizar agora.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Linhas recusadas com <code>DATA_INVALID_ENUM</code></TableCell>
+                <TableCell>O valor não é B2B, B2C nem B2X.</TableCell>
+                <TableCell>Mapear códigos, ou corrija na base.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Grupos preenchidos e algumas pessoas vazias</TableCell>
+                <TableCell>Elas estão sem Grupo, ou o Grupo delas está pendente.</TableCell>
+                <TableCell>Confira o Grupo da pessoa na carga de Colaboradores.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>A pessoa está num universo diferente do Grupo</TableCell>
+                <TableCell>Ela tem exceção, ou o Subgrupo tem universo próprio.</TableCell>
+                <TableCell>Em Consultar dados, mostre a coluna Universo — exceção (Colaboradores) ou Universo próprio (Subgrupos). Desfazer o mapeamento não apaga exceções já gravadas: limpe na ficha.</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </WikiTable>
+      </WikiSection>
+
       <WikiSection id="situacao-funcional" title="Situação funcional: Colaboradores + Ausências" eyebrow="Uma camada canônica, duas portas de entrada">
         <p>
           <strong>Colaboradores</strong> traz um <em>snapshot</em>: &quot;hoje esta pessoa está EM PRODUÇÃO / de FÉRIAS / em INSS / TRANSFERIDA…&quot;, com uma data de vigência opcional.{" "}
@@ -498,6 +606,8 @@ export default function DataHubPage() {
         <p>
           <strong className="font-medium text-foreground">Reprocessar</strong>: enquanto o conteúdo bruto estiver retido, uma carga pode ser reprocessada com o
           mapeamento <em>atual</em> do feed — corrigiu o mapeamento, reprocessa o arquivo/lote anterior. Idempotência garante que reprocessar não duplica.
+          No banco de dados, o conteúdo retido só tem as colunas mapeadas na época: para trazer uma coluna nova ou uma correção feita na base, use{" "}
+          <strong className="font-medium text-foreground">Sincronizar agora</strong>.
         </p>
       </WikiSection>
 
@@ -600,7 +710,7 @@ export default function DataHubPage() {
         <ul className="list-inside list-disc space-y-1">
           <li>Só aparecem conjuntos e colunas de uma lista aprovada. Senha, e-mail, sessão, segredo e token não fazem parte de nenhum conjunto.</li>
           <li>O nome da pessoa só aparece em Colaboradores. Nos outros conjuntos, a matrícula.</li>
-          <li>Colaboradores, Grupos e Subgrupos mostram o universo de atuação (B2B, B2C ou B2X). Vazio quer dizer pendente: o Grupo sem universo não é oferecido quando a tela já tem um universo escolhido.</li>
+          <li>Colaboradores, Grupos e Subgrupos mostram o universo de atuação (B2B, B2C ou B2X). Vazio quer dizer pendente (<WikiLink href="/wiki/central-de-dados#universo">onde cadastrar</WikiLink>): o Grupo sem universo não é oferecido quando a tela já tem um universo escolhido.</li>
           <li>Afastamento sensível e atestado aparecem como protegidos, inclusive em filtros e no CSV. O texto das transcrições, dos feedbacks, dos casos, das rejeições e das execuções de IA nunca aparece.</li>
           <li>Datas nos filtros seguem o fuso da organização, e o último dia do intervalo entra inteiro.</li>
           <li>A contagem só roda quando você pede e para em 10.000 registros.</li>

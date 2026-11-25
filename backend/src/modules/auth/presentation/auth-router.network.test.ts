@@ -86,7 +86,7 @@ describe("POST /auth/login pela matrícula", () => {
   })
 
   it.each([
-    [{ kind: "INVALID" }, 401, "INVALID_CREDENTIALS", "Matrícula ou senha de rede inválidas"],
+    [{ kind: "INVALID" }, 401, "INVALID_CREDENTIALS", "peça ao administrador da INIA para conferir se o seu acesso está habilitado"],
     [{ kind: "PASSWORD_EXPIRED" }, 403, "NETWORK_PASSWORD_EXPIRED", "senha de rede venceu"],
     [{ kind: "ACCOUNT_LOCKED" }, 403, "NETWORK_ACCOUNT_LOCKED", "conta de rede está bloqueada"],
     [{ kind: "ACCOUNT_DISABLED" }, 403, "NETWORK_ACCOUNT_DISABLED", "conta de rede está desativada"],

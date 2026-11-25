@@ -52,6 +52,8 @@ Permissão nova `agents.inactive.manage`: listar, consultar, ver o histórico co
 
 ### Administrador de dados (05/11/2026)
 
+Permissão `structure.vacations.view` (25/11/2026): ver quem está de férias no organograma; só ADMINISTRADOR_GERAL a tem (organização inteira). Cargos de gestão veem pela regra operacional, sem permissão (`canViewVacations`, ver [indicadores-e-estrutura.md](indicadores-e-estrutura.md)).
+
 Permissão `data_hub.cancel_records` (06/11/2026): cancelar e reativar registros importados pela Consultar dados, separada de consultar, porque é a única que altera dado por ali. Mesmos dois papéis e mesmo escopo. Ver [central-de-dados-consulta.md](../central-de-dados-consulta.md#cancelar-registros).
 
 Itens excluídos (06/11/2026) não tem permissão própria: quem restaura precisa da permissão de quem gerencia aquele tipo de objeto, com escopo de organização, além de `data_hub.explore`. Report só volta para quem o criou. Usar `data_hub.cancel_records` daria ao Administrador de dados poder sobre Workflow, Agent e IA.
@@ -117,7 +119,7 @@ Depois de reiniciar só os serviços da INIA, confira os servidores na tela e s�
 **Pendente:**
 - OTP: falta saber qual serviço da empresa envia e confere o código.
 - Certificado oficial para o HTTPS, pelo CSR à PKI. Até lá, o navegador mostra "Não seguro".
-- Liberação de acesso: "Habilitar acesso" de uma conta que vai entrar pela rede ainda gera (e mostra) uma senha temporária, que não serve para ela. Falta dizer "entra com a matrícula" nesse diálogo. ("Nova senha temporária" já foi resolvida em 23/11 — ver abaixo.)
+- ~~Liberação de acesso gera senha temporária para quem entra pela rede~~ — resolvido em 25/11/2026 (ver "Habilitar pela rede").
 - As matrículas da carga de pessoas precisam ser o login de rede: o mesmo formato do login de rede
 - Teste real na VM com a matrícula do usuário depois do deploy.
 
@@ -140,3 +142,104 @@ ligado e a conta não é de emergência (`emergency_local_access`); senão `LOCA
 - Provas: `access-service.test.ts` (em memória, inclusive a corrida) e `access/testing/network-temporary-password-proof.test.ts` (API real,
   liga/desliga o login pela rede numa transação). Frontend: `access.test.tsx`. Código de erro no catálogo (`errors:catalog`).
 
+## Habilitar pela rede, CSV em massa e "por que não entra" (25/11/2026, migration 254)
+
+**Pedido:** com o AD ligado na VM, gente dizia que não conseguia entrar, e "Habilitar acesso" gerava senha temporária. O responsável pediu
+habilitar sem senha (uma a uma e por CSV), para o Administrador geral e o de acessos, e ver na tela bloqueio temporário e bloqueio no AD.
+
+**Falhas reproduzidas (API + PostgreSQL + AD simulado em LDAPS) e corrigidas:**
+- matrícula sem conta nunca chegava ao AD, respondia "senha inválida" e, na 3ª tentativa, travava 15 min — **e a trava sobrava depois de habilitar**.
+  Agora habilitar chama `releaseUnreached`: só as falhas com motivo `NO_ACCOUNT` (ou antigas, sem conta e sem motivo, com mais de 60 s) saem da
+  trava. Senha recusada pelo AD continua contando (a proteção da conta de rede não muda);
+- `matricula@dominio` e caractere invisível de copiar/colar eram recusados: `normalizeNetworkLogin` aceita (o bind usa sempre o domínio da
+  instalação). O CADASTRO não tem essa tolerância (`networkLoginOf`);
+- cadastro repetido por maiúscula com a outra conta DESABILITADA trancava as duas: `findByNetworkLogin` usa a única que pode entrar; duas que
+  podem = ninguém entra (e habilitar a segunda é recusado, 409 `ACCESS_MATRICULA_DUPLICATED`; "Novo usuário" pela rede recusa igual, inclusive
+  a habilitada em outra organização). "Novo usuário" compara matrícula sem caixa;
+- conta habilitada antes do AD aparecia "Aguardando troca de senha / expirada": conta NETWORK habilitada é sempre ACTIVE;
+- mensagem do login não dizia o que fazer (a mesma para todos, continua sem revelar quem tem conta); AD indisponível não deixava rastro de qual
+  servidor (`network_login_unavailable` no log); e-mail salvo pelo navegador no campo da matrícula gastava tentativa; senha aceita com cookie não
+  guardado (endereço que não é o oficial, http) voltava ao login em silêncio; "Failed to fetch" virou mensagem com o endereço oficial;
+- `/admin` mandava o Administrador de acessos para Bases (tela de erro de permissão): vai para a primeira área que a conta abre.
+
+**Regras:**
+- `enableAccess` devolve `credential: NETWORK | TEMPORARY_PASSWORD`. Pela rede: hash local aposentado (um por operação, segredo descartado),
+  sem troca pendente, e-mail opcional numa conta nova (`networkAccountIdentifier` = `matricula@AD_DOMAIN`), nunca muda o e-mail de conta
+  existente. Conta de emergência e rede desligada: senha temporária, como antes. Escopo e custódia iguais (`credentialDenial`).
+- CSV (`domain/network-enable-csv.ts` puro + `application/network-enable-service.ts`): `GET /users/network-enable/template`,
+  `POST …/preview` e `POST …` (`contentBase64`; 5.000 linhas, 700 KB). Prévia e aplicação usam a MESMA avaliação; aplicar refaz no servidor e
+  grava numa instrução por tipo (`enableForNetwork`), com auditoria por conta e `batchId`. Linha de exemplo (`EXEMPLO…`) é ignorada. 4.500 contas
+  num arquivo de 5.000 linhas: segundos (prova).
+- `auth_login_attempts.reason` + `directory_code` (254): motivo por tentativa, nunca senha nem o digitado, nunca devolvido a quem tenta.
+  `postgres-network-attempts.ts` resume por matrícula (trava + última resposta). A lista só devolve a quem tem `access.users.manage`, das pessoas
+  do escopo dele. `POST /network-login-check` ("Conferir matrícula") não chama o AD; tentativas de matrícula fora do cadastro só para quem
+  administra a organização inteira e nunca a de pessoa de OUTRA organização (os contadores são da instalação). CSV (prévia e aplicar) e
+  conferir matrícula entram no teto por conta das ações caras (30/min, `main/app.ts`). **Consulta ao vivo ao AD foi recusada de propósito**: exigiria guardar uma credencial de serviço.
+- `networkIssue` na lista (inativa, sem matrícula, inválida, repetida) e o filtro "Com impedimento" (inativa só conta com a conta habilitada).
+  `disabledReason` mostra quando quem desabilitou foi a base (`PERSON_DEACTIVATED_BY_SOURCE`, `LINKED_BY_SOURCE_NEW_PLACEMENT`) ou o cadastro.
+
+**Não mudou (decisões anteriores):** a pessoa que a base inativou e reativou continua com o acesso desabilitado até alguém habilitar (AUTH-7);
+a custódia do h19 desabilita a conta do cadastro manual que a base pôs em outro lugar. As duas aparecem na linha e saem com o CSV.
+
+**Provas:** `network-enable-csv.test.ts`, `network-enable-service.test.ts`, `INIA_DB_PROOF=1 NODE_ENV=test npx vitest run
+src/modules/access/testing/network-access-proof` (24 cenários com `auth/testing/fake-ldaps-server.ts` — TLS e bind de verdade, precisa do
+`openssl`), frontend `network-access.test.tsx`, `login-network.test.tsx`, `admin-area-access.test.tsx`. QA no navegador com AD simulado: login
+de cada nível, habilitar travada → entra na hora, CSV de 49 linhas, Novo usuário, claro/escuro/celular.
+
+**Limites:** o AD real não foi testado daqui (só o simulado). Pessoa de outro domínio da floresta não entra (bind só em `AD_DOMAIN`). Conta sem
+matrícula (ex.: administrador cadastrado à mão) só entra se for de emergência ou depois de "Vincular à pessoa da base". `access-proof` falha no
+`inia_test` por uma conta residual ("Proof Engine Admin", 24/11), anterior a esta mudança.
+
+### Login do AD sem o último dígito da matrícula e teto por conta do AD (25/11/2026, migration 255)
+
+**Caso:** a base manda `R` + 7 dígitos da ID funcional, e parte dessas pessoas tem no AD o login sem o último dígito. Conferência na VM (só
+leitura, 47 R de 8 ativas): 23 existem inteiras no AD, 17 só sem o último dígito (todas com a ID batendo), 7 de nenhum jeito, e nenhuma das 23 tem o
+login cortado existente. Contar e cortar sempre quebraria as 23. Decisão do responsável: não mexer nas bases nem cadastrar exceção; tentar inteira
+e, se o AD recusar, sem o último dígito; ID e trava obrigatórias, e **a INIA não pode bloquear a conta de rede de ninguém**.
+
+**Regras** (`auth/application/directory-gate.ts`, ÚNICO caminho até o AD, usado pelo login e pela ciência):
+- formatos da instalação (`AD_LOGIN_WITHOUT_LAST_DIGIT=R:8`; vazio = desligado). A segunda conferência só existe se o AD RECUSAR a inteira;
+- **memória** (`user_accounts.directory_login`): a primeira entrada certa grava por qual login a conta entra; daí em diante só ele recebe senha.
+  Vale só para a matrícula atual; desabilitar (Acessos, ficha ou carga) e habilitar (rede ou senha temporária) apagam;
+- **identidade:** o login cortado exige a ID funcional (`employeeID`) da matrícula, lida pela conexão da própria pessoa (ilegível = não entra,
+  `NETWORK_IDENTITY_UNREADABLE` 403, não conta na trava); o inteiro deste formato recusa ID de outra matrícula; um login que pode ser o CORTADO de
+  outra pessoa ativa do cadastro (`fullLoginsBehind`) recusa se a ID for a dela; duas fichas (outra conta com este nome completo) = recusa,
+  também no inteiro. Uma ficha só achada pelo nome completo é comparada pela ID. No inteiro, só "não consegui ler" (sem permissão, sem o
+  atributo) entra como antes, e memoriza de propósito (sem memória, a senha errada dela iria também ao cortado, de outra pessoa). A decisão é
+  `identityVerdict` (`auth/domain/network-login.ts`); o adaptador LDAPS só lê a ID, e a varredura usa a mesma função;
+- **teto por conta do AD** (`ad:<login>` em `auth_login_attempts`): no máximo **5** senhas erradas por rodada, somando matrículas, navegadores conhecidos
+  (cada um tem trava própria — antes N navegadores somavam 3 cada), ciência e os DOIS logins possíveis (no AD podem ser a mesma conta); 3 enquanto o
+  login cortado não está provado. O cortado digitado direto soma as dez inteiras por trás dele. Uma função só (`directoryLimits`) para o portão
+  e para o resumo da tela (`postgres-network-attempts.ts`). Reservado antes de enviar; sem gravar a reserva, nada sai. Senha certa não zera; só 16 min sem erro
+  (janela do AD + 1 de folga). Falha datada no futuro conta como de agora; a falha passa a valer de quando a resposta chegou.
+
+**Varredura:** `directory-lockout.simulation.test.ts` (~65 mil envios sorteados por execução: matrículas que viram o mesmo login, 8 navegadores, ciência,
+simultâneos, AD lento/fora, relógios diferentes, limites de 15/16 min, conta com dois nomes) nunca passa de 5 nem deixa entrar como outra
+pessoa; cada proteção desligada faz a varredura falhar (7 mutações). Revisão independente (subagente, só leitura) achou A1 (dois nomes da mesma
+conta), A2 (relógio), A3 (data da falha), B1 (login cortado de outro cadastrado), B2 (nome completo de outra conta), C1–C4: corrigidos. Prova em LDAPS +
+PostgreSQL com 40 envios simultâneos: `network-access-proof`.
+
+**Qual login usar** (`loginGuideOf`, pedido do responsável): a linha de Acessos, o diálogo de habilitar, Conferir matrícula e o relatório do CSV
+(`login_na_inia`) dizem o que a pessoa digita (sempre a matrícula; e-mail só na conta de emergência), com copiar. O login do AD é uma nota:
+descoberto (`directory_login`), a descobrir (os dois possíveis) ou nada quando é igual; só para quem gerencia os acessos da pessoa no escopo. Com
+impedimento no cadastro não há login a indicar (`loginGuide` null). `directoryLogin` cru não sai na resposta.
+
+**Impacto em quem já entra** (antigo × novo, mesma sequência de envios, 25/11): uso normal, 12.000 tentativas, regra ligada e desligada → nenhuma
+diferença. Cenário de abuso (8 navegadores por pessoa, 70% de senha errada): 16 de 2.683 entradas certas esperaram o teto (até 16 min).
+
+**Riscos residuais:** erros da pessoa no Windows e em outros sistemas somam no mesmo contador do AD (a INIA deixa 5 de folga, não enxerga os outros);
+no formato COMUM (A, G) o login inteiro não confere a ID (as G usam outra numeração): matrícula da base igual ao login de outra pessoa entraria —
+a conferência de nomes de 25/11 não achou nenhuma com acesso; quem erra de propósito 3 vezes a matrícula de alguém segura o login dele na INIA
+por 16 min em navegador novo (no conhecido, não) e a ciência; login cortado ainda não provado pode receber até 3 erros por rodada de quem não é o
+dono; conta com nome completo explícito igual à matrícula inteira E matrícula irmã (mesmo cortado) também com conta na INIA: os erros da
+irmã no cortado não somam os do inteiro (varredura com irmãs: 7 erros; máximo 8 quando a ID da conta é a da matrícula inteira) — somar daria à irmã mais
+força para segurar o dono; trocar o `JWT_SECRET` ou ter duas instalações no mesmo AD zera/duplica os contadores (espere 16 min após a troca); ajuste do relógio do servidor
+para a FRENTE libera antes; login trocado no AD pela TI pede Desabilitar/Habilitar na INIA; ID errada no AD bloqueia a pessoa (nunca libera outra).
+
+**Auditoria run-12 (25/11/2026):** CFA-01, 02, 05, 06, 07 (ciência: matrícula do cadastro sem as tolerâncias da digitação; relatório do CSV sempre
+entre aspas) e ARQ12-01 a 04, 10 e 13 corrigidos. Provas: `ldap-directory-authenticator.test.ts` (adaptador real com o AD de mentira),
+`postgres-network-attempts.test.ts` (resumo × portão), varredura com a matrícula cortada digitada direto e com o nome completo de outra pessoa,
+`access-router.limits.test.ts` e os cenários `run-12` da `network-access-proof`.
+
+**Na VM:** variável no `backend/.env` da INIA (precisa sobreviver aos deploys), migration 255, reiniciar só a API; a tela Login pela rede mostra o formato
+ligado. A leitura do `employeeID` pela conexão LDAPS da pessoa só se confirma lá.

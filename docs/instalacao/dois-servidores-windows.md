@@ -162,6 +162,13 @@ npm run build
 - `setup` cria as tabelas, a organização (nome e fuso) e o primeiro administrador, com **senha temporária exibida uma
   única vez** (72 h). Não há usuário padrão.
 - Guarde uma cópia do `backend\.env` no cofre: a `DATA_HUB_SECRET_KEY` decifra as senhas dos bancos externos.
+- **Login pela rede (AD por LDAPS), opcional** — no `backend\.env`; todas precisam sobreviver a cada atualização (o ZIP novo não traz
+  `.env`): `AD_LDAP_URLS` (endereços `ldaps://`, separados por vírgula), `AD_DOMAIN`, `AD_CA_FILE` (a autoridade que assina o
+  certificado do AD), `AD_TLS_ALLOW_WEAK_KEY` (só se o certificado tiver chave de 1024 bits), `AD_TIMEOUT_MS` e
+  `AD_LOGIN_WITHOUT_LAST_DIGIT` (formato `prefixo:tamanho` das matrículas cujo login do AD pode estar sem o último dígito; vazio =
+  desligado). Com `AD_LDAP_URLS` vazio o login pela rede não existe. Depois de configurar, o administrador liga em Administração ›
+  Acessos › Login pela rede. Trocar o `JWT_SECRET` zera a contagem das travas de senha; duas instalações no mesmo AD não somam as
+  contagens uma da outra (R-53). Regras em `docs/dev/memoria/acesso.md`.
 - Aviso de `cpu-features` no `install:all` é inofensivo (opcional). `npm.ps1 não pode ser carregado` → use `npm.cmd`.
 
 ## 5. Publicar pelo IIS

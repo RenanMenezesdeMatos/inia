@@ -110,7 +110,7 @@ async function cleanupInia() {
     const indicator = await db.query<{ id: string }>(`select id from indicator_definitions where organization_id = $1 and code = $2`, [ORG, code])
     if (indicator.rows[0]) await deleteIndicatorDefinition(db, ORG, indicator.rows[0].id)
   }
-  await db.query(`drop trigger if exists txdb_fail_apply on indicator_measurements`)
+  await db.query(`drop trigger if exists txdb_fail_apply on indicator_measurements_all`)
   await db.query(`drop function if exists txdb_fail_apply()`)
 }
 
@@ -329,6 +329,9 @@ describe.skipIf(!ENABLED)("Central de Dados — bancos externos reais (prova de 
       expect((await request(app).post(api(`/feeds/${employeesFeedId}/sync`))).status).toBe(202)
       let runs = await drain(employeesFeedId)
       expect(runs.at(-1)).toMatchObject({ status: "COMPLETED", recordsReceived: OPERATORS + 1, recordsInserted: OPERATORS + 1 })
+      // A carga lê só o mapeado, mas o conjunto continua conhecendo TODAS as colunas da origem (o mapeamento precisa oferecê-las).
+      expect(mapping.fields.map((field: { source: string }) => field.source)).not.toContain("atualizado_em")
+      expect((await findFeed(db, ORG, employeesFeedId))!.schemaFingerprint!.columns).toEqual([...sample.body.data.columns].sort())
       const supervisor = await db.query<{ id: string }>(`select id from people where organization_id = $1 and matricula = $2`, [ORG, `${prefix}-SUP`])
       const led = await db.query<{ n: number }>(`select count(*)::int n from people where reports_to_id = $1`, [supervisor.rows[0]!.id])
       expect(led.rows[0]!.n).toBe(OPERATORS)
@@ -409,7 +412,7 @@ describe.skipIf(!ENABLED)("Central de Dados — bancos externos reais (prova de 
 
     it("falha ao aplicar uma página: a página inteira é desfeita, o checkpoint NÃO avança e a próxima carga continua dela", async () => {
       await db.query(`create or replace function txdb_fail_apply() returns trigger language plpgsql as $$ begin if new.value = 777777 then raise exception 'falha simulada ao aplicar (prova)'; end if; return new; end $$`)
-      await db.query(`create trigger txdb_fail_apply before insert or update on indicator_measurements for each row execute function txdb_fail_apply()`)
+      await db.query(`create trigger txdb_fail_apply before insert or update on indicator_measurements_all for each row execute function txdb_fail_apply()`)
       const admin = await (await import("./external-database-admin.js")).openAdmin(target, target.database)
       const rows: (string | number | null)[][] = []
       for (let index = 1; index <= 300; index += 1) rows.push([20_000 + index, `${prefix}-${String((index % OPERATORS) + 1).padStart(4, "0")}`, SUM_INDICATOR, dayText(400 + Math.floor(index / OPERATORS)), index === 150 ? 777777 : 1, laterInstant("2026-12-03", index)])
@@ -421,7 +424,7 @@ describe.skipIf(!ENABLED)("Central de Dados — bancos externos reais (prova de 
       const stopped = (await findFeed(db, ORG, measurementsFeedId))!.checkpoint as { position: string[] }
       expect(stopped.position[1]).toBe(String(20_100)) // página 1 aplicada; a página 2 (com a linha 150) foi inteira desfeita
       expect(await measurementCount(prefix, SUM_INDICATOR)).toBe(OPERATORS * DAYS + 400 + 100)
-      await db.query(`drop trigger txdb_fail_apply on indicator_measurements`)
+      await db.query(`drop trigger txdb_fail_apply on indicator_measurements_all`)
       await request(app).post(api(`/feeds/${measurementsFeedId}/sync`))
       runs = await drain(measurementsFeedId)
       expect(runs.at(-1)).toMatchObject({ status: "COMPLETED", recordsReceived: 200, recordsInserted: 200, recordsUnchanged: 0 })

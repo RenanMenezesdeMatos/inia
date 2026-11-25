@@ -24,6 +24,7 @@ const AREAS: { menu: string; area: string; configures: string; href: string }[] 
   { menu: "Dados", area: "Central de Dados", configures: "Fontes (Importação manual, API Pull, API Push, SFTP), feeds e mapeamentos por contrato de dados, cargas, qualidade dos dados, contratos; Importar arquivo e o wizard Nova fonte.", href: "/wiki/central-de-dados" },
   { menu: "Dados › Central de Dados", area: "Calendário operacional", configures: "Calendário-base de feriados (nacional, estadual, municipal das 27 capitais — read-only, com fonte e base legal; filtros Ano/Capital/UF/Escopo), Datas da organização (overlay próprio), política de feriado no fallback seg–sex (Ignorar × Excluir feriados aplicáveis) e limite de aviso do horizonte da escala.", href: "/wiki/indicadores/medicao-operacional#feriados" },
   { menu: "Dados", area: "Indicadores", configures: "Código, Unidade, Nome, Direção desejada; Regras de cálculo por Grupo/Subgrupo; Glossário do indicador.", href: "/wiki/indicadores#configuracao" },
+  { menu: "Dados", area: "Universo de atuação", configures: "B2B, B2C e B2X: universo de Grupos e Subgrupos que não vem da base, classificação de bases, Workflows e demais recursos, vínculos entre universos e a ativação da exigência e do filtro.", href: "/wiki/central-de-dados#universo" },
   { menu: "Dados", area: "Flags de canal", configures: "Catálogo de flags por canal: Canal, Nome da flag, Tipo de valor (Verdadeiro/falso ou Numérico), Descrição.", href: "/wiki/workflows/triggers#flag" },
   { menu: "Atendimento com IA", area: "Agentes", configures: "Agents: Nome, Tipo, Objetivo, Descrição, Grupo, Contexto (prompt), Bases consultadas, Restrições; abas Teste, Execuções, Histórico.", href: "/wiki/agents" },
   { menu: "Atendimento com IA › Agentes", area: "Base de conhecimento", configures: "Documentos autorizados (Título, Tipo, conteúdo colado ou arquivo, Alcance por grupo — todos os grupos ou vários Grupos, cada um inteiro ou só alguns Subgrupos — e por assunto, Vale para — todos os produtos ou só alguns); rascunho, Publicar, Arquivar e Reativar; histórico de versões com comparação e reversão; coluna Produtos na lista.", href: "/wiki/bases-conhecimento" },
@@ -39,7 +40,7 @@ const AREAS: { menu: string; area: string; configures: string; href: string }[] 
   { menu: "Automação", area: "QA Lab", configures: "Simulação de Workflows, Agents e Orchestrators; Histórico de QA; Feedbacks (QA de feedback). Só com o papel Administrador geral (Feedbacks: papel QA de feedback).", href: "/wiki/qa-lab" },
   { menu: "Monitoramento", area: "Conversas com a INIA", configures: "Leitura das conversas dos colaboradores do escopo (livres, sessões de feedback e recados) e o Tempo de resposta da INIA no chat de texto (média, mediana e 90% em até, com os filtros da lista e um período próprio).", href: "/wiki/administracao#conversas" },
   { menu: "Monitoramento", area: "Contestações de feedback", configures: "Fila das contestações dos colaboradores do escopo — discordâncias registradas na ciência (motivo + justificativa) e as avaliações “não foi útil” de antes de 10/11/2026 —, com a origem, o que a INIA disse no feedback e a resposta (Contestação procedente, Procedente em parte, Feedback mantido + texto). Papel Revisor de contestações de feedback (ou Administrador geral).", href: "#contestacoes" },
-  { menu: "Plataforma", area: "Usuários e acessos", configures: "Acessos (pessoas identificadas × situação do login — Desabilitado, Aguardando troca de senha, Ativo —; Habilitar acesso com senha temporária, Nova senha temporária, Desabilitar; papéis × escopo), Pessoas (cadastro organizacional: nome, cargo, nível hierárquico, grupo, jornada, situação, capital operacional — o que vem da base do cliente é só leitura; a ficha separa Pertence a de Administra / acessos; Novo usuário com matrícula opcional e Vincular à pessoa da base contra cadastro duplicado) e Papéis (pacotes de permissões).", href: "#usuarios" },
+  { menu: "Plataforma", area: "Usuários e acessos", configures: "Acessos (pessoas identificadas × situação do login — Desabilitado, Aguardando troca de senha, Ativo —; Habilitar acesso — pela rede, sem senha, uma a uma ou por CSV; ou com senha temporária —, Conferir matrícula, Nova senha temporária, Desabilitar; papéis × escopo), Pessoas (cadastro organizacional: nome, cargo, nível hierárquico, grupo, jornada, situação, capital operacional — o que vem da base do cliente é só leitura; a ficha separa Pertence a de Administra / acessos; Novo usuário com matrícula opcional e Vincular à pessoa da base contra cadastro duplicado) e Papéis (pacotes de permissões).", href: "#usuarios" },
 ]
 
 export default function AdministrationPage() {
@@ -172,11 +173,40 @@ export default function AdministrationPage() {
           entregue; ela vale por tempo limitado. No primeiro login com essa senha, a pessoa só consegue criar a própria senha (Nova senha e Confirmar
           nova senha) ou sair — nenhuma outra tela ou API responde. <strong className="font-medium text-foreground">Nova senha temporária</strong>{" "}
           invalida a senha atual e <strong className="font-medium text-foreground">Desabilitar</strong> impede o login; as duas encerram as sessões
-          abertas da pessoa. Com o login pela rede ligado, a conta que entra com a matrícula e a senha de rede tem a senha gerenciada pelo Active
-          Directory: “Nova senha temporária” fica indisponível, com o motivo na linha, e o servidor recusa o pedido (troca ou desbloqueio da senha de
-          rede é com o suporte da rede). A conta de emergência, que entra com e-mail e senha, continua recebendo senha temporária. Ninguém altera o
+          abertas da pessoa. Ninguém altera o
           próprio acesso, e só altera o acesso de alguém quem poderia conceder todos os papéis dessa pessoa. Depois
           de 5 tentativas de login erradas em 15 minutos, o e-mail fica bloqueado por alguns minutos. Toda ação fica auditada, sem a senha.
+        </p>
+        <p>
+          <strong className="font-medium text-foreground">Com o login pela rede ligado</strong>, a pessoa entra com a matrícula e a senha de rede,
+          conferidas no Active Directory, e a INIA não gera nenhuma senha — <em>Habilitar acesso</em> só abre a porta para a matrícula. O e-mail é
+          opcional (sem ele, a conta é identificada por matrícula e domínio) e “Nova senha temporária” não aparece — o servidor também recusa. A
+          conta de emergência, que entra com e-mail e senha, continua recebendo senha temporária. Não dá para habilitar quem está inativo no
+          cadastro, sem matrícula, com matrícula inválida ou com a mesma matrícula de outra conta habilitada: o motivo aparece na linha, e o filtro{" "}
+          <em>Com impedimento para entrar</em> reúne esses casos.
+        </p>
+        <p>
+          <strong className="font-medium text-foreground">Qual login usar.</strong> Cada linha mostra <em>Login na INIA</em>: o que a pessoa digita
+          (a matrícula, com a senha do Windows; na conta de emergência, o e-mail, com a senha da INIA), com um botão que copia a orientação para mandar
+          à pessoa. Quando o login dela no Active Directory é diferente da matrícula, a linha diz qual é — a pessoa continua digitando a matrícula
+          inteira. “A INIA descobre no primeiro acesso” é quem ainda não entrou e pode ter um login ou o outro. Aparece também ao habilitar, em{" "}
+          <em>Conferir matrícula</em> e no relatório do CSV. Sem login, a linha mostra o que falta corrigir no cadastro. O login do Active Directory só
+          aparece para quem gerencia os acessos daquela pessoa.
+        </p>
+        <p>
+          <strong className="font-medium text-foreground">Habilitar em massa (CSV).</strong> Baixe o modelo, preencha uma matrícula por linha (a coluna{" "}
+          <em>email</em> é opcional; até 5.000 linhas) e envie. A INIA confere linha a linha sem gravar nada e mostra quem vai ser habilitado, quem já
+          tem acesso e quem não pode, com o motivo e as matrículas parecidas quando ela não existe (prefixo ou zero que faltou). Só depois da confirmação
+          as pessoas são habilitadas; a linha recusada não impede as outras. O arquivo nunca cria pessoa, nunca concede papel e respeita o escopo de quem
+          envia. Vale para o Administrador geral e o Administrador de acessos (e o Administrador, no escopo dele).
+        </p>
+        <p>
+          <strong className="font-medium text-foreground">Por que a pessoa não entra.</strong> Na lista e em <em>Conferir matrícula</em>, quem gerencia
+          acessos vê, das pessoas do escopo dele, o <em>bloqueio temporário</em> da INIA (com a hora em que libera) e a última resposta do Active Directory
+          registrada numa tentativa da própria pessoa: conta bloqueada no AD, conta desativada ou restrita, senha de rede vencida, senha recusada ou AD sem
+          resposta. Não é uma consulta ao vivo: se o suporte desbloquear a conta, a linha muda na próxima tentativa. Conferir matrícula não pede senha e
+          não chama o AD. Quem tentou entrar antes de ter acesso é liberado na hora em que o acesso é habilitado; senha recusada pelo AD continua contando,
+          para a INIA nunca bloquear a conta de rede de ninguém: no máximo 5 senhas erradas por conta do Active Directory a cada rodada, somando todos os navegadores e a confirmação de ciência. Se o login no Active Directory for a matrícula sem o último dígito (formatos definidos na instalação), a pessoa digita a matrícula inteira e a INIA confere os dois, exigindo a mesma ID funcional.
         </p>
         <p>
           A sessão termina em até 12 horas depois do login e também <strong className="font-medium text-foreground">depois de 30 minutos parada</strong>{" "}

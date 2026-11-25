@@ -14,6 +14,7 @@ import { accessDisabledWarnings, credentialNeedsNewCustody, disableAccountsFromS
 import { isUniverseEnforced } from "../../../operating-universe/application/universe-access.js"
 import { parseOperatingUniverse } from "../../../operating-universe/domain/operating-universe.js"
 import { personFieldsWrittenBy } from "../../domain/person-field-control.js"
+import { resolveUnitNames, type ExistingUnitName, type UnitName } from "../../domain/unit-name-conflicts.js"
 
 /**
  * Writers de dado mestre. Regras compartilhadas:
@@ -24,7 +25,7 @@ import { personFieldsWrittenBy } from "../../domain/person-field-control.js"
 // ---------------------------------------------------------------------------------------------
 // GROUPS → teams
 // ---------------------------------------------------------------------------------------------
-type PreparedGroup = ValidRecord & { externalCode: string; name: string; operationId: string; operatingUniverse: string | null; operatingUniverseEffectiveFrom: string | null }
+type PreparedGroup = ValidRecord & UnitName & { operationId: string; operatingUniverse: string | null; operatingUniverseEffectiveFrom: string | null }
 
 /** Universo de Grupo/Subgrupo de uma linha: ausente = mantém; código fora de B2B/B2C/B2X = quarentena (nunca adivinhado). */
 function unitUniverse(record: ValidRecord): { universe: string | null; effectiveFrom: string | null; rejection: Rejection | null } {
@@ -32,6 +33,32 @@ function unitUniverse(record: ValidRecord): { universe: string | null; effective
   const universe = parseOperatingUniverse(raw)
   if (universe === "INVALID") return { universe: null, effectiveFrom: null, rejection: reject(record, "DATA_INVALID_ENUM", "operatingUniverse", `Universo de atuação "${raw}" não é B2B, B2C nem B2X — mapeie o valor da fonte com "Mapear códigos".`) }
   return { universe, effectiveFrom: str(record.record, "operatingUniverseEffectiveFrom"), rejection: null }
+}
+
+/**
+ * Nome que já é de outro Grupo (na Operação) ou de outro Subgrupo (no Grupo): só a linha é recusada. `ready` sai na ordem em que pode
+ * ser gravada — quem libera um nome antes de quem passa a usá-lo.
+ */
+async function refuseTakenNames<T extends ValidRecord & UnitName>(
+  context: WriteContext,
+  rows: T[],
+  unit: { existingSql: string; label: string; parent: string },
+): Promise<{ ready: T[]; rejections: Rejection[] }> {
+  if (rows.length === 0) return { ready: rows, rejections: [] }
+  const existing = await context.ctx.db.query<ExistingUnitName>(unit.existingSql, [context.organizationId, [...new Set(rows.map((row) => row.name))]])
+  const { ready, conflicts } = resolveUnitNames(rows, existing.rows)
+  const rejections = conflicts.map(({ row, kind, ownerCode }) => {
+    const reason =
+      kind === "SAME_LOAD"
+        ? `O nome "${row.name}" já veio nesta carga com o código "${ownerCode}" (${unit.parent}). A primeira linha foi mantida.`
+        : kind === "SWAP"
+          ? `O nome "${row.name}" é hoje do código "${ownerCode}" (${unit.parent}), e os nomes trocam entre si nesta carga. Troque em duas cargas, passando por um nome provisório.`
+          : ownerCode === null
+            ? `Já existe ${unit.label} "${row.name}" (${unit.parent}), cadastrado na INIA sem código da base.`
+            : `O nome "${row.name}" já é do ${unit.label} de código "${ownerCode}" (${unit.parent}).`
+    return reject(row, "DATA_NAME_IN_USE", "name", `${reason} A INIA reconhece pelo código e não junta por nome: corrija o nome ou o código na origem. Só esta linha foi recusada.`)
+  })
+  return { ready, rejections }
 }
 
 export const groupsWriter: DomainWriter<PreparedGroup> = {
@@ -53,9 +80,14 @@ export const groupsWriter: DomainWriter<PreparedGroup> = {
         rejections.push(universe.rejection)
         continue
       }
-      ready.push({ ...record, externalCode: str(record.record, "externalCode")!, name: str(record.record, "name")!, operationId: operation.id, operatingUniverse: universe.universe, operatingUniverseEffectiveFrom: universe.effectiveFrom })
+      ready.push({ ...record, externalCode: str(record.record, "externalCode")!, name: str(record.record, "name")!, parentId: operation.id, operationId: operation.id, operatingUniverse: universe.universe, operatingUniverseEffectiveFrom: universe.effectiveFrom })
     }
-    return { ready, rejections }
+    const named = await refuseTakenNames(context, ready, {
+      existingSql: `select external_code "externalCode", operation_id "parentId", name from teams where organization_id = $1 and name = any($2::text[])`,
+      label: "Grupo",
+      parent: "mesma Operação",
+    })
+    return { ready: named.ready, rejections: [...rejections, ...named.rejections] }
   },
   async apply(context, client, batch) {
     if (batch.length === 0) return emptyApply()
@@ -78,7 +110,7 @@ export const groupsWriter: DomainWriter<PreparedGroup> = {
 // ---------------------------------------------------------------------------------------------
 // SUBGROUPS → subteams
 // ---------------------------------------------------------------------------------------------
-type PreparedSubgroup = ValidRecord & { externalCode: string; name: string; teamId: string; operatingUniverse: string | null; operatingUniverseEffectiveFrom: string | null }
+type PreparedSubgroup = ValidRecord & UnitName & { teamId: string; operatingUniverse: string | null; operatingUniverseEffectiveFrom: string | null }
 
 export const subgroupsWriter: DomainWriter<PreparedSubgroup> = {
   contractKey: "SUBGROUPS",
@@ -99,9 +131,14 @@ export const subgroupsWriter: DomainWriter<PreparedSubgroup> = {
         rejections.push(universe.rejection)
         continue
       }
-      ready.push({ ...record, externalCode: str(record.record, "externalCode")!, name: str(record.record, "name")!, teamId: team.id, operatingUniverse: universe.universe, operatingUniverseEffectiveFrom: universe.effectiveFrom })
+      ready.push({ ...record, externalCode: str(record.record, "externalCode")!, name: str(record.record, "name")!, parentId: team.id, teamId: team.id, operatingUniverse: universe.universe, operatingUniverseEffectiveFrom: universe.effectiveFrom })
     }
-    return { ready, rejections }
+    const named = await refuseTakenNames(context, ready, {
+      existingSql: `select external_code "externalCode", team_id "parentId", name from subteams where organization_id = $1 and name = any($2::text[])`,
+      label: "Subgrupo",
+      parent: "mesmo Grupo",
+    })
+    return { ready: named.ready, rejections: [...rejections, ...named.rejections] }
   },
   async apply(context, client, batch) {
     if (batch.length === 0) return emptyApply()

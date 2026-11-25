@@ -457,6 +457,8 @@ export function UsersPage({
   const creationPolicy = useCreationPolicyQuery(tab === "form" && editingUser === null)
   // Com Colaboradores vigente, sem matrícula só dá para cadastrar "Fora da hierarquia"; com matrícula, a base vai assumir.
   const hierarchyLocked = editingUser === null && creationPolicy.data?.hierarchyRequiresMatricula === true && matricula.trim() === ""
+  // Login pela rede ligado: a pessoa nova entra com a matrícula e a senha do AD — sem senha da INIA e com o e-mail opcional.
+  const networkLogin = editingUser === null && creationPolicy.data?.networkLogin === true
   const effectivePosition: PersonPosition = hierarchyLocked ? { role: "ADMIN", jobPositionId: null } : position
   const detailQuery = useUserDetailQuery(editingUser?.id ?? null)
   // Campos que a base controla para a pessoa em edição (null = editável); no cadastro novo, tudo é editável.
@@ -517,7 +519,7 @@ export function UsersPage({
       }
     } else {
       try {
-        setIssued(await createMutation.mutateAsync({ name, email, role: effectivePosition.role, jobPositionId: effectivePosition.jobPositionId ?? undefined, teamId: teamId || undefined, matricula: matricula.trim() || undefined, operatingUniverse: universe }))
+        setIssued(await createMutation.mutateAsync({ name, email: email.trim() || undefined, role: effectivePosition.role, jobPositionId: effectivePosition.jobPositionId ?? undefined, teamId: teamId || undefined, matricula: matricula.trim() || undefined, operatingUniverse: universe }))
       } catch {
         return
       }
@@ -530,7 +532,7 @@ export function UsersPage({
   const matriculaInUse = editingUser === null && createMutation.error instanceof AdminApiError && createMutation.error.code === "PERSON_MATRICULA_IN_USE" ? createMutation.error : null
   const existingPersonId = (matriculaInUse?.details as { personId?: string } | undefined)?.personId ?? null
   const hasEditableField = !editingUser || !managedBy?.name || emailEditable || !managedBy?.role || !managedBy?.teamId || !managedBy?.operatingUniverse
-  const canSubmit = hasEditableField && (Boolean(managedBy?.name) || name.trim().length > 1) && (!emailEditable || email.includes("@"))
+  const canSubmit = hasEditableField && (Boolean(managedBy?.name) || name.trim().length > 1) && (!emailEditable || email.includes("@") || (networkLogin && email.trim() === "")) && (!networkLogin || matricula.trim() !== "")
 
   return (
     <Card>
@@ -620,24 +622,30 @@ export function UsersPage({
               <SourceManagedNotice id="user-name-source" manager={managedBy?.name ?? null} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="user-email">E-mail</Label>
+              <Label htmlFor="user-email">{networkLogin ? "E-mail (opcional)" : "E-mail"}</Label>
               <Input id="user-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} disabled={!emailEditable} aria-describedby={managedBy?.email ? "user-email-source" : undefined} />
               <SourceManagedNotice id="user-email-source" manager={managedBy?.email ?? null} />
               {editingUser && !editingUser.accountId && !managedBy?.email ? <p className="text-xs text-muted-foreground">Sem conta de login — o e-mail é informado ao habilitar o acesso, na aba Acessos.</p> : null}
             </div>
             {editingUser ? null : (
               <>
-                <p className="text-xs text-muted-foreground">A senha provisória é gerada pela INIA ao criar e aparece uma única vez para você entregar à pessoa — no primeiro acesso ela cria a própria.</p>
+                <p className="text-xs text-muted-foreground">{networkLogin ? "A pessoa entra com a matrícula e a senha de rede (AD). A INIA não gera nenhuma senha." : "A senha provisória é gerada pela INIA ao criar e aparece uma única vez para você entregar à pessoa — no primeiro acesso ela cria a própria."}</p>
                 <div className="space-y-1.5">
-                  <Label htmlFor="user-matricula">Matrícula (opcional)</Label>
+                  <Label htmlFor="user-matricula">{networkLogin ? "Matrícula de rede" : "Matrícula (opcional)"}</Label>
                   <Input id="user-matricula" value={matricula} onChange={(event) => setMatricula(event.target.value)} maxLength={64} aria-describedby="user-matricula-help" />
                   <p id="user-matricula-help" className="text-xs text-muted-foreground">Exatamente como a base do cliente vai mandar: quando a carga chegar, ela atualiza esta pessoa em vez de criar outra.</p>
                 </div>
                 {creationPolicy.data?.hierarchyRequiresMatricula ? (
                   <p className="rounded-md border border-amber-500/40 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200" data-testid="hierarchy-requires-source">
                     Esta organização recebe Colaboradores da base ({creationPolicy.data.sources.map((source) => `${source.sourceName} · ${source.feedName}`).join("; ")}). Quem é da
-                    operação vem por ela: espere a carga e libere o acesso em <strong>Acessos › Habilitar acesso</strong>. Sem matrícula, este cadastro é só para quem está{" "}
-                    <strong>fora da hierarquia</strong> (TI, consultoria, QA). Para alguém da operação antes da carga, informe a matrícula.
+                    operação vem por ela: espere a carga e libere o acesso em <strong>Acessos › Habilitar acesso</strong>.{" "}
+                    {networkLogin ? (
+                      "Para alguém da operação antes da carga, use a matrícula exatamente como a base vai mandar."
+                    ) : (
+                      <>
+                        Sem matrícula, este cadastro é só para quem está <strong>fora da hierarquia</strong> (TI, consultoria, QA). Para alguém da operação antes da carga, informe a matrícula.
+                      </>
+                    )}
                   </p>
                 ) : null}
               </>

@@ -11,7 +11,7 @@ export function StructureTreeSkeleton() {
         <Skeleton className="h-7 w-48" />
         <Skeleton className="h-4 w-80" />
       </div>
-      <div className="flex h-[32rem] flex-col items-center gap-6 rounded-2xl bg-muted/50 p-6 sm:h-[36rem]">
+      <div className="flex h-[32rem] flex-col items-center gap-6 rounded-xl border border-border inia-org-canvas p-6 sm:h-[36rem]">
         <Skeleton className="h-16 w-72 rounded-xl" />
         <Skeleton className="h-52 w-[25rem] max-w-full rounded-xl" />
         <div className="flex gap-3">

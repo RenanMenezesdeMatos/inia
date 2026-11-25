@@ -20,7 +20,7 @@ export class InvalidCredentialsError extends Error {
 }
 
 /** Recusas com mensagem própria do backend (login por e-mail e login pela rede). */
-const LOGIN_REFUSAL_CODES = ["LOGIN_TOO_MANY_ATTEMPTS", "ACCESS_DISABLED", "TEMPORARY_PASSWORD_EXPIRED", "NETWORK_LOGIN_REQUIRED", "NETWORK_PASSWORD_EXPIRED", "NETWORK_ACCOUNT_LOCKED", "NETWORK_ACCOUNT_DISABLED", "NETWORK_LOGIN_UNAVAILABLE"] as const
+const LOGIN_REFUSAL_CODES = ["LOGIN_TOO_MANY_ATTEMPTS", "ACCESS_DISABLED", "TEMPORARY_PASSWORD_EXPIRED", "NETWORK_LOGIN_REQUIRED", "NETWORK_PASSWORD_EXPIRED", "NETWORK_ACCOUNT_LOCKED", "NETWORK_ACCOUNT_DISABLED", "NETWORK_IDENTITY_UNREADABLE", "NETWORK_LOGIN_UNAVAILABLE"] as const
 export type LoginRefusalCode = (typeof LOGIN_REFUSAL_CODES)[number]
 const isRefusalCode = (code: string | undefined): code is LoginRefusalCode => (LOGIN_REFUSAL_CODES as readonly string[]).includes(code ?? "")
 
@@ -82,13 +82,44 @@ export async function fetchLoginOptions(): Promise<LoginOptionsResult> {
   }
 }
 
+/**
+ * Endereço oficial (o da API, gravado no build) quando a pessoa abriu a INIA por outro endereço (IP, nome curto, http): o navegador
+ * bloqueia a chamada ou não guarda o cookie de sessão, e a tela não tinha como dizer por quê.
+ */
+export function officialAddressHint(pageOrigin: string, apiUrl: string = API_URL): string | null {
+  try {
+    // Porta diferente não conta (desenvolvimento local): o que separa os endereços para o navegador aqui é o protocolo e o nome.
+    const official = new URL(apiUrl)
+    const page = new URL(pageOrigin)
+    return official.protocol === page.protocol && official.hostname === page.hostname ? null : official.origin
+  } catch {
+    return null
+  }
+}
+const pageAddressHint = () => (typeof window === "undefined" ? null : officialAddressHint(window.location.origin))
+
+/** O navegador não conseguiu falar com o servidor (rede, certificado recusado, endereço diferente do oficial). */
+export function unreachableServerMessage(official: string | null = pageAddressHint()): string {
+  return `Não foi possível falar com o servidor da INIA.${official ? ` Abra pelo endereço oficial: ${official}` : " Confira a sua conexão e tente de novo."}`
+}
+
+/** A senha foi aceita, mas o navegador não guardou a sessão (cookie bloqueado ou endereço diferente do oficial). */
+export function sessionNotKeptMessage(official: string | null = pageAddressHint()): string {
+  return `Sua senha foi aceita, mas o navegador não guardou a sessão. ${official ? `Abra a INIA pelo endereço oficial: ${official}` : "Permita os cookies deste site e tente de novo; se continuar, avise o administrador da INIA."}`
+}
+
 export async function login(input: LoginInput): Promise<LoggedInUser> {
-  const response = await fetch(`${API_URL}/api/v1/auth/login`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(input),
-  })
+  let response: Response
+  try {
+    response = await fetch(`${API_URL}/api/v1/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(input),
+    })
+  } catch {
+    throw new Error(unreachableServerMessage())
+  }
   if (!response.ok) {
     const error = await readError(response)
     if (error?.code === "LOGIN_TOO_MANY_ATTEMPTS") {
@@ -96,11 +127,13 @@ export async function login(input: LoginInput): Promise<LoggedInUser> {
       if ("matricula" in input && error.message) throw new LoginRefusedError(networkRetryMessage(error.message, retryAt), "LOGIN_TOO_MANY_ATTEMPTS", retryAt)
       throw new LoginRefusedError(retryAt ? retryMessage(retryAt) : error.message ?? "Muitas tentativas de acesso.", "LOGIN_TOO_MANY_ATTEMPTS", retryAt)
     }
+    // Sessão antiga neste navegador + endereço fora do oficial: a proteção contra CSRF recusa a escrita.
+    if (error?.code === "CROSS_SITE_REQUEST_BLOCKED") throw new Error(unreachableServerMessage())
     // Limite por IP + login (429 RATE_LIMITED): a mensagem do backend diz se foi a matrícula ou o e-mail.
     if (error?.code === "RATE_LIMITED" && error.message) throw new Error(error.message)
     if (isRefusalCode(error?.code)) throw new LoginRefusedError(error?.message ?? "Não foi possível entrar.", error!.code as LoginRefusalCode)
     if (response.status === 401) {
-      if ("matricula" in input) throw new Error(error?.message ?? "Matrícula ou senha de rede inválidas.")
+      if ("matricula" in input) throw new Error(error?.message ?? "Não foi possível entrar com esta matrícula e senha de rede.")
       throw new InvalidCredentialsError()
     }
     throw new Error("Não foi possível entrar. Tente novamente.")

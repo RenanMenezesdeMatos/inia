@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { ArrowUp, ChevronDown, CircleHelp, Footprints, Network, ShieldAlert, UserRound } from "lucide-react"
+import { ArrowUp, ChevronDown, CircleHelp, Footprints, Network, ShieldAlert, TreePalm, UserRound } from "lucide-react"
 
 import { PersonAvatar } from "@/components/profile/person-avatar"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { formatCount } from "@/lib/analytics/format"
 import { cn } from "@/lib/utils"
 import { ROLE_PLURAL_LABELS, ROLE_UNIT_LABELS, STRUCTURE_STATUS_BUCKET_LABELS, type ManagementMetrics, type StructurePerson } from "@/schemas/org-structure/person-structure.schema"
+
+import { roleColorClass, STATUS_BUCKET_CLASS } from "./structure-appearance"
 
 /** As três perguntas que o card expandido responde, sem misturar conceitos. */
 export type CardSection = "person" | "structure" | "reportsTo"
@@ -74,6 +76,8 @@ export type StructurePersonCardProps = {
  *  - "Dados da estrutura" — como está organizada e distribuída a estrutura que ela lidera; só
  *    existe quando o backend mandou `managementMetrics` (gestão/Admin olhando um líder);
  *  - "Reporta-se à" — onde ela está posicionada acima: o gestor imediato, clicável.
+ * Cor, sempre discreta: a do nível hierárquico num ponto do selo e no contorno fino da foto; verde na borda = de férias, só quando o
+ * backend disse (`onVacation`: só cargos de gestão e o Administrador geral recebem).
  * Clicar no header seleciona (zero request); "Abrir estrutura" (hasReports E canViewStructure)
  * e "Ver perfil" (canViewProfile) têm capabilities INDEPENDENTES decididas pelo backend. Largura
  * FIXA (focal 400px, subordinado 300px): a expansão cresce só para baixo, nunca invade vizinhos;
@@ -88,6 +92,7 @@ export function StructurePersonCard({ person, expanded, variant = "node", isView
   const canViewProfile = person.capabilities.canViewProfile && profileHref !== undefined
   const title = person.jobTitle ?? person.roleLabel
   const area = areaOf(person, title)
+  const vacation = person.onVacation === true
   const metrics = person.managementMetrics ?? null
   const directs = person.capabilities.hasReports && person.directReportCount !== null ? person.directReportCount : null
   const production = metrics?.statusDistribution.find((share) => share.bucket === "EM_PRODUCAO")?.count ?? null
@@ -100,33 +105,35 @@ export function StructurePersonCard({ person, expanded, variant = "node", isView
       data-arrived={arrived || undefined}
       data-viewer-path={viewerPath ?? undefined}
       className={cn(
-        "flex flex-col rounded-xl bg-card text-left shadow-xs ring-1 transition-[box-shadow,background-color]",
-        root ? "w-[25rem]" : "w-[18.75rem]",
-        expanded ? "ring-primary/70" : "ring-border hover:ring-primary/40",
+        "flex flex-col rounded-xl bg-card text-left shadow-sm ring-1 transition-[box-shadow,background-color]",
+        roleColorClass(person.role),
+        root ? "w-[25rem] shadow-md" : "w-[18.75rem]",
+        expanded ? "ring-primary/45" : "ring-foreground/10 hover:ring-primary/35",
         // Caminho até o viewer: ring de destaque + sombra discreta, sempre — sem mudar largura/altura.
         pathNext && "ring-2 ring-primary/60 shadow-md shadow-primary/15",
+        vacation && VACATION_RING,
         arrived && "inia-flow-arrival",
         className,
       )}
     >
       {/* Header fixo: nunca muda ao trocar de seção. */}
-      <div className={cn("flex items-start gap-2", root ? "px-4 py-3.5" : "px-3 py-2.5")}>
+      <div className={cn("flex items-start gap-2 ", root ? "px-4 py-3.5" : "px-3 py-2.5")}>
         <button
           type="button"
           onClick={() => onSelect(person)}
           aria-expanded={expanded}
-          aria-label={`Ver detalhes de ${person.name}${expanded ? " (selecionada)" : ""}${pathNext ? `. ${person.roleLabel}. ${VIEWER_PATH_TOOLTIP}` : ""}`}
+          aria-label={`Ver detalhes de ${person.name}${expanded ? " (selecionada)" : ""}${vacation ? ", de férias" : ""}${pathNext ? `. ${person.roleLabel}. ${VIEWER_PATH_TOOLTIP}` : ""}`}
           className={cn("flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-muted", !root && "min-h-[3.75rem]")}
         >
-          <PersonAvatar name={person.name} avatarUrl={person.avatarUrl} className={cn("shrink-0", root ? "size-16" : "size-11")} fallbackClassName={root ? "text-base" : "text-xs"} />
+          <PersonAvatar name={person.name} avatarUrl={person.avatarUrl} className={cn("shrink-0", vacation ? VACATION_AVATAR : ROLE_AVATAR, root ? "size-16" : "size-11")} fallbackClassName={cn(ROLE_INITIALS, root ? "text-base" : "text-xs")} />
           <span className="min-w-0 flex-1">
             <span className={cn("flex items-center gap-1.5 leading-tight", root ? "text-lg font-semibold" : "text-sm font-medium")}>
               <span className="truncate">{person.name}</span>
               {isViewer ? <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium text-primary">Você</span> : null}
               {pathNext && !isViewer ? <ViewerPathBadge /> : null}
             </span>
-            <span className={cn("block text-muted-foreground", root ? "line-clamp-2 text-sm" : "truncate text-xs")}>{title}</span>
-            {area ? <span className={cn("block truncate text-muted-foreground/80", root ? "text-xs" : "text-[11px]")}>{area}</span> : null}
+            {title !== person.roleLabel ? <span className={cn("block text-muted-foreground", root ? "line-clamp-2 text-sm" : "truncate text-xs")}>{title}</span> : null}
+            <PersonBadges person={person} area={area} className="mt-1" />
           </span>
         </button>
         <div className="flex shrink-0 flex-col items-end gap-1">
@@ -136,11 +143,11 @@ export function StructurePersonCard({ person, expanded, variant = "node", isView
             <Tooltip>
               <TooltipTrigger asChild>
                 {metrics ? (
-                  <button type="button" onClick={() => onSelect(person, "structure")} className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label={`${formatCount(directs, "direto", "diretos")} — abrir dados da estrutura`}>
+                  <button type="button" onClick={() => onSelect(person, "structure")} className="rounded-full bg-card px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground ring-1 ring-border hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label={`${formatCount(directs, "direto", "diretos")} — abrir dados da estrutura`}>
                     {formatCount(directs, "direto", "diretos")}
                   </button>
                 ) : (
-                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground" tabIndex={0}>
+                  <span className="rounded-full bg-card px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground ring-1 ring-border" tabIndex={0}>
                     {formatCount(directs, "direto", "diretos")}
                   </span>
                 )}
@@ -274,7 +281,7 @@ function PersonSection({ person, root, isViewer, directManager, directManagerNot
 /**
  * "Dados da estrutura": compacto, tipográfico — quantidade + porcentagem lado a lado com o
  * denominador único que o backend mandou; span, abrangência, médias por camada e referência do
- * Grupo como linhas simples com Tooltip para o conceito. Nunca avaliação (sem bom/ruim/ideal/cor).
+ * Grupo como linhas simples com Tooltip para o conceito. Nunca avaliação (sem bom/ruim/ideal; a cor só identifica a situação).
  */
 function StructureSection({ person, metrics }: { person: StructurePerson; metrics: ManagementMetrics }) {
   const first = person.name.split(" ")[0] ?? person.name
@@ -290,10 +297,15 @@ function StructureSection({ person, metrics }: { person: StructurePerson; metric
         </span>
       </div>
       {metrics.roleCounts.length > 1 ? <p className="text-[11px] text-muted-foreground">{metrics.roleCounts.map((entry) => plural(entry.role, entry.count)).join(" · ")}</p> : null}
+      {metrics.structuralPopulation > 0 ? (
+        <div aria-hidden className="flex h-1.5 gap-px overflow-hidden rounded-full">
+          {metrics.statusDistribution.filter((share) => share.count > 0).map((share) => <span key={share.bucket} className={STATUS_BUCKET_CLASS[share.bucket]} style={{ flexGrow: share.count, flexBasis: 0 }} />)}
+        </div>
+      ) : null}
       <dl className="space-y-0.5" aria-label="Situação atual da estrutura">
         {metrics.statusDistribution.map((share) => (
           <div key={share.bucket} className="grid grid-cols-[1fr_auto_auto] items-baseline gap-x-3" data-bucket={share.bucket}>
-            <dt className={cn("min-w-0", share.count === 0 ? "text-muted-foreground" : "")}>{STRUCTURE_STATUS_BUCKET_LABELS[share.bucket]}</dt>
+            <dt className={cn("flex min-w-0 items-center gap-1.5", share.count === 0 ? "text-muted-foreground" : "")}><span aria-hidden className={cn("size-2 shrink-0 rounded-full", STATUS_BUCKET_CLASS[share.bucket], share.count === 0 && "opacity-40")} />{STRUCTURE_STATUS_BUCKET_LABELS[share.bucket]}</dt>
             <dd className={cn("tabular-nums", share.count === 0 ? "text-muted-foreground" : "font-medium")}>{share.count}</dd>
             <dd className="w-12 text-right tabular-nums text-muted-foreground">{formatDecimal(share.percent)}%</dd>
           </div>
@@ -364,8 +376,8 @@ function ReportsToSection({ manager, note, onOpenStructure }: { manager: Structu
   const canOpen = manager.capabilities.canViewStructure && onOpenStructure !== undefined
   return (
     <div className="flex items-center gap-2.5" data-testid="reports-to">
-      <button type="button" onClick={canOpen ? () => onOpenStructure(manager.personId) : undefined} disabled={!canOpen} aria-label={canOpen ? `Abrir estrutura de ${manager.name}` : `${manager.name}, ${title}`} className={cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary", canOpen ? "hover:bg-muted/40" : "cursor-default")}>
-        <PersonAvatar name={manager.name} avatarUrl={manager.avatarUrl} className="size-9 shrink-0" fallbackClassName="text-[10px]" />
+      <button type="button" onClick={canOpen ? () => onOpenStructure(manager.personId) : undefined} disabled={!canOpen} aria-label={canOpen ? `Abrir estrutura de ${manager.name}` : `${manager.name}, ${title}`} className={cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary", roleColorClass(manager.role), canOpen ? "hover:bg-muted/40" : "cursor-default")}>
+        <PersonAvatar name={manager.name} avatarUrl={manager.avatarUrl} className={cn("size-9 shrink-0", ROLE_AVATAR)} fallbackClassName={cn("text-[10px]", ROLE_INITIALS)} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xs font-medium">{manager.name}</span>
           <span className="block truncate text-[11px] text-muted-foreground">{title}</span>
@@ -391,8 +403,9 @@ function ManagerCard({ person, isViewer, arrived, viewerPath, onOpenStructure, c
   const title = person.jobTitle ?? person.roleLabel
   const area = areaOf(person, title)
   const canOpen = person.capabilities.canViewStructure && onOpenStructure !== undefined
+  const vacation = person.onVacation === true
   return (
-    <div data-slot="structure-person-card" data-state="compact" data-variant="manager" data-arrived={arrived || undefined} data-viewer-path={viewerPath ?? undefined} className={cn("flex w-[18rem] flex-col rounded-xl bg-card text-left shadow-xs ring-1 ring-border", canOpen && "hover:ring-primary/40", arrived && "inia-flow-arrival", className)}>
+    <div data-slot="structure-person-card" data-state="compact" data-variant="manager" data-arrived={arrived || undefined} data-viewer-path={viewerPath ?? undefined} className={cn("flex w-[18rem] flex-col rounded-xl bg-card text-left shadow-sm ring-1 ring-foreground/10", roleColorClass(person.role), canOpen && "hover:ring-primary/35", vacation && VACATION_RING, arrived && "inia-flow-arrival", className)}>
       <button
         type="button"
         onClick={canOpen ? () => onOpenStructure(person.personId) : undefined}
@@ -401,18 +414,35 @@ function ManagerCard({ person, isViewer, arrived, viewerPath, onOpenStructure, c
         title={canOpen ? "Subir um nível" : undefined}
         className={cn("flex min-h-[4.5rem] w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-muted", canOpen ? "hover:bg-muted/40" : "cursor-default")}
       >
-        <PersonAvatar name={person.name} avatarUrl={person.avatarUrl} className="size-10 shrink-0" fallbackClassName="text-xs" />
+        <PersonAvatar name={person.name} avatarUrl={person.avatarUrl} className={cn("size-10 shrink-0", vacation ? VACATION_AVATAR : ROLE_AVATAR)} fallbackClassName={cn("text-xs", ROLE_INITIALS)} />
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5 text-sm font-medium leading-tight">
             <span className="truncate">{person.name}</span>
             {isViewer ? <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium text-primary">Você</span> : null}
           </span>
-          <span className="block truncate text-xs text-muted-foreground">{title}</span>
-          {area ? <span className="block truncate text-[11px] text-muted-foreground/80">{area}</span> : null}
+          {title !== person.roleLabel ? <span className="block truncate text-xs text-muted-foreground">{title}</span> : null}
+          <PersonBadges person={person} area={area} className="mt-1" />
         </span>
         {canOpen ? <ArrowUp className="size-4 shrink-0 text-muted-foreground" aria-hidden /> : null}
       </button>
     </div>
+  )
+}
+
+// Tudo sai de `--cargo` (a cor do nível, `structure-appearance.ts`), bem diluída; férias só troca a borda do card e o contorno da foto pelo verde.
+const ROLE_AVATAR = "ring-[1.5px] ring-[color-mix(in_oklab,var(--cargo)_60%,transparent)] ring-offset-2 ring-offset-card"
+const ROLE_INITIALS = "bg-[color-mix(in_oklab,var(--cargo)_9%,var(--card))]"
+const VACATION_RING = "ring-[1.5px] ring-emerald-600/55 hover:ring-emerald-600/80 dark:ring-emerald-400/50 dark:hover:ring-emerald-400/75"
+const VACATION_AVATAR = "ring-[1.5px] ring-emerald-600/60 ring-offset-2 ring-offset-card dark:ring-emerald-400/55"
+
+/** Cargo (nível, com a cor dele), férias (só para quem o backend deixa ver) e a área, numa linha: sempre texto junto da cor. */
+function PersonBadges({ person, area, className }: { person: StructurePerson; area: string | null; className?: string }) {
+  return (
+    <span className={cn("flex min-w-0 items-center gap-1", className)}>
+      <span className="max-w-full shrink-0 truncate rounded-full border border-[color-mix(in_oklab,var(--cargo)_50%,var(--card))] bg-[color-mix(in_oklab,var(--cargo)_14%,var(--card))] px-2 text-[10px] leading-4 font-semibold text-[color-mix(in_oklab,var(--cargo)_62%,var(--foreground))]" data-testid="structure-role-badge">{person.roleLabel}</span>
+      {person.onVacation ? <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-600/45 bg-emerald-50 px-1.5 text-[10px] leading-4 font-semibold text-emerald-800 dark:bg-emerald-500/10 dark:border-emerald-400/30 dark:text-emerald-300" data-testid="structure-vacation-badge"><TreePalm className="size-3" aria-hidden /> Férias</span> : null}
+      {area ? <span className="min-w-0 truncate pl-0.5 text-[11px] text-muted-foreground" title={area}>{area}</span> : null}
+    </span>
   )
 }
 

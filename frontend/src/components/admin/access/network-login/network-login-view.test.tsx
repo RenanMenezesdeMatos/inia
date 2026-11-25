@@ -13,7 +13,7 @@ vi.mock("@/services/access/network-login-service", () => service)
 import { NetworkLoginView } from "./network-login-view"
 
 const STATUS = {
-  configured: true, domain: "empresa.local", servers: ["ldaps://dc1.empresa.local:636", "ldaps://dc2.empresa.local:636"], weakKeyAllowed: true, httpsRequiredButMissing: false, maxFailures: 3,
+  configured: true, domain: "empresa.local", servers: ["ldaps://dc1.empresa.local:636", "ldaps://dc2.empresa.local:636"], weakKeyAllowed: true, shortLoginFormats: ["R + 7 dígitos"], httpsRequiredButMissing: false, maxFailures: 3,
   enabled: false, changedAt: null, changedBy: null, emergencyAccounts: [{ accountId: "a1", name: "Administrador INIA", email: "admin@empresa.com", active: true, lastLoginAt: null }],
   ambiguousMatriculas: [] as { matricula: string; accounts: number }[],
 }
@@ -36,6 +36,16 @@ describe("Login pela rede", () => {
     renderWithQuery(<NetworkLoginView />)
     expect(await screen.findByRole("button", { name: "Ligar o login pela rede" })).toBeDisabled()
     expect(screen.getByText(/Crie ao menos uma conta de emergência/)).toBeInTheDocument()
+  })
+  it("mostra os formatos de matrícula em que o login do AD pode estar sem o último dígito; sem nenhum, nada aparece", async () => {
+    service.fetchNetworkLoginStatus.mockResolvedValue(STATUS)
+    const shown = renderWithQuery(<NetworkLoginView />)
+    expect(await screen.findByText(/R \+ 7 dígitos.*só deixa entrar se a ID funcional/)).toBeInTheDocument()
+    shown.unmount()
+    service.fetchNetworkLoginStatus.mockResolvedValue({ ...STATUS, shortLoginFormats: [] })
+    renderWithQuery(<NetworkLoginView />)
+    await screen.findByRole("button", { name: "Ligar o login pela rede" })
+    expect(screen.queryByText(/sem o último dígito/)).not.toBeInTheDocument()
   })
   it("matrícula repetida: lista as matrículas e o botão fica travado dizendo o que falta", async () => {
     service.fetchNetworkLoginStatus.mockResolvedValue({ ...STATUS, ambiguousMatriculas: [{ matricula: "G0055350", accounts: 2 }] })

@@ -12,6 +12,8 @@ export const networkLoginStatusSchema = z.object({
   domain: z.string().nullable(),
   servers: z.array(z.string()),
   weakKeyAllowed: z.boolean(),
+  /** Formatos de matrícula em que o login do AD pode estar sem o último dígito (definidos na instalação). */
+  shortLoginFormats: z.array(z.string()).default([]),
   httpsRequiredButMissing: z.boolean(),
   maxFailures: z.number().int(),
   enabled: z.boolean(),

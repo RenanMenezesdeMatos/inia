@@ -353,8 +353,12 @@ export async function executeRun(ctx: DataHubContext, runId: string): Promise<Da
     const mapping = feedMappingSchema.parse(feed.mapping)
     const missing = missingMappedSources(contract, mapping, batch.records.slice(0, 200), batch.columns)
     const missingRequired = missing.filter((entry) => entry.required)
-    const fingerprint = fingerprintColumns(batch.columns, ctx.clock.now())
-    await ctx.db.query(`update data_feeds set schema_fingerprint = $2 where id = $1`, [feed.id, JSON.stringify(fingerprint)])
+    // Banco externo: as colunas do objeto já foram observadas AO VIVO em planRead; o lote (e o bruto retido) só traz as mapeadas, e
+    // gravá-las aqui esconderia do mapeamento as demais colunas da origem.
+    if (feed.connectorConfig.connector !== "DATABASE") {
+      const fingerprint = fingerprintColumns(batch.columns, ctx.clock.now())
+      await ctx.db.query(`update data_feeds set schema_fingerprint = $2 where id = $1`, [feed.id, JSON.stringify(fingerprint)])
+    }
     if (missingRequired.length > 0) {
       throw new DataRunError("DATA_SCHEMA_CHANGED", `A origem deixou de entregar: ${missingRequired.map((entry) => `"${entry.source}" (→ ${entry.field})`).join(", ")}. Ajuste o mapeamento do feed.`)
     }

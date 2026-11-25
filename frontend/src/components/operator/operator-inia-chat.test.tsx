@@ -12,6 +12,8 @@ import type { RealtimeTransportEvents } from "@/lib/realtime/gemini-realtime-tra
 import type { OperatorIndicatorsData, OperatorProfile } from "@/schemas/operator"
 import { readVoiceMuted, resetVoicePreferenceForTests, setVoiceMuted } from "@/lib/avatar/voice-preference"
 import { dateSeparatorLabel } from "@/lib/realtime/conversation-format"
+import { IniaPanelShell } from "./inia-panel/inia-panel-shell"
+import { resetSelfViewForTests } from "./inia-panel/self-view-preference"
 import { OperatorIniaChat } from "./operator-inia-chat"
 import { HumanSupportStateValueProvider } from "@/queries/human-support/use-human-support-state"
 import type { OperatorView } from "@/schemas/human-support/state.schema"
@@ -273,8 +275,8 @@ describe("OperatorIniaChat — voz e avatar", () => {
     const transport = await openVoice()
     expect(transport.calls).toEqual(["prime", "prime", "connect", "startTurn"])
     const driver = driverOf()
-    // No painel: busto ("chat"), de frente, ocupando o lugar do avatar; sem selo de preparação (isso é só da sessão de feedback).
-    expect(lastAvatarProps()).toEqual({ modelUrl: expect.any(String), state: "listening", driver, view: "chat", facing: "forward", statusLabel: null, backdrop: "studio", showStatus: false, attributionPlacement: "bottom", className: "h-full rounded-xl" })
+    // Na chamada do painel: de frente, na altura dos olhos ("call"), ocupando a imagem; sem selo de preparação (isso é só da sessão de feedback).
+    expect(lastAvatarProps()).toEqual({ modelUrl: expect.any(String), state: "listening", driver, view: "call", facing: "forward", statusLabel: null, backdrop: "studio", showStatus: false, attributionPlacement: "below-strip", className: "h-full rounded-none" })
     expect(driver.state).toBe("listening")
 
     act(() => transport.events.onStateChange?.("thinking"))
@@ -323,7 +325,7 @@ describe("OperatorIniaChat — voz e avatar", () => {
     const farewell = { boundary: vi.fn(), end: vi.fn(), cancel: vi.fn() }
     const startFarewell = vi.spyOn(driver, "startFarewell").mockReturnValue(farewell)
 
-    fireEvent.click(screen.getByRole("button", { name: "Encerrar avatar" }))
+    fireEvent.click(screen.getByRole("button", { name: "Encerrar chamada" }))
     expect(transport.calls.slice(-2)).toEqual(["interruptResponse", "disconnect"])
     expect(speechSynthesisMock.speak).toHaveBeenCalledTimes(1)
     const utterance = utterances[0]
@@ -338,16 +340,17 @@ describe("OperatorIniaChat — voz e avatar", () => {
     act(() => utterance.onend?.())
     expect(farewell.end).toHaveBeenCalledTimes(1)
     expect(driver.state).toBe("idle")
-    // Chamada encerrada: a foto dela e o convite para chamar de novo (como numa chamada de vídeo).
-    expect(screen.getByText("Chamada com a INIA encerrada")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Chamar a INIA" }))
-    expect(screen.getByRole("button", { name: "Encerrar avatar" })).toBeInTheDocument()
+    // Chamada encerrada: ela continua na tela (o mesmo avatar) e o convite para falar volta.
+    expect(screen.getByTestId("avatar-stub")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Encerrar chamada" })).toBeNull()
+    await act(async () => { fireEvent.click(avatarMicButton()) })
+    expect(screen.getByRole("button", { name: "Encerrar chamada" })).toBeInTheDocument()
   })
 
   it("tile de chamada no painel: nome e estado no canto, contorno quando ela fala, silenciar a INIA na barra da chamada", async () => {
     const transport = await openVoice()
     const tile = screen.getByTestId("inia-call-tile")
-    expect(screen.getByTestId("inia-call-status")).toHaveTextContent("INIA· Ouvindo você")
+    expect(screen.getByTestId("inia-call-status")).toHaveTextContent("Ouvindo você")
     act(() => transport.events.onStateChange?.("speaking"))
     expect(screen.getByTestId("inia-call-status")).toHaveTextContent("Falando")
     expect(tile).toHaveAttribute("data-speaking")
@@ -361,32 +364,246 @@ describe("OperatorIniaChat — voz e avatar", () => {
     expect(screen.getAllByRole("button", { name: "Ativar a voz da INIA" })).toHaveLength(1)
   })
 
-  it("o avatar começa compacto e só amplia a pedido: o mesmo avatar, com os mesmos controles e a voz intactos", async () => {
-    const transport = await openVoice()
-    const size = () => screen.getByTestId("inia-call-tile").parentElement!.parentElement!
-    expect(size()).toHaveAttribute("data-avatar-size", "compact")
+  it("fora da chamada: o convite para falar, a voz e a imagem dela; na chamada, os controles entram no mesmo lugar, sobre a imagem, e o avatar é o mesmo", async () => {
+    renderChat()
+    await waitFor(() => expect(avatarMicButton()).toBeEnabled())
     const avatar = screen.getByTestId("avatar-stub")
-    const expand = screen.getByRole("button", { name: "Ampliar a INIA" })
-    expect(expand).toHaveAttribute("aria-expanded", "false")
-    act(() => transport.events.onStateChange?.("speaking"))
-    expect(size()).toHaveAttribute("data-avatar-size", "compact")
+    const controls = () => within(screen.getByRole("group", { name: "Controles da chamada com a INIA" }))
+    expect(controls().getByRole("button", { name: "Falar com a INIA" })).toBeEnabled()
+    // Dá para silenciar antes de perguntar (toda resposta é falada, salvo no mudo).
+    expect(controls().getByRole("button", { name: "Silenciar a INIA" })).toBeEnabled()
+    expect(controls().queryByRole("button", { name: "Encerrar chamada" })).toBeNull()
+    expect(screen.getByTestId("inia-call-tile")).toContainElement(screen.getByRole("group", { name: "Controles da chamada com a INIA" }))
 
-    fireEvent.click(expand)
-    expect(size()).toHaveAttribute("data-avatar-size", "expanded")
-    expect(screen.getByRole("button", { name: "Compactar a INIA" })).toHaveAttribute("aria-expanded", "true")
+    fireEvent.click(avatarMicButton())
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Permitir microfone" })) })
+    expect(controls().getByRole("button", { name: "Encerrar chamada" })).toBeEnabled()
     expect(screen.getByTestId("avatar-stub")).toBe(avatar)
-    expect(screen.getByRole("group", { name: "Controles da chamada com a INIA" })).toBeInTheDocument()
+    // Ela escuta: o estado na imagem; as ondas da voz ficam só no campo.
+    expect(screen.getByTestId("inia-call-status")).toHaveTextContent("Ouvindo você")
+    act(() => doubles.transports[0]!.events.onStateChange?.("speaking"))
     expect(screen.getByTestId("inia-call-status")).toHaveTextContent("Falando")
-    expect(transport.calls).not.toContain("close")
+  })
 
-    fireEvent.click(screen.getByRole("button", { name: "Compactar a INIA" }))
-    expect(size()).toHaveAttribute("data-avatar-size", "compact")
+  it("legenda: só enquanto ela fala com voz, no ritmo dela, e some ao desligar; a fala continua na conversa", async () => {
+    const transport = await openVoice()
+    act(() => transport.events.onStateChange?.("thinking"))
+    act(() => transport.events.onOutputTranscript?.("Seu tempo médio caiu. Continue confirmando o motivo no início."))
+    expect(screen.queryByTestId("inia-call-caption")).toBeNull()
+    act(() => transport.events.onStateChange?.("speaking"))
+    expect(screen.getByTestId("inia-call-caption")).toHaveTextContent("Seu tempo médio caiu.")
+    expect(screen.getByTestId("inia-call-caption")).toHaveAttribute("aria-hidden", "true")
+    fireEvent.click(screen.getByRole("button", { name: "Ocultar legendas" }))
+    expect(screen.queryByTestId("inia-call-caption")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar legendas" }))
+    fireEvent.click(screen.getAllByRole("button", { name: "Silenciar a INIA" })[0]!)
+    expect(screen.queryByTestId("inia-call-caption")).toBeNull()
+  })
+
+  it("você no canto da chamada: aparece quando ela começa, acende quando você fala, dá para fechar e a escolha vale na próxima chamada", async () => {
+    resetSelfViewForTests()
+    renderChat()
+    await waitFor(() => expect(avatarMicButton()).toBeEnabled())
+    expect(screen.queryByTestId("inia-self-view")).toBeNull()
+    fireEvent.click(avatarMicButton())
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Permitir microfone" })) })
+    const transport = doubles.transports[0]!
+    expect(screen.getByTestId("inia-self-view")).toHaveTextContent("Você")
+    expect(screen.getByTestId("inia-self-view")).toHaveAttribute("data-speaking")
+    act(() => transport.events.onStateChange?.("speaking"))
+    expect(screen.getByTestId("inia-self-view")).not.toHaveAttribute("data-speaking")
+    fireEvent.click(screen.getByRole("button", { name: "Fechar o seu quadro" }))
+    expect(screen.queryByTestId("inia-self-view")).toBeNull()
+    // Nada muda na chamada, e a escolha fica guardada neste navegador.
+    expect(transport.calls).not.toContain("disconnect")
+    resetSelfViewForTests()
+    act(() => transport.events.onStateChange?.("listening"))
+    expect(screen.queryByTestId("inia-self-view")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar você na chamada" }))
+    expect(screen.getByTestId("inia-self-view")).toBeInTheDocument()
+  })
+
+  it("reduzir a INIA e voltar não mexe na chamada nem no avatar", async () => {
+    const transport = await openVoice()
+    const avatar = screen.getByTestId("avatar-stub")
+    const stage = () => screen.getByTestId("inia-avatar-stage")
+    expect(stage()).toHaveAttribute("data-stage-mode", "docked")
+    fireEvent.click(screen.getByRole("button", { name: "Reduzir a INIA" }))
+    expect(stage()).toHaveAttribute("data-stage-mode", "reduced")
+    expect(screen.getByRole("button", { name: "Encerrar chamada" })).toBeEnabled()
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar a INIA maior" }))
+    expect(stage()).toHaveAttribute("data-stage-mode", "docked")
+    expect(transport.calls).not.toContain("disconnect")
     expect(screen.getByTestId("avatar-stub")).toBe(avatar)
+  })
+
+  describe("no painel", () => {
+    function renderInPanel() {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      return render(
+        <QueryClientProvider client={client}>
+          <TooltipProvider>
+            <IniaPanelShell renderChat={(chat) => <OperatorIniaChat indicators={indicators} operator={operator} {...chat}/>} feedVisible onShowFeed={() => {}}><p>página</p></IniaPanelShell>
+          </TooltipProvider>
+        </QueryClientProvider>,
+      )
+    }
+    const startCall = async () => {
+      await waitFor(() => expect(avatarMicButton()).toBeEnabled())
+      fireEvent.click(avatarMicButton())
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Permitir microfone" })) })
+      const transport = doubles.transports[0]!
+      act(() => transport.events.onStateChange?.("idle"))
+      return transport
+    }
+
+    it("recolher preserva a chamada, o rascunho e o avatar: a INIA vai para a janela com os controles; encaixar devolve ao painel; encerrar é um clique", async () => {
+      renderInPanel()
+      await waitFor(() => expect(avatarMicButton()).toBeEnabled())
+      fireEvent.change(screen.getByPlaceholderText("Pergunte algo para a INIA..."), { target: { value: "rascunho" } })
+      const transport = await startCall()
+      const avatar = screen.getByTestId("avatar-stub")
+      const panel = screen.getByRole("complementary", { name: "INIA" })
+      fireEvent.click(screen.getByRole("button", { name: "Recolher o painel (a chamada continua)" }))
+      expect(panel).toHaveAttribute("data-state", "collapsed")
+      const win = screen.getByRole("dialog", { name: "INIA" })
+      expect(within(win).getByTestId("avatar-stub")).toBe(avatar)
+      expect(within(win).getByRole("button", { name: "Falar com a INIA" })).toBeEnabled()
+      // Na chamada os controles ficam à mão: não dá para guardá-la só na aba.
+      expect(within(win).queryByRole("button", { name: "Guardar na aba lateral" })).toBeNull()
+      expect(transport.calls).not.toContain("disconnect")
+
+      fireEvent.click(within(win).getByRole("button", { name: "Encaixar no painel" }))
+      expect(panel).toHaveAttribute("data-state", "open")
+      expect(within(panel).getByTestId("avatar-stub")).toBe(avatar)
+      expect(screen.getByPlaceholderText("Pergunte algo para a INIA...")).toHaveValue("rascunho")
+
+      fireEvent.click(screen.getByRole("button", { name: "Recolher o painel (a chamada continua)" }))
+      fireEvent.click(within(screen.getByRole("dialog", { name: "INIA" })).getByRole("button", { name: "Encerrar chamada" }))
+      expect(transport.calls).toContain("disconnect")
+    })
+
+    it("sem chamada: guardar deixa só a aba na borda, que reabre o painel com a mesma conversa", async () => {
+      renderInPanel()
+      await waitFor(() => expect(avatarMicButton()).toBeEnabled())
+      fireEvent.click(screen.getByRole("button", { name: "Recolher o painel" }))
+      fireEvent.click(within(screen.getByRole("dialog", { name: "INIA" })).getByRole("button", { name: "Guardar na aba lateral" }))
+      expect(screen.queryByRole("dialog", { name: "INIA" })).toBeNull()
+      const tab = screen.getByRole("button", { name: "Abrir o painel da INIA" })
+      fireEvent.click(tab)
+      expect(screen.getByRole("complementary", { name: "INIA" })).toHaveAttribute("data-state", "open")
+      expect(screen.getByRole("button", { name: "Recolher o painel" })).toHaveFocus()
+    })
+
+    it("janela maior: flutua sobre a página com o painel aberto, e \"Trazer para cá\" encaixa", async () => {
+      vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("min-width"), media: query, addEventListener: () => {}, removeEventListener: () => {} }))
+      renderInPanel()
+      await waitFor(() => expect(avatarMicButton()).toBeEnabled())
+      const avatar = screen.getByTestId("avatar-stub")
+      fireEvent.click(screen.getByRole("button", { name: "INIA maior, flutuando" }))
+      expect(within(screen.getByRole("dialog", { name: "INIA" })).getByTestId("avatar-stub")).toBe(avatar)
+      expect(screen.getByPlaceholderText("Pergunte algo para a INIA...")).toBeEnabled()
+      fireEvent.click(screen.getByRole("button", { name: /Trazer para cá/ }))
+      expect(screen.queryByRole("dialog", { name: "INIA" })).toBeNull()
+      expect(within(screen.getByRole("complementary", { name: "INIA" })).getByTestId("avatar-stub")).toBe(avatar)
+    })
+
+    const desktop = () => vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("min-width"), media: query, addEventListener: () => {}, removeEventListener: () => {} }))
+    const win = () => screen.getByRole("dialog", { name: "INIA" })
+    /** Como quem usa o teclado: o foco está no botão que vai sair de cena. */
+    const press = (button: HTMLElement) => {
+      button.focus()
+      fireEvent.click(button)
+    }
+
+    it("foco: aumentar, trazer, diminuir e guardar levam ao controle equivalente, nunca ao vazio", async () => {
+      desktop()
+      renderInPanel()
+      await waitFor(() => expect(avatarMicButton()).toBeEnabled())
+      press(screen.getByRole("button", { name: "INIA maior, flutuando" }))
+      expect(within(win()).getByRole("button", { name: "Diminuir a INIA" })).toHaveFocus()
+      press(screen.getByRole("button", { name: /Trazer para cá/ }))
+      expect(within(screen.getByRole("complementary", { name: "INIA" })).getByRole("button", { name: "INIA maior, flutuando" })).toHaveFocus()
+      press(screen.getByRole("button", { name: "INIA maior, flutuando" }))
+      press(screen.getByRole("button", { name: "Diminuir a INIA" }))
+      expect(screen.getByRole("button", { name: "INIA maior, flutuando" })).toHaveFocus()
+
+      // Com o painel recolhido: pequena ↔ maior, e a aba ao guardar.
+      press(screen.getByRole("button", { name: "Recolher o painel" }))
+      press(within(win()).getByRole("button", { name: "INIA maior, flutuando" }))
+      expect(within(win()).getByRole("button", { name: "Diminuir a INIA" })).toHaveFocus()
+      press(within(win()).getByRole("button", { name: "Diminuir a INIA" }))
+      expect(within(win()).getByRole("button", { name: "INIA maior, flutuando" })).toHaveFocus()
+      press(within(win()).getByRole("button", { name: "Encaixar no painel" }))
+      expect(screen.getByRole("button", { name: "Recolher o painel" })).toHaveFocus()
+      press(screen.getByRole("button", { name: "Recolher o painel" }))
+      press(within(win()).getByRole("button", { name: "Guardar na aba lateral" }))
+      expect(screen.getByRole("button", { name: "Abrir o painel da INIA" })).toHaveFocus()
+    })
+
+    it("foco: soltar a janela maior sobre o painel aberto devolve ao painel", async () => {
+      desktop()
+      renderInPanel()
+      await waitFor(() => expect(avatarMicButton()).toBeEnabled())
+      press(screen.getByRole("button", { name: "INIA maior, flutuando" }))
+      const rect = (left: number, width: number) => ({ left, right: left + width, top: 0, bottom: 600, width, height: 600, x: left, y: 0 }) as DOMRect
+      vi.spyOn(screen.getByRole("complementary", { name: "INIA" }), "getBoundingClientRect").mockReturnValue(rect(900, 400))
+      const drag = (target: Element | Window, type: string, x: number) => act(() => void target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: 100 })))
+      drag(win(), "pointerdown", 300)
+      drag(window, "pointermove", 1_000)
+      drag(window, "pointerup", 1_000)
+      expect(screen.queryByRole("dialog", { name: "INIA" })).toBeNull()
+      expect(screen.getByRole("button", { name: "INIA maior, flutuando" })).toHaveFocus()
+    })
+
+    it("foco: na janela estreita a imagem no painel não tem o botão de aumentar; \"Trazer para cá\" leva ao de recolher", async () => {
+      renderInPanel()
+      await waitFor(() => expect(avatarMicButton()).toBeEnabled())
+      press(screen.getByRole("button", { name: "Recolher o painel" }))
+      press(within(win()).getByRole("button", { name: "INIA maior, flutuando" }))
+      fireEvent.click(screen.getByRole("button", { name: "Abrir o painel da INIA" }))
+      press(screen.getByRole("button", { name: /Trazer para cá/ }))
+      expect(screen.queryByRole("dialog", { name: "INIA" })).toBeNull()
+      expect(screen.getByRole("button", { name: "Recolher o painel" })).toHaveFocus()
+    })
+
+    it("crédito do avatar: na imagem da chamada fica abaixo da faixa do alto (etiqueta e botões); reduzida, no canto de sempre", async () => {
+      desktop()
+      renderInPanel()
+      await waitFor(() => expect(avatarMicButton()).toBeEnabled())
+      const placement = () => lastAvatarProps().attributionPlacement
+      expect(placement()).toBe("below-strip")
+      fireEvent.click(screen.getByRole("button", { name: "INIA maior, flutuando" }))
+      expect(placement()).toBe("below-strip")
+      fireEvent.click(screen.getByRole("button", { name: "Diminuir a INIA" }))
+      fireEvent.click(screen.getByRole("button", { name: "Recolher o painel" }))
+      expect(win()).toBeInTheDocument()
+      expect(placement()).toBe("below-strip")
+      fireEvent.click(within(win()).getByRole("button", { name: "Encaixar no painel" }))
+      fireEvent.click(screen.getByRole("button", { name: "Reduzir a INIA" }))
+      expect(placement()).toBe("top")
+    })
+
+    it("toque em 320 px: o quadro da pessoa some quando não cabe ao lado dos controles; fechado, o ícone para reabrir continua", async () => {
+      resetSelfViewForTests()
+      renderInPanel()
+      await startCall()
+      const tile = screen.getByTestId("inia-self-view")
+      const strip = screen.getByRole("group", { name: "Controles da chamada com a INIA" }).parentElement!.parentElement!
+      // A medida é a da própria imagem (contêiner), não a da janela: 4 botões de 36 + microfone de 40 + folgas = 208, mais 80 do quadro e 16 de margem.
+      expect(screen.getByTestId("inia-call-tile")).toHaveClass("[container-type:inline-size]")
+      expect(tile).toHaveClass("pointer-coarse:@max-[304px]:hidden")
+      expect(strip).toHaveClass("pointer-coarse:@max-[304px]:[--self-view:0px]!")
+      expect(strip.style.gridTemplateColumns).toContain("var(--self-view)")
+      fireEvent.click(screen.getByRole("button", { name: "Fechar o seu quadro" }))
+      expect(screen.getByRole("button", { name: "Mostrar você na chamada" })).not.toHaveClass("pointer-coarse:@max-[304px]:hidden")
+      fireEvent.click(screen.getByRole("button", { name: "Mostrar você na chamada" }))
+    })
   })
 
   it("desmontar no meio da despedida cala a fala do navegador e solta os handlers", async () => {
     const transport = await openVoice()
-    fireEvent.click(screen.getByRole("button", { name: "Encerrar avatar" }))
+    fireEvent.click(screen.getByRole("button", { name: "Encerrar chamada" }))
     const utterance = utterances[0]
     act(() => utterance.onstart?.())
     expect(transport.calls).toContain("disconnect")
@@ -521,7 +738,7 @@ describe("OperatorIniaChat — conversas", () => {
       .mockResolvedValueOnce({ conversation: summary(CONV) as never, messages: [message("Use a opção Contestar na fatura.", "assistant", "c2")], hasMore: false, pendingReply: null })
     renderChat()
     expect(await screen.findByText("Como abro uma contestação?")).toBeInTheDocument()
-    expect(await screen.findByText("Consultando a base de conhecimento…")).toBeInTheDocument()
+    expect(await screen.findByTestId("text-reply-status")).toHaveTextContent("Consultando a base de conhecimento…")
     expect(screen.getByRole("button", { name: "Parar resposta" })).toBeInTheDocument()
     expect(await screen.findByText("Use a opção Contestar na fatura.", undefined, { timeout: 6_000 })).toBeInTheDocument()
     expect(textClient.fetchConversationMessages).toHaveBeenLastCalledWith(CONV, { after: "c1", limit: 30 })
@@ -877,7 +1094,7 @@ describe("OperatorIniaChat — ela fala por padrão; mudo = só texto", () => {
     })
     await act(async () => { transport.events.onTurnComplete?.() })
     expect(transportModule.recordVoiceTurn).toHaveBeenCalledWith(expect.objectContaining({ userText: "qual meu TMA?", userChannel: "chat", assistantText: "Seu TMA está em 320 segundos." }))
-    expect(screen.getByText("Seu TMA está em 320 segundos.")).toBeInTheDocument()
+    expect(within(screen.getByTestId("inia-conversation")).getByText("Seu TMA está em 320 segundos.")).toBeInTheDocument()
   })
 
   it("voz indisponível: a MESMA pergunta segue por escrito (uma bolha só, nada se perde)", async () => {
@@ -1085,7 +1302,7 @@ describe("OperatorIniaChat — caracterização do comportamento", () => {
       transport.events.onStateChange?.("speaking")
     })
     // Legenda ao vivo enquanto ela fala (antes de a resposta virar mensagem).
-    expect(screen.getByText("A sua meta é de dez por cento.")).toBeInTheDocument()
+    expect(within(screen.getByTestId("inia-conversation")).getByText("A sua meta é de dez por cento.")).toBeInTheDocument()
     expect(messageTexts()).toEqual([])
     await act(async () => { transport.events.onTurnComplete?.() })
     expect(messageTexts()).toEqual([expect.stringContaining("qual é a minha meta?"), expect.stringContaining("A sua meta é de dez por cento.")])
@@ -1513,7 +1730,7 @@ describe("OperatorIniaChat — descurtida com motivo no chat livre (Apoio com An
     expect(textClient.saveMessageRating).toHaveBeenCalledWith(CONV, "m-c2", "down", { reason: "NOT_FOUND", comment: "", stillNeedsHelp: false })
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
     expect(screen.getByRole("button", { name: "Resposta não foi útil" })).toHaveAttribute("aria-pressed", "true")
-    expect(screen.getByText("👎")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Resposta não foi útil" })).toHaveAttribute("aria-pressed", "true")
   })
 
   it("\"Outro\" exige comentário; fechar sem enviar não grava nada", async () => {
@@ -1542,7 +1759,7 @@ describe("OperatorIniaChat — descurtida com motivo no chat livre (Apoio com An
     await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "Enviar" })) })
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("Não foi possível registrar agora.")
     expect(within(dialog).getByRole("radio", { name: "Resposta incompleta" })).toBeChecked()
-    expect(screen.queryByText("👎")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Resposta não foi útil", hidden: true })).toHaveAttribute("aria-pressed", "false")
   })
 
   it("com \"Sim\": sem o apoio ligado, avisa que ainda não está disponível para a equipe", async () => {
@@ -1566,7 +1783,7 @@ describe("OperatorIniaChat — descurtida com motivo no chat livre (Apoio com An
     expect(within(dialog).getByRole("radio", { name: "Não" })).toBeChecked()
     await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "Retirar avaliação" })) })
     expect(textClient.saveMessageRating).toHaveBeenCalledWith(CONV, "m-c2", undefined, undefined)
-    await waitFor(() => expect(screen.queryByText("👎")).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole("button", { name: "Resposta não foi útil", hidden: true })).toHaveAttribute("aria-pressed", "false"))
   })
 
   it("recado de Workflow mantém o polegar de sempre (sem formulário)", async () => {

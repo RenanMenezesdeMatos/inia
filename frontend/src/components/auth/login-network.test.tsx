@@ -9,8 +9,9 @@ import { renderWithQuery } from "@/components/analytics/testing/render-with-quer
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
 vi.mock("@/lib/auth/session-navigation", () => ({ loadSessionDocument: vi.fn() }))
 
+import { loadSessionDocument } from "@/lib/auth/session-navigation"
+import { fetchLoginOptions, login, networkRetryMessage, officialAddressHint, sessionNotKeptMessage, unreachableServerMessage } from "@/services/auth/auth-service"
 import { LoginForm } from "./login-form"
-import { fetchLoginOptions, login, networkRetryMessage } from "@/services/auth/auth-service"
 
 /** Login pela rede na tela (achados QA-02 e QA-04 da run-9). */
 beforeAll(installJsdomStubs)
@@ -72,5 +73,58 @@ describe("matrícula travada (QA-04)", () => {
   })
   it("sem horário, só a mensagem do backend", () => {
     expect(networkRetryMessage(message, null)).toBe(message)
+  })
+})
+
+describe("falhas que deixavam a pessoa sem explicação (25/11/2026)", () => {
+  const submit = (matricula: string, password = "Rede#2026") => {
+    renderWithQuery(<LoginForm networkLogin />)
+    fireEvent.change(screen.getByLabelText("Matrícula de rede"), { target: { value: matricula } })
+    fireEvent.change(screen.getByLabelText("Senha de rede"), { target: { value: password } })
+    fireEvent.click(screen.getByRole("button", { name: "Entrar" }))
+  }
+  it("e-mail salvo do login antigo no campo da matrícula: avisa sem gastar tentativa", async () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal("fetch", fetchSpy)
+    submit("maria.silva@empresa.com")
+    expect(await screen.findByText(/Digite a sua matrícula de rede/)).toBeInTheDocument()
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+  it("campo vazio: pede o que falta sem gastar tentativa; a senha nunca é aparada", async () => {
+    const fetchSpy = vi.fn(async () => jsonResponse(401, { error: { code: "INVALID_CREDENTIALS", message: "x" } }))
+    vi.stubGlobal("fetch", fetchSpy)
+    submit("  ")
+    expect(await screen.findByText("Informe sua matrícula de rede.")).toBeInTheDocument()
+    expect(fetchSpy).not.toHaveBeenCalled()
+    cleanup()
+    submit(" g0055350@empresa.local ", " senha com espaço ")
+    await screen.findByText("x")
+    expect(JSON.parse(String((fetchSpy.mock.calls[0] as unknown as [string, RequestInit])[1].body))).toEqual({ matricula: "g0055350@empresa.local", password: " senha com espaço " })
+  })
+  it("senha aceita mas o navegador não guardou a sessão: explica, em vez de voltar ao login em silêncio", async () => {
+    const user = { id: "a", personId: "p", name: "Maria", role: "OPERATOR", email: "x@y.co", avatarUrl: null, jobTitle: null, teamId: null, teamName: null }
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => (String(url).endsWith("/login") ? jsonResponse(200, { data: user }) : jsonResponse(401, { error: { code: "UNAUTHENTICATED" } }))))
+    submit("G0055350")
+    expect(await screen.findByText(/o navegador não guardou a sessão/)).toBeInTheDocument()
+    expect(loadSessionDocument).not.toHaveBeenCalled()
+  })
+  it("servidor inalcançável e origem bloqueada: mensagem com o endereço oficial, nunca 'Failed to fetch'", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch") }))
+    await expect(login({ matricula: "G0055350", password: "x" })).rejects.toThrow("Não foi possível falar com o servidor da INIA.")
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(403, { error: { code: "CROSS_SITE_REQUEST_BLOCKED", message: "Requisição bloqueada: origem não autorizada." } })))
+    await expect(login({ matricula: "G0055350", password: "x" })).rejects.toThrow("Não foi possível falar com o servidor da INIA.")
+    expect(officialAddressHint("http://servidor", "https://servidor.empresa.local")).toBe("https://servidor.empresa.local")
+    expect(officialAddressHint("http://servidor.empresa.local", "https://servidor.empresa.local")).toBe("https://servidor.empresa.local")
+    expect(officialAddressHint("https://servidor.empresa.local", "https://servidor.empresa.local")).toBeNull()
+    expect(officialAddressHint("http://localhost:3000", "http://localhost:3333")).toBeNull()
+    expect(unreachableServerMessage("https://servidor.empresa.local")).toContain("Abra pelo endereço oficial: https://servidor.empresa.local")
+    expect(sessionNotKeptMessage("https://servidor.empresa.local")).toContain("https://servidor.empresa.local")
+  })
+})
+
+describe("ID do AD não confirmada", () => {
+  it("mostra a mensagem própria do servidor (quem resolve é o administrador), nunca 'tente de novo em alguns minutos'", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(403, { error: { code: "NETWORK_IDENTITY_UNREADABLE", message: "Sua senha de rede foi aceita, mas a INIA não conseguiu confirmar a sua ID no AD. Procure o administrador da INIA." } })))
+    await expect(login({ matricula: "R4567891", password: "x" })).rejects.toThrow("Procure o administrador da INIA.")
   })
 })

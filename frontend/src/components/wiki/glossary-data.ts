@@ -68,5 +68,6 @@ export const GLOSSARY: GlossaryTerm[] = [
   { term: "Subgrupo", definition: "Subdivisão de um Grupo, com metas próprias por indicador. Quem não tem Subgrupo cai num balde explícito \"Sem subgrupo\" nos rankings.", href: "/wiki/estrutura#grupo-subgrupo" },
   { term: "Surface", definition: "Onde algo aparece: Acompanhamento, Notificação, Pendências, Avatar, Chat. Surface é entrega; Trigger é disparo — nunca a mesma coisa.", href: "/wiki/workflows/outputs#surfaces", aliases: ["Superfície"] },
   { term: "Trigger", definition: "O que inicia um Workflow: Flag de canal, Indicador ou Agenda. Chat e Avatar não são Triggers.", href: "/wiki/workflows/triggers", aliases: ["Gatilho"] },
+  { term: "Universo de atuação", definition: "Público que o colaborador atende: B2B, B2C ou B2X, sempre um só. Vem do Grupo (ou do Subgrupo, quando difere); na pessoa fica só a exceção. Sem nenhum, fica pendente.", href: "/wiki/central-de-dados#universo", aliases: ["B2B", "B2C", "B2X"] },
   { term: "Workflow", definition: "Automação visual orientada por evento ou dados: Trigger → Contexto → Condição → Ações/IA → Decisões → Outputs.", href: "/wiki/workflows" },
 ]

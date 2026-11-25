@@ -30,6 +30,8 @@ export type NetworkLoginSettingsDeps = {
   /** Servidores configurados (só para mostrar). */
   servers: string[]
   weakKeyAllowed: boolean
+  /** Formatos de matrícula com o login sem o último dígito (`AD_LOGIN_WITHOUT_LAST_DIGIT`, só para mostrar). */
+  shortLoginFormats?: readonly string[]
   /** Produção sem cookie seguro: a senha de rede passaria sem criptografia. */
   httpsRequired: boolean
   now: () => Date
@@ -40,6 +42,7 @@ export type NetworkLoginStatus = {
   domain: string | null
   servers: string[]
   weakKeyAllowed: boolean
+  shortLoginFormats: readonly string[]
   httpsRequiredButMissing: boolean
   maxFailures: number
   enabled: boolean
@@ -60,6 +63,7 @@ export async function networkLoginStatus(deps: NetworkLoginSettingsDeps, organiz
     domain: deps.directory.domain,
     servers: deps.servers,
     weakKeyAllowed: deps.weakKeyAllowed,
+    shortLoginFormats: deps.shortLoginFormats ?? [],
     httpsRequiredButMissing: deps.httpsRequired,
     maxFailures: NETWORK_LOGIN_MAX_FAILURES,
     enabled: org?.enabled === true,

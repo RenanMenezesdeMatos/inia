@@ -41,11 +41,11 @@ const JOAO: AccessAccount = { ...MARIA, accountId: "acc-joao", email: "joao@inia
 /** A mesma pessoa vista pela lista de Acessos (pessoas identificadas × situação do login). */
 const identified = (account: AccessAccount, patch: Partial<IdentifiedUser> = {}): IdentifiedUser => ({
   personId: account.collaborator.personId, name: account.collaborator.name, matricula: null, jobTitle: account.collaborator.jobTitle, level: account.collaborator.level, personActive: true,
-  team: account.collaborator.team, subteam: account.collaborator.subteam, self: false, accessStatus: "ACTIVE", temporaryPasswordExpired: false, canIssueTemporaryPassword: true,
-  account: { accountId: account.accountId, email: account.email, active: true, lastLoginAt: null, passwordChangeRequired: false, temporaryPasswordIssuedAt: null, temporaryPasswordExpiresAt: null, accessDisabledAt: null, roles: account.roles.map((role) => ({ code: role.roleCode, name: role.roleName })), credentialProvider: "LOCAL" },
+  team: account.collaborator.team, subteam: account.collaborator.subteam, self: false, accessStatus: "ACTIVE", temporaryPasswordExpired: false, canIssueTemporaryPassword: true, enableCredential: "LOCAL", networkIssue: null, networkAttempts: null, loginGuide: { kind: "EMAIL", typed: account.email, directoryLogins: [], proven: false },
+  account: { accountId: account.accountId, email: account.email, active: true, lastLoginAt: null, passwordChangeRequired: false, temporaryPasswordIssuedAt: null, temporaryPasswordExpiresAt: null, accessDisabledAt: null, roles: account.roles.map((role) => ({ code: role.roleCode, name: role.roleName })), credentialProvider: "LOCAL", disabledReason: null },
   ...patch,
 })
-const page = (items: IdentifiedUser[]) => ({ items, total: items.length, page: 1, pageSize: 20, temporaryPasswordTtlHours: 72 })
+const page = (items: IdentifiedUser[]) => ({ items, total: items.length, page: 1, pageSize: 20, temporaryPasswordTtlHours: 72, networkLoginEnabled: false })
 const ROLE = (code: string, name: string, assignableByYou: boolean, allowedScopes: AccessRole["allowedScopes"]): AccessRole => ({ code, name, description: `${name} — descrição`, system: true, allowedScopes, permissions: [{ code: "x", label: `permissão de ${name}` }], assignableByYou })
 const ROLES = [ROLE("ADMINISTRADOR_GERAL", "Administrador geral", false, ["ORGANIZATION"]), ROLE("ADMINISTRADOR", "Administrador", false, ["ORGANIZATION", "GROUP", "SUBGROUP"]), ROLE("QA_DE_FEEDBACK", "QA de feedback", true, ["ORGANIZATION", "GROUP", "SUBGROUP", "MY_STRUCTURE"])]
 
@@ -280,7 +280,7 @@ describe("Liberação de acesso — habilitar, senha temporária e desabilitar",
   const SEM_CONTA = identified(JOAO, { personId: "p-ana", name: "Ana Prado", accessStatus: "DISABLED", canIssueTemporaryPassword: false, account: null })
   const PENDENTE = identified(MARIA, { accessStatus: "PENDING_PASSWORD_CHANGE", temporaryPasswordExpired: true, account: { ...identified(MARIA).account!, passwordChangeRequired: true, temporaryPasswordIssuedAt: "2026-10-01T12:00:00.000Z", temporaryPasswordExpiresAt: "2026-10-04T12:00:00.000Z" } })
   const EU = identified(JOAO, { self: true })
-  const ISSUED = { personId: "p-ana", accountId: "acc-ana", name: "Ana Prado", email: "ana.prado@inia.local", temporaryPassword: "Kq7m-Pz4x-Wn9r", expiresAt: "2026-10-09T12:00:00.000Z" }
+  const ISSUED = { credential: "TEMPORARY_PASSWORD" as const, personId: "p-ana", accountId: "acc-ana", name: "Ana Prado", email: "ana.prado@inia.local", temporaryPassword: "Kq7m-Pz4x-Wn9r", expiresAt: "2026-10-09T12:00:00.000Z" }
 
   it("situação de cada pessoa e ações conforme o estado: sem conta → Habilitar; ativa/pendente → nova senha e desabilitar; nunca no próprio acesso", async () => {
     service.fetchIdentifiedUsers.mockResolvedValue(page([SEM_CONTA, PENDENTE, EU]))
@@ -299,19 +299,16 @@ describe("Liberação de acesso — habilitar, senha temporária e desabilitar",
   })
 
   it("login pela rede ligado: conta que entra pelo AD não oferece nova senha temporária e explica por quê; conta local (emergência) oferece", async () => {
-    const REDE = identified(MARIA, { canIssueTemporaryPassword: false, account: { ...identified(MARIA).account!, credentialProvider: "NETWORK" } })
+    const REDE = identified(MARIA, { canIssueTemporaryPassword: false, enableCredential: "NETWORK", matricula: "G0012345", loginGuide: { kind: "NETWORK", typed: "G0012345", directoryLogins: ["G0012345"], proven: false }, account: { ...identified(MARIA).account!, credentialProvider: "NETWORK" } })
     const EMERGENCIA = identified(JOAO)
-    service.fetchIdentifiedUsers.mockResolvedValue(page([REDE, EMERGENCIA]))
+    service.fetchIdentifiedUsers.mockResolvedValue({ ...page([REDE, EMERGENCIA]), networkLoginEnabled: true })
     renderWithQuery(<AccessUsersView canManageUsers canAssignRoles={false} />)
     const [rede, emergencia] = await screen.findAllByTestId("access-user-row")
-    const blocked = within(rede!).getByRole("button", { name: /Nova senha temporária/ })
-    expect(blocked).toBeDisabled()
-    expect(blocked).toHaveAccessibleDescription(/gerenciada pelo Active Directory/)
+    expect(within(rede!).queryByRole("button", { name: /Nova senha temporária/ })).not.toBeInTheDocument()
+    expect(within(rede!).getByText("+ senha do Windows")).toBeInTheDocument()
     expect(within(rede!).getByRole("button", { name: /Desabilitar/ })).toBeEnabled()
-    fireEvent.click(blocked)
-    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
     expect(within(emergencia!).getByRole("button", { name: /Nova senha temporária/ })).toBeEnabled()
-    expect(within(emergencia!).queryByText(/Active Directory/)).not.toBeInTheDocument()
+    expect(within(emergencia!).getByText("+ senha da INIA")).toBeInTheDocument()
   })
 
   it("aberta pelo Novo usuário com uma matrícula que já existe: filtra pela matrícula e abre \"Habilitar acesso\" da pessoa", async () => {

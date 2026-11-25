@@ -42,7 +42,7 @@ function setup() {
     ],
   })
   const deps = { repository: memory.repository, now: NOW }
-  const accountDeps: AccountAccessDeps = { ...deps, accounts: createInMemoryAccountAccessRepository(memory, { teams: [{ id: T_B2B, name: "B2B" }, { id: T_COB, name: "Cobrança" }], subteams: [{ id: S_CONTAS, name: "Contas" }, { id: S_PREMIUM, name: "Premium" }, { id: S_COB, name: "Cobrança Geral" }] }), hashPassword: async (plain) => `hash:${plain}`, generatePassword: (() => { let n = 0; return () => `Temp-${++n}-Aa` })(), temporaryPasswordTtlHours: 72 }
+  const accountDeps: AccountAccessDeps = { ...deps, accounts: createInMemoryAccountAccessRepository(memory, { teams: [{ id: T_B2B, name: "B2B" }, { id: T_COB, name: "Cobrança" }], subteams: [{ id: S_CONTAS, name: "Contas" }, { id: S_PREMIUM, name: "Premium" }, { id: S_COB, name: "Cobrança Geral" }] }), hashPassword: async (plain) => `hash:${plain}`, generatePassword: (() => { let n = 0; return () => `Temp-${++n}-Aa` })(), networkAttempts: { summaries: async () => new Map(), releaseUnreached: async () => undefined }, networkLoginEnabled: async () => false, networkDomain: null, temporaryPasswordTtlHours: 72 }
   const actor = (key: keyof typeof PEOPLE) => ({ organizationId: PEOPLE[key].organizationId, accountId: accountOf(key).id, personId: PEOPLE[key].id })
   const context = (key: keyof typeof PEOPLE) => memory.repository.loadContext(PEOPLE[key].organizationId, accountOf(key).id)
   return { memory, deps, accountDeps, actor, context }
@@ -312,7 +312,7 @@ describe("Liberação de acesso — habilitar, senha temporária e desabilitar (
     await expect(disableAccess(s.accountDeps, s.actor("geral"), { accountId: accountOf("pedro").id })).rejects.toMatchObject({ code: "ACCESS_ALREADY_DISABLED" })
     await expect(issueTemporaryPassword(s.accountDeps, s.actor("geral"), { accountId: accountOf("pedro").id })).rejects.toMatchObject({ code: "ACCESS_NOT_ENABLED" })
     const issued = await enableAccess(s.accountDeps, s.actor("geral"), { personId: PEOPLE.pedro.id })
-    expect(issued.email).toBe("pedro@inia.local")
+    expect(issued).toMatchObject({ credential: "TEMPORARY_PASSWORD", email: "pedro@inia.local" })
     expect(accountFor(s, "pedro")).toMatchObject({ active: true, passwordChangeRequired: true, sessionVersion: 2, accessDisabledAt: null })
   })
 

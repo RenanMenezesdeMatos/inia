@@ -141,12 +141,14 @@ export function peopleBelow(scope: ViewerScope, structure: ResolvedStructure): P
 }
 
 /** Líder que está acima de algum membro do recorte (entra no recorte quando a população inclui líderes). */
-function isLeaderAbove(scope: ViewerScope, person: PersonNode, members: PersonNode[]): boolean {
+export function isLeaderAbove(scope: ViewerScope, person: PersonNode, members: PersonNode[]): boolean {
   if (person.role === "OPERATOR") return false
   return members.some((member) => {
     let cursor = member.reportsToId
-    while (cursor) {
+    const visited = new Set<string>()
+    while (cursor && !visited.has(cursor)) {
       if (cursor === person.id) return true
+      visited.add(cursor)
       cursor = scope.nodes.get(cursor)?.reportsToId ?? null
     }
     return false

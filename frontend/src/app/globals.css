@@ -481,6 +481,16 @@
   font-weight: 600;
 }
 
+/* Organograma: neutro, um tom abaixo da tela, com pontos leves — os cards brancos se destacam sem cor no fundo. */
+.inia-org-canvas {
+  --org-canvas-dot: color-mix(in oklab, var(--foreground) 14%, transparent);
+  background: color-mix(in oklab, var(--foreground) 2%, var(--muted));
+}
+.dark .inia-org-canvas {
+  --org-canvas-dot: color-mix(in oklab, var(--foreground) 12%, transparent);
+  background: var(--canvas);
+}
+
 /*
  * Sinal de percurso em edges do React Flow (components/flow/flow-travel-signal.ts): a edge em
  * viagem usa o `animated` nativo da biblioteca — a MESMA marcha de traços da conexão

@@ -6,6 +6,7 @@ import { requirePermission } from "../../access/presentation/require-permission.
 import type { DirectoryAuthenticator } from "../application/directory-authenticator.js"
 import { networkLoginStatus, probeNetworkLoginServers, setNetworkLogin, type NetworkLoginSettingsDeps } from "../application/network-login-settings.js"
 import { directoryFromEnv, parseLdapUrls } from "../infrastructure/ldap-directory-authenticator.js"
+import { parseShortLoginFormats } from "../domain/network-login.js"
 import { createPostgresNetworkLoginRepository } from "../infrastructure/postgres-network-login-repository.js"
 import { sessionUser } from "./session-user.js"
 
@@ -26,6 +27,7 @@ export function createNetworkLoginAdminRouter(db: Database, options: { directory
     directory: options.directory ?? directoryFromEnv(),
     servers: options.servers ?? parseLdapUrls(env.AD_LDAP_URLS),
     weakKeyAllowed: env.AD_TLS_ALLOW_WEAK_KEY === "true",
+    shortLoginFormats: parseShortLoginFormats(env.AD_LOGIN_WITHOUT_LAST_DIGIT).map((format) => `${format.prefix} + ${format.length - format.prefix.length} dígitos`),
     httpsRequired: options.httpsRequired ?? (env.NODE_ENV === "production" && !env.sessionCookieSecure),
     now: options.now ?? (() => new Date()),
   }

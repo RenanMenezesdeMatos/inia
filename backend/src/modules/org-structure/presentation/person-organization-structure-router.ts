@@ -7,6 +7,7 @@ import { personAvatarLoader } from "../../profile-preferences/application/person
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { postgresHierarchyReader } from "../../workflows/application/organizational-recipient.js"
 import { loadManagementMetrics } from "../application/load-management-metrics.js"
+import { loadPeopleOnVacation } from "../application/load-people-on-vacation.js"
 import { buildPersonOrganizationStructure, type PersonOrganizationStructureDeps } from "../application/person-organization-structure.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 
@@ -35,6 +36,7 @@ export function createPersonOrganizationStructureRouter(db: Database, deps?: Par
     personAvatars: deps?.personAvatars ?? personAvatarLoader(db),
     structureFreshness: deps?.structureFreshness ?? (async (organizationId) => resolveOrganizationalStructureFreshness(db, organizationId, now(), await resolveOrganizationTimezone(db, organizationId))),
     managementMetrics: deps?.managementMetrics ?? ((organizationId, roots, at) => loadManagementMetrics(db, organizationId, roots, at)),
+    peopleOnVacation: deps?.peopleOnVacation ?? ((organizationId, personIds, at) => loadPeopleOnVacation(db, organizationId, personIds, at)),
     now,
   }
 

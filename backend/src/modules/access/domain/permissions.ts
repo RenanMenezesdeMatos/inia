@@ -31,6 +31,9 @@ export const PERMISSIONS = {
   // V1.5.8 — visões AMPLIADAS (além da própria estrutura por reports_to, que continua sendo regra operacional de quem lidera):
   "indicators.view": "Ver Indicadores e Equipe de colaboradores do escopo (além da própria estrutura)",
   "structure.metrics.view": "Ver os dados de gestão (população, situação, span) de líderes do escopo em Minha estrutura",
+  // Férias por pessoa no organograma (decisão de 25/11/2026): quem ocupa cargo de gestão vê pela regra operacional; fora da cadeia, só com
+  // esta permissão, que só o Administrador geral tem. Nenhuma outra situação aparece por pessoa.
+  "structure.vacations.view": "Ver quem está de férias no organograma",
   "calendar.manage": "Ver e ajustar o Calendário da equipe (exceções e classificações) de colaboradores do escopo",
   "feedback_quality_review.view": "Ver a fila e o detalhe do QA de feedback",
   "feedback_quality_review.decide": "Avaliar feedbacks no QA (aprovar, editar, rejeitar)",

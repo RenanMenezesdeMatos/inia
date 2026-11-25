@@ -113,6 +113,19 @@ describe("IniaHumanoidAvatar3D — Canvas estável", () => {
     expect(screen.getByText(/Black\s+vizual/)).toBeInTheDocument()
   })
 
+  it("na imagem da chamada o \"i\" desce para baixo da faixa do alto, sem dividir o canto com a etiqueta e os botões; mudar de lugar não mexe no Canvas", () => {
+    const driver = fakeDriver()
+    const { rerender } = render(<IniaHumanoidAvatar3D modelUrl="/avatar.glb" state="idle" driver={driver} attributionPlacement="below-strip" />)
+    const trigger = screen.getByRole("button", { name: "Créditos do avatar 3D" })
+    expect(trigger).toHaveClass("top-15")
+    expect(trigger).not.toHaveClass("top-2")
+    fireEvent.click(trigger)
+    expect(screen.getByText(/Black\s+vizual/)).toBeInTheDocument()
+    rerender(<IniaHumanoidAvatar3D modelUrl="/avatar.glb" state="idle" driver={driver} attributionPlacement="top" />)
+    expect(screen.getByRole("button", { name: "Créditos do avatar 3D", hidden: true })).toHaveClass("top-2", "right-2")
+    expect(canvasRenders).toHaveBeenCalledTimes(1)
+  })
+
   it("entrega o <canvas> criado para o gravador do laboratório (onCanvasReady)", () => {
     const onCanvasReady = vi.fn()
     render(<IniaHumanoidAvatar3D modelUrl="/avatar.glb" state="idle" driver={fakeDriver()} onCanvasReady={onCanvasReady} />)

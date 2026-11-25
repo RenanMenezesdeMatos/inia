@@ -9,7 +9,7 @@ import { buildPendingActions } from "../../pending-actions/application/build-pen
 import { PgPendingActionsRepository } from "../../pending-actions/application/pending-actions-repository.js"
 import { PgAnalyticsReadRepository, type AnalyticsReadRepository } from "../../performance-analytics/application/analytics-read-repository.js"
 import { collectUnits } from "../../performance-analytics/application/build-team-overview.js"
-import { hasAccessGrant, loadViewerScope, resolveSubject, type ViewerScope } from "../../performance-analytics/application/viewer-scope.js"
+import { canViewVacations, hasAccessGrant, loadViewerScope, resolveSubject, type ViewerScope } from "../../performance-analytics/application/viewer-scope.js"
 import { analyticsSubjectSchema, isStructureSubject } from "../../performance-analytics/domain/analytics-subject.js"
 import { GROUPING_LABELS } from "../../performance-analytics/domain/hierarchy-levels.js"
 import { currentReferencePeriod, longPeriodLabel } from "../../performance-analytics/domain/reference-period.js"
@@ -19,7 +19,7 @@ import type { StatusFreshness, StatusLoader } from "./workforce.js"
 import type { HireDatesLoader, InteractionStatsLoader } from "./indicator-diagnosis.js"
 import { coveringStatusPeriodSql } from "../../people/application/employment-status-service.js"
 import { resolveEmploymentStatusFreshness } from "../../people/application/employment-status-freshness.js"
-import { HIERARCHY_LEADERSHIP_RULE } from "./org-hierarchy.js"
+import { HIERARCHY_LEADERSHIP_RULE, HIERARCHY_RULE } from "./org-hierarchy.js"
 import { executeLeadershipTool, isLeadershipTool, LEADERSHIP_ASK_TOOL, leadershipDeclarationsFor, type LeadershipToolDependencies, type LeadershipToolResult } from "./leadership-toolset.js"
 import { processScopeOf, structureGroupsOf, type ProcessScope } from "./process-consultation.js"
 import { resolveAnalysisPeriod, resolveStructureReference, type ResolvedStructure } from "./references.js"
@@ -70,6 +70,8 @@ export type LeadershipSession = {
   loadDomainFacts?: DomainFactsLoader
   /** Escopo da conta nas permissões das telas de origem (uso da INIA: "Quem mais usa"; Apoio com Anjo: painel do apoio). */
   domainAccess?: DomainAccess
+  /** Vê inativos e a situação funcional de qualquer estrutura na hierarquia (a mesma regra das férias no organograma). */
+  seesOrganizationSituations?: boolean
 }
 
 /**
@@ -95,10 +97,11 @@ export async function loadLeadershipSession(
   if (!own && !hasAccessGrant(scope.access)) return null
   const closure = options.closure ?? (await resolveOfficialClosure(db, scope.organizationId, options.now ?? new Date()))
   // Uso da INIA: "Minha estrutura" vale como na tela "Quem mais usa" (população = a própria subárvore). Apoio com Anjo: não vale.
-  const [usageAccess, supportAccess, usageInOwnStructure] = await Promise.all([
+  const [usageAccess, supportAccess, usageInOwnStructure, vacationAccess] = await Promise.all([
     repository.loadAccessVisibility(user.organizationId, user.sub, RESTRICTED_DOMAIN_PERMISSION.INIA_USAGE),
     repository.loadAccessVisibility(user.organizationId, user.sub, RESTRICTED_DOMAIN_PERMISSION.SUPPORT),
     repository.loadStructureScopedGrant?.(user.organizationId, user.sub, RESTRICTED_DOMAIN_PERMISSION.INIA_USAGE) ?? Promise.resolve(false),
+    repository.loadAccessVisibility(user.organizationId, user.sub, "structure.vacations.view"),
   ])
   const pendingRepository = new PgPendingActionsRepository(db)
   return {
@@ -136,6 +139,7 @@ export async function loadLeadershipSession(
     loadStructureAlignments: (memberIds) => listStructureAlignments(db, { organizationId: scope.organizationId, memberIds, now: closure.now, includeEnded: false }),
     loadDomainFacts: createDomainFactsLoader(db, scope.organizationId, closure.timeZone, { now: closure.now }),
     domainAccess: { INIA_USAGE: usageInOwnStructure ? { ...usageAccess, ownStructureIds: scope.structureIds ?? new Set<string>() } : usageAccess, SUPPORT: supportAccess },
+    seesOrganizationSituations: canViewVacations(scope, vacationAccess),
     statusFreshness: async () => {
       const freshness = await resolveEmploymentStatusFreshness(db, scope.organizationId, closure.now, closure.timeZone)
       return { state: freshness.state, lastSuccessLocalDate: freshness.lastSuccessLocalDate }
@@ -157,6 +161,7 @@ export function toolDependencies(session: LeadershipSession): LeadershipToolDepe
     ...(session.loadStructureAlignments ? { loadStructureAlignments: session.loadStructureAlignments } : {}),
     ...(session.loadDomainFacts ? { loadDomainFacts: session.loadDomainFacts } : {}),
     ...(session.domainAccess ? { domainAccess: session.domainAccess } : {}),
+    seesOrganizationSituations: session.seesOrganizationSituations === true,
   }
 }
 
@@ -164,19 +169,23 @@ export async function buildLeadershipChatContext(session: LeadershipSession): Pr
   const deps = toolDependencies(session)
   const context = await renderLeadershipContext(session)
   return {
-    instructions: `${context}\n${leadershipResponseRulesFor(session.domainAccess)}`,
+    instructions: `${context}\n${leadershipResponseRulesFor(session.domainAccess, session.seesOrganizationSituations)}`,
     voiceInstructions: `${context}\n${LEADERSHIP_VOICE_RULES}`,
-    toolset: { declarations: leadershipDeclarationsFor(session.domainAccess), handles: isLeadershipTool, execute: (name, args) => executeLeadershipTool(deps, name, args) },
+    toolset: { declarations: leadershipDeclarationsFor(session.domainAccess, session.seesOrganizationSituations), handles: isLeadershipTool, execute: (name, args) => executeLeadershipTool(deps, name, args) },
     processScope: processScopeOf(session.scope, session.own),
   }
 }
 
 const INIA_USAGE_RULE = " USO DA INIA pela equipe → leadership_inia_usage;"
+/** A linha da hierarquia: com a situação funcional de qualquer estrutura (cargo de gestão) ou só o organograma aberto. */
+const HIERARCHY_SITUATIONS_RULE = `  • ${HIERARCHY_LEADERSHIP_RULE.slice(2)} Fora da estrutura de quem pergunta, ela é a única ferramenta que alcança outras pessoas, e só no organograma, no cadastro (ativo/inativo) e na situação funcional;`
+const HIERARCHY_OPEN_RULE = `  • ${HIERARCHY_RULE.slice(2)} Fora do alcance de quem pergunta, ela é a única ferramenta que alcança outras pessoas, e só no organograma;`
 const SUPPORT_RULE = " APOIO COM ANJO (pedidos, tempo de resposta) → leadership_support;"
 
 /** As regras de resposta sem a menção às ferramentas que ESTA conta não recebe (domínios com a permissão da tela de origem). */
-export function leadershipResponseRulesFor(domainAccess: DomainAccess | undefined): string {
+export function leadershipResponseRulesFor(domainAccess: DomainAccess | undefined, seesOrganizationSituations = false): string {
   let rules = LEADERSHIP_RESPONSE_RULES
+  if (!seesOrganizationSituations) rules = rules.replace(HIERARCHY_SITUATIONS_RULE, HIERARCHY_OPEN_RULE)
   if (!domainAllowed(domainAccess, "INIA_USAGE")) rules = rules.replace(INIA_USAGE_RULE, "")
   if (!domainAllowed(domainAccess, "SUPPORT")) rules = rules.replace(SUPPORT_RULE, "")
   return rules
@@ -197,7 +206,7 @@ export const LEADERSHIP_RESPONSE_RULES = [
   `  • COMUNICADOS recebidos pela equipe (quais, alcance; a leitura não é registrada) → leadership_communications;${INIA_USAGE_RULE}${SUPPORT_RULE}`,
   "  • PESSOAS por situação funcional (produção, férias, afastamento, quantas pessoas) → leadership_workforce; lista de pessoas por situação no indicador → leadership_people; SPAN (pessoas ou líderes por líder) → leadership_span;",
   "  • prioridades e pendências → leadership_priorities; alinhamentos operacionais → leadership_alignments (nunca diga que não há sem ela); processos e o que dizem as bases → leadership_process (passe o Grupo quando a estrutura tem Grupos com bases diferentes);",
-  `  • ${HIERARCHY_LEADERSHIP_RULE.slice(2)} Fora da estrutura de quem pergunta, ela é a única ferramenta que alcança outras pessoas, e só no organograma, no cadastro (ativo/inativo) e na situação funcional;`,
+  HIERARCHY_SITUATIONS_RULE,
   "  • qualquer conta sobre números já trazidos (somar, dividir, % de uma parte, diferença, variação) → leadership_calculate. Estatística de uma população (média, mediana, percentil, mínimo, máximo, desvio) NUNCA sai da calculadora sobre uma lista: peça à ferramenta do dado, que calcula sobre todos os registros (a lista que você recebe pode estar cortada).",
   "- Se nenhuma ferramenta tiver o dado pedido, diga exatamente isso e o que você consegue trazer; nunca afirme que o dado não existe nem explique a ausência com suposição sobre a operação.",
   "- Entenda o que a pergunta pede: \"quantos\" = quantidade; \"qual %\" = percentual; \"quem\" = nomes (recorte por PESSOA); \"pior quartil geral\" = Q4 de PRV; \"dispersão\" = distribuição Q1–Q4 e desvio padrão. Traga o que foi pedido e, quando ajudar, os outros dois.",

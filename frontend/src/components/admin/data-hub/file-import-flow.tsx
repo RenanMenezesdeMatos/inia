@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, ArrowRight, Check, FileUp, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -11,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AdminApiError } from "@/lib/admin/admin-api"
+import { adminQueryKeys } from "@/queries/admin/admin-query-keys"
 import { useCreateSourceMutation, useDataContractsQuery, useDataRunQuery, useDataSourcesQuery, useImportFileMutation, useUpdateFeedMutation } from "@/queries/admin/use-data-hub-queries"
 import { fetchSourceSample, previewSourceMapping, uploadFile } from "@/services/admin/data-hub-service"
 import { CONTRACT_CATEGORY_LABELS, type DataContract, type FeedMapping, type FeedSummary, type Preview, type Sample, type SourceSummary, type UploadResult } from "@/schemas/admin/data-hub.schema"
@@ -35,6 +37,7 @@ export function FileImportFlow() {
   const presetFeedId = params.get("feedId")
   const contractsQuery = useDataContractsQuery()
   const sourcesQuery = useDataSourcesQuery()
+  const queryClient = useQueryClient()
   const createSource = useCreateSourceMutation()
   const updateFeed = useUpdateFeedMutation()
   const importFile = useImportFileMutation()
@@ -172,6 +175,8 @@ export function FileImportFlow() {
         const created = await createFeedWithFreeKey(source.id, slug(newFeedName || contract.label), { name: newFeedName || contract.label, contractKey: contract.key, connectorConfig, mapping: effectiveMapping })
         feedId = created.id
         setCreatedFeed({ id: created.id, contractKey: contract.key })
+        // Criado por serviço direto: as listas da Central só o mostram se forem recarregadas (a importação pode falhar depois).
+        void queryClient.invalidateQueries({ queryKey: adminQueryKeys.dataHub() })
       }
       const run = await importFile.mutateAsync({ feedId, rawObjectId: upload.rawObjectId })
       setRunId(run.id)

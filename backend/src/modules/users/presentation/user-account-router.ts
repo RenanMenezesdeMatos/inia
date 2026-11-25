@@ -9,7 +9,10 @@ import { generateTemporaryPassword, temporaryPasswordExpiry } from "../../auth/d
 import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
 import { coversOrganization, getManageableScopes } from "../../auth/application/manageable-scopes.js"
 import { wouldRemoveLastTenantAdmin } from "../../access/application/access-service.js"
-import { assertAccountRelinkAllowed, assertCredentialChangeAllowed, type AccountAccessDeps } from "../../access/application/account-access-service.js"
+import { networkAccountIdentifier, networkLoginOf } from "../../access/domain/network-access.js"
+import { createPostgresNetworkAttempts } from "../../auth/infrastructure/postgres-network-attempts.js"
+import { createPostgresNetworkLoginRepository } from "../../auth/infrastructure/postgres-network-login-repository.js"
+import { assertAccountRelinkAllowed, assertCredentialChangeAllowed, networkIssueError, retiredPasswordHash, type CredentialCustodyDeps } from "../../access/application/account-access-service.js"
 import { createPostgresAccessRepository } from "../../access/infrastructure/postgres-access-repository.js"
 import { createPostgresAccountAccessRepository } from "../../access/infrastructure/postgres-account-access-repository.js"
 import { isHierarchyRole } from "../../performance-analytics/domain/hierarchy-levels.js"
@@ -76,7 +79,8 @@ const createUserSchema = z.object({
   matricula: z.string().trim().max(64).optional().transform((value) => value || undefined),
   /** EXCEÇÃO de universo (B2B/B2C/B2X): o normal é herdar do Grupo. Operador novo precisa de universo (próprio ou do Grupo) com a exigência ativa. */
   operatingUniverse: optionalOperatingUniverseSchema,
-  email: z.string().trim().email(),
+  /** Login da conta. Opcional só com o login pela rede ligado (a pessoa entra com a matrícula). */
+  email: z.string().trim().email().optional(),
   /**
    * Ignorada: a senha provisória é GERADA pelo servidor e mostrada uma vez (achado AUTH-6 da auditoria de 17/10/2026 — escolhida
    * por quem cadastra, ela era previsível e repetida). Aceita só para clientes antigos não quebrarem.
@@ -163,8 +167,11 @@ export function createUserAccountRouter(db: Database) {
   const router = Router()
   const accessRepository = createPostgresAccessRepository(db)
   // Custódia de credencial (e-mail de login, inativação) — a mesma do módulo de acessos.
-  const accountDeps: AccountAccessDeps = { repository: accessRepository, now: () => new Date(), accounts: createPostgresAccountAccessRepository(db), hashPassword, temporaryPasswordTtlHours: env.TEMPORARY_PASSWORD_TTL_HOURS }
+  const accountDeps: CredentialCustodyDeps = { repository: accessRepository, now: () => new Date(), accounts: createPostgresAccountAccessRepository(db) }
   const actorOf = (request: Request) => ({ organizationId: sessionUser(request).organizationId, accountId: sessionUser(request).sub, personId: sessionUser(request).personId })
+  const networkLogin = createPostgresNetworkLoginRepository(db)
+  const networkAttempts = createPostgresNetworkAttempts(db)
+  const networkLoginEnabled = async (organizationId: string) => (await networkLogin.organizationSwitch(organizationId))?.enabled === true
   // Escopo de `people.manage` (V1.5.7): administrador de um Grupo/Subgrupo só enxerga/edita pessoas de lá; fora = 404.
   const scopesOf = (request: Request) => getManageableScopes(db, sessionUser(request), "people.manage")
   const personInScope = async (request: Request, personId: string) => {
@@ -188,7 +195,7 @@ export function createUserAccountRouter(db: Database) {
    */
   router.get("/creation-policy", async (request, response) => {
     const sources = await loadLivePersonFeeds(db, sessionUser(request).organizationId, "EMPLOYEES")
-    response.json({ data: { hierarchyRequiresMatricula: sources.length > 0, sources } })
+    response.json({ data: { hierarchyRequiresMatricula: sources.length > 0, sources, networkLogin: await networkLoginEnabled(sessionUser(request).organizationId) } })
   })
 
   /** Cargos ativos para o cadastro manual (o cadastro em si fica em Central de Dados › Cargos). */
@@ -338,9 +345,18 @@ export function createUserAccountRouter(db: Database) {
       throw new DomainError("Criar uma conta de acesso exige administrar acessos no Grupo da pessoa.", "FORBIDDEN", 403)
     }
     // Uma porta só para a hierarquia (ver /creation-policy). Com matrícula, a pessoa nasce com ela e a base a assume na carga.
+    // Login pela rede ligado: a pessoa entra com a matrícula e a senha do AD — sem matrícula utilizável ela nunca entraria, e nenhuma
+    // senha da INIA é gerada.
+    const byNetwork = await networkLoginEnabled(organizationId)
+    const networkLoginName = byNetwork ? networkLoginOf(input.matricula ?? null) : null
+    if (byNetwork && !input.matricula) throw new DomainError("Com o login pela rede ligado, a pessoa entra pela matrícula: informe a matrícula de rede dela.", "ACCESS_MATRICULA_REQUIRED", 422)
+    if (byNetwork && !networkLoginName) throw new DomainError("A matrícula tem espaço ou símbolo que não existe num login de rede. Confira e tente de novo.", "ACCESS_MATRICULA_INVALID", 422)
     if (input.matricula) {
-      const existing = await db.query<{ id: string }>(`select known.id from people known where known.organization_id = $1 and known.matricula = $2`, [organizationId, input.matricula])
+      // Sem diferença de maiúscula nem espaço (como o login): `g0055350` não pode virar um segundo cadastro de `G0055350`.
+      const existing = await db.query<{ id: string }>(`select known.id from people known where known.organization_id = $1 and upper(btrim(known.matricula)) = upper(btrim($2))`, [organizationId, input.matricula])
       if (existing.rows[0]) throw await matriculaInUse(request, existing.rows[0].id)
+      // Pela rede a conta nasce habilitada: matrícula que outra conta já usa para entrar trancaria as duas (a regra do "Habilitar").
+      if (networkLoginName && (await accountDeps.accounts.networkLoginTaken(networkLoginName))) throw networkIssueError("MATRICULA_DUPLICATED")
     } else if (isOrganizationalLevel(input.role)) {
       const sources = await loadLivePersonFeeds(db, organizationId, "EMPLOYEES")
       if (sources.length > 0) {
@@ -358,6 +374,8 @@ export function createUserAccountRouter(db: Database) {
       const inherited = input.teamId ? (await db.query<{ operating_universe: string | null }>(`select operating_universe from teams where id = $1 and organization_id = $2`, [input.teamId, organizationId])).rows[0]?.operating_universe ?? null : null
       if (!inherited) await assertUniverseRequiredFor(db, organizationId, null, "do operador (o Grupo escolhido não tem universo)")
     }
+    const email = input.email?.toLowerCase() ?? (networkLoginName ? networkAccountIdentifier(networkLoginName, env.AD_DOMAIN ?? null) : null)
+    if (!email) throw new DomainError("Informe o e-mail que a pessoa vai usar para entrar.", "ACCESS_EMAIL_REQUIRED", 422)
     const temporaryPassword = generateTemporaryPassword()
     try {
       const { personId, account, expiresAt } = await inTransaction(db, async (client) => {
@@ -366,25 +384,30 @@ export function createUserAccountRouter(db: Database) {
           [organizationId, input.teamId ?? null, input.name, input.role, input.matricula ?? null, input.operatingUniverse, position?.id ?? null, position?.name ?? null],
         )
         const personId = person.rows[0]!.id
-        const passwordHash = await hashPassword(temporaryPassword)
+        // Pela rede, a senha guardada é uma que ninguém conhece (a senha é a do AD).
+        const passwordHash = byNetwork ? await retiredPasswordHash({ hashPassword }) : await hashPassword(temporaryPassword)
         // Senha PROVISÓRIA gerada aqui (mesma da liberação de acesso): no primeiro login a pessoa é obrigada a criar a própria, e ela
         // vence como qualquer senha temporária.
         const issuedAt = new Date()
         const expiresAt = temporaryPasswordExpiry(issuedAt, env.TEMPORARY_PASSWORD_TTL_HOURS)
         const account = await client.query<{ id: string }>(
           `insert into user_accounts(organization_id, person_id, email, password_hash, password_change_required, temporary_password_issued_at, temporary_password_expires_at)
-           values ($1,$2,$3,$4,true,$5,$6) returning id`,
-          [organizationId, personId, input.email.trim().toLowerCase(), passwordHash, issuedAt, expiresAt],
+           values ($1,$2,$3,$4,$7,$5,$6) returning id`,
+          [organizationId, personId, email, passwordHash, byNetwork ? null : issuedAt, byNetwork ? null : expiresAt, !byNetwork],
         )
         // Auditoria (sem senha nem hash): quem criou a pessoa e a conta, com qual nível.
         await client.query(
           `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'ACCESS_ENABLED', 'user_account', $3, $4::jsonb)`,
-          [organizationId, sessionUser(request).personId, account.rows[0]!.id, JSON.stringify({ personId, email: input.email.trim().toLowerCase(), role: input.role, matricula: input.matricula ?? null, operatingUniverse: input.operatingUniverse, accountCreated: true, source: "PEOPLE_REGISTRY", actorAccountId: sessionUser(request).sub })],
+          [organizationId, sessionUser(request).personId, account.rows[0]!.id, JSON.stringify({ personId, email, ...(byNetwork ? { credential: "NETWORK" } : {}), role: input.role, matricula: input.matricula ?? null, operatingUniverse: input.operatingUniverse, accountCreated: true, source: "PEOPLE_REGISTRY", actorAccountId: sessionUser(request).sub })],
         )
         return { personId, account, expiresAt }
       })
       // A senha aparece só nesta resposta (a API nunca a guarda nem a mostra de novo; respostas da API não ficam em cache).
-      const email = input.email.trim().toLowerCase()
+      // Pela rede não há senha nenhuma a entregar.
+      if (networkLoginName) {
+        await networkAttempts.releaseUnreached([networkLoginName], new Date())
+        return void response.status(201).json({ data: { id: personId, name: input.name, role: input.role, email, issued: null } })
+      }
       response.status(201).json({ data: { id: personId, name: input.name, role: input.role, email, issued: { personId, accountId: account.rows[0]!.id, name: input.name, email, temporaryPassword, expiresAt: expiresAt.toISOString() } } })
     } catch (error) {
       if (error instanceof Error && "code" in error && (error as { code?: string }).code === "23505") {
@@ -519,6 +542,7 @@ export function createUserAccountRouter(db: Database) {
              update user_accounts ua set
                email = coalesce($1, ua.email),
                active = case when $2::boolean is false then false else ua.active end,
+               directory_login = case when $2::boolean is false then null else ua.directory_login end,
                access_disabled_at = case when $2::boolean is false and ua.active then now() else ua.access_disabled_at end,
                session_version = ua.session_version + case when $2::boolean is false and ua.active then 1 else 0 end,
                password_change_required = case when $2::boolean is false then false else ua.password_change_required end,

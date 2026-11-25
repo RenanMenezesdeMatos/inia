@@ -5,6 +5,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { PgAnalyticsReadRepository } from "../../performance-analytics/application/analytics-read-repository.js"
 import { postgresHierarchyReader } from "../../workflows/application/organizational-recipient.js"
 import { loadManagementMetrics } from "../application/load-management-metrics.js"
+import { loadPeopleOnVacation } from "../application/load-people-on-vacation.js"
 import { buildPersonOrganizationStructure, type PersonOrganizationStructureDeps } from "../application/person-organization-structure.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 
@@ -122,6 +123,7 @@ describe.skipIf(!ENABLED)("Escopo organizacional — ciclos, auto-referência, c
       personAvatars: async () => new Map(),
       structureFreshness: async () => ({ state: "UNKNOWN", configured: false, feeds: [], consideredFeedIds: [], lastSuccessAt: null, lastDataAt: null, lastSuccessLocalDate: null }),
       managementMetrics: (organizationId, roots, at) => loadManagementMetrics(db, organizationId, roots, at),
+      peopleOnVacation: (organizationId, personIds, at) => loadPeopleOnVacation(db, organizationId, personIds, at),
     }
     const user = (personId: string, role: AuthTokenPayload["role"], organizationId = ORG): AuthTokenPayload => ({ sub: NO_ROLE_ACCOUNT, personId, organizationId, role, name: "x", email: "x@inia.com", avatarUrl: null, jobTitle: null, teamId: null, teamName: null })
 
@@ -164,6 +166,7 @@ describe.skipIf(!ENABLED)("Escopo organizacional — ciclos, auto-referência, c
       personAvatars: async () => new Map(),
       structureFreshness: async () => ({ state: "UNKNOWN", configured: false, feeds: [], consideredFeedIds: [], lastSuccessAt: null, lastDataAt: null, lastSuccessLocalDate: null }),
       managementMetrics: (organizationId, roots, at) => loadManagementMetrics(db, organizationId, roots, at),
+      peopleOnVacation: (organizationId, personIds, at) => loadPeopleOnVacation(db, organizationId, personIds, at),
       now: () => new Date("2026-09-17T15:00:00.000Z"),
     }
     const user = (personId: string, role: AuthTokenPayload["role"]): AuthTokenPayload => ({ sub: NO_ROLE_ACCOUNT, personId, organizationId: ORG, role, name: "x", email: "x@inia.com", avatarUrl: null, jobTitle: null, teamId: null, teamName: null })
@@ -175,6 +178,10 @@ describe.skipIf(!ENABLED)("Escopo organizacional — ciclos, auto-referência, c
     const team = await client.query<{ id: string }>(`insert into teams (organization_id, operation_id, name) values ($1, $2, 'Prova Grupo') returning id`, [ORG, operation.rows[0]!.id])
     await client.query(`update people set team_id = $1 where id = any($2::uuid[])`, [team.rows[0]!.id, [id(3), id(11), id(2)]])
 
+    // Férias por pessoa pelo mesmo período (e o legado VACATION); período encerrado e INSS não contam.
+    expect(await loadPeopleOnVacation(db, ORG, [id(1), id(4), id(5), id(8)], new Date("2026-09-17T15:00:00.000Z"))).toEqual(new Set([id(5), id(8)]))
+    expect(await loadPeopleOnVacation(db, OTHER_ORG, [id(5)], new Date("2026-09-17T15:00:00.000Z"))).toEqual(new Set())
+    queries.length = 0
     const manager = await buildPersonOrganizationStructure(deps, user(id(1), "MANAGER"), id(1))
     const managerQueries = queries.length
     // Abaixo do Gerente 1: 2, 3, 4, 5, 8 ativos (6 e 7 inativos ficam fora; 8 é alcançado ATRAVÉS do 7 inativo). Só 3 são

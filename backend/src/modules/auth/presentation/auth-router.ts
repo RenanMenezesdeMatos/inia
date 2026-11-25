@@ -34,20 +34,21 @@ const loginSchema = z.union([
  */
 export const LOGIN_REFUSALS = {
   INVALID_CREDENTIALS: { status: 401, code: "INVALID_CREDENTIALS", message: "E-mail ou senha inválidos." },
-  INVALID_NETWORK_CREDENTIALS: { status: 401, code: "INVALID_CREDENTIALS", message: "Matrícula ou senha de rede inválidas. Atenção: várias senhas erradas bloqueiam a sua conta de rede." },
+  INVALID_NETWORK_CREDENTIALS: { status: 401, code: "INVALID_CREDENTIALS", message: "Não foi possível entrar com esta matrícula e senha de rede. Confira as duas; se estiverem certas, peça ao administrador da INIA para conferir se o seu acesso está habilitado. Atenção: várias senhas erradas bloqueiam a sua conta de rede." },
   ACCESS_DISABLED: { status: 403, code: "ACCESS_DISABLED", message: "Seu acesso à INIA está desabilitado. Procure o administrador." },
   TEMPORARY_PASSWORD_EXPIRED: { status: 401, code: "TEMPORARY_PASSWORD_EXPIRED", message: "Sua senha temporária expirou. Peça uma nova ao administrador." },
   NETWORK_LOGIN_REQUIRED: { status: 403, code: "NETWORK_LOGIN_REQUIRED", message: "Na sua organização o acesso à INIA é pela matrícula e senha de rede." },
   NETWORK_PASSWORD_EXPIRED: { status: 403, code: "NETWORK_PASSWORD_EXPIRED", message: "Sua senha de rede venceu ou precisa ser trocada. Troque a senha de rede e tente de novo." },
   NETWORK_ACCOUNT_LOCKED: { status: 403, code: "NETWORK_ACCOUNT_LOCKED", message: "Sua conta de rede está bloqueada. Procure o suporte de TI para desbloquear." },
   NETWORK_ACCOUNT_DISABLED: { status: 403, code: "NETWORK_ACCOUNT_DISABLED", message: "Sua conta de rede está desativada ou sem permissão de acesso agora. Procure o suporte de TI." },
+  NETWORK_IDENTITY_UNREADABLE: { status: 403, code: "NETWORK_IDENTITY_UNREADABLE", message: "Sua senha de rede foi aceita, mas a INIA não conseguiu confirmar a sua ID no AD. Procure o administrador da INIA." },
   NETWORK_LOGIN_UNAVAILABLE: { status: 503, code: "NETWORK_LOGIN_UNAVAILABLE", message: "O login pela rede está indisponível no momento. Tente de novo em alguns minutos." },
 } as const
 
 /** Trava do login (429, com `retryAt`): na rede, a mensagem avisa que insistir pode bloquear a conta de rede. */
 export const LOGIN_LOCKED = {
   EMAIL: { status: 429, code: "LOGIN_TOO_MANY_ATTEMPTS", message: "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente." },
-  NETWORK: { status: 429, code: "LOGIN_TOO_MANY_ATTEMPTS", message: "Muitas tentativas com senha errada. Aguarde alguns minutos antes de tentar de novo — insistir pode bloquear a sua conta de rede." },
+  NETWORK: { status: 429, code: "LOGIN_TOO_MANY_ATTEMPTS", message: "Muitas tentativas sem sucesso com esta matrícula. Aguarde antes de tentar de novo — insistir com a senha errada pode bloquear a sua conta de rede. Se a senha está certa, peça ao administrador da INIA para conferir o seu acesso." },
 } as const
 
 const firstPasswordSchema = z.object({
@@ -99,6 +100,8 @@ export function createAuthRouter(db: Database, options: { features?: AuthFeature
       return response.status(locked.status).json({ error: { code: locked.code, message: locked.message, details: { retryAt: result.retryAt.toISOString() } } })
     }
     if (result.kind !== "SUCCEEDED") {
+      // Sem isto, "login indisponível" não deixava rastro de QUAL servidor falhou e por quê. Sem matrícula nem senha.
+      if (result.kind === "NETWORK_UNAVAILABLE") console.error(JSON.stringify({ event: "network_login_unavailable", reason: result.reason }))
       const key = result.kind === "INVALID_CREDENTIALS" && network ? "INVALID_NETWORK_CREDENTIALS" : result.kind === "NETWORK_UNAVAILABLE" ? "NETWORK_LOGIN_UNAVAILABLE" : result.kind
       const refusal = LOGIN_REFUSALS[key]
       return response.status(refusal.status).json({ error: { code: refusal.code, message: refusal.message } })

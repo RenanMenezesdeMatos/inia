@@ -17,12 +17,14 @@ import { easeInOutSine } from "./tuning"
  *  - front / threequarter / profile / back: do topo do cabelo até logo abaixo do cinto, nos
  *    ângulos das imagens de referência (`assets/avatar/inia/ref_*.png`): 3/4 = ela virada ~35° para
  *    a esquerda dela (vemos a bochecha direita), perfil = ela olhando para a esquerda da imagem;
+ *  - call: chamada de vídeo em quadro maior — do topo do cabelo à cintura, com a câmera na ALTURA DOS OLHOS dela, para que ela olhe para quem
+ *    a vê (com a câmera na altura do peito, o rosto aparece de baixo e o olhar passa por cima);
  *  - full: corpo inteiro.
  */
 
 /** "presenting": de três quartos leve, virada para a DIREITA da imagem (onde fica o que ela apresenta), meio corpo, CENTRALIZADA
  * no quadro e com folga dos dois lados para o cabelo e o gesto — a sessão de feedback. */
-export type AvatarView = "chat" | "front" | "threequarter" | "profile" | "back" | "full" | "presenting"
+export type AvatarView = "chat" | "front" | "threequarter" | "profile" | "back" | "full" | "presenting" | "call"
 
 export type FramingAnchors = {
   top: number
@@ -49,6 +51,8 @@ const VIEW_SPECS: Readonly<Record<AvatarView, ViewSpec>> = {
   back: { azimuthDeg: 180, elevationDeg: 0, fovDeg: 22 },
   full: { azimuthDeg: 0, elevationDeg: 2, fovDeg: 24 },
   presenting: { azimuthDeg: -24, elevationDeg: 2, fovDeg: 24 },
+  // A elevação da vista "call" é calculada (altura dos olhos), não fixa.
+  call: { azimuthDeg: 0, elevationDeg: 0, fovDeg: 24 },
 }
 
 /**
@@ -122,9 +126,10 @@ export function framingFor(anchors: FramingAnchors, view: AvatarView, aspect: nu
   const spec = VIEW_SPECS[view] ?? VIEW_SPECS.chat
   const safeAspect = Number.isFinite(aspect) && aspect > 0.05 ? aspect : 1
   const presenting = view === "presenting"
-  const margin = anchors.height * (view === "chat" ? 0.05 : presenting ? 0.045 : 0.03)
+  const call = view === "call"
+  const margin = anchors.height * (view === "chat" || call ? 0.05 : presenting ? 0.045 : 0.03)
   const yMax = anchors.top + margin
-  const yMin = view === "chat" ? anchors.chestBottom : view === "full" ? anchors.bottom - margin : anchors.belt
+  const yMin = call ? anchors.chestBottom + (anchors.belt - anchors.chestBottom) * 0.3 : view === "chat" ? anchors.chestBottom : view === "full" ? anchors.bottom - margin : anchors.belt
   const azimuth = (spec.azimuthDeg * Math.PI) / 180
   // Largura aparente: ombros de frente, profundidade (cabelo) de perfil.
   const side = Math.abs(Math.sin(azimuth))
@@ -137,11 +142,11 @@ export function framingFor(anchors: FramingAnchors, view: AvatarView, aspect: nu
   const halfHeight = (yMax - yMin) / 2
   const tan = Math.tan(((spec.fovDeg * Math.PI) / 180) / 2)
   const distance = Math.max(halfHeight / tan, halfWidth / (tan * safeAspect))
-  const elevation = (spec.elevationDeg * Math.PI) / 180
 
   // "presenting": o topo do quadro fica no topo do cabelo — a cabeça dela logo abaixo do balão de fala, nunca um vazio entre
   // os dois; a sobra vertical (quadro mais alto que largo) vai para baixo, onde o corpo continua até a borda da tela.
   const targetY = presenting ? yMax - distance * tan : (yMin + yMax) / 2
+  const elevation = call ? Math.asin(Math.max(-0.5, Math.min(0.5, (anchors.face.y - targetY) / distance))) : (spec.elevationDeg * Math.PI) / 180
   out.target.set(anchors.face.x, targetY, anchors.face.z)
   out.position.set(
     out.target.x + distance * Math.sin(azimuth) * Math.cos(elevation),

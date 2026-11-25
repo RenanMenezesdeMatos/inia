@@ -36,6 +36,11 @@ export const networkLoginInputSchema = z.object({
   matricula: z.string().trim().min(1, "Informe sua matrícula de rede."),
   password: z.string().min(1, "Informe sua senha de rede."),
 })
+/**
+ * E-mail no campo da matrícula (o navegador preenche sozinho o e-mail salvo do login antigo): a tela avisa sem gastar uma tentativa.
+ * `matricula@dominio` (com número antes do @) é aceito — o servidor usa só a matrícula.
+ */
+export const looksLikeEmail = (typed: string) => /@/.test(typed) && !/\d/.test(typed.split("@")[0] ?? "")
 export type LoginInput = z.infer<typeof loginInputSchema> | z.infer<typeof networkLoginInputSchema>
 
 /** Que login a tela mostra (`GET /auth/login-options`): com o login pela rede ligado, a matrícula; o e-mail fica para o administrador. */

@@ -79,7 +79,7 @@ export function DiagnosticsPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-7xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
+    <main className="mx-auto w-full max-w-[90rem] space-y-5 px-4 py-6 sm:px-6">
       <PageHeader icon={Stethoscope} title="Diagnóstico" description="O que as análises de chamadas e de indicadores registraram na sua estrutura: onde estão os desvios e os acertos, com as evidências que os sustentam." />
 
       <ListToolbar

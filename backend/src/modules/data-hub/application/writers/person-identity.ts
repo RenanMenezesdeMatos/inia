@@ -101,6 +101,7 @@ export async function disableAccountsFromSource(context: WriteContext, client: p
        update user_accounts ua set
          active = case when t.tenant_admin then ua.active else false end,
          access_disabled_at = case when t.tenant_admin then ua.access_disabled_at else now() end,
+         directory_login = case when t.tenant_admin then ua.directory_login else null end,
          session_version = ua.session_version + 1,
          password_change_required = case when t.tenant_admin then ua.password_change_required else false end,
          temporary_password_issued_at = case when t.tenant_admin then ua.temporary_password_issued_at else null end,

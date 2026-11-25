@@ -97,6 +97,8 @@ export const structurePersonSchema = z.object({
   /** Subordinados diretos ativos; null quando a pessoa está acima do que o viewer enxerga. */
   directReportCount: z.number().int().nonnegative().nullable(),
   capabilities: structurePersonCapabilitiesSchema,
+  /** De férias hoje; ausente = o viewer não vê férias (só cargos de gestão e o Administrador geral veem). */
+  onVacation: z.boolean().optional(),
   /** `null` = o viewer não pode ver (Operador) ou a pessoa não lidera; ausente = node que nunca expande (gestor acima, cadeia). */
   managementMetrics: managementMetricsSchema.nullable().optional(),
 })

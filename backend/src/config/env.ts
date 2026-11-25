@@ -185,7 +185,11 @@ export const envSchema = z.object({
    *    repositório padrão do Node. A cadeia e o nome do servidor são SEMPRE conferidos.
    *  - AD_TLS_ALLOW_WEAK_KEY: aceitar chave RSA de 1024 bits do servidor (OpenSSL nível 1) SÓ na conexão com o AD — risco
    *    aceito e documentado quando o AD da empresa ainda usa chave curta.
+   *  - AD_LOGIN_WITHOUT_LAST_DIGIT: formatos de matrícula (`prefixo:tamanho`, ex.: `R:8`) cujo login do AD pode estar sem o último
+   *    dígito. Se o AD recusar a matrícula inteira, a INIA confere mais uma vez sem o último dígito e só deixa entrar se a ID funcional
+   *    (`employeeID`) da conta for a da matrícula digitada. Vazio = desligado.
    */
+  AD_LOGIN_WITHOUT_LAST_DIGIT: z.string().trim().regex(/^$|^[A-Za-z]{1,3}:\d{1,2}(\s*,\s*[A-Za-z]{1,3}:\d{1,2})*$/, "Use prefixo:tamanho, ex.: R:8 (vários separados por vírgula).").optional(),
   AD_LDAP_URLS: z.string().trim().optional(),
   AD_DOMAIN: z.string().trim().regex(/^[A-Za-z0-9.-]+$/).optional(),
   AD_CA_FILE: z.string().trim().optional(),

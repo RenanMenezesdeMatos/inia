@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, ArrowRight, Check, Database, Loader2, Plug } from "lucide-react"
 import { toast } from "sonner"
+import { useQueryClient } from "@tanstack/react-query"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { AdminApiError } from "@/lib/admin/admin-api"
+import { adminQueryKeys } from "@/queries/admin/admin-query-keys"
 import { cn } from "@/lib/utils"
 import { useCreateSourceMutation, useDataContractsQuery, useUpdateSourceMutation } from "@/queries/admin/use-data-hub-queries"
 import { fetchSourceSample, previewSourceMapping, setFeedStatus, syncFeedNow, testDatabaseConnection, updateFeed } from "@/services/admin/data-hub-service"
@@ -91,6 +93,7 @@ function message(error: unknown, fallback: string): string {
 export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: SourceDetail | null; onAddAnother?: () => void }) {
   const prompt = useConfigUnlockPrompt()
   const contractsQuery = useDataContractsQuery()
+  const queryClient = useQueryClient()
   const createSource = useCreateSourceMutation()
   const updateSource = useUpdateSourceMutation()
   const addingDataset = existing !== null
@@ -219,6 +222,8 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
     } catch (err) {
       setError(message(err, "Não foi possível ativar o conjunto de dados."))
     } finally {
+      // Criado/ativado por serviço direto: as listas da Central só o mostram se forem recarregadas.
+      void queryClient.invalidateQueries({ queryKey: adminQueryKeys.dataHub() })
       setBusy(false)
     }
   }

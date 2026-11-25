@@ -1121,3 +1121,33 @@ Recorte: commit dos Cargos (migration 252) e da usabilidade da Central de Dados.
 | QA-06, QA-08, QA-09, QA-11 a QA-14, QA-17, QA-18, ARQ-04, ARQ-09, ARQ-10 | Baixa | Detalhes de tela, rótulos do Apoio, invariante cargo × nível | Corrigidos (migration 253 para o invariante) |
 
 Aceitos: R-52 (A11-07, ARQ-07, ARQ-08). QA-10: renomear cargo avisa sobre Reports por cargo. ARQ-11: contrato Colaboradores continua na versão 1 (só aceita mais valores).
+
+## Décima quinta rodada (25/11/2026, run-12: skill da Cloudflare em modo delimitado, roteiro AppSec, QA, Arquitetura, varredura AppSec)
+
+Recorte: tudo o que entrou na `main` em 24 e 25/11 (`e095d3f6^..de884d85`: 12 commits, 219 arquivos, migrations 252 a 255). O trecho dos Cargos
+já tinha passado pela 14ª rodada. Revisores independentes, sem o contexto de quem escreveu; relatórios em
+`~/security-audit-skill/inia/run-12/agents/{cf-auth-ad,cf-data-hub-acesso-org,qa-frontend,arquitetura}/relatorio.md`. Varredura AppSec (Semgrep CE
+1.181.0, Gitleaks, OSV, SBOM): 0 novos. Nenhum achado crítico ou alto. Cada correção tem teste que falha no código anterior.
+
+| Id | Sev. | Achado | Correção |
+|---|---|---|---|
+| R15-01 (CFA-01, ARQ12-02) | Média | No login inteiro do formato cortado, "duas fichas" ou ID legível de outra matrícula virava entrada na conta alheia (exige nome completo do AD igual à matrícula de outra pessoa) | Leitura da ID com três estados e decisão única no domínio (`identityVerdict`), usada também pela varredura; só "não consegui ler" mantém a entrada |
+| R15-02 (CFD-01) | Média | `org_hierarchy` (chat, voz e rota) entregava férias e situação de qualquer pessoa da organização a quem só tinha `indicators.view` num Grupo | Mesma regra das férias no organograma (`canViewVacations`) na declaração, nas regras de resposta e na execução; padrão fechado |
+| R15-03 (CFD-02, anterior ao recorte) | Média | Gestores em círculo na base prendiam um processo da API em laço (`buildBreadcrumb`, `isLeaderAbove`, `isDirectMember`) | Os três laços param ao repetir |
+| R15-04 (CFA-02) | Baixa | A matrícula cortada digitada direto não somava o teto do login inteiro: até 8 erros na mesma conta do AD | Limites numa função única (`directoryLimits`); a varredura digita o cortado |
+| R15-05 (ARQ12-01) | Baixa | O resumo da trava em Acessos divergia do portão | Usa a mesma `directoryLimits`; só conta e pessoa ativas |
+| R15-06 (CFA-05) | Baixa | Com mais de uma organização: "Conferir matrícula" mostrava tentativas da outra; "Novo usuário" trancava a pessoa da outra | Sem tentativas de outra organização; 409 `ACCESS_MATRICULA_DUPLICATED` |
+| R15-07 (CFA-06) | Baixa | Prévia do CSV e conferência sem limite por conta (oráculo de e-mail em lote) | Teto das ações caras (30/min) |
+| R15-08 (CFA-07) | Info | Ciência com tolerância da digitação na matrícula do cadastro; relatório do CSV sem aspas com vírgula | Comparação estrita; todo valor entre aspas |
+| R15-09 (ARQ12-03, 04, 10) | Baixa | Códigos `ACCESS_CSV_*` sem status no catálogo; `directory_login` não era apagado em todos os caminhos | `status: 422`; apagado pela ficha, pela carga e ao reabilitar com senha temporária |
+| R15-10 (QAF-01) | Média | Janela estreita: item do sino, cartão e atalho abriam atrás do painel da INIA | Destino novo recolhe o painel; a página coberta fica `inert` (QAF-07) |
+| R15-11 (QAF-02, 04) | Média/Baixa | Janela maior passava da base da tela; pequena ↔ maior voltava fora da tela | `fitWindow` limita pela altura e reajusta |
+| R15-12 (QAF-03) | Média | Crédito CC BY do avatar coberto pelo botão | Canto `below-strip`, fora dos controles |
+| R15-13 (QAF-05, 06, 11) | Baixa | Alça de largura, foco do teclado, quadro da pessoa a 320 px | Corrigidos |
+| R15-14 (QAF-08, 09, 10) | Baixa | Fechar o diálogo no meio perdia o relatório/senha; Acessos × Pessoas e as listas da Central velhas por até 60 s | Não fecha enquanto grava; invalidação dos dois lados |
+| R15-15 (QAF-12, 15, ARQ12-05, 06, 13) | Baixa/Info | Testes de "Um scroll só" sem equivalente, código morto, documentação incompleta ou vencida | Testes recuperados; instalação (`AD_*`), runbook, Central e memórias |
+
+Conferido no navegador (Chrome e WebKit, pilha isolada com banco próprio e AD simulado): operador, líder e Administrador geral, 320 a 1440 px,
+zoom de 200 %, celular emulado; login pela rede inteiro e cortado, CSV em massa, conferir matrícula. Migration 253 conferida em dev (ARQ12-12):
+nenhuma pessoa com cargo de perfil diferente. Abertos e aceitos: R-53. Da 14ª rodada: ARQ-06 (reexecutar o assistente de instalação num banco em
+uso recria cargos renomeados) aceito em R-53; ARQ-12 feito nesta; ARQ-13 e ARQ-14 eram só textos.

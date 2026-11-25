@@ -200,6 +200,26 @@ const actionIn = (details: HTMLElement, text: string) => Array.from(details.quer
 const afterFlow = () => new Promise((resolve) => setTimeout(resolve, 30))
 
 describe("Organograma (React Flow read-only) — gestor imediato, focal e subordinados como nodes", () => {
+  it("cargo num selo com a cor do nível; férias só quando o backend disse (borda, selo e texto acessível) — ausente não diz nada", async () => {
+    const data = supervisorFocal(3)
+    data.directReports[0] = { ...data.directReports[0]!, onVacation: true }
+    data.directReports[1] = { ...data.directReports[1]!, onVacation: false }
+    renderView(data)
+    await afterFlow()
+    const [away, present, unknown] = data.directReports.map((report) => cardOf(report.name))
+    expect(within(away!).getByTestId("structure-role-badge")).toHaveTextContent("Operador")
+    expect(within(away!).getByTestId("structure-vacation-badge")).toHaveTextContent("Férias")
+    expect(away!.className).toContain("ring-emerald-600")
+    expect(headerButton(data.directReports[0]!.name)).toHaveAttribute("aria-label", expect.stringContaining("de férias"))
+    for (const card of [present!, unknown!]) {
+      expect(within(card).queryByTestId("structure-vacation-badge")).not.toBeInTheDocument()
+      expect(card.className).not.toContain("emerald")
+    }
+    // Cor por nível: o Supervisor e o Operador têm tons diferentes.
+    expect(cardOf("Vanessa Lopes").className).toContain("--cargo")
+    expect(cardOf("Vanessa Lopes").className.match(/\[--cargo:[^\]]+/)?.[0]).not.toBe(away!.className.match(/\[--cargo:[^\]]+/)?.[0])
+  })
+
   it("Operadora: gestor imediato acima da focal (um nível só), focal expandida com os dados dentro, sem subordinados; nada de carrossel, rail ou painel", async () => {
     renderView(OPERATOR_OWN)
     expect(await screen.findByRole("heading", { name: "Minha estrutura" })).toBeInTheDocument()

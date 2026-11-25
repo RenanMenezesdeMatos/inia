@@ -14,5 +14,14 @@ export default async function AdminIndexPage() {
   if (user && !user.access.capabilities.canAccessAdministration && user.access.capabilities.canCoordinateHumanSupport) redirect(HUMAN_SUPPORT_MONITORING_PATH)
   // Quem só administra dados não tem a tela de bases: a entrada é a Central de Dados.
   if (user && user.access.capabilities.canManageDataHub && !user.access.capabilities.canManageKnowledge) redirect("/admin/data-hub")
+  // Papel que não abre as bases: a entrada é a primeira área que a conta pode abrir (Administrador de acessos → Usuários e acessos;
+  // Gestor de políticas → políticas; Gestor de alinhamentos → alinhamentos), nunca uma tela de erro de permissão.
+  if (user && !user.access.capabilities.canManageKnowledge) {
+    const { canOpenUsersAndAccess, canAccessInterventionPolicies, canManageOperationalAlignments, canViewAi } = user.access.capabilities
+    if (canOpenUsersAndAccess) redirect("/admin/users")
+    if (canAccessInterventionPolicies) redirect("/admin/intervention-policies")
+    if (canManageOperationalAlignments) redirect("/admin/operational-alignments")
+    if (canViewAi) redirect("/admin/ai")
+  }
   redirect("/admin/knowledge")
 }

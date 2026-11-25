@@ -38,7 +38,7 @@ const toLoginAccount = (row: LoginRow): LoginAccount => ({
   ...toSessionState(row),
   id: row.id, organizationId: row.organization_id, personId: row.person_id, name: row.name, role: row.role, email: row.email, passwordHash: row.password_hash,
   avatarUrl: row.avatar_url ?? null, jobTitle: row.job_title ?? null, teamId: row.team_id ?? null, teamName: row.team_name ?? null,
-  matricula: row.matricula ?? null, networkLoginEnabled: row.network_login_enabled === true, emergencyLocalAccess: row.emergency_local_access === true,
+  personInactive: row.person_active === false, matricula: row.matricula ?? null, networkLoginEnabled: row.network_login_enabled === true, emergencyLocalAccess: row.emergency_local_access === true,
 })
 
 export function createPostgresCredentialStore(db: Queryable): CredentialStore {
@@ -50,10 +50,13 @@ export function createPostgresCredentialStore(db: Queryable): CredentialStore {
     },
 
     async findByNetworkLogin(networkLogin) {
-      // Só organizações com o login pela rede LIGADO. A mesma matrícula em duas organizações ligadas = ambígua: ninguém entra
-      // (nunca escolher uma das duas às cegas).
-      const result = await db.query<LoginRow>(`${LOGIN_SELECT} where o.network_login_enabled and upper(btrim(p.matricula)) = $1 limit 2`, [networkLogin])
-      return result.rows.length === 1 ? toLoginAccount(result.rows[0]!) : null
+      // Só organizações com o login pela rede LIGADO. Um cadastro repetido que NÃO pode entrar (conta desabilitada ou pessoa inativa
+      // no cadastro) não tranca quem pode; duas contas que podem entrar = ambígua: ninguém entra (nunca escolher às cegas).
+      const result = await db.query<LoginRow>(`${LOGIN_SELECT} where o.network_login_enabled and upper(btrim(p.matricula)) = $1 limit 10`, [networkLogin])
+      const accounts = result.rows.map(toLoginAccount)
+      const usable = accounts.filter((account) => account.active)
+      const candidates = usable.length > 0 ? usable : accounts
+      return candidates.length === 1 ? candidates[0]! : null
     },
 
     async completeNetworkLogin({ accountId, identifierHash, at, retiredPasswordHash }) {
@@ -178,12 +181,26 @@ export function createPostgresCredentialStore(db: Queryable): CredentialStore {
       return result.rows.map((row) => toDate(row.attempted_at)!).reverse()
     },
 
-    async resolveAttempt({ attemptId, identifierHash, accountId, outcome, at }) {
+    async resolveAttempt({ attemptId, identifierHash, accountId, outcome, at, reason = null, directoryCode = null, redatedTo = null }) {
       if (attemptId !== null) {
-        const updated = await db.query(`update auth_login_attempts set outcome = $2, account_id = $3 where id = $1::bigint and identifier_hash = $4`, [attemptId, outcome, accountId, identifierHash])
+        const updated = await db.query(`update auth_login_attempts set outcome = $2, account_id = $3, reason = $5, directory_code = $6, attempted_at = coalesce($7::timestamptz, attempted_at) where id = $1::bigint and identifier_hash = $4`, [attemptId, outcome, accountId, identifierHash, reason, directoryCode, redatedTo])
         if ((updated.rowCount ?? 0) > 0) return
       }
-      await db.query(`insert into auth_login_attempts (identifier_hash, account_id, outcome, attempted_at) values ($1, $2, $3, $4)`, [identifierHash, accountId, outcome, at])
+      await db.query(`insert into auth_login_attempts (identifier_hash, account_id, outcome, attempted_at, reason, directory_code) values ($1, $2, $3, $4, $5, $6)`, [identifierHash, accountId, outcome, at, reason, directoryCode])
+    },
+
+    async directoryLoginOf(accountId) {
+      return (await db.query<{ directory_login: string | null }>(`select directory_login from user_accounts where id = $1`, [accountId])).rows[0]?.directory_login ?? null
+    },
+
+    async rememberDirectoryLogin(accountId, login) {
+      await db.query(`update user_accounts set directory_login = $2 where id = $1 and directory_login is distinct from $2`, [accountId, login])
+    },
+
+    async registeredMatriculas(normalized) {
+      if (normalized.length === 0) return []
+      const result = await db.query<{ matricula: string }>(`select distinct upper(btrim(matricula)) matricula from people where active and matricula is not null and upper(btrim(matricula)) = any($1::text[])`, [normalized])
+      return result.rows.map((row) => row.matricula)
     },
 
     async markLoggedIn({ accountId, identifierHash, at }) {

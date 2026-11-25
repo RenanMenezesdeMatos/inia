@@ -68,13 +68,14 @@ export type CreateUserInput = {
   matricula?: string
   /** Universo de atuação (obrigatório quando a organização já ativou a exigência — o backend confere). */
   operatingUniverse?: OperatingUniverse | null
-  email: string
+  /** Opcional só com o login pela rede ligado (a pessoa entra com a matrícula). */
+  email?: string
 }
 
-const createdUserSchema = z.object({ id: z.string(), issued: issuedTemporaryPasswordSchema })
+const createdUserSchema = z.object({ id: z.string(), issued: issuedTemporaryPasswordSchema.nullable() })
 
-/** A senha provisória é gerada pelo servidor e volta UMA vez (ver TemporaryPasswordDialog) — nunca é escolhida aqui. */
-export async function createUserAccount(input: CreateUserInput): Promise<IssuedTemporaryPassword> {
+/** A senha provisória é gerada pelo servidor e volta UMA vez (ver TemporaryPasswordDialog); null = entra pela rede, sem senha da INIA. */
+export async function createUserAccount(input: CreateUserInput): Promise<IssuedTemporaryPassword | null> {
   return createdUserSchema.parse(await adminSend("/api/v1/admin/users", "POST", input)).issued
 }
 

@@ -30,7 +30,7 @@ export function FeedbackQualityPanel() {
  */
 export function FeedbackQualityPage() {
   return (
-    <div className="mx-auto w-full max-w-7xl p-4 sm:p-6">
+    <div className="mx-auto w-full max-w-[90rem] p-4 sm:p-6">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

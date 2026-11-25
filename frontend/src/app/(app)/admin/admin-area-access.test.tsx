@@ -46,7 +46,7 @@ async function redirectOf(render: () => Promise<unknown>): Promise<string | null
 const layoutAt = () => AdminLayout({ children: null })
 
 const COORDINATOR = { canCoordinateHumanSupport: true }
-const GENERAL_ADMIN = { canAccessAdministration: true, canCoordinateHumanSupport: true, canManageHumanSupport: true, canOpenUsersAndAccess: true }
+const GENERAL_ADMIN = { canAccessAdministration: true, canManageKnowledge: true, canCoordinateHumanSupport: true, canManageHumanSupport: true, canOpenUsersAndAccess: true }
 
 afterEach(() => {
   state.user = null
@@ -134,3 +134,17 @@ describe("Administração — Publicações (área editorial dos comunicados)", 
   })
 })
 
+describe("/admin leva à primeira área que a conta pode abrir (25/11/2026)", () => {
+  it("Administrador de acessos cai em Usuários e acessos, não numa tela de bases que ele não pode ver", async () => {
+    signIn({ canAccessAdministration: true, canOpenUsersAndAccess: true, canManageUsers: true, canViewUsers: true })
+    expect(await redirectOf(AdminIndexPage)).toBe("/admin/users")
+  })
+  it("Gestor de políticas e Gestor de alinhamentos caem na área deles; quem gerencia bases continua nas bases", async () => {
+    signIn({ canAccessAdministration: true, canAccessInterventionPolicies: true })
+    expect(await redirectOf(AdminIndexPage)).toBe("/admin/intervention-policies")
+    signIn({ canAccessAdministration: true, canManageOperationalAlignments: true })
+    expect(await redirectOf(AdminIndexPage)).toBe("/admin/operational-alignments")
+    signIn({ canAccessAdministration: true, canManageKnowledge: true, canOpenUsersAndAccess: true })
+    expect(await redirectOf(AdminIndexPage)).toBe("/admin/knowledge")
+  })
+})

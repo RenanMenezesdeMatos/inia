@@ -40,8 +40,16 @@ export function useJobPositionOptionsQuery(enabled = true) {
   return useQuery({ queryKey: [...adminQueryKeys.users(), "job-positions"] as const, queryFn: fetchJobPositionOptions, enabled, staleTime: 0 })
 }
 
+/** Mudou uma pessoa ou a conta dela: a aba Acessos mostra os mesmos dados. */
+function useInvalidateAccessList() {
+  const queryClient = useQueryClient()
+  return () => void queryClient.invalidateQueries({ queryKey: accessQueryRootKey })
+}
+
 export function useCreateUserAccountMutation() {
+  const invalidateAccess = useInvalidateAccessList()
   return useAdminMutation({
+    onSuccess: invalidateAccess,
     mutationFn: createUserAccount,
     invalidateKey: adminQueryKeys.users(),
     successMessage: "Usuário criado.",
@@ -52,17 +60,19 @@ export function useCreateUserAccountMutation() {
 
 /** Vincular à pessoa da base: muda pessoas E acessos (a conta trocou de pessoa). */
 export function useLinkUserToSourcePersonMutation(personId: string) {
-  const queryClient = useQueryClient()
+  const invalidateAccess = useInvalidateAccessList()
   return useAdminMutation({
     mutationFn: (targetPersonId: string) => linkUserToSourcePerson(personId, targetPersonId),
     invalidateKey: adminQueryKeys.users(),
     successMessage: "Pessoa vinculada à base. A conta e os papéis foram para a pessoa da base.",
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: accessQueryRootKey }),
+    onSuccess: invalidateAccess,
   })
 }
 
 export function useUpdateUserDetailsMutation() {
+  const invalidateAccess = useInvalidateAccessList()
   return useAdminMutation({
+    onSuccess: invalidateAccess,
     mutationFn: updateUserDetails,
     invalidateKey: adminQueryKeys.users(),
     successMessage: "Usuário atualizado.",
@@ -70,7 +80,9 @@ export function useUpdateUserDetailsMutation() {
 }
 
 export function useUpdateUserRoleMutation() {
+  const invalidateAccess = useInvalidateAccessList()
   return useAdminMutation({
+    onSuccess: invalidateAccess,
     mutationFn: ({ personId, ...position }: { personId: string; role: PlatformRole; jobPositionId: string | null }) => updateUserRole(personId, position),
     invalidateKey: adminQueryKeys.users(),
     successMessage: "Cargo atualizado.",
@@ -78,7 +90,9 @@ export function useUpdateUserRoleMutation() {
 }
 
 export function useUpdateUserActiveMutation() {
+  const invalidateAccess = useInvalidateAccessList()
   return useAdminMutation({
+    onSuccess: invalidateAccess,
     mutationFn: ({ personId, active }: { personId: string; active: boolean }) => updateUserActive(personId, active),
     invalidateKey: adminQueryKeys.users(),
     successMessage: "Status atualizado.",

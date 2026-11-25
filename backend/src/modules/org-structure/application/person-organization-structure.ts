@@ -1,6 +1,6 @@
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 import type { AnalyticsReadRepository, PersonNode } from "../../performance-analytics/application/analytics-read-repository.js"
-import { accessDenied, activeDirectReportsOf, canFocusStructure, canOpenEmployeeProfile, canViewManagementMetrics, loadViewerScope, structureSubjectInScope, type StructureAccess } from "../../performance-analytics/application/viewer-scope.js"
+import { accessDenied, activeDirectReportsOf, canFocusStructure, canOpenEmployeeProfile, canViewManagementMetrics, canViewVacations, loadViewerScope, structureSubjectInScope, type StructureAccess } from "../../performance-analytics/application/viewer-scope.js"
 import { HIERARCHY_ROLES, personLevelLabel } from "../../performance-analytics/domain/hierarchy-levels.js"
 import type { EmploymentStatusFreshness } from "../../people/application/employment-status-freshness.js"
 import { findBrazilianCapital } from "../../people/domain/brazilian-capitals.js"
@@ -8,6 +8,7 @@ import { presentedAvatar, type PersonAvatarLoader } from "../../profile-preferen
 import type { OrganizationalHierarchyReader, OrganizationalPerson } from "../../workflows/application/organizational-recipient.js"
 import type { ManagementMetrics } from "../domain/management-metrics.js"
 import type { ManagementMetricsLoader } from "./load-management-metrics.js"
+import type { PeopleOnVacationLoader } from "./load-people-on-vacation.js"
 
 /**
  * Aba "Estrutura" do perfil ("Minha estrutura" para o próprio colaborador) e a NAVEGAÇÃO
@@ -40,9 +41,13 @@ import type { ManagementMetricsLoader } from "./load-management-metrics.js"
  *    imagem corporativa do cadastro, senão iniciais), lida em LOTE a cada request e nunca guardada
  *    no grafo em cache: trocar a foto não sobe a versão STRUCTURE.
  *
+ *  - Férias (`onVacation`): a ÚNICA situação individual do organograma, só para cargos de gestão e para o Administrador geral
+ *    (`canViewVacations`); para os outros a consulta nem é feita. Nenhuma outra situação sai por pessoa (INSS, maternidade e paternidade só
+ *    agregadas).
+ *
  * Tudo determinístico, sem LLM, sem N+1: número FIXO de consultas por request (viewer, subárvore
  * do viewer, cadeia acima do viewer, cadeia acima da focal, contagem da estrutura imediata,
- * e-mails em lote, fotos em lote, feeds de estrutura, métricas gerenciais de TODOS os líderes do payload em um
+ * e-mails em lote, fotos em lote, férias em lote, feeds de estrutura, métricas gerenciais de TODOS os líderes do payload em um
  * único lote; focal ANCESTRAL soma três leituras pontuais — a pessoa, os subordinados diretos
  * dela e a contagem de subordinados desses em lote — nunca a subárvore).
  */
@@ -76,6 +81,8 @@ export type StructurePerson = {
   /** Subordinados diretos ativos (qualquer cargo) — conhecido só para quem está na subárvore do viewer; null acima dela. */
   directReportCount: number | null
   capabilities: StructurePersonCapabilities
+  /** De férias hoje. AUSENTE = o viewer não vê férias (nada é dito); `false` não diz qual é a situação. */
+  onVacation?: boolean
   /** Métricas gerenciais da estrutura desta pessoa (focal e subordinados diretos que lideram):
    * `null` = o viewer não pode ver (Operador) ou a pessoa não lidera ninguém; AUSENTE = node que
    * nunca expande (gestor acima, cadeia). Decidido pelo backend — a aba "Dados da estrutura" só
@@ -152,6 +159,8 @@ export type PersonOrganizationStructureDeps = {
   structureFreshness: (organizationId: string) => Promise<EmploymentStatusFreshness>
   /** Métricas gerenciais de N líderes em LOTE (número fixo de consultas) — só chamada para quem pode ver. */
   managementMetrics: ManagementMetricsLoader
+  /** Férias de hoje, em LOTE — só chamada para quem pode ver. */
+  peopleOnVacation: PeopleOnVacationLoader
   now?: () => Date
 }
 
@@ -192,8 +201,10 @@ function describeCapital(code: string | null): NonNullable<StructurePerson["oper
   return capital ? { code: capital.code, name: capital.name, stateCode: capital.stateCode, label: `${capital.name} / ${capital.stateCode}` } : null
 }
 
-/** O que cada nó recebe das leituras em lote do request (e-mail da conta e foto da apresentação). */
-type PersonLookups = { emails: Map<string, string>; avatars: Map<string, string | null> }
+/** O que cada nó recebe das leituras em lote do request (e-mail da conta, foto da apresentação e férias; null = o viewer não vê férias). */
+type PersonLookups = { emails: Map<string, string>; avatars: Map<string, string | null>; onVacation: Set<string> | null }
+
+const vacationOf = (lookups: PersonLookups, personId: string): Pick<StructurePerson, "onVacation"> => (lookups.onVacation ? { onVacation: lookups.onVacation.has(personId) } : {})
 
 function fromNode(access: StructureAccess, node: PersonNode, lookups: PersonLookups, knownDirectReports: number | null = null): StructurePerson {
   const inScope = structureSubjectInScope(access.scope, node.id) !== null
@@ -210,6 +221,7 @@ function fromNode(access: StructureAccess, node: PersonNode, lookups: PersonLook
     operationalCapital: describeCapital(node.operationalCapitalCode),
     directReportCount: inScope ? activeDirectReportsOf(access.scope, node.id).length : knownDirectReports,
     capabilities: structureCapabilitiesOf(access, node.id, knownDirectReports),
+    ...vacationOf(lookups, node.id),
   }
 }
 
@@ -229,6 +241,7 @@ function fromAncestor(access: StructureAccess, person: OrganizationalPerson, lev
         email: lookups.emails.get(person.id) ?? null,
         directReportCount: null,
         capabilities: structureCapabilitiesOf(access, person.id),
+        ...vacationOf(lookups, person.id),
       }
   return { ...base, level }
 }
@@ -266,7 +279,7 @@ export async function buildPersonOrganizationStructure(deps: PersonOrganizationS
   // V1.5.8: a navegação do organograma é aberta a todos (decisão de produto) e não depende de papel nem de nível hierárquico.
   // O escopo carregado é o de Indicadores (`indicators.view`) porque é ele que autoriza a FICHA (`canViewProfile`); quem recebe
   // os DADOS DE GESTÃO de cada líder é decidido à parte por `structure.metrics.view` (ou pela regra operacional de quem lidera).
-  const [scope, metricsAccess] = await Promise.all([loadViewerScope(deps.analytics, user), deps.analytics.loadAccessVisibility(user.organizationId, user.sub, "structure.metrics.view")])
+  const [scope, metricsAccess, vacationAccess] = await Promise.all([loadViewerScope(deps.analytics, user), deps.analytics.loadAccessVisibility(user.organizationId, user.sub, "structure.metrics.view"), deps.analytics.loadAccessVisibility(user.organizationId, user.sub, "structure.vacations.view")])
   // Ancestrais reais e ATIVOS do viewer (loadAncestors só devolve ativos; CTE anticiclo) — a base da navegação ascendente.
   const viewerAncestors = await deps.hierarchy.loadAncestors(scope.viewer.id)
   const access: StructureAccess = { scope, ancestorIds: new Set(viewerAncestors.map((person) => person.id)) }
@@ -293,15 +306,18 @@ export async function buildPersonOrganizationStructure(deps: PersonOrganizationS
   // métricas gerenciais deles vêm em UM lote — só para quem ocupa cargo de gestão ou tem
   // `structure.metrics.view` com escopo que alcança o líder (o Operador nunca recebe; sem ninguém autorizado a consulta nem é feita).
   const leaders = [...(directReports.length > 0 ? [subject] : []), ...directReports.filter((node) => structureCapabilitiesOf(access, node.id, knownCount(node)).hasReports)].filter((node) => canViewManagementMetrics({ role: scope.role, access: metricsAccess }, node))
-  const [memberCount, emails, avatars, freshness, metrics] = await Promise.all([
+  const seesVacations = canViewVacations(scope, vacationAccess)
+  const at = (deps.now ?? (() => new Date()))()
+  const [memberCount, emails, avatars, freshness, metrics, onVacation] = await Promise.all([
     leader ? deps.hierarchy.countActiveOperators(leader.id, memberCountKindOf(leader) === "DIRECT_OPERATORS" ? "DIRECT" : "ANY") : Promise.resolve(0),
     deps.corporateEmails(payloadIds),
     deps.personAvatars(scope.organizationId, payloadIds),
     deps.structureFreshness(scope.organizationId),
-    leaders.length > 0 ? deps.managementMetrics(scope.organizationId, leaders.map((node) => ({ id: node.id, role: node.role, teamId: node.teamId })), (deps.now ?? (() => new Date()))()) : Promise.resolve(new Map<string, ManagementMetrics>()),
+    leaders.length > 0 ? deps.managementMetrics(scope.organizationId, leaders.map((node) => ({ id: node.id, role: node.role, teamId: node.teamId })), at) : Promise.resolve(new Map<string, ManagementMetrics>()),
+    seesVacations ? deps.peopleOnVacation(scope.organizationId, payloadIds, at) : Promise.resolve(null),
   ])
   const withMetrics = (person: StructurePerson): StructurePerson => ({ ...person, managementMetrics: metrics.get(person.personId) ?? null })
-  const lookups: PersonLookups = { emails, avatars }
+  const lookups: PersonLookups = { emails, avatars, onVacation }
 
   const managementChain = ancestors.map((person, index) => fromAncestor(access, person, index + 1, lookups))
   const directManagerStatus: DirectManagerStatus = subject.reportsToId === null ? "NOT_INFORMED" : leader?.id === subject.reportsToId ? "PRESENT" : "INACTIVE"
