@@ -18,6 +18,8 @@ import { CapturingLogger, FakeSftpClient, InMemorySecretStore, json, MockHttpCli
 import { requestManualSync } from "../application/run-service.js"
 import { setSourceStatus } from "../application/source-service.js"
 import { resolveWorkScheduleFreshness } from "../../people/application/employment-status-freshness.js"
+import { addDaysToDate } from "../../people/domain/employment-status.js"
+import { localDateOf } from "../../workflows/application/time-window.js"
 import { loadWorkScheduleSummary, resolveWorkScheduleHorizon } from "../../people/application/work-schedule-service.js"
 
 /**
@@ -506,6 +508,115 @@ describe.skipIf(!ENABLED)("Hardening — situação funcional × Central de Dado
       // TH-OP-05 tem regime 6x1 com calendário; TH-OP-01 recebeu regime 6x1 sem calendário na prova de API Pull.
       expect(overview.calendarQuality.sixByOne.total).toBeGreaterThanOrEqual(1)
       expect(overview.calendarQuality).toMatchObject({ activeExceptionsAhead: 0 })
+    })
+  })
+
+  describe("situação com data de início repetida depois de o período já ter terminado (25/11/2026)", () => {
+    const EMPLOYEE_FIELDS = ["externalEmployeeId", "name", "role", "hiredAt", "currentStatus", "statusEffectiveFrom", "sourceUpdatedAt"]
+    const TODAY = localDateOf(new Date(), TZ)
+    const day = (offset: number) => addDaysToDate(TODAY, offset)
+    let clock = NOW
+    let dated: DataHubContext
+    let colab: DataFeedRow
+    let absences: DataFeedRow
+
+    beforeAll(async () => {
+      // Como na instalação do cliente: nenhum dos dois conjuntos é autoritativo e o relógio é o da carga.
+      dated = createDataHubContext(db, { http: new MockHttpClient(), sftp: new FakeSftpClient(), logger: new CapturingLogger(), secrets: new InMemorySecretStore(), clock: { now: () => clock } })
+      colab = await setFeedStatus(dated, ORG, null, (await createFeed(dated, ORG, null, source.id, { feedKey: "colab-datada", name: "Colaboradores (datada)", contractKey: "EMPLOYEES", connectorConfig: fileFeedConfig, authoritative: false, sourceNamespace: "th-datada", cadence: { kind: "MANUAL" }, mapping: identity(EMPLOYEE_FIELDS) })).id, "ACTIVATE")
+      absences = await setFeedStatus(dated, ORG, null, (await createFeed(dated, ORG, null, source.id, { feedKey: "ausencias-datada", name: "Ausências (datada)", contractKey: "EMPLOYEE_ABSENCES", connectorConfig: fileFeedConfig, authoritative: false, sourceNamespace: "th-datada", cadence: { kind: "MANUAL" }, mapping: identity(["externalEmployeeId", "type", "startDate", "endDate"]) })).id, "ACTIVATE")
+    })
+
+    async function load(feed: DataFeedRow, offset: number, rows: string[][]) {
+      clock = new Date(`${day(offset)}T12:00:00-03:00`)
+      const raw = await dated.rawObjects.put({ organizationId: ORG, sourceId: feed.sourceId, feedId: feed.id, filename: "datada.csv", contentType: "text/csv", content: csv(rows) })
+      const { run: queued } = await enqueueRun(dated, { organizationId: ORG, feed, triggerKind: "FILE_UPLOAD", requestedBy: null, rawObjectId: raw.id })
+      const done = (await executeRun(dated, queued.id))!
+      return { status: done.status, warnings: (await rejections(done.id)).map((entry) => entry.error_code) }
+    }
+    const employee = (offset: number, matricula: string, status: string, from = "", updatedAt = "") => load(colab, offset, [EMPLOYEE_FIELDS, [matricula, `Pessoa ${matricula}`, "OPERATOR", "2024-01-08", status, from, updatedAt]])
+    const absence = (offset: number, matricula: string, type: string, from: string, to: string) => load(absences, offset, [["externalEmployeeId", "type", "startDate", "endDate"], [matricula, type, from, to]])
+    async function timeline(matricula: string) {
+      const id = await personId(matricula)
+      const current = await db.query<{ s: string }>(`select current_employment_status s from people where id = $1`, [id])
+      return { today: current.rows[0]!.s, periods: (await loadEmploymentStatusHistory(db, id)).map((period) => [period.status, period.effectiveFrom, period.effectiveTo]) }
+    }
+
+    it("INSS → EM PRODUÇÃO → INSS com a MESMA data de início: a evidência mais nova vale a partir da carga, o passado não muda e a repetição não duplica", async () => {
+      await employee(-2, "TH-DT-01", "INSS", day(-100))
+      await employee(-1, "TH-DT-01", "EM PRODUÇÃO")
+      expect((await timeline("TH-DT-01")).today).toBe("EM_PRODUCAO")
+      const back = await employee(0, "TH-DT-01", "INSS", day(-100))
+      expect(back.status).toBe("COMPLETED")
+      const expected = { today: "INSS", periods: [["INSS", day(-100), day(-2)], ["EM_PRODUCAO", day(-1), day(-1)], ["INSS", day(0), null]] }
+      expect(await timeline("TH-DT-01")).toEqual(expected)
+      await employee(0, "TH-DT-01", "INSS", day(-100))
+      expect(await timeline("TH-DT-01")).toEqual(expected)
+    })
+
+    it("a mesma volta com EM PRODUÇÃO datado também vale", async () => {
+      await employee(-13, "TH-DT-02", "FERIAS", day(-15))
+      await employee(-5, "TH-DT-02", "EM PRODUÇÃO", day(-5))
+      await employee(0, "TH-DT-02", "FERIAS", day(-15))
+      expect(await timeline("TH-DT-02")).toEqual({ today: "FERIAS", periods: [["FERIAS", day(-15), day(-6)], ["EM_PRODUCAO", day(-5), day(-1)], ["FERIAS", day(0), null]] })
+    })
+
+    it("ausência encerrada pela fonte + cadastro ainda afastado com data: o fim informado é respeitado e um período novo abre na carga (igual a mandar sem data)", async () => {
+      for (const [matricula, from] of [["TH-DT-03", day(-24)], ["TH-DT-04", day(-20)], ["TH-DT-05", ""]] as const) {
+        await employee(-30, matricula, "")
+        await absence(-4, matricula, "INSS", day(-24), day(-5))
+        await employee(0, matricula, "INSS", from)
+        expect(await timeline(matricula)).toEqual({ today: "INSS", periods: [["INSS", day(-24), day(-5)], ["INSS", day(0), null]] })
+      }
+    })
+
+    it("evidência mais VELHA que o EM PRODUÇÃO vigente perde: nada é escrito, o início antigo não se move e o conflito vira aviso", async () => {
+      await employee(-2, "TH-DT-06", "INSS", day(-100), `${day(-5)}T08:00:00-03:00`)
+      await employee(-1, "TH-DT-06", "EM PRODUÇÃO", "", `${day(-1)}T08:00:00-03:00`)
+      const before = await timeline("TH-DT-06")
+      const late = await employee(0, "TH-DT-06", "INSS", day(-90), `${day(-4)}T08:00:00-03:00`)
+      expect(late.warnings).toEqual(["DATA_EMPLOYMENT_STATUS_CONFLICT"])
+      expect(await timeline("TH-DT-06")).toEqual(before)
+    })
+
+    it("período em vigor: evidência mais velha não move o início (aviso); a mais nova continua corrigindo", async () => {
+      await employee(-2, "TH-DT-07", "INSS", day(-100), `${day(-3)}T08:00:00-03:00`)
+      const older = await employee(-1, "TH-DT-07", "INSS", day(-90), `${day(-8)}T08:00:00-03:00`)
+      expect(older.warnings).toEqual(["DATA_EMPLOYMENT_STATUS_CONFLICT"])
+      expect((await timeline("TH-DT-07")).periods).toEqual([["INSS", day(-100), null]])
+      // A evidência recusada não rebaixa a do período: repetir a mesma continua perdendo.
+      expect((await employee(-1, "TH-DT-07", "INSS", day(-90), `${day(-8)}T08:00:00-03:00`)).warnings).toEqual(["DATA_EMPLOYMENT_STATUS_CONFLICT"])
+      expect((await timeline("TH-DT-07")).periods).toEqual([["INSS", day(-100), null]])
+      const newer = await employee(0, "TH-DT-07", "INSS", day(-90), `${day(-1)}T08:00:00-03:00`)
+      expect(newer.warnings).toEqual([])
+      expect((await timeline("TH-DT-07")).periods).toEqual([["INSS", day(-90), null]])
+    })
+
+    it("não mexe no que já valia: repetição simples, ausência explícita vigente, correção pela ausência e volta real ao trabalho", async () => {
+      await employee(-2, "TH-DT-08", "INSS", day(-100))
+      expect((await employee(0, "TH-DT-08", "INSS", day(-100))).warnings).toEqual([])
+      expect(await timeline("TH-DT-08")).toEqual({ today: "INSS", periods: [["INSS", day(-100), null]] })
+      await employee(-30, "TH-DT-09", "")
+      await absence(-10, "TH-DT-09", "FERIAS", day(-10), day(5))
+      expect((await employee(0, "TH-DT-09", "EM PRODUÇÃO")).warnings).toEqual(["DATA_EMPLOYMENT_STATUS_CONFLICT"])
+      expect(await timeline("TH-DT-09")).toEqual({ today: "FERIAS", periods: [["FERIAS", day(-10), day(5)]] })
+      await employee(-30, "TH-DT-10", "")
+      await absence(-1, "TH-DT-10", "FERIAS", day(-10), day(-1))
+      await absence(0, "TH-DT-10", "FERIAS", day(-10), "")
+      expect(await timeline("TH-DT-10")).toEqual({ today: "FERIAS", periods: [["FERIAS", day(-10), null]] })
+      await employee(-30, "TH-DT-11", "")
+      await absence(-1, "TH-DT-11", "FERIAS", day(-10), day(-1))
+      await employee(0, "TH-DT-11", "EM PRODUÇÃO")
+      expect(await timeline("TH-DT-11")).toEqual({ today: "EM_PRODUCAO", periods: [["FERIAS", day(-10), day(-1)], ["EM_PRODUCAO", day(0), null]] })
+    })
+
+    it("férias no meio de um INSS (cabeça e cauda): repetir o INSS com a data original não cria nem corta nada", async () => {
+      await employee(-30, "TH-DT-12", "INSS", day(-100))
+      await absence(-29, "TH-DT-12", "FERIAS", day(-20), day(-10))
+      const before = await timeline("TH-DT-12")
+      expect(before.periods).toEqual([["INSS", day(-100), day(-21)], ["FERIAS", day(-20), day(-10)], ["INSS", day(-9), null]])
+      expect((await employee(0, "TH-DT-12", "INSS", day(-100))).warnings).toEqual([])
+      expect(await timeline("TH-DT-12")).toEqual(before)
     })
   })
 

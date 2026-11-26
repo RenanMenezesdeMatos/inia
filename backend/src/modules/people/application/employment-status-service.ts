@@ -121,9 +121,27 @@ export async function applyEmployeeStatusSnapshot(db: Database, snapshot: Employ
   // 1. Mesma situação já vigente na data → idempotente: só atualiza freshness (e o fim, se a
   //    fonte agora informa um `effectiveTo` diferente — correção controlada).
   if (covering && covering.status === status) {
+    // Cadastro com início e sem campo de fim ("INSS desde 01/08") afirma que a situação vale HOJE. Se o
+    // período que cobre aquele início já terminou, não há o que renovar nele: a afirmação segue o mesmo
+    // caminho de quem não informa data (vale a partir da carga, com precedência e conflito); o passado fica como está.
+    const datedWithoutEnd = !inferred && snapshot.effectiveTo === undefined
+    if (datedWithoutEnd && covering.effectiveTo !== null && covering.effectiveTo < localDateOf(observedAt, timeZone)) {
+      return applyEmployeeStatusSnapshot(db, { ...snapshot, effectiveFrom: null, observedAt })
+    }
     // Datas explícitas da fonte corrigem os limites do período (ex.: férias 09–20 → 10–20);
-    // snapshot sem data só renova a freshness — nunca move o início por suposição.
-    const nextFrom = inferred ? covering.effectiveFrom : effectiveFrom
+    // snapshot sem data só renova a freshness — nunca move o início por suposição. O início informado sem fim
+    // só corrige quando a evidência não é mais fraca que a do período; senão fica o registrado, com aviso.
+    const startVerdict = datedWithoutEnd && effectiveFrom !== covering.effectiveFrom ? compareEvidence(covering, { effectiveTo: null, effectiveToExplicit: false, authoritative: snapshot.authoritative === true, evidenceAt: sourceUpdatedAt ?? observedAt.toISOString() }) : null
+    const keptStart: StatusConflict | null =
+      startVerdict?.kept === "EXISTING"
+        ? {
+            kept: "EXISTING",
+            reason: startVerdict.reason,
+            existing: { status: covering.status, effectiveFrom: covering.effectiveFrom, effectiveTo: covering.effectiveTo, source: covering.source, sourceReference: covering.sourceReference },
+            incoming: { status, effectiveFrom, effectiveTo, inferred, source: snapshot.source },
+          }
+        : null
+    const nextFrom = inferred || keptStart ? covering.effectiveFrom : effectiveFrom
     const nextTo = inferred || snapshot.effectiveTo === undefined ? covering.effectiveTo : effectiveTo
     const changed = nextTo !== covering.effectiveTo || nextFrom !== covering.effectiveFrom
     const applyTarget = () =>
@@ -138,11 +156,11 @@ export async function applyEmployeeStatusSnapshot(db: Database, snapshot: Employ
                 raw_status = coalesce($6, raw_status), updated_at = now()
           where id = $1
           returning ${RETURNING}`,
-        [covering.id, observedAt.toISOString(), sourceUpdatedAt, nextFrom, nextTo, snapshot.rawStatus ?? null, !inferred && snapshot.effectiveTo !== undefined && snapshot.effectiveTo !== null, snapshot.authoritative === true],
+        [covering.id, observedAt.toISOString(), keptStart ? null : sourceUpdatedAt, nextFrom, nextTo, snapshot.rawStatus ?? null, !inferred && snapshot.effectiveTo !== undefined && snapshot.effectiveTo !== null, snapshot.authoritative === true],
       )
     const updated = changed ? await reshapeWithNeighbors(db, periods, covering, nextFrom, nextTo, applyTarget) : await applyTarget()
     const currentStatus = await syncCurrentStatus(db, snapshot.personId, timeZone)
-    return { action: changed ? "ADJUSTED" : "REFRESHED", period: toPeriod(updated.rows[0]!), currentStatus }
+    return { action: changed ? "ADJUSTED" : "REFRESHED", period: toPeriod(updated.rows[0]!), currentStatus, ...(keptStart ? { conflict: keptStart } : {}) }
   }
 
   // 2. Mudança de situação (ou período novo). ANTES de escrever: precedência de evidência contra
